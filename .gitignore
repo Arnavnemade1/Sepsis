@@ -15,6 +15,12 @@ backend/.env
 # Local SQLite database
 backend/sepsis_twin.db
 
+# Clinical dataset cache (PhysioNet/CinC 2019 — redistribute via PhysioNet only)
+data/cinc2019/
+# Trained model artifacts + logs (large, regenerable)
+artifacts/*.joblib
+artifacts/*.log
+
 # macOS
 .DS_Store
 
