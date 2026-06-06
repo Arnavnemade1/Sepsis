@@ -46,7 +46,8 @@ class ProtocolVerifier:
         has_penicillin_allergy = BoolVal(bool(clinical_history.get("penicillin_allergy", False)))
         
         # Extract patient vitals
-        map_val = RealVal(float(vitals.get("map", vitals.get("systolic_bp", 120.0) * 0.6 + vitals.get("diastolic_bp", 80.0) * 0.4)))
+        fallback_map = (vitals.get("systolic_bp", 120.0) + (2.0 * vitals.get("diastolic_bp", 80.0))) / 3.0
+        map_val = RealVal(float(vitals.get("map", fallback_map)))
         is_sepsis_high = BoolVal(risk_level == "HIGH")
 
         # 4. Formulate safety constraints (invariants)

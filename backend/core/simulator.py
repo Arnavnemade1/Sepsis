@@ -122,7 +122,7 @@ class PatientTelemetrySimulator:
                 self.tick_count = 0
 
         # Calculate MAP (Mean Arterial Pressure)
-        map_val = (self.vitals["systolic_bp"] * 0.6) + (self.vitals["diastolic_bp"] * 0.4)
+        map_val = (self.vitals["systolic_bp"] + (2.0 * self.vitals["diastolic_bp"])) / 3.0
         self.vitals["map"] = round(map_val, 2)
         
         # Round all vitals for clean representation

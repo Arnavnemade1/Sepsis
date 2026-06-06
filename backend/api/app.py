@@ -1,6 +1,7 @@
 import asyncio
 import uuid
 import os
+from datetime import datetime, timedelta
 from typing import Dict, Any, List
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +36,7 @@ verifier = ProtocolVerifier()
 simulator = PatientTelemetrySimulator()
 
 # Global state for default patient
-DEFAULT_PATIENT_ID = "patient-001"
+DEFAULT_PATIENT_ID = "5d0724f5-8b7d-4f3e-bb83-3f8c2f0c2470"
 patient_info = {
     "name": "Jane Doe",
     "age": 67,
@@ -73,7 +74,19 @@ latest_evaluation = {
     "risk_level": "LOW",
     "sirs_score": 0,
     "qsofa_score": 0,
-    "triggered_rules": []
+    "triggered_rules": [],
+    "detection": {
+        "sepsis_probability": 0.0,
+        "confidence": 0.0,
+        "sensor_quality": 0.0,
+        "hdc_margin": 0.0,
+        "hdc_probability": 0.0,
+        "organ_dysfunction_score": 0,
+        "trend_score": 0,
+        "raw_score": 0.0,
+        "shock_signal": False,
+        "probable_sepsis_signal": False
+    }
 }
 
 latest_verification_log = {
@@ -81,6 +94,9 @@ latest_verification_log = {
     "message": "Waiting for sepsis alert triggers...",
     "proof_details": {}
 }
+
+last_protocol_synthesis_at = None
+PROTOCOL_REASSESSMENT_SECONDS = 45
 
 # WebSocket client registry
 connected_clients: List[WebSocket] = []
@@ -134,7 +150,7 @@ async def broadcast_status():
 
 async def telemetry_loop():
     """Background loop that drives telemetry gathering, HDC state compilation, and rules evaluation."""
-    global latest_evaluation, active_treatment, latest_verification_log
+    global latest_evaluation, active_treatment, latest_verification_log, last_protocol_synthesis_at
     
     print("[API] Background telemetry monitoring loop started.")
     while True:
@@ -149,10 +165,14 @@ async def telemetry_loop():
             db_client.save_telemetry(DEFAULT_PATIENT_ID, vitals)
 
             # 3. Evaluate neurosymbolic clinical rules
-            risk_level, sirs, qsofa, rules = neuro_engine.evaluate_patient(
+            twin_state = digital_twin.get_current_twin_state()
+            risk_level, sirs, qsofa, rules, detection_details = neuro_engine.evaluate_patient(
                 vitals, 
                 twin_update["sepsis_similarity"], 
-                patient_info["clinical_history"]
+                patient_info["clinical_history"],
+                twin_update["healthy_similarity"],
+                twin_state["trends"],
+                twin_state["features"]
             )
             
             # Save alert change if severity shifts
@@ -172,11 +192,18 @@ async def telemetry_loop():
                 "risk_level": risk_level,
                 "sirs_score": sirs,
                 "qsofa_score": qsofa,
-                "triggered_rules": rules
+                "triggered_rules": rules,
+                "detection": detection_details
             }
 
             # 4. If Patient is in HIGH Risk Sepsis, run Evolutionary Protocol Synthesis + Z3 verification
-            if risk_level == "HIGH":
+            should_synthesize_protocol = risk_level == "HIGH" and (
+                last_protocol_synthesis_at is None
+                or datetime.utcnow() - last_protocol_synthesis_at >= timedelta(seconds=PROTOCOL_REASSESSMENT_SECONDS)
+                or active_treatment.get("antibiotic_code", 0) == 0
+            )
+
+            if should_synthesize_protocol:
                 print("[API] HIGH SEPSIS RISK DETECTED. Triggering Evolutionary Optimization...")
                 
                 # Run Genetic Algorithm
@@ -229,6 +256,7 @@ async def telemetry_loop():
                 if is_safe:
                     print(f"[API] Z3 CERTIFIED PROTOCOL: {proposed_protocol}. Applying to patient...")
                     active_treatment = proposed_protocol
+                    last_protocol_synthesis_at = datetime.utcnow()
                 else:
                     print(f"[API] Z3 REJECTED PROTOCOL: {msg}. Safety lockout engaged. Retrying next tick.")
                     # Keep active treatment at current level (or zero it if unsafe)

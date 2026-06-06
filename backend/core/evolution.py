@@ -32,7 +32,10 @@ class EvolutionaryOptimizer:
         has_renal_failure = clinical_history.get("renal_failure", False)
         
         # Initial states
-        map_val = current_vitals.get("map", current_vitals.get("systolic_bp", 120.0) * 0.6 + current_vitals.get("diastolic_bp", 80.0) * 0.4)
+        map_val = current_vitals.get(
+            "map",
+            (current_vitals.get("systolic_bp", 120.0) + (2.0 * current_vitals.get("diastolic_bp", 80.0))) / 3.0
+        )
         hr = current_vitals.get("heart_rate", 80.0)
         lactate = current_vitals.get("sweat_lactate", current_vitals.get("lactate", 1.5))
         infection_level = 5.0 if current_vitals.get("sepsis_similarity", 0.0) > 0.4 else 1.0
@@ -127,17 +130,17 @@ class EvolutionaryOptimizer:
         Returns:
             (best_protocol_dict, best_fitness)
         """
-        # Initialize population
-        # Gene: (fluid_rate [0, 20.0], vasopressor_dose [0, 0.4], antibiotic_code [0, 5])
+        fluid_cap = self._fluid_cap(clinical_history)
+        vaso_cap = self._vasopressor_cap(current_vitals)
+        antibiotic_choices = self._antibiotic_choices(clinical_history, sepsis_risk)
+
+        # Initialize population.
+        # Gene: (fluid_rate [0, patient-specific cap], vasopressor_dose [0, cap], antibiotic_code [catalog])
         population = []
         for _ in range(self.pop_size):
-            fluid = self.rng.uniform(0.0, 15.0)
-            vaso = self.rng.uniform(0.0, 0.25)
-            # If high risk sepsis, bias towards prescribing antibiotics
-            if sepsis_risk == "HIGH":
-                ab = self.rng.choice([1, 2, 3, 4, 5])
-            else:
-                ab = self.rng.choice([0, 1, 2, 3, 4, 5], p=[0.7, 0.06, 0.06, 0.06, 0.06, 0.06])
+            fluid = self.rng.uniform(0.0, fluid_cap)
+            vaso = self.rng.uniform(0.0, vaso_cap)
+            ab = self.rng.choice(antibiotic_choices)
             population.append((fluid, vaso, int(ab)))
 
         best_individual = population[0]
@@ -188,8 +191,8 @@ class EvolutionaryOptimizer:
                     child1, child2 = p1, p2
 
                 # 4. Mutation
-                child1 = self._mutate(child1, sepsis_risk)
-                child2 = self._mutate(child2, sepsis_risk)
+                child1 = self._mutate(child1, sepsis_risk, fluid_cap, vaso_cap, antibiotic_choices)
+                child2 = self._mutate(child2, sepsis_risk, fluid_cap, vaso_cap, antibiotic_choices)
                 
                 next_generation.extend([child1, child2])
 
@@ -204,22 +207,47 @@ class EvolutionaryOptimizer:
             "antibiotic_code": int(ab_code_opt)
         }, best_fitness
 
-    def _mutate(self, ind: Tuple[float, float, int], sepsis_risk: str) -> Tuple[float, float, int]:
+    def _mutate(
+        self,
+        ind: Tuple[float, float, int],
+        sepsis_risk: str,
+        fluid_cap: float,
+        vaso_cap: float,
+        antibiotic_choices: List[int]
+    ) -> Tuple[float, float, int]:
         fluid, vaso, ab = ind
         
         # Mutate fluid rate
         if self.rng.random() < self.mutation_rate:
-            fluid = max(0.0, min(25.0, fluid + self.rng.normal(0.0, 2.0)))
+            fluid = max(0.0, min(fluid_cap, fluid + self.rng.normal(0.0, 2.0)))
             
         # Mutate vasopressor
         if self.rng.random() < self.mutation_rate:
-            vaso = max(0.0, min(0.4, vaso + self.rng.normal(0.0, 0.05)))
+            vaso = max(0.0, min(vaso_cap, vaso + self.rng.normal(0.0, 0.05)))
             
         # Mutate antibiotic code
         if self.rng.random() < self.mutation_rate:
-            if sepsis_risk == "HIGH":
-                ab = self.rng.choice([1, 2, 3, 4, 5])
-            else:
-                ab = self.rng.choice([0, 1, 2, 3, 4, 5])
+            ab = self.rng.choice(antibiotic_choices)
                 
         return (fluid, vaso, int(ab))
+
+    def _fluid_cap(self, clinical_history: Dict[str, Any]) -> float:
+        cap = 25.0
+        if clinical_history.get("chf", False):
+            cap = min(cap, 5.0)
+        if clinical_history.get("renal_failure", False):
+            cap = min(cap, 4.0)
+        return cap
+
+    def _vasopressor_cap(self, current_vitals: Dict[str, float]) -> float:
+        map_val = current_vitals.get(
+            "map",
+            (current_vitals.get("systolic_bp", 120.0) + (2.0 * current_vitals.get("diastolic_bp", 80.0))) / 3.0
+        )
+        return 0.4 if map_val < 65.0 else 0.1
+
+    def _antibiotic_choices(self, clinical_history: Dict[str, Any], sepsis_risk: str) -> List[int]:
+        choices = [1, 2, 3, 4, 5] if sepsis_risk == "HIGH" else [0, 1, 2, 3, 4, 5]
+        if clinical_history.get("penicillin_allergy", False):
+            choices = [code for code in choices if code != 1]
+        return choices or [0]

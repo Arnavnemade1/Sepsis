@@ -168,6 +168,10 @@ function updateDashboard(data) {
     
     document.getElementById("sirs-score").innerText = `${evalData.sirs_score} / 4`;
     document.getElementById("qsofa-score").innerText = `${evalData.qsofa_score} / 3`;
+    const detection = evalData.detection || {};
+    document.getElementById("sepsis-probability").innerText = `${((detection.sepsis_probability || 0) * 100).toFixed(1)}%`;
+    document.getElementById("detection-confidence").innerText = `${((detection.confidence || 0) * 100).toFixed(1)}%`;
+    document.getElementById("organ-score").innerText = detection.organ_dysfunction_score || 0;
 
     // Triggered rules list
     const rulesList = document.getElementById("triggered-rules-list");
@@ -180,8 +184,9 @@ function updateDashboard(data) {
             li.innerText = rule;
             // Set styling based on severity
             if (rule.includes("SIRS")) li.style.borderLeftColor = "var(--accent-amber)";
-            else if (rule.includes("qSOFA")) li.style.borderLeftColor = "var(--accent-red)";
+            else if (rule.includes("qSOFA") || rule.includes("Organ dysfunction")) li.style.borderLeftColor = "var(--accent-red)";
             else if (rule.includes("HDC")) li.style.borderLeftColor = "var(--accent-blue)";
+            else if (rule.includes("Trend") || rule.includes("Organ stress") || rule.includes("Autonomic")) li.style.borderLeftColor = "var(--accent-amber)";
             rulesList.appendChild(li);
         });
     }

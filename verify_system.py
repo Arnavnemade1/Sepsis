@@ -9,6 +9,7 @@ from backend.core.hdc import HDCEngine
 from backend.core.verifier import ProtocolVerifier
 from backend.core.evolution import EvolutionaryOptimizer
 from backend.core.neurosymbolic import NeurosymbolicEngine
+from backend.core.twin import PatientDigitalTwin
 
 def test_hdc_engine():
     print("[TEST] Testing HDC Engine...")
@@ -39,7 +40,67 @@ def test_hdc_engine():
     sim_low_high = engine.similarity(v_low, v_high)
     
     assert sim_low_mid > sim_low_high, "Similarity should decay continuously with value distance"
+
+    # 4. Temporal HDC encoding should preserve trajectory class evidence.
+    stable_window = [{
+        "heart_rate": 72.0, "hrv": 85.0, "spo2": 98.5, "skin_temp": 36.6,
+        "motion": 12.0, "systolic_bp": 120.0, "diastolic_bp": 80.0,
+        "map": 93.3, "sweat_lactate": 0.8, "respiratory_rate": 14.0
+    }] * 8
+    septic_window = [{
+        "heart_rate": 126.0, "hrv": 12.0, "spo2": 88.0, "skin_temp": 39.1,
+        "motion": 1.0, "systolic_bp": 78.0, "diastolic_bp": 46.0,
+        "map": 55.3, "sweat_lactate": 5.1, "respiratory_rate": 28.0
+    }] * 8
+    stable_temporal = engine.encode_temporal_window(stable_window)
+    septic_temporal = engine.encode_temporal_window(septic_window)
+    stable_h, stable_s = engine.classify_temporal_state(stable_temporal)
+    septic_h, septic_s = engine.classify_temporal_state(septic_temporal)
+    assert stable_h > stable_s, "Stable temporal trajectory should favor healthy temporal archetype"
+    assert septic_s > septic_h, "Septic temporal trajectory should favor sepsis temporal archetype"
     print("      HDC Engine tests: PASSED")
+
+def test_digital_twin_features():
+    print("[TEST] Testing personalized digital twin features...")
+    engine = HDCEngine(dimensions=10000)
+    twin = PatientDigitalTwin("test-patient", engine)
+
+    stable = {
+        "heart_rate": 72.0,
+        "hrv": 85.0,
+        "spo2": 98.5,
+        "skin_temp": 36.6,
+        "motion": 12.0,
+        "systolic_bp": 120.0,
+        "diastolic_bp": 80.0,
+        "map": 93.3,
+        "sweat_lactate": 0.8,
+        "respiratory_rate": 14.0
+    }
+    for _ in range(12):
+        twin.update_telemetry(stable)
+
+    stable_features = twin.get_current_twin_state()["features"]
+    assert stable_features["instability_score"] < 2.0, "Stable baseline should have low instability"
+    assert stable_features["perfusion_index"] > 0.9, "Stable baseline should have strong perfusion index"
+
+    septic = {
+        "heart_rate": 126.0,
+        "hrv": 12.0,
+        "spo2": 88.0,
+        "skin_temp": 39.1,
+        "motion": 1.0,
+        "systolic_bp": 78.0,
+        "diastolic_bp": 46.0,
+        "map": 55.3,
+        "sweat_lactate": 5.1,
+        "respiratory_rate": 28.0
+    }
+    twin.update_telemetry(septic)
+    septic_features = twin.get_current_twin_state()["features"]
+    assert septic_features["instability_score"] > stable_features["instability_score"], "Septic state should diverge from personal baseline"
+    assert septic_features["perfusion_index"] < 0.6, "Septic shock should degrade perfusion index"
+    print("      Digital twin feature extraction tests: PASSED")
 
 def test_z3_verification():
     print("[TEST] Testing Z3 SMT Formal Safety Verifier...")
@@ -126,14 +187,99 @@ def test_evolutionary_optimization():
     }
     
     best_protocol, fitness = optimizer.optimize(sepsis_vitals, history, "HIGH")
+    verifier = ProtocolVerifier()
+    is_safe, msg, _ = verifier.verify_protocol(history, sepsis_vitals, "HIGH", best_protocol)
     
     # Verify bounds of output
     assert 0.0 <= best_protocol["fluid_rate"] <= 25.0, "Fluid rate out of bounds"
     assert 0.0 <= best_protocol["vasopressor_dose"] <= 0.4, "Vasopressor out of bounds"
     assert 1 <= best_protocol["antibiotic_code"] <= 5, "Sepsis protocol must prescribe an antibiotic"
+    assert is_safe, f"Optimizer should propose a verifier-safe protocol. Reason: {msg}"
     
     print(f"      GA proposed protocol: Fluids={best_protocol['fluid_rate']} mL/kg/h, Vaso={best_protocol['vasopressor_dose']} mcg/kg/min, Antibiotic Code={best_protocol['antibiotic_code']}")
     print("      Evolutionary Optimizer tests: PASSED")
+
+def test_neurosymbolic_detection():
+    print("[TEST] Testing calibrated neurosymbolic detection...")
+    hdc = HDCEngine(dimensions=10000)
+    detector = NeurosymbolicEngine()
+    history = {"wbc": 7.5, "gcs": 15}
+
+    stable_vitals = {
+        "heart_rate": 72.0,
+        "hrv": 85.0,
+        "spo2": 98.5,
+        "skin_temp": 36.6,
+        "motion": 12.0,
+        "systolic_bp": 120.0,
+        "diastolic_bp": 80.0,
+        "map": 93.3,
+        "sweat_lactate": 0.8,
+        "respiratory_rate": 14.0
+    }
+    healthy_sim, sepsis_sim = hdc.classify_state(hdc.encode_patient_state(stable_vitals))
+    risk, sirs, qsofa, _, details = detector.evaluate_patient(
+        stable_vitals,
+        sepsis_sim,
+        history,
+        healthy_sim,
+        {"hrv": "STABLE", "temp": "STABLE"}
+    )
+    assert risk == "LOW", f"Stable physiology should not trigger sepsis risk; got {risk}"
+    assert sirs == 0 and qsofa == 0, "Stable physiology should have zero SIRS/qSOFA"
+    assert details["sepsis_probability"] < 0.35, "Stable probability should remain low"
+    print("      Stable false-positive guard: PASSED")
+
+    early_vitals = {
+        "heart_rate": 102.0,
+        "hrv": 32.0,
+        "spo2": 95.0,
+        "skin_temp": 38.4,
+        "motion": 5.0,
+        "systolic_bp": 104.0,
+        "diastolic_bp": 66.0,
+        "map": 77.3,
+        "sweat_lactate": 2.2,
+        "respiratory_rate": 21.0
+    }
+    healthy_sim, sepsis_sim = hdc.classify_state(hdc.encode_patient_state(early_vitals))
+    risk, sirs, qsofa, _, details = detector.evaluate_patient(
+        early_vitals,
+        sepsis_sim,
+        history,
+        healthy_sim,
+        {"hrv": "DECLINING", "temp": "RISING"}
+    )
+    assert risk in {"MEDIUM", "HIGH"}, f"Early deterioration should escalate risk; got {risk}"
+    assert details["sepsis_probability"] >= 0.38, "Early deterioration probability should be elevated"
+    print("      Early deterioration escalation: PASSED")
+
+    shock_vitals = {
+        "heart_rate": 126.0,
+        "hrv": 12.0,
+        "spo2": 88.0,
+        "skin_temp": 39.1,
+        "motion": 1.0,
+        "systolic_bp": 78.0,
+        "diastolic_bp": 46.0,
+        "map": 55.3,
+        "sweat_lactate": 5.1,
+        "respiratory_rate": 28.0
+    }
+    healthy_sim, sepsis_sim = hdc.classify_state(hdc.encode_patient_state(shock_vitals))
+    risk, sirs, qsofa, rules, details = detector.evaluate_patient(
+        shock_vitals,
+        sepsis_sim,
+        history,
+        healthy_sim,
+        {"hrv": "STEEP_DECLINE", "temp": "FEVER"}
+    )
+    assert risk == "HIGH", f"Septic shock physiology should be HIGH risk; got {risk}"
+    assert qsofa >= 2, "Shock physiology should trigger qSOFA organ dysfunction"
+    assert details["shock_signal"], "Shock signal should be true for low MAP plus elevated lactate"
+    assert any("Organ dysfunction" in rule for rule in rules), "Organ dysfunction rationale should be emitted"
+    print("      Septic shock detection: PASSED")
+    print("      Neurosymbolic detection tests: PASSED")
 
 if __name__ == "__main__":
     print("==================================================")
@@ -142,9 +288,13 @@ if __name__ == "__main__":
     try:
         test_hdc_engine()
         print("-" * 50)
+        test_digital_twin_features()
+        print("-" * 50)
         test_z3_verification()
         print("-" * 50)
         test_evolutionary_optimization()
+        print("-" * 50)
+        test_neurosymbolic_detection()
         print("==================================================")
         print("SYSTEM VERIFICATION SUCCESSFUL: ALL TESTS PASSED.")
         print("==================================================")
