@@ -152,16 +152,28 @@ class AegisCore:
             return None
 
     def _fuse_risk(self, ml_prob, ns_risk, sirs, qsofa, detection) -> str:
+        """Fuse the calibrated ML probability with hard clinical safety rules.
+
+        The calibrated, data-grounded model (AUROC ~0.77) drives the risk tiers
+        when available; the transparent heuristic (measured near-chance on real
+        data) is used only for hard safety OVERRIDES that must escalate
+        regardless of the model — and as the sole fallback when no model is
+        loaded. This stops the weak heuristic from inflating healthy patients.
+        """
         shock = bool(detection.get("shock_signal"))
-        high = (qsofa >= 2) or shock or (ml_prob is not None and ml_prob >= self.high_threshold)
-        if high:
+        # Hard clinical overrides — escalate regardless of the model.
+        if (qsofa >= 2) or shock:
             return "HIGH"
-        medium = (
-            (ml_prob is not None and ml_prob >= self.medium_threshold)
-            or ns_risk in {"MEDIUM", "HIGH"}
-            or sirs >= 2
-        )
-        return "MEDIUM" if medium else "LOW"
+        if ml_prob is not None:
+            if ml_prob >= self.high_threshold:
+                return "HIGH"
+            if ml_prob >= self.medium_threshold or sirs >= 2:
+                return "MEDIUM"
+            return "LOW"
+        # Degraded mode (no trained model): defer to the neurosymbolic engine.
+        if ns_risk in {"MEDIUM", "HIGH"} or sirs >= 2:
+            return "MEDIUM"
+        return "LOW"
 
     # ------------------------------------------------------------------ #
     def _attach_protocol(self, a: AegisAssessment) -> None:
