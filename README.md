@@ -65,20 +65,28 @@ real labelled data with leakage-free validation.
 
 | Capability | Result | Data | Status |
 |---|---|---|---|
-| Sepsis detection (wearable channels) | **AUROC 0.774**, AUPRC 0.080, utility 0.353 | CinC 2019 (40,335 pts) | ✅ validated |
-| Probability calibration | **ECE 0.0008**, Brier 0.017 | CinC 2019 | ✅ validated |
+| Sepsis detection (within-hospital) | **AUROC 0.774**, AUPRC 0.080, utility 0.353 | CinC 2019 (40,335 pts) | ✅ validated |
+| Sepsis detection (**cross-hospital**) | **AUROC 0.689**, calibration holds | CinC A↔B (BIDMC/Emory) | ✅ validated |
+| Probability calibration | **ECE 0.0008**, Brier 0.017; ECE ~0.005 cross-site | CinC 2019 | ✅ validated |
 | rPPG heart-rate recovery | within ~3 bpm | synthetic ground truth | ✅ validated |
 | Pulse→HRV chain | HR MAE **~1.2 bpm**, SDNN corr 0.71 | BIDMC (real PPG+ECG) | ✅ validated |
 | HRV→sepsis pipeline | AUROC ~0.9 | HeRO-grounded synthetic | 🔬 machinery only |
 | Treatment-protocol safety | Z3-proven invariants (allergy, fluid caps, vaso) | — | ✅ verified |
 
+The **honest deployment number is the cross-hospital AUROC ≈ 0.69** (not the
+optimistic within-hospital 0.77) — and probabilities stay trustworthy across
+sites. Full analysis: [docs/PHASE7_REPORT.md](docs/PHASE7_REPORT.md).
+
 **Honest boundaries (not hidden):**
+- Detection plateaus ~0.77 within-site / ~0.69 cross-site. The bottleneck is
+  **data, not model**: labs add only ~0.02 AUROC and richer temporal features add
+  nothing — the real levers are continuous HRV + multi-site training.
 - Camera **optics** (video→pulse) validated only on synthetic faces — real rPPG
   video datasets are tens of GB; closing this needs a UBFC/PURE subset.
 - **HRV→sepsis on real labels** needs credentialed data (MIMIC-IV Waveform); the
   plug-and-play adapter is built and waiting.
 - The grounded HDC detector (AUROC ~0.70) trails the gradient-boosting benchmark
-  (0.77); closing that gap is on the roadmap.
+  (0.77); GBM is the production detector.
 
 Run it yourself: `python verify_full_system.py` (12 subsystem checks).
 
@@ -106,16 +114,22 @@ HRV→sepsis pipeline + MIMIC-IV adapter, organ-system **BodyState** model.
 Versioned snapshot contract, signal-history buffers, WebSocket + REST AegisOS
 server (`backend/aegis/server.py`).
 
-**Phase 6 — The frontend** ⏳ *next, intentionally deferred*
+**Phase 7 — Accuracy, generalization & feature science** ✅ *done*
+Multi-scale temporal features (tested — no gain, not adopted), lab-augmented
+ceiling (+0.02), feature cache, and **cross-hospital external validation**
+(AUROC ~0.69, calibration holds). Established that detection is data-limited, not
+model-limited. Full write-up: [docs/PHASE7_REPORT.md](docs/PHASE7_REPORT.md).
+
+**Phase 8 — The frontend** ⏳ *next — backend is now finalized & polished*
 A high-tech 3D/2D **recreation of the body** with live signal overlays, organ-
-system lighting driven by `BodyState`, and the risk/protocol timeline — built on
-the stable streaming contract once the backend is finalized.
+system lighting driven by `BodyState`, and the risk/protocol timeline — pure
+rendering against the stable streaming contract.
 
-**Phase 7 — Real HRV→sepsis + accuracy** 🔭 *planned*
-Credentialed MIMIC-IV Waveform training, temporal/sequence modeling to push past
-0.77 AUROC, external validation, real-camera optics validation.
+**Phase 9 — Real HRV→sepsis + multi-site (gated on credentialed data)** 🔭
+Train the HRV→sepsis model on credentialed MIMIC-IV Waveform (adapter ready),
+multi-site training to shrink the cross-hospital gap, real-camera optics validation.
 
-**Phase 8 — On-device AegisOS + hardware** 🔭 *vision*
+**Phase 10 — On-device AegisOS + hardware** 🔭 *vision*
 Run the runtime on the wearable; close the loop band ⇄ backend ⇄ camera.
 
 ---
