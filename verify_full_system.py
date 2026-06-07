@@ -126,6 +126,49 @@ def test_aegis_orchestration() -> None:
         f"(antibiotic={b.protocol['protocol']['antibiotic_code']}, allergy respected)")
 
 
+def test_hrv_features_real() -> None:
+    print("[7] HRV features — extracted from REAL BIDMC ECG, physiological ranges")
+    from backend.physio.data.bidmc import load_records
+    from backend.physio import hrv
+    recs = load_records(limit=1)
+    if not recs:
+        _skip("BIDMC cache absent — run backend.physio.data.bidmc --download")
+        return
+    f = hrv.hrv_from_signal(recs[0].ecg, recs[0].fs, kind="ecg")
+    assert 40 <= f.mean_hr <= 180, f"implausible HR: {f.mean_hr}"
+    assert f.sdnn > 0 and f.rmssd > 0 and f.sample_entropy > 0, "HRV features must be positive"
+    _ok(f"real ECG -> HR={f.mean_hr} SDNN={f.sdnn}ms SampEn={f.sample_entropy} (n={f.n_beats})")
+
+
+def test_ppg_ecg_agreement() -> None:
+    print("[8] Pulse->HRV chain — PPG-derived HR matches ECG on real BIDMC")
+    from backend.physio.data.bidmc import load_records
+    from backend.physio import hrv
+    import numpy as np
+    recs = load_records(limit=8)
+    if len(recs) < 3:
+        _skip("BIDMC cache absent/too small")
+        return
+    e, p = [], []
+    for r in recs:
+        fe = hrv.hrv_from_signal(r.ecg, r.fs, "ecg")
+        fp = hrv.hrv_from_signal(r.ppg, r.fs, "ppg")
+        if fe.quality > 0.3 and fp.quality > 0.3:
+            e.append(fe.mean_hr); p.append(fp.mean_hr)
+    mae = float(np.mean(np.abs(np.array(p) - np.array(e))))
+    assert mae <= 4.0, f"PPG vs ECG HR MAE too high: {mae:.2f}"
+    _ok(f"PPG vs ECG heart-rate MAE = {mae:.2f} bpm over {len(e)} real recordings")
+
+
+def test_hrv_sepsis_pipeline() -> None:
+    print("[9] HRV->sepsis pipeline — discriminates HeRO-grounded physiology")
+    from backend.physio.sepsis_hrv import proxy_validation
+    _, rep = proxy_validation(n_per_class=40, seed=1)
+    assert rep.auroc >= 0.85, f"HRV pipeline AUROC too low: {rep.auroc:.3f}"
+    _ok(f"HRV->sepsis machinery AUROC={rep.auroc:.3f} on synthetic cohort "
+        f"(real labels pending credentialed data)")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -141,7 +184,9 @@ def main() -> int:
     print("AEGIS-OS — END-TO-END VERIFICATION")
     print("=" * 64)
     tests = [test_vision_rppg, test_vision_pipeline, test_calibration,
-             test_streaming_features, test_aegis_orchestration, test_llm_fallback]
+             test_streaming_features, test_aegis_orchestration,
+             test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
+             test_llm_fallback]
     failed = 0
     for t in tests:
         try:

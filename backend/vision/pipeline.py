@@ -124,6 +124,14 @@ class VisionVitalsPipeline:
         pulse = sp.analyze_window(roi_u, grid_fs, method="pos")
         perf = analyze_perfusion(roi_u, region_redness, grid_fs)
 
+        # Rich HRV feature set from the rPPG pulse (time/freq/nonlinear + HeRO
+        # descriptors) — the same features the HRV->sepsis model consumes, so the
+        # camera can drive that model directly once it is trained on labelled data.
+        from backend.physio import hrv as _hrv
+        _pulse_sig = sp.pos_pulse(roi_u, grid_fs)
+        _rr = _hrv.rr_intervals_ms(_hrv.detect_ppg_peaks(_pulse_sig, grid_fs), grid_fs)
+        hrv_features = _hrv.hrv_features(_rr).as_dict()
+
         # Landmarks/pupil resampled for distress analysis.
         lm = np.stack(self._landmarks)                  # (n, K, 2)
         K = lm.shape[1]
@@ -162,6 +170,7 @@ class VisionVitalsPipeline:
             raw={
                 "pulse": pulse.__dict__, "perfusion": perf.__dict__,
                 "distress": dist.__dict__, "found_fraction": round(found_frac, 3),
+                "hrv_features": hrv_features,
             },
         )
 

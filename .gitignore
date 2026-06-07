@@ -18,6 +18,7 @@ backend/sepsis_twin.db
 # Clinical dataset cache (PhysioNet/CinC 2019 — redistribute via PhysioNet only)
 data/cinc2019/
 data/models/
+data/bidmc/
 # Trained model artifacts + logs (large, regenerable)
 artifacts/*.joblib
 artifacts/*.log

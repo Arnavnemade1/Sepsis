@@ -20,7 +20,9 @@ HyperSepsisTwin-Ω is a novel systems software framework that:
 > labelled clinical data (PhysioNet/CinC 2019) with leakage-free, patient-level
 > validation — see [`backend/ml/README.md`](backend/ml/README.md). A contactless
 > optical biosensor (rPPG / perfusion / sympathetic-distress from a webcam) is in
-> [`backend/vision/README.md`](backend/vision/README.md).
+> [`backend/vision/README.md`](backend/vision/README.md). The camera path is
+> validated against real physiology (PPG-derived HRV vs gold-standard ECG on the
+> open BIDMC dataset) in [`backend/physio/README.md`](backend/physio/README.md).
 
 ## Architecture
 
