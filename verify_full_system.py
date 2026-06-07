@@ -169,6 +169,55 @@ def test_hrv_sepsis_pipeline() -> None:
         f"(real labels pending credentialed data)")
 
 
+def test_mimic_adapter() -> None:
+    print("[10] MIMIC-IV Waveform adapter — label alignment + pipeline compatibility")
+    import numpy as np
+    from backend.physio.data.mimic_waveform import align_beat_labels, rr_and_labels
+    from backend.physio.sepsis_hrv import build_hrv_dataset
+
+    bt = np.array([10.0, 50.0, 130.0, 200.0])
+    lab = align_beat_labels(bt, onset_s=120.0, lead_hours=0.0)
+    assert lab.tolist() == [0, 0, 1, 1], f"label alignment wrong: {lab.tolist()}"
+    assert align_beat_labels(bt, None).sum() == 0, "never-septic must be all zeros"
+
+    # Synthetic ECG -> RR+labels -> the real Link-B pipeline must accept it.
+    fs = 250.0
+    t = np.arange(int(200 * fs)) / fs
+    idx = (np.arange(0, 200, 60 / 75.0) * fs).astype(int)
+    idx = idx[idx < len(t)]
+    ecg = np.zeros_like(t); ecg[idx] = 1.0
+    ecg = np.convolve(ecg, np.hanning(15), mode="same")
+    rr, labels = rr_and_labels(ecg, fs, onset_s=120.0, kind="ecg", lead_hours=0.0)
+    ds = build_hrv_dataset([("rec1", rr, labels)], window_beats=64, step_beats=32)
+    assert len(ds.feature_names) == 18 and len(ds.y) > 0, "adapter output must drive pipeline"
+    _ok(f"label alignment correct; adapter output -> {len(ds.y)} HRV windows (credential-ready)")
+
+
+def test_body_state() -> None:
+    print("[11] Body-state model — organ systems + honest unmonitored regions")
+    from backend.aegis.core import AegisCore
+    def r(hr, spo2, temp, sbp, dbp, rr, lac, hrv=None):
+        d = {"heart_rate": hr, "spo2": spo2, "skin_temp": temp, "systolic_bp": sbp,
+             "diastolic_bp": dbp, "map": (sbp + 2 * dbp) / 3, "respiratory_rate": rr,
+             "sweat_lactate": lac}
+        if hrv is not None:
+            d["hrv"] = hrv
+        return d
+
+    core = AegisCore(model_path="/nonexistent", use_llm=False, clinical_history={"gcs": 14})
+    a = core.ingest(r(126, 88, 39.1, 78, 46, 28, 5.1, hrv=12),
+                    camera_vitals={"perfusion_index": 0.32})
+    bs = a.body_state
+    assert bs is not None, "body_state must be attached to every assessment"
+    sysmap = {o["name"]: o for o in bs["organ_systems"]}
+    assert sysmap["Cardiovascular"]["status"] == "CRITICAL", "shock should be CRITICAL cardio"
+    assert sysmap["Autonomic"]["status"] == "CRITICAL", "HRV 12ms should be CRITICAL autonomic"
+    assert not sysmap["Renal"]["monitored"], "renal must be UNMONITORED without labs"
+    assert bs["regions"]["kidneys"]["status"] == "UNMONITORED", "unmonitored region must not show green"
+    assert any(c["source"] == "camera" for c in bs["channels"]), "camera channels present"
+    _ok("organ systems graded; lab-only systems honestly UNMONITORED; channels tagged by source")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -186,7 +235,7 @@ def main() -> int:
     tests = [test_vision_rppg, test_vision_pipeline, test_calibration,
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
-             test_llm_fallback]
+             test_mimic_adapter, test_body_state, test_llm_fallback]
     failed = 0
     for t in tests:
         try:

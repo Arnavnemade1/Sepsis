@@ -42,6 +42,7 @@ class AegisAssessment:
     verification: Optional[Dict[str, Any]] = None
     narrative: Optional[str] = None
     narrative_source: Optional[str] = None
+    body_state: Optional[Dict[str, Any]] = None   # organ/region/channel model for visualization
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -92,6 +93,7 @@ class AegisCore:
         timestamp: Optional[float] = None,
         signal_quality: float = 1.0,
         explain: Optional[bool] = None,
+        camera_vitals: Optional[Dict[str, Any]] = None,
     ) -> AegisAssessment:
         ts = timestamp if timestamp is not None else time.time()
 
@@ -128,11 +130,19 @@ class AegisCore:
             twin_features=twin_state["features"], signal_quality=round(signal_quality, 3),
         )
 
-        # 4) On HIGH risk: synthesize + formally verify a treatment protocol.
+        # 4) Body-state model (organ systems / regions / channels) for the
+        #    anatomical visualization layer — built every tick, cheap.
+        from backend.aegis.body_state import build_body_state
+        assessment.body_state = build_body_state(
+            self.twin.latest_vitals, detection, twin_state["features"], risk,
+            ts, camera_vitals=camera_vitals, clinical_history=self.clinical_history,
+        ).to_dict()
+
+        # 5) On HIGH risk: synthesize + formally verify a treatment protocol.
         if risk == "HIGH" and self.enable_protocols:
             self._attach_protocol(assessment)
 
-        # 5) Narrative (LLM-optional), default only on HIGH transitions.
+        # 6) Narrative (LLM-optional), default only on HIGH transitions.
         if (risk == "HIGH") if explain is None else explain:
             self._attach_narrative(assessment)
 

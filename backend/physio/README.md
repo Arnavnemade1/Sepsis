@@ -54,6 +54,16 @@ python -m backend.physio.validate_ppg_hrv               # PPG vs ECG HRV (real)
 python -m backend.physio.sepsis_hrv                     # HRV->sepsis pipeline (proxy)
 ```
 
+### Credentialed-data adapter (plug-and-play)
+`data/mimic_waveform.py` implements `RRLabeledSource` over MIMIC-IV Waveform: it
+reads WFDB records, extracts an ECG/PPG channel, detects beats, and aligns
+Sepsis-3 onset labels per beat — yielding exactly what `sepsis_hrv.build_hrv_dataset`
+consumes. The moment you have credentialed data + a `[record_id, onset_s]` labels
+CSV, training on real sepsis HRV is one call. The label-alignment logic is
+pure-python and unit-tested without any data; `wfdb` is an optional dependency.
+(HiRID is intentionally not used here — it lacks beat-to-beat ECG, so it can't
+yield true HRV.)
+
 ### The honest gap
 There is **no open dataset with continuous HRV + sepsis labels**. The HRV→sepsis
 *model* is therefore validated against a synthetic cohort whose septic physiology

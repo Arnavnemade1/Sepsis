@@ -19,3 +19,4 @@ httpx>=0.24            # OpenRouter LLM client
 
 # Physio subsystem (HRV analysis + camera-path validation on BIDMC PPG/ECG)
 # scipy/pandas already listed above; no extra deps required.
+# wfdb>=4.1  # OPTIONAL: only needed to read MIMIC-IV Waveform records (credentialed)
