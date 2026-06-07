@@ -11,3 +11,8 @@ scikit-learn>=1.3
 pandas>=2.0
 scipy>=1.10
 joblib>=1.3
+
+# Vision subsystem (contactless optical biosensor: rPPG / perfusion / distress)
+opencv-python>=4.8
+mediapipe>=0.10
+httpx>=0.24            # OpenRouter LLM client

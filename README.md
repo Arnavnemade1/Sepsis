@@ -15,6 +15,13 @@ HyperSepsisTwin-Ω is a novel systems software framework that:
 
 ---
 
+> **Detection is now data-grounded.** The original hand-tuned heuristic scored
+> near-chance on real patients (AUROC ≈ 0.64). Detection has been rebuilt on real
+> labelled clinical data (PhysioNet/CinC 2019) with leakage-free, patient-level
+> validation — see [`backend/ml/README.md`](backend/ml/README.md). A contactless
+> optical biosensor (rPPG / perfusion / sympathetic-distress from a webcam) is in
+> [`backend/vision/README.md`](backend/vision/README.md).
+
 ## Architecture
 
 ```
