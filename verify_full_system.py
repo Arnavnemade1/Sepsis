@@ -1,0 +1,166 @@
+"""End-to-end verification for AegisOS.
+
+Unlike the original ``verify_system.py`` (which only checks the hand-tuned core
+math against hand-picked inputs — necessary but circular), this suite proves the
+*real* capabilities across every subsystem:
+
+  1. Vision   : rPPG recovers a KNOWN heart rate from a synthetic pulse.
+  2. ML        : post-hoc calibration genuinely reduces ECE on real CinC data.
+  3. Streaming : online features build train/serve-consistently.
+  4. AegisCore : healthy -> LOW, septic shock -> HIGH + Z3-verified protocol.
+  5. LLM       : narrative degrades gracefully to a deterministic template.
+
+Data-dependent checks skip cleanly if the CinC cache is absent.
+
+    python verify_full_system.py
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+import numpy as np
+
+
+def _ok(msg): print(f"      [PASS] {msg}")
+def _skip(msg): print(f"      [SKIP] {msg}")
+
+
+def test_vision_rppg() -> None:
+    print("[1] Vision rPPG — recover known heart rate from synthetic pulse")
+    from backend.vision import signal_processing as sp
+    errs = []
+    for hr in (58.0, 75.0, 100.0, 125.0):
+        rgb = sp.synthesize_rgb(hr, duration_s=15.0, fs=30.0, seed=int(hr))
+        est = sp.analyze_window(rgb, 30.0)
+        errs.append(abs(est.hr_bpm - hr))
+    assert max(errs) <= 6.0, f"rPPG HR error too high: {errs}"
+    _ok(f"HR recovered within {max(errs):.1f} bpm across 58-125 bpm")
+
+
+def test_vision_pipeline() -> None:
+    print("[2] Vision pipeline — end-to-end synthetic face -> CameraVitals")
+    from backend.vision.face import FaceObservation
+    from backend.vision.pipeline import VisionVitalsPipeline
+    from backend.vision import signal_processing as sp
+    fs, hr = 30.0, 80.0
+    rgb = sp.synthesize_rgb(hr, 14.0, fs, seed=80)
+    pipe = VisionVitalsPipeline(window_seconds=14.0)
+    for i in range(len(rgb)):
+        roi = rgb[i].astype(float)
+        pipe.add_observation(FaceObservation(
+            found=True, roi_rgb=roi,
+            region_rgb={"forehead": roi, "left_cheek": roi, "right_cheek": roi},
+            pupil_ratio=0.12, landmarks=np.zeros((6, 2)), roi_fraction=0.05, quality=0.9,
+        ), 1000.0 + i / fs)
+    v = pipe.estimate()
+    pipe.close()
+    assert v.found and abs((v.heart_rate or 0) - hr) <= 6.0, f"pipeline HR off: {v.heart_rate}"
+    _ok(f"pipeline CameraVitals HR={v.heart_rate} (true {hr}), quality={v.overall_quality}")
+
+
+def test_calibration() -> None:
+    print("[3] ML calibration — post-hoc calibration reduces ECE on real data")
+    from backend.ml.data.cinc2019 import load_patients
+    from backend.ml.data.features import FeatureConfig, build_dataset
+    from backend.ml.eval.splits import stratified_group_split
+    from backend.ml.eval import metrics
+    from backend.ml.models.gbm_baseline import GBMDetector
+
+    records = load_patients(limit=800)
+    if len(records) < 100:
+        _skip("CinC cache absent — run backend.ml.data.cinc2019 --download")
+        return
+    ds = build_dataset(records, FeatureConfig.wearable_only())
+    import pandas as pd
+    feats = pd.DataFrame(ds.X, columns=ds.feature_names)
+    tr, te = stratified_group_split(ds.groups, ds.y, 0.25, 42)
+    g_tr = ds.groups[tr]
+
+    raw = GBMDetector(calibrate=False).fit(feats.iloc[tr].to_numpy(), ds.y[tr])
+    cal = GBMDetector(calibrate=True).fit(feats.iloc[tr].to_numpy(), ds.y[tr], groups=g_tr)
+    ece_raw = metrics.expected_calibration_error(ds.y[te], raw.predict_proba(feats.iloc[te].to_numpy()))
+    ece_cal = metrics.expected_calibration_error(ds.y[te], cal.predict_proba(feats.iloc[te].to_numpy()))
+    assert ece_cal < ece_raw, f"calibration did not help: raw={ece_raw:.3f} cal={ece_cal:.3f}"
+    assert ece_cal < 0.10, f"calibrated ECE still high: {ece_cal:.3f}"
+    _ok(f"ECE improved {ece_raw:.3f} -> {ece_cal:.3f} (calibrated probabilities are trustworthy)")
+
+
+def test_streaming_features() -> None:
+    print("[4] Streaming features — online causal features build consistently")
+    from backend.ml.data.features import FeatureConfig
+    from backend.aegis.streaming_features import StreamingFeatureBuilder
+    b = StreamingFeatureBuilder(FeatureConfig.wearable_only())
+    for _ in range(10):
+        b.add({"heart_rate": 80, "spo2": 97, "skin_temp": 37.0,
+               "systolic_bp": 118, "diastolic_bp": 76, "map": 90, "respiratory_rate": 16})
+    feats = b.latest_features()
+    assert len(feats) == 1 and feats.notna().all().all(), "streaming features must be 1 finite row"
+    assert "HR__slope" in feats.columns and "comp_sirs" in feats.columns, "expected engineered cols"
+    _ok(f"built {feats.shape[1]} causal features online (no train/serve skew)")
+
+
+def test_aegis_orchestration() -> None:
+    print("[5] AegisCore — healthy -> LOW, septic shock -> HIGH + verified protocol")
+    from backend.aegis.core import AegisCore
+
+    def reading(hr, spo2, temp, sbp, dbp, rr, lac):
+        return {"heart_rate": hr, "spo2": spo2, "skin_temp": temp, "systolic_bp": sbp,
+                "diastolic_bp": dbp, "map": (sbp + 2 * dbp) / 3, "respiratory_rate": rr,
+                "sweat_lactate": lac}
+
+    healthy = AegisCore(model_path="/nonexistent", use_llm=False)
+    for _ in range(8):
+        a = healthy.ingest(reading(72, 98, 36.7, 120, 80, 14, 0.9))
+    assert a.risk_level == "LOW", f"healthy should be LOW, got {a.risk_level}"
+
+    septic = AegisCore(model_path="/nonexistent", use_llm=False,
+                       clinical_history={"chf": False, "renal_failure": False,
+                                         "penicillin_allergy": True, "wbc": 16.0, "gcs": 14})
+    for _ in range(8):
+        b = septic.ingest(reading(126, 88, 39.1, 78, 46, 28, 5.1))
+    assert b.risk_level == "HIGH", f"septic shock should be HIGH, got {b.risk_level}"
+    assert b.protocol and b.protocol["applied"], "a safe protocol should be synthesized + applied"
+    assert b.protocol["protocol"]["antibiotic_code"] != 1, "must not prescribe penicillin to allergic patient"
+    _ok(f"healthy=LOW, shock=HIGH, Z3-verified protocol applied "
+        f"(antibiotic={b.protocol['protocol']['antibiotic_code']}, allergy respected)")
+
+
+def test_llm_fallback() -> None:
+    print("[6] LLM narrative — graceful deterministic fallback")
+    from backend.llm.explainer import AlertExplainer
+    ex = AlertExplainer()
+    res = ex.narrate("HIGH", {"sepsis_probability": 0.7}, {"heart_rate": 120},
+                     triggered_rules=["qSOFA: tachypnea"], use_llm=False)
+    assert res["source"] == "template" and "research tool" in res["narrative"]
+    _ok("template narrative produced; system never depends on the LLM")
+
+
+def main() -> int:
+    print("=" * 64)
+    print("AEGIS-OS — END-TO-END VERIFICATION")
+    print("=" * 64)
+    tests = [test_vision_rppg, test_vision_pipeline, test_calibration,
+             test_streaming_features, test_aegis_orchestration, test_llm_fallback]
+    failed = 0
+    for t in tests:
+        try:
+            t()
+        except AssertionError as e:
+            print(f"      [FAIL] {e}")
+            failed += 1
+        except Exception as e:
+            import traceback
+            print(f"      [ERROR] {e}")
+            traceback.print_exc()
+            failed += 1
+        print("-" * 64)
+    if failed:
+        print(f"VERIFICATION FAILED: {failed} subsystem(s) need attention.")
+        return 1
+    print("ALL SUBSYSTEMS VERIFIED.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

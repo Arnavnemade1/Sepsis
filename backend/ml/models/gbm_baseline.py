@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 import numpy as np
-from sklearn.calibration import CalibratedClassifierCV
 from sklearn.ensemble import HistGradientBoostingClassifier
 
 
@@ -26,15 +25,31 @@ class GBMDetector:
     feature_names: List[str] = field(default_factory=list)
     seed: int = 42
     calibrate: bool = True
+    calib_fraction: float = 0.2
     model_: Optional[object] = None
+    calibrator_: Optional[object] = None
 
-    def fit(self, X: np.ndarray, y: np.ndarray) -> "GBMDetector":
+    def fit(self, X: np.ndarray, y: np.ndarray, groups: Optional[np.ndarray] = None) -> "GBMDetector":
         y = np.asarray(y).astype(int)
-        # Balance the rare positive class via sample weights.
+
+        if self.calibrate and len(np.unique(y)) > 1:
+            # Patient-grouped holdout at TRUE prevalence for honest calibration.
+            from backend.ml.models.hdc_detector import _grouped_holdout
+            from backend.ml.models.calibration import ProbabilityCalibrator
+            fit_idx, cal_idx = _grouped_holdout(y, groups, self.calib_fraction, self.seed)
+            self.model_ = self._fit_base(X[fit_idx], y[fit_idx])
+            raw_cal = self.model_.predict_proba(X[cal_idx])[:, 1]
+            # Calibrate WITHOUT class weights so probabilities track real frequency.
+            self.calibrator_ = ProbabilityCalibrator().fit(raw_cal, y[cal_idx])
+        else:
+            self.model_ = self._fit_base(X, y)
+        return self
+
+    def _fit_base(self, X: np.ndarray, y: np.ndarray) -> HistGradientBoostingClassifier:
+        # Balance the rare positive class via sample weights (for discrimination).
         pos = max(int((y == 1).sum()), 1)
         neg = max(int((y == 0).sum()), 1)
         w = np.where(y == 1, neg / pos, 1.0)
-
         base = HistGradientBoostingClassifier(
             learning_rate=0.06,
             max_iter=400,
@@ -44,17 +59,12 @@ class GBMDetector:
             validation_fraction=0.1,
             random_state=self.seed,
         )
-        if self.calibrate:
-            # Isotonic calibration via internal CV; sample_weight flows through.
-            self.model_ = CalibratedClassifierCV(base, method="isotonic", cv=3)
-            self.model_.fit(X, y, sample_weight=w)
-        else:
-            base.fit(X, y, sample_weight=w)
-            self.model_ = base
-        return self
+        base.fit(X, y, sample_weight=w)
+        return base
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        return self.model_.predict_proba(X)[:, 1]
+        raw = self.model_.predict_proba(X)[:, 1]
+        return self.calibrator_.transform(raw) if self.calibrator_ is not None else raw
 
     def save(self, path: str) -> None:
         import joblib

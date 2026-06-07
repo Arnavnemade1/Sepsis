@@ -67,6 +67,8 @@ class HDCDetector:
     healthy_subsample: int = 40000
     use_composites: bool = True
     batch_rows: int = 4000
+    calibrate: bool = True
+    calib_fraction: float = 0.2
 
     # learned state ------------------------------------------------------- #
     ranges_: Dict[str, Tuple[float, float]] = field(default_factory=dict)
@@ -78,6 +80,7 @@ class HDCDetector:
     c_sep_: Optional[np.ndarray] = None         # (D,) unit float
     scaler_: Optional[StandardScaler] = None
     clf_: Optional[LogisticRegression] = None
+    calibrator_: Optional[object] = None        # ProbabilityCalibrator (post-hoc)
     fusion_features_: List[str] = field(default_factory=list)
 
     # ------------------------------------------------------------------ #
@@ -128,13 +131,28 @@ class HDCDetector:
     # ------------------------------------------------------------------ #
     # Training
     # ------------------------------------------------------------------ #
-    def fit(self, feats: pd.DataFrame, y: np.ndarray) -> "HDCDetector":
+    def fit(self, feats: pd.DataFrame, y: np.ndarray, groups: Optional[np.ndarray] = None) -> "HDCDetector":
+        """Fit the detector. If ``calibrate``, a patient-grouped holdout at true
+        prevalence is reserved to fit a post-hoc probability calibrator."""
         y = np.asarray(y).astype(int)
         if self.encode_features is None:
             self.encode_features = default_encode_features(list(feats.columns), self.channels)
+        # Ranges + codebook may use all training rows (no label leakage).
         self._learn_ranges(feats)
         self._init_codebook()
 
+        if self.calibrate and len(np.unique(y)) > 1:
+            fit_idx, cal_idx = _grouped_holdout(y, groups, self.calib_fraction, self.seed)
+            self._fit_core(feats.iloc[fit_idx], y[fit_idx])
+            from backend.ml.models.calibration import ProbabilityCalibrator
+            raw = self._raw_proba(feats.iloc[cal_idx])
+            self.calibrator_ = ProbabilityCalibrator().fit(raw, y[cal_idx])
+        else:
+            self._fit_core(feats, y)
+        return self
+
+    def _fit_core(self, feats: pd.DataFrame, y: np.ndarray) -> "HDCDetector":
+        y = np.asarray(y).astype(int)
         sep_idx = np.flatnonzero(y == 1)
         heal_idx = np.flatnonzero(y == 0)
         if sep_idx.size == 0 or heal_idx.size == 0:
@@ -220,9 +238,14 @@ class HDCDetector:
         X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
         return X, names
 
-    def predict_proba(self, feats: pd.DataFrame) -> np.ndarray:
+    def _raw_proba(self, feats: pd.DataFrame) -> np.ndarray:
+        """Uncalibrated fusion-layer probability (balanced logistic output)."""
         X, _ = self._fusion_matrix(feats)
         return self.clf_.predict_proba(self.scaler_.transform(X))[:, 1]
+
+    def predict_proba(self, feats: pd.DataFrame) -> np.ndarray:
+        raw = self._raw_proba(feats)
+        return self.calibrator_.transform(raw) if self.calibrator_ is not None else raw
 
     # ------------------------------------------------------------------ #
     def _learn_ranges(self, feats: pd.DataFrame) -> None:
@@ -243,6 +266,22 @@ class HDCDetector:
     def load(path: str) -> "HDCDetector":
         import joblib
         return joblib.load(path)
+
+
+def _grouped_holdout(y: np.ndarray, groups: Optional[np.ndarray], frac: float, seed: int):
+    """Return (fit_idx, calib_idx). Splits by patient group when groups are given
+    (no leakage), stratified by patient sepsis status; else a plain random split."""
+    n = len(y)
+    if groups is not None:
+        from backend.ml.eval.splits import stratified_group_split
+        try:
+            return stratified_group_split(np.asarray(groups), y, test_size=frac, seed=seed)
+        except Exception:
+            pass
+    rng = np.random.default_rng(seed)
+    idx = rng.permutation(n)
+    cut = int(n * (1.0 - frac))
+    return idx[:cut], idx[cut:]
 
 
 def _unit(v: np.ndarray) -> np.ndarray:

@@ -28,12 +28,13 @@ def _fit_eval_fold(cfg, feats, ds, train_idx, test_idx):
     """Train both models on one fold and return their EvalReports."""
     f_tr, f_te = feats.iloc[train_idx], feats.iloc[test_idx]
     y_tr, y_te = ds.y[train_idx], ds.y[test_idx]
+    g_tr = ds.groups[train_idx]
     g_te, h_te, o_te = ds.groups[test_idx], ds.hour_index[test_idx], ds.onset_hour[test_idx]
 
-    hdc = HDCDetector(channels=list(cfg.channels)).fit(f_tr, y_tr)
+    hdc = HDCDetector(channels=list(cfg.channels)).fit(f_tr, y_tr, groups=g_tr)
     rep_hdc = metrics.evaluate(y_te, hdc.predict_proba(f_te), g_te, h_te, o_te)
 
-    gbm = GBMDetector(feature_names=ds.feature_names).fit(f_tr.to_numpy(), y_tr)
+    gbm = GBMDetector(feature_names=ds.feature_names).fit(f_tr.to_numpy(), y_tr, groups=g_tr)
     rep_gbm = metrics.evaluate(y_te, gbm.predict_proba(f_te.to_numpy()), g_te, h_te, o_te)
     return rep_hdc, rep_gbm
 
@@ -97,6 +98,7 @@ def main() -> None:
     train_idx, test_idx = stratified_group_split(ds.groups, ds.y, args.test_size, args.seed)
     f_tr, f_te = feats.iloc[train_idx], feats.iloc[test_idx]
     y_tr, y_te = ds.y[train_idx], ds.y[test_idx]
+    g_tr = ds.groups[train_idx]
     g_te, h_te, o_te = ds.groups[test_idx], ds.hour_index[test_idx], ds.onset_hour[test_idx]
     print(f"Train rows={len(train_idx)} (prev {y_tr.mean():.4f}) | "
           f"Test rows={len(test_idx)} (prev {y_te.mean():.4f})")
@@ -106,7 +108,7 @@ def main() -> None:
     # --- Data-grounded HDC detector --------------------------------------- #
     print("\n[1/2] Training data-grounded HDC detector...")
     hdc = HDCDetector(channels=list(cfg.channels))
-    hdc.fit(f_tr, y_tr)
+    hdc.fit(f_tr, y_tr, groups=g_tr)
     p_hdc = hdc.predict_proba(f_te)
     rep_hdc = metrics.evaluate(y_te, p_hdc, g_te, h_te, o_te)
     print("\n=== Data-grounded HDC detector (TEST) ===")
@@ -116,7 +118,7 @@ def main() -> None:
     # --- Gradient-boosting benchmark -------------------------------------- #
     print("\n[2/2] Training gradient-boosting benchmark...")
     gbm = GBMDetector(feature_names=ds.feature_names)
-    gbm.fit(f_tr.to_numpy(), y_tr)
+    gbm.fit(f_tr.to_numpy(), y_tr, groups=g_tr)
     p_gbm = gbm.predict_proba(f_te.to_numpy())
     rep_gbm = metrics.evaluate(y_te, p_gbm, g_te, h_te, o_te)
     print("\n=== Gradient-boosting benchmark (TEST) ===")
