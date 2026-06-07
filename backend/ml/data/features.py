@@ -125,25 +125,38 @@ def _measurement_age(measured: np.ndarray, cap: float = 48.0) -> np.ndarray:
 
 
 def _causal_slope(values: np.ndarray, w: int) -> np.ndarray:
-    """Per-hour slope estimated from the last ``w`` points (units per hour).
+    """Per-hour least-squares slope over the trailing ``w`` points (units/hour).
 
-    Uses a closed-form least-squares line over the trailing window — fully
-    causal and vectorization-friendly without an O(n*w) python loop per row.
+    Fully causal and **vectorized**: for full windows the LS slope is a fixed
+    FIR kernel applied by correlation (slope_t = Σ_j k_j · y_{t-w+1+j}, with
+    k_j = (j - x̄) / Σ(x-x̄)²), which is mathematically identical to fitting a
+    line but runs in one numpy pass instead of an O(n·w) Python loop. Only the
+    short warm-up (first w-1 points) uses a tiny expanding-window loop.
     """
     n = len(values)
     slope = np.zeros(n, dtype=np.float32)
-    for i in range(1, n):
-        lo = max(0, i - w + 1)
-        seg = values[lo:i + 1]
-        m = len(seg)
-        if m < 2:
-            continue
-        x = np.arange(m, dtype=np.float64)
-        x -= x.mean()
-        denom = float((x * x).sum())
-        if denom == 0.0:
-            continue
-        slope[i] = float((x * (seg - seg.mean())).sum() / denom)
+    if n < 2:
+        return slope
+    vals = values.astype(np.float64)
+    w = min(w, n)
+
+    if w >= 2:
+        x = np.arange(w, dtype=np.float64)
+        xc = x - x.mean()
+        denom = float((xc * xc).sum())
+        if denom > 0:
+            # Correlate: out[k] = Σ_j vals[k+j]·xc[j] for window ending at k+w-1.
+            conv = np.correlate(vals, xc, mode="valid") / denom
+            slope[w - 1:] = conv
+
+    # Warm-up: expanding-window LS slope for the first w-1 points (few iters).
+    for i in range(1, w - 1):
+        seg = vals[: i + 1]
+        xs = np.arange(i + 1, dtype=np.float64)
+        xs -= xs.mean()
+        d = float((xs * xs).sum())
+        if d > 0:
+            slope[i] = float((xs * (seg - seg.mean())).sum() / d)
     return slope
 
 
