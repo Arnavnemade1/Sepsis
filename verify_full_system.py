@@ -218,6 +218,27 @@ def test_body_state() -> None:
     _ok("organ systems graded; lab-only systems honestly UNMONITORED; channels tagged by source")
 
 
+def test_streaming_contract() -> None:
+    print("[12] AegisOS streaming — versioned snapshot contract + history buffers")
+    import json
+    from backend.aegis.stream import AegisSession, SNAPSHOT_SCHEMA_VERSION
+    s = AegisSession(model_path="/nonexistent", use_llm=False, clinical_history={"gcs": 15})
+    snap = {}
+    for i in range(6):
+        snap = s.tick({"heart_rate": 72 + i, "spo2": 98, "skin_temp": 36.8,
+                       "systolic_bp": 120, "diastolic_bp": 80, "map": 93,
+                       "respiratory_rate": 14, "sweat_lactate": 0.9, "hrv": 80},
+                      source="wearable", camera_vitals={"perfusion_index": 0.85})
+    assert snap["schema_version"] == SNAPSHOT_SCHEMA_VERSION
+    for key in ("patient", "risk", "vitals", "detection", "body_state", "history"):
+        assert key in snap, f"snapshot missing '{key}'"
+    assert len(snap["history"]["t"]) == 6, "history must accumulate ticks"
+    assert "heart_rate" in snap["history"]["channels"], "per-channel history present"
+    json.dumps(snap)   # must be fully JSON-serializable for the frontend
+    _ok(f"snapshot v{snap['schema_version']} complete + JSON-serializable; "
+        f"{len(snap['history']['channels'])} channel histories")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -235,7 +256,8 @@ def main() -> int:
     tests = [test_vision_rppg, test_vision_pipeline, test_calibration,
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
-             test_mimic_adapter, test_body_state, test_llm_fallback]
+             test_mimic_adapter, test_body_state, test_streaming_contract,
+             test_llm_fallback]
     failed = 0
     for t in tests:
         try:
