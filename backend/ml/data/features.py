@@ -15,7 +15,7 @@ Design mirrors the project's "digital twin" idea:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -37,9 +37,18 @@ NORMAL_DEFAULTS: Dict[str, float] = {
 
 @dataclass
 class FeatureConfig:
-    """Controls which channels feed the model and the trend-window length."""
+    """Controls which channels feed the model and the temporal context.
+
+    The base single ``window`` features (``HR__slope`` etc.) are always produced
+    so existing model/serving references stay valid. Setting ``extra_windows`` /
+    ``lags`` / ``burden`` ADDS multi-scale temporal context on top — the Phase-7
+    accuracy lever — without removing or renaming anything.
+    """
     channels: List[str]
-    window: int = 8                 # hours for rolling trend features
+    window: int = 8                 # base window for rolling trend features
+    extra_windows: List[int] = field(default_factory=list)   # additional scales
+    lags: List[int] = field(default_factory=list)            # value - value[t-L]
+    burden: bool = False            # cumulative abnormality counters (causal)
     include_demographics: bool = True
     include_clinical_composites: bool = True
 
@@ -52,6 +61,22 @@ class FeatureConfig:
         return FeatureConfig(
             channels=list(config.WEARABLE_CHANNELS) + list(config.LAB_CHANNELS),
             window=window,
+        )
+
+    @staticmethod
+    def wearable_temporal() -> "FeatureConfig":
+        """Multi-scale temporal feature set (Phase-7): short + long windows,
+        multi-horizon lags, and cumulative deterioration burden."""
+        return FeatureConfig(
+            channels=list(config.WEARABLE_CHANNELS),
+            window=8, extra_windows=[4, 16, 32], lags=[3, 6, 12], burden=True,
+        )
+
+    @staticmethod
+    def lab_temporal() -> "FeatureConfig":
+        return FeatureConfig(
+            channels=list(config.WEARABLE_CHANNELS) + list(config.LAB_CHANNELS),
+            window=8, extra_windows=[4, 16, 32], lags=[3, 6, 12], burden=True,
         )
 
 
@@ -96,6 +121,18 @@ def build_patient_features(rec: PatientRecord, cfg: FeatureConfig) -> pd.DataFra
         out[f"{ch}__slope"] = slope
         out[f"{ch}__bz"] = bz.to_numpy(dtype=np.float32)
 
+        # --- Phase-7 multi-scale temporal context (additive) --------------- #
+        for ew in cfg.extra_windows:
+            r = ffilled.rolling(window=ew, min_periods=1)
+            out[f"{ch}__rmean{ew}"] = r.mean().to_numpy(dtype=np.float32)
+            out[f"{ch}__rstd{ew}"] = r.std().fillna(0.0).to_numpy(dtype=np.float32)
+            out[f"{ch}__slope{ew}"] = _causal_slope(ffilled.to_numpy(), ew)
+        for lag in cfg.lags:
+            out[f"{ch}__lag{lag}"] = (ffilled - ffilled.shift(lag)).fillna(0.0).to_numpy(dtype=np.float32)
+        # Expanding (whole-stay-so-far) extremes — cumulative worst seen.
+        out[f"{ch}__emin"] = ffilled.expanding(min_periods=1).min().to_numpy(dtype=np.float32)
+        out[f"{ch}__emax"] = ffilled.expanding(min_periods=1).max().to_numpy(dtype=np.float32)
+
     # How many channels were observed this hour — a strong, honest signal.
     if cfg.channels:
         measured_cols = np.stack([out[f"{ch}__measured"] for ch in cfg.channels], axis=1)
@@ -111,7 +148,35 @@ def build_patient_features(rec: PatientRecord, cfg: FeatureConfig) -> pd.DataFra
         for name, arr in _clinical_composites(out).items():
             out[name] = arr
 
+    if cfg.burden:
+        for name, arr in _burden_counters(out).items():
+            out[name] = arr
+
     return pd.DataFrame(out)
+
+
+def _burden_counters(out: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    """Cumulative (causal) counts of abnormal hours — deterioration *dose*.
+
+    A single abnormal reading is weak; sustained abnormality is the real sepsis
+    trajectory. These running totals give the model cumulative burden, computed
+    only from past+present hours (np.cumsum is strictly causal).
+    """
+    def g(ch, d):
+        return out.get(ch, np.full_like(next(iter(out.values())), d))
+    hr, sbp, temp = g("HR", 75.0), g("SBP", 120.0), g("Temp", 36.8)
+    resp, o2, map_ = g("Resp", 16.0), g("O2Sat", 98.0), g("MAP", 90.0)
+    flags = {
+        "burden_tachy": (hr > 90.0),
+        "burden_hypotension": (sbp <= 100.0),
+        "burden_tachypnea": (resp >= 22.0),
+        "burden_febrile": ((temp > 38.0) | (temp < 36.0)),
+        "burden_hypoxia": (o2 < 92.0),
+        "burden_map_low": (map_ < 65.0),
+    }
+    res = {k: np.cumsum(v.astype(np.float32)) for k, v in flags.items()}
+    res["burden_total"] = np.sum([res[k] for k in flags], axis=0).astype(np.float32)
+    return res
 
 
 def _measurement_age(measured: np.ndarray, cap: float = 48.0) -> np.ndarray:
@@ -241,3 +306,31 @@ def build_dataset(records: List[PatientRecord], cfg: FeatureConfig) -> FeatureMa
         hour_index=np.concatenate(hours, axis=0),
         onset_hour=np.concatenate(onsets, axis=0),
     )
+
+
+def build_dataset_cached(records_fn, cfg: FeatureConfig, cache_key: str,
+                         refresh: bool = False) -> FeatureMatrix:
+    """Build a dataset with an on-disk cache (feature build is the slow step).
+
+    ``records_fn`` is a zero-arg callable returning the records — only invoked on
+    a cache miss, so a hit avoids even loading the raw data. The cache key must
+    uniquely capture (feature_set, sets, limit) — the caller's responsibility.
+    """
+    import os
+    cache_dir = os.path.join(config.ARTIFACTS_DIR, "feature_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    path = os.path.join(cache_dir, f"{cache_key}.npz")
+    if os.path.exists(path) and not refresh:
+        d = np.load(path, allow_pickle=True)
+        return FeatureMatrix(
+            X=d["X"], y=d["y"], groups=d["groups"],
+            feature_names=list(d["feature_names"]),
+            hour_index=d["hour_index"], onset_hour=d["onset_hour"],
+        )
+    ds = build_dataset(records_fn(), cfg)
+    np.savez_compressed(
+        path, X=ds.X, y=ds.y, groups=ds.groups,
+        feature_names=np.array(ds.feature_names, dtype=object),
+        hour_index=ds.hour_index, onset_hour=ds.onset_hour,
+    )
+    return ds

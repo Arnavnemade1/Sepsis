@@ -61,29 +61,36 @@ def _run_cv(cfg, feats, ds, folds, seed):
 
 
 def _feature_config(name: str) -> FeatureConfig:
-    return FeatureConfig.lab_augmented() if name == "lab" else FeatureConfig.wearable_only()
+    return {
+        "wearable": FeatureConfig.wearable_only,
+        "lab": FeatureConfig.lab_augmented,
+        "wearable_temporal": FeatureConfig.wearable_temporal,
+        "lab_temporal": FeatureConfig.lab_temporal,
+    }[name]()
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None)
-    ap.add_argument("--feature-set", choices=["wearable", "lab"], default="wearable")
+    ap.add_argument("--feature-set",
+                    choices=["wearable", "lab", "wearable_temporal", "lab_temporal"],
+                    default="wearable")
     ap.add_argument("--test-size", type=float, default=0.2)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--folds", type=int, default=1,
                     help="if >1, run patient-grouped cross-validation (mean ± std)")
     ap.add_argument("--save", action="store_true", help="persist fitted models")
+    ap.add_argument("--no-cache", action="store_true", help="rebuild features, ignore cache")
     args = ap.parse_args()
 
-    print("Loading patients...")
-    records = load_patients(limit=args.limit)
-    if not records:
-        raise SystemExit("No data. Run: python -m backend.ml.data.cinc2019 --download")
-    print("Dataset:", dataset_summary(records))
-
     cfg = _feature_config(args.feature_set)
-    print(f"\nBuilding causal features (set='{args.feature_set}', channels={len(cfg.channels)})...")
-    ds = build_dataset(records, cfg)
+    cache_key = f"{args.feature_set}_limit{args.limit or 'all'}"
+    print(f"Building features (set='{args.feature_set}', channels={len(cfg.channels)}, cache='{cache_key}')...")
+    from backend.ml.data.features import build_dataset_cached
+    ds = build_dataset_cached(lambda: load_patients(limit=args.limit), cfg, cache_key,
+                              refresh=args.no_cache)
+    print(f"Dataset: {len(ds.y)} rows, prevalence {ds.y.mean():.4f}, "
+          f"{len(set(ds.groups.tolist()))} patients, {len(ds.feature_names)} features")
     feats = pd.DataFrame(ds.X, columns=ds.feature_names)
 
     if args.folds > 1:

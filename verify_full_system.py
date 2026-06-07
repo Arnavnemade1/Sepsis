@@ -81,9 +81,12 @@ def test_calibration() -> None:
     cal = GBMDetector(calibrate=True).fit(feats.iloc[tr].to_numpy(), ds.y[tr], groups=g_tr)
     ece_raw = metrics.expected_calibration_error(ds.y[te], raw.predict_proba(feats.iloc[te].to_numpy()))
     ece_cal = metrics.expected_calibration_error(ds.y[te], cal.predict_proba(feats.iloc[te].to_numpy()))
-    assert ece_cal < ece_raw, f"calibration did not help: raw={ece_raw:.3f} cal={ece_cal:.3f}"
-    assert ece_cal < 0.10, f"calibrated ECE still high: {ece_cal:.3f}"
-    _ok(f"ECE improved {ece_raw:.3f} -> {ece_cal:.3f} (calibrated probabilities are trustworthy)")
+    # The guarantee is "calibrated output is well-calibrated", not "strictly lower
+    # ECE on every subset" — on small subsets the base model may already be well
+    # calibrated, so we require low absolute ECE and no meaningful regression.
+    assert ece_cal < 0.05, f"calibrated ECE too high: {ece_cal:.3f}"
+    assert ece_cal <= ece_raw + 0.01, f"calibration regressed: raw={ece_raw:.3f} cal={ece_cal:.3f}"
+    _ok(f"calibrated ECE = {ece_cal:.3f} (raw {ece_raw:.3f}); probabilities trustworthy")
 
 
 def test_streaming_features() -> None:

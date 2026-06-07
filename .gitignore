@@ -20,6 +20,7 @@ data/cinc2019/
 data/models/
 data/bidmc/
 # Trained model artifacts + logs (large, regenerable)
+artifacts/feature_cache/
 artifacts/*.joblib
 artifacts/*.log
 
