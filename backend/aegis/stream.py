@@ -16,9 +16,10 @@ from dataclasses import dataclass, field
 from typing import Any, Deque, Dict, List, Optional
 import time
 
-from backend.aegis.core import AegisCore, AegisAssessment
+from backend.aegis.core import AegisAssessment
+from backend.aegis.os import AegisOS
 
-SNAPSHOT_SCHEMA_VERSION = "1.0"
+SNAPSHOT_SCHEMA_VERSION = "1.1"   # added system status + predictive what-if
 
 
 class SignalHistory:
@@ -69,19 +70,25 @@ class AegisSession:
     use_llm: bool = False
     history_len: int = 600
 
-    core: AegisCore = field(init=False)
+    os: AegisOS = field(init=False)
     history: SignalHistory = field(init=False)
     latest: Optional[AegisAssessment] = field(init=False, default=None)
     source: str = field(init=False, default="idle")
 
     def __post_init__(self) -> None:
-        self.core = AegisCore(
+        self.os = AegisOS(
             patient_id=self.patient_id,
             clinical_history=self.clinical_history,
             model_path=self.model_path,
             use_llm=self.use_llm,
         )
+        self.os.boot()
         self.history = SignalHistory(maxlen=self.history_len)
+
+    @property
+    def core(self):
+        """Back-compat accessor for the runtime layer."""
+        return self.os.core
 
     # ------------------------------------------------------------------ #
     def tick(
@@ -93,8 +100,8 @@ class AegisSession:
         timestamp: Optional[float] = None,
     ) -> Dict[str, Any]:
         ts = timestamp if timestamp is not None else time.time()
-        a = self.core.ingest(
-            telemetry, source=source, timestamp=ts,
+        a = self.os.assess(
+            telemetry, source=source, whatif="auto", timestamp=ts,
             signal_quality=signal_quality, camera_vitals=camera_vitals,
         )
         self.latest = a
@@ -128,9 +135,11 @@ class AegisSession:
             "detection": a.detection if a else {},
             "triggered_rules": a.triggered_rules if a else [],
             "body_state": a.body_state if a else None,
+            "whatif": a.whatif if a else None,
             "history": self.history.snapshot(history_points),
             "protocol": a.protocol if a else None,
             "verification": a.verification if a else None,
             "narrative": a.narrative if a else None,
             "narrative_source": a.narrative_source if a else None,
+            "system": self.os.status(),
         }

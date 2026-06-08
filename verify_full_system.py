@@ -242,6 +242,33 @@ def test_streaming_contract() -> None:
         f"{len(snap['history']['channels'])} channel histories")
 
 
+def test_aegis_os() -> None:
+    print("[13] AegisOS — boots all layers; what-if recovers a septic projection")
+    from backend.aegis.os import AegisOS
+    osys = AegisOS(model_path="/nonexistent", use_llm=False,
+                   clinical_history={"penicillin_allergy": True, "wbc": 16.0, "gcs": 14})
+    layers = osys.boot()
+    assert len(layers) == 8 and all(l.ready for l in layers if l.index != 7), "8 OS layers must boot"
+
+    def r(hr, spo2, temp, sbp, dbp, rr, lac, hrv):
+        return {"heart_rate": hr, "spo2": spo2, "skin_temp": temp, "systolic_bp": sbp,
+                "diastolic_bp": dbp, "map": (sbp + 2 * dbp) / 3, "respiratory_rate": rr,
+                "sweat_lactate": lac, "hrv": hrv}
+    a = None
+    for _ in range(6):
+        a = osys.assess(r(128, 87, 39.2, 78, 46, 29, 5.4, 11), source="wearable", whatif="auto")
+    assert a.risk_level == "HIGH" and a.whatif is not None, "HIGH risk should attach what-if"
+    wf = a.whatif
+    # The recommended (Z3-verified) plan must end at lower projected risk than doing nothing.
+    rec = next(c for c in wf["candidates"] if c["name"] == wf["recommended"])
+    noop = next(c for c in wf["candidates"] if c["name"] == "no_intervention")
+    assert not noop["safe"], "no-intervention must be rejected for HIGH-risk sepsis"
+    assert rec["summary"]["final_risk"] < noop["summary"]["final_risk"], \
+        "recommended plan should project a better trajectory than no action"
+    _ok(f"8 layers booted; what-if recommends '{wf['recommended']}' "
+        f"(final risk {rec['summary']['final_risk']} vs no-op {noop['summary']['final_risk']})")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -260,7 +287,7 @@ def main() -> int:
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
-             test_llm_fallback]
+             test_aegis_os, test_llm_fallback]
     failed = 0
     for t in tests:
         try:

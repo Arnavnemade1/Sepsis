@@ -110,6 +110,18 @@ def snapshot() -> Dict[str, Any]:
     return session.snapshot()
 
 
+@app.get("/aegis/system")
+def system() -> Dict[str, Any]:
+    """The OS layer map + status (HAL, kernel, scheduler, reasoning, ...)."""
+    return session.os.status()
+
+
+@app.post("/aegis/whatif")
+def whatif() -> Dict[str, Any]:
+    """Run the predictive what-if treatment exploration on demand."""
+    return session.os.whatif(session.latest)
+
+
 @app.post("/aegis/ingest")
 def ingest(payload: TelemetryIn) -> Dict[str, Any]:
     """Push a real telemetry reading (takes precedence over the simulator)."""

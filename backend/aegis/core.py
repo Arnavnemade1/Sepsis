@@ -43,6 +43,7 @@ class AegisAssessment:
     narrative: Optional[str] = None
     narrative_source: Optional[str] = None
     body_state: Optional[Dict[str, Any]] = None   # organ/region/channel model for visualization
+    whatif: Optional[Dict[str, Any]] = None        # predictive treatment projections (scheduler)
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}

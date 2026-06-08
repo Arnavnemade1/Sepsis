@@ -1,4 +1,36 @@
-# AegisOS Core — Unified Critical-Care Runtime
+# AegisOS — Unified Critical-Care Operating System
+
+`AegisOS` (`os.py`) is the top-level OS that **boots and owns the layers**;
+`AegisCore` (`core.py`) is the runtime it composes. Use `AegisOS` as the single
+entry point — it adds the OS framing + the predictive what-if scheduler on top of
+the core assessment pipeline.
+
+```python
+from backend.aegis.os import AegisOS
+osys = AegisOS(use_llm=False)
+for layer in osys.boot():                 # 8-layer boot sequence + status
+    print(layer.index, layer.name, layer.ready)
+a = osys.assess({"heart_rate": 128, ...}, source="wearable", whatif="auto")
+a.risk_level, a.body_state, a.whatif       # detection + body model + projections
+osys.status()                              # live OS layer map (for the UI)
+```
+
+### The 8 layers (`os.py`)
+HAL · Hyperdimensional Kernel · Digital-Twin + What-if Scheduler · Neurosymbolic
+Reasoning Plane · Evolutionary Synthesis · Formal Verification (Z3) · Persistence ·
+Interface. `status()`/`layers()` expose them live.
+
+### What-if Twin Scheduler (`scheduler.py` + `physiology.py`)
+On HIGH risk (or on demand via `osys.whatif()`), projects the twin forward under
+candidate treatments (no-op, antibiotics-only, standard bundle, vasopressor-
+forward, and the GA+Z3 *recommended* plan), scores each projected risk trajectory
+with the neurosymbolic engine, Z3-verifies safety, and recommends the best safe
+option. The forward physiology is an **illustrative** mechanistic model (clearly
+labelled) for decision *exploration*, not a validated forecast.
+
+---
+
+## AegisCore — the runtime layer
 
 `AegisCore` is the single coherent brain that ingests streaming telemetry and
 produces a complete assessment. It is dashboard-independent — drive it from a
