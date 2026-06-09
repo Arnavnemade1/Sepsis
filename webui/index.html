@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>AEGIS-OS</title>
+<link rel="stylesheet" href="os.css" />
+</head>
+<body>
+<!-- ===================== BOOT SEQUENCE ===================== -->
+<div id="boot" class="boot">
+  <div class="boot-inner">
+    <div class="boot-mark">
+      <svg viewBox="0 0 64 64" class="boot-sigil"><use href="#sigil"/></svg>
+      <div class="boot-title">AEGIS·OS</div>
+      <div class="boot-sub">Hyperdimensional Neurosymbolic Critical-Care OS</div>
+    </div>
+    <div id="boot-log" class="boot-log"></div>
+    <div class="boot-bar"><div id="boot-fill" class="boot-fill"></div></div>
+    <div class="boot-version">kernel v<span id="boot-ver">0.8.0</span> · 8-layer cold boot</div>
+  </div>
+</div>
+
+<!-- ===================== DESKTOP ===================== -->
+<div id="os" class="os hidden">
+  <!-- top system bar -->
+  <header class="sysbar">
+    <div class="sysbar-l">
+      <svg viewBox="0 0 64 64" class="sysbar-sigil"><use href="#sigil"/></svg>
+      <span class="sysbar-name">AEGIS·OS</span>
+      <span class="sysbar-ver" id="sb-ver">v0.8.0</span>
+      <span class="sysbar-pill" id="sb-source">— </span>
+    </div>
+    <div class="sysbar-c">
+      <span class="sysbar-patient" id="sb-patient">—</span>
+    </div>
+    <div class="sysbar-r">
+      <span class="sysbar-risk" id="sb-risk">LOW</span>
+      <span class="sysbar-conn" id="sb-conn"><i></i>link</span>
+      <span class="sysbar-clock" id="sb-clock">00:00:00</span>
+    </div>
+  </header>
+
+  <!-- desktop workspace -->
+  <main class="desk">
+    <!-- BODY TWIN -->
+    <section class="win win-twin" data-win="twin">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">DIGITAL TWIN — full-body state</span>
+        <span class="win-tag" id="twin-risk">monitoring</span></div>
+      <div class="win-body twin-body">
+        <div id="twin-stage" class="twin-stage"></div>
+        <div class="twin-legend">
+          <span><i class="lg normal"></i>normal</span>
+          <span><i class="lg stress"></i>stress</span>
+          <span><i class="lg dysfunction"></i>dysfunction</span>
+          <span><i class="lg critical"></i>critical</span>
+          <span><i class="lg unmon"></i>no data</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- RISK CORE -->
+    <section class="win win-risk" data-win="risk">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">SEPSIS RISK CORE</span></div>
+      <div class="win-body risk-body">
+        <div class="risk-gauge"><svg viewBox="0 0 120 120" id="risk-arc"></svg>
+          <div class="risk-readout"><div id="risk-prob">0%</div><div class="risk-cap">calibrated P(sepsis)</div></div>
+        </div>
+        <div class="risk-tiers">
+          <div class="risk-tier" id="rt-LOW">LOW</div>
+          <div class="risk-tier" id="rt-MEDIUM">MEDIUM</div>
+          <div class="risk-tier" id="rt-HIGH">HIGH</div>
+        </div>
+        <div class="risk-scores">
+          <span>SIRS <b id="rs-sirs">0</b>/4</span>
+          <span>qSOFA <b id="rs-qsofa">0</b>/3</span>
+          <span>signal <b id="rs-sq">0%</b></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- VITALS -->
+    <section class="win win-vitals" data-win="vitals">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">LIVE TELEMETRY</span></div>
+      <div class="win-body vitals-body">
+        <div class="trace"><canvas id="ecg" height="74"></canvas><span class="trace-tag">ECG · <b id="t-hr">—</b> bpm</span></div>
+        <div class="trace"><canvas id="ppg" height="58"></canvas><span class="trace-tag">PLETH · SpO₂ <b id="t-spo2">—</b>%</span></div>
+        <div id="vital-grid" class="vital-grid"></div>
+      </div>
+    </section>
+
+    <!-- REASONING -->
+    <section class="win win-agents" data-win="agents">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">MULTI-AGENT REASONING PLANE</span>
+        <span class="win-tag" id="ag-consensus">consensus —</span></div>
+      <div class="win-body agents-body">
+        <div id="agent-list" class="agent-list"></div>
+        <div id="oracle" class="oracle"></div>
+      </div>
+    </section>
+
+    <!-- WHAT-IF -->
+    <section class="win win-whatif" data-win="whatif">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">WHAT-IF TREATMENT TWIN</span></div>
+      <div class="win-body whatif-body"><div id="whatif-list" class="whatif-list">
+        <div class="muted">No active projection. Engages on HIGH risk.</div></div></div>
+    </section>
+
+    <!-- PROTOCOL + PROOF -->
+    <section class="win win-proto" data-win="proto">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">PROTOCOL · Z3 PROOF · NARRATIVE</span></div>
+      <div class="win-body proto-body"><div id="proto" class="proto">
+        <div class="muted">Awaiting high-risk synthesis…</div></div></div>
+    </section>
+
+    <!-- SYSTEM LAYERS -->
+    <section class="win win-sys" data-win="sys">
+      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
+        <span class="win-title">KERNEL · 8 LAYERS</span></div>
+      <div class="win-body"><div id="layers" class="layers"></div></div>
+    </section>
+  </main>
+
+  <!-- dock -->
+  <footer class="dock">
+    <div class="dock-grp">
+      <span class="dock-label">simulate</span>
+      <button class="dock-btn" data-stage="STABLE">Stable</button>
+      <button class="dock-btn" data-stage="DETERIORATING">Deteriorate</button>
+      <button class="dock-btn warn" data-stage="SEPSIS">Induce Sepsis</button>
+      <button class="dock-btn" data-stage="RECOVERING">Recover</button>
+    </div>
+    <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
+  </footer>
+</div>
+
+<!-- shared SVG defs -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="sigil" viewBox="0 0 64 64">
+      <path d="M32 3 L58 15 V34 C58 49 47 58 32 62 C17 58 6 49 6 34 V15 Z"
+            fill="none" stroke="currentColor" stroke-width="3"/>
+      <path d="M32 16 V48 M20 32 H44" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    </symbol>
+  </defs>
+</svg>
+
+<script src="os.js"></script>
+</body>
+</html>

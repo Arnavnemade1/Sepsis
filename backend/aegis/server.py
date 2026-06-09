@@ -21,8 +21,11 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, List, Optional
 
+import os as _os
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.aegis.stream import AegisSession
@@ -162,6 +165,14 @@ async def stream(ws: WebSocket) -> None:
     finally:
         if ws in _clients:
             _clients.remove(ws)
+
+
+# --- AegisOS shell (the OS frontend) ---------------------------------------- #
+# Mounted LAST so the API routes above take precedence; "/" serves the shell.
+_WEBUI = _os.path.join(
+    _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "webui")
+if _os.path.isdir(_WEBUI):
+    app.mount("/", StaticFiles(directory=_WEBUI, html=True), name="aegisos-shell")
 
 
 if __name__ == "__main__":  # pragma: no cover

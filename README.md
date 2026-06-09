@@ -120,10 +120,15 @@ ceiling (+0.02), feature cache, and **cross-hospital external validation**
 (AUROC ~0.69, calibration holds). Established that detection is data-limited, not
 model-limited. Full write-up: [docs/PHASE7_REPORT.md](docs/PHASE7_REPORT.md).
 
-**Phase 8 — The frontend** ⏳ *next — backend is now finalized & polished*
-A high-tech 3D/2D **recreation of the body** with live signal overlays, organ-
-system lighting driven by `BodyState`, and the risk/protocol timeline — pure
-rendering against the stable streaming contract.
+**Phase 8 — The AegisOS shell (frontend)** ✅ *done*
+A full **operating-system shell** (not a website): cold-boot sequence, system bar,
+desktop workspace of windowed panels, and a dock. Centerpiece is a live anatomical
+**digital twin** whose organs (brain · lungs · heart · liver · kidneys · vascular ·
+skin) light by `BodyState` severity, with an HR-synced heartbeat and animated ECG/
+PPG traces. Panels: sepsis-risk core, live telemetry, the multi-agent debate, the
+what-if treatment projections, the Z3-verified protocol + narrative, and the live
+8-layer kernel monitor. Pure rendering against the v1.2 snapshot — `webui/`, served
+by the AegisOS server.
 
 **Phase 9 — Real HRV→sepsis + multi-site (gated on credentialed data)** 🔭
 Train the HRV→sepsis model on credentialed MIMIC-IV Waveform (adapter ready),
@@ -165,8 +170,9 @@ python verify_full_system.py
 # 3. Train + calibrate the detector
 python -m backend.ml.scripts.train_and_compare --feature-set wearable --save
 
-# 4. Run the AegisOS backend (WebSocket + REST contract)
-python -m backend.aegis.server      # http://127.0.0.1:8100/aegis/snapshot
+# 4. Run AegisOS (backend + the OS shell frontend)
+python -m backend.aegis.server      # open http://127.0.0.1:8100  → the AegisOS shell
+#                                     API: /aegis/snapshot · WS /aegis/stream
 ```
 
 > `backend/api/app.py` + `frontend/` are the **legacy demo** (simulator + old
