@@ -19,7 +19,7 @@ import time
 from backend.aegis.core import AegisAssessment
 from backend.aegis.os import AegisOS
 
-SNAPSHOT_SCHEMA_VERSION = "1.1"   # added system status + predictive what-if
+SNAPSHOT_SCHEMA_VERSION = "1.2"   # + multi-agent reasoning (agents debate/consensus)
 
 
 class SignalHistory:
@@ -135,6 +135,7 @@ class AegisSession:
             "detection": a.detection if a else {},
             "triggered_rules": a.triggered_rules if a else [],
             "body_state": a.body_state if a else None,
+            "reasoning": a.reasoning if a else None,
             "whatif": a.whatif if a else None,
             "history": self.history.snapshot(history_points),
             "protocol": a.protocol if a else None,

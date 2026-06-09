@@ -20,6 +20,16 @@ HAL · Hyperdimensional Kernel · Digital-Twin + What-if Scheduler · Neurosymbo
 Reasoning Plane · Evolutionary Synthesis · Formal Verification (Z3) · Persistence ·
 Interface. `status()`/`layers()` expose them live.
 
+### Multi-agent reasoning plane (`agents.py`)
+Five explicit agents examine each tick through one clinical lens and state an
+opinion with a confidence and **named evidence**: **Cardiac**, **Inflammatory/
+Immune**, **Infection/Pathogen**, **Metabolic/Organ**, and a non-scoring **Safety
+Oracle**. They run a transparent one-round *debate* (independent corroboration
+raises confidence), reach a confidence-weighted **consensus** with an agreement/
+dissent metric, and the Safety Oracle can **escalate** the risk tier on hard
+danger criteria (never downgrades). The full debate ships in every snapshot
+(`reasoning`) — explainable by construction.
+
 ### What-if Twin Scheduler (`scheduler.py` + `physiology.py`)
 On HIGH risk (or on demand via `osys.whatif()`), projects the twin forward under
 candidate treatments (no-op, antibiotics-only, standard bundle, vasopressor-

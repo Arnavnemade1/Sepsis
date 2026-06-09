@@ -44,6 +44,7 @@ class AegisAssessment:
     narrative_source: Optional[str] = None
     body_state: Optional[Dict[str, Any]] = None   # organ/region/channel model for visualization
     whatif: Optional[Dict[str, Any]] = None        # predictive treatment projections (scheduler)
+    reasoning: Optional[Dict[str, Any]] = None     # multi-agent debate + consensus
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -73,6 +74,8 @@ class AegisCore:
         self.hdc = HDCEngine()
         self.twin = PatientDigitalTwin(patient_id, self.hdc)
         self.neuro = NeurosymbolicEngine()
+        from backend.aegis.agents import ReasoningPlane
+        self.reasoning = ReasoningPlane()
         self.feature_cfg = (FeatureConfig.lab_augmented() if feature_set == "lab"
                             else FeatureConfig.wearable_only())
         self.features = StreamingFeatureBuilder(self.feature_cfg)
@@ -120,8 +123,17 @@ class AegisCore:
         # Confidence cannot exceed the quality of the signal that produced it.
         detection["confidence"] = round(float(detection.get("confidence", 0.0)) * max(signal_quality, 0.05), 4)
 
-        # 3) Unified risk: calibrated ML probability OR hard clinical overrides.
+        # 3) Multi-agent reasoning plane: explicit Cardiac/Inflammatory/Infection/
+        #    Metabolic agents debate; Safety Oracle guards (layer 4).
+        from backend.aegis.agents import ReasoningContext
+        consensus = self.reasoning.deliberate(ReasoningContext(
+            self.twin.latest_vitals, detection, twin_state["features"],
+            twin_state["trends"], self.clinical_history))
+
+        # 4) Unified risk: calibrated ML probability OR hard clinical overrides,
+        #    with the Safety Oracle as an escalation backstop (never downgrades).
         risk = self._fuse_risk(ml_prob, ns_risk, sirs, qsofa, detection)
+        risk = self._escalate(risk, consensus.safety.get("escalate_to"))
 
         assessment = AegisAssessment(
             timestamp=ts, source=source, risk_level=risk,
@@ -129,6 +141,7 @@ class AegisCore:
             ns_risk_level=ns_risk, sirs_score=sirs, qsofa_score=qsofa,
             triggered_rules=rules, detection=detection,
             twin_features=twin_state["features"], signal_quality=round(signal_quality, 3),
+            reasoning=consensus.to_dict(),
         )
 
         # 4) Body-state model (organ systems / regions / channels) for the
@@ -150,6 +163,14 @@ class AegisCore:
         return assessment
 
     # ------------------------------------------------------------------ #
+    @staticmethod
+    def _escalate(risk: str, target: Optional[str]) -> str:
+        """Raise the risk tier toward ``target`` (never lowers it)."""
+        order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+        if target is None:
+            return risk
+        return risk if order.get(risk, 0) >= order.get(target, 0) else target
+
     def _ml_probability(self) -> Optional[float]:
         if self.model is None or not self.features.ready():
             return None

@@ -269,6 +269,29 @@ def test_aegis_os() -> None:
         f"(final risk {rec['summary']['final_risk']} vs no-op {noop['summary']['final_risk']})")
 
 
+def test_reasoning_plane() -> None:
+    print("[14] Multi-agent reasoning plane — agents debate, consensus, Safety Oracle")
+    from backend.aegis.agents import ReasoningPlane, ReasoningContext
+    plane = ReasoningPlane()
+    healthy = ReasoningContext(
+        {"heart_rate": 72, "systolic_bp": 120, "map": 93, "hrv": 80, "skin_temp": 36.7,
+         "spo2": 98, "respiratory_rate": 14, "sweat_lactate": 0.9},
+        {"hdc_probability": 0.05, "ml_probability": 0.02, "organ_dysfunction_score": 0,
+         "sensor_quality": 0.9}, {"perfusion_index": 1.0}, {}, {"wbc": 7.5, "gcs": 15})
+    septic = ReasoningContext(
+        {"heart_rate": 128, "systolic_bp": 80, "map": 57, "hrv": 12, "skin_temp": 39.2,
+         "spo2": 88, "respiratory_rate": 28, "sweat_lactate": 5.1},
+        {"hdc_probability": 0.7, "ml_probability": 0.55, "organ_dysfunction_score": 5,
+         "sensor_quality": 0.85}, {"perfusion_index": 0.3}, {}, {"wbc": 16.0, "gcs": 14})
+    rh, rs = plane.deliberate(healthy), plane.deliberate(septic)
+    assert len(rs.opinions) == 4, "four named clinical agents must opine"
+    assert rh.consensus < 0.2 < rs.consensus, "consensus must separate healthy from septic"
+    assert rs.safety["escalate_to"] == "HIGH" and rs.safety["flags"], "oracle must escalate shock"
+    assert all(o.evidence for o in rs.opinions), "each septic opinion must cite evidence"
+    _ok(f"healthy consensus {rh.consensus:.2f} vs septic {rs.consensus:.2f}; "
+        f"oracle->HIGH ({len(rs.safety['flags'])} flags); fully explainable")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -287,7 +310,7 @@ def main() -> int:
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
-             test_aegis_os, test_llm_fallback]
+             test_aegis_os, test_reasoning_plane, test_llm_fallback]
     failed = 0
     for t in tests:
         try:
