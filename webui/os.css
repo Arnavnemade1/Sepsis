@@ -220,3 +220,99 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
 @keyframes bootfade{from{opacity:0}to{opacity:1}}
+
+/* ============================================================
+   OPTICAL BIOSENSOR — camera app (immersive module)
+   ============================================================ */
+.cam-app{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;isolation:isolate;
+  background-color:#05070d;
+  background-image:radial-gradient(1100px 700px at 70% -10%,rgba(43,123,255,.14),transparent 60%);
+  animation:camIn .45s cubic-bezier(.2,.8,.2,1)}
+.cam-app.hidden{display:none}
+@keyframes camIn{from{opacity:0;transform:scale(1.03)}to{opacity:1;transform:scale(1)}}
+.cam-app::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.45;
+  background-image:linear-gradient(rgba(90,140,210,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(90,140,210,.05) 1px,transparent 1px);
+  background-size:44px 44px;mask:radial-gradient(circle at 50% 40%,#000 55%,transparent 100%)}
+
+.cam-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;
+  border-bottom:1px solid var(--line);backdrop-filter:blur(12px);z-index:2}
+.cam-head-l{display:flex;align-items:baseline;gap:12px}
+.cam-sigil{color:var(--cyan);font-size:18px;filter:drop-shadow(0 0 10px rgba(52,225,255,.7))}
+.cam-title{font-weight:800;letter-spacing:4px;font-size:16px}
+.cam-sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:1px;text-transform:uppercase}
+.cam-head-r{display:flex;align-items:center;gap:14px}
+.cam-state{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted)}
+.cam-state i{width:8px;height:8px;border-radius:50%;background:var(--stress);box-shadow:0 0 8px var(--stress)}
+.cam-state.live i{background:var(--ok);box-shadow:0 0 9px var(--ok)}
+.cam-state.error i{background:var(--crit);box-shadow:0 0 9px var(--crit)}
+.cam-close{font-family:var(--mono);font-size:11px;color:var(--ink);background:rgba(255,77,94,.1);
+  border:1px solid rgba(255,77,94,.4);border-radius:8px;padding:7px 13px;cursor:pointer;transition:.18s}
+.cam-close:hover{background:rgba(255,77,94,.22);box-shadow:0 0 14px rgba(255,77,94,.25)}
+
+.cam-body{flex:1;display:flex;gap:16px;padding:16px 20px;min-height:0;z-index:1}
+
+/* video stage */
+.cam-stage{flex:1;position:relative;border-radius:16px;overflow:hidden;min-width:0;
+  background:#02040a;border:1px solid var(--line-bright);
+  box-shadow:0 24px 70px rgba(0,0,0,.55),inset 0 0 60px rgba(43,123,255,.06)}
+#cam-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+#cam-overlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
+.cam-scan{position:absolute;left:0;right:0;height:120px;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(52,225,255,.10) 60%,rgba(52,225,255,.22));
+  border-bottom:1px solid rgba(52,225,255,.5);animation:scan 4.2s linear infinite;opacity:.0}
+.cam-app.scanning .cam-scan{opacity:1}
+@keyframes scan{0%{top:-120px}100%{top:100%}}
+.cam-reticle span{position:absolute;width:26px;height:26px;border:2px solid rgba(52,225,255,.5)}
+.cam-reticle span:nth-child(1){top:14px;left:14px;border-right:0;border-bottom:0}
+.cam-reticle span:nth-child(2){top:14px;right:14px;border-left:0;border-bottom:0}
+.cam-reticle span:nth-child(3){bottom:14px;left:14px;border-right:0;border-top:0}
+.cam-reticle span:nth-child(4){bottom:14px;right:14px;border-left:0;border-top:0}
+
+.cam-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center}
+.cam-app.live .cam-placeholder{display:none}
+.cam-ph-ring{width:84px;height:84px;border-radius:50%;border:2px solid rgba(52,225,255,.3);border-top-color:var(--cyan);animation:spin 2.4s linear infinite}
+.cam-ph-txt{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.cam-ph-hint{font-family:var(--mono);font-size:10px;color:var(--dim)}
+
+.cam-readout-strip{position:absolute;left:16px;bottom:16px;display:flex;gap:10px;flex-wrap:wrap}
+.cam-ro{display:flex;align-items:baseline;gap:5px;padding:8px 13px;border-radius:10px;
+  background:rgba(8,14,26,.72);border:1px solid var(--line-bright);backdrop-filter:blur(10px)}
+.cam-ro-k{font-family:var(--mono);font-size:9px;color:var(--muted);letter-spacing:1px}
+.cam-ro b{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--cyan)}
+.cam-ro-u{font-size:9px;color:var(--dim)}
+
+/* side rail */
+.cam-rail{width:330px;display:flex;flex-direction:column;gap:12px;min-height:0}
+.cam-card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px 14px;backdrop-filter:blur(16px)}
+.cam-card-grow{flex:1;min-height:0;display:flex;flex-direction:column}
+.cam-card-h{font-family:var(--mono);font-size:10px;letter-spacing:1.6px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.cam-badge{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--cyan);border:1px solid var(--line-bright);border-radius:10px;padding:0 7px}
+.cam-q{display:flex;align-items:center;gap:10px}
+.cam-q-bar{flex:1;height:7px;border-radius:6px;background:rgba(120,160,220,.12);overflow:hidden}
+#cam-q-fill{height:100%;width:0;border-radius:6px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:.4s}
+#cam-q-val{font-family:var(--mono);font-size:13px;color:var(--ink);min-width:38px;text-align:right}
+.cam-meta{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:9px}
+.cam-meta b{color:var(--ink);text-transform:capitalize}
+
+.cam-rois{display:flex;flex-direction:column;gap:8px}
+.cam-roi{display:grid;grid-template-columns:84px 1fr 34px;align-items:center;gap:8px;font-family:var(--mono);font-size:11px}
+.cam-roi-n{color:var(--muted);text-transform:capitalize}
+.cam-roi-bar{height:5px;border-radius:5px;background:rgba(120,160,220,.12);overflow:hidden}
+.cam-roi-bar i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,var(--blue),var(--cyan));transition:.3s}
+.cam-roi-v{color:var(--cyan);text-align:right}
+.cam-roi.lost .cam-roi-v{color:var(--dim)}.cam-roi.lost .cam-roi-bar i{background:var(--unmon)}
+
+.cam-signs{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.cam-signs::-webkit-scrollbar{width:7px}.cam-signs::-webkit-scrollbar-thumb{background:rgba(80,120,180,.25);border-radius:7px}
+.cam-sign{display:flex;align-items:center;gap:9px;padding:7px 10px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.02)}
+.cam-sign i{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+.cam-sign.stress i{background:var(--stress);box-shadow:0 0 7px var(--stress)}
+.cam-sign.dys i{background:var(--dys);box-shadow:0 0 7px var(--dys)}
+.cam-sign.crit i{background:var(--crit);box-shadow:0 0 8px var(--crit)}
+.cam-sign-n{font-size:12px;color:var(--ink)}
+.cam-sign-c{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.cam-sign-grade{font-family:var(--mono);font-size:8px;padding:1px 5px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+#cam-wave{width:100%;height:56px;display:block}
+.dock-btn.accent{background:rgba(52,225,255,.14);border-color:var(--cyan);color:#cff6ff}
+.dock-btn.accent:hover{background:rgba(52,225,255,.26)}
+@media(max-width:980px){.cam-body{flex-direction:column}.cam-rail{width:auto;flex-direction:row;overflow:auto}}

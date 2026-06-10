@@ -137,8 +137,74 @@
       <button class="dock-btn warn" data-stage="SEPSIS">Induce Sepsis</button>
       <button class="dock-btn" data-stage="RECOVERING">Recover</button>
     </div>
+    <div class="dock-grp">
+      <span class="dock-label">modules</span>
+      <button class="dock-btn accent" id="launch-camera">◉ Optical Biosensor</button>
+    </div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>
+</div>
+
+<!-- ===================== OPTICAL BIOSENSOR (camera app) ===================== -->
+<div id="camera-app" class="cam-app hidden">
+  <header class="cam-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil">◉</span>
+      <span class="cam-title">OPTICAL BIOSENSOR</span>
+      <span class="cam-sub">contactless rPPG · micro-perfusion · sign recognition</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="cam-state" id="cam-state"><i></i><span>initializing</span></span>
+      <button class="cam-close" id="cam-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="cam-body">
+    <!-- video stage -->
+    <section class="cam-stage">
+      <video id="cam-video" autoplay playsinline muted></video>
+      <canvas id="cam-overlay"></canvas>
+      <div class="cam-scan"></div>
+      <div class="cam-reticle"><span></span><span></span><span></span><span></span></div>
+      <div id="cam-placeholder" class="cam-placeholder">
+        <div class="cam-ph-ring"></div>
+        <div class="cam-ph-txt">awaiting optical feed</div>
+        <button class="dock-btn accent" id="cam-enable">enable camera</button>
+        <div class="cam-ph-hint">grant camera access · sit ~0.5 m away · even lighting</div>
+      </div>
+      <div class="cam-readout-strip">
+        <div class="cam-ro"><span class="cam-ro-k">HR</span><b id="cam-hr">—</b><span class="cam-ro-u">bpm</span></div>
+        <div class="cam-ro"><span class="cam-ro-k">HRV</span><b id="cam-hrv">—</b><span class="cam-ro-u">ms</span></div>
+        <div class="cam-ro"><span class="cam-ro-k">RESP</span><b id="cam-rr">—</b><span class="cam-ro-u">/min</span></div>
+        <div class="cam-ro"><span class="cam-ro-k">SNR</span><b id="cam-snr">—</b><span class="cam-ro-u">dB</span></div>
+        <div class="cam-ro"><span class="cam-ro-k">FPS</span><b id="cam-fps">—</b></div>
+      </div>
+    </section>
+
+    <!-- side intelligence rail -->
+    <aside class="cam-rail">
+      <div class="cam-card">
+        <div class="cam-card-h">SIGNAL INTEGRITY</div>
+        <div class="cam-q"><div class="cam-q-bar"><div id="cam-q-fill"></div></div><span id="cam-q-val">0%</span></div>
+        <div class="cam-meta"><span>posture <b id="cam-posture">—</b></span><span>face <b id="cam-track">—</b></span></div>
+      </div>
+
+      <div class="cam-card">
+        <div class="cam-card-h">TRACKED REGIONS</div>
+        <div id="cam-rois" class="cam-rois"></div>
+      </div>
+
+      <div class="cam-card cam-card-grow">
+        <div class="cam-card-h">OBSERVABLE SIGNS <span id="cam-sign-count" class="cam-badge">0</span></div>
+        <div id="cam-signs" class="cam-signs"><div class="muted">no abnormal signs detected</div></div>
+      </div>
+
+      <div class="cam-card">
+        <div class="cam-card-h">rPPG WAVEFORM</div>
+        <canvas id="cam-wave" height="56"></canvas>
+      </div>
+    </aside>
+  </div>
 </div>
 
 <!-- shared SVG defs -->
@@ -156,6 +222,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js"></script>
+<script type="module" src="camera.js"></script>
 <script src="os.js"></script>
 </body>
 </html>
