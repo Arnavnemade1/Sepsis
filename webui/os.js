@@ -95,7 +95,7 @@ function drawArc(p) {
 
 /* ---------------- BODY TWIN (3D — see twin3d.js) ---------------- */
 function renderTwin(d) {
-  window.AegisTwin?.update(d.body_state?.regions || {});
+  window.AegisTwin?.update(d);
 }
 
 /* ---------------- VITALS ---------------- */
