@@ -25,6 +25,8 @@ from backend.core.twin import PatientDigitalTwin
 from backend.core.neurosymbolic import NeurosymbolicEngine
 from backend.llm.explainer import AlertExplainer
 from backend.vision.pipeline import CameraVitals
+from backend.vision.monitor import ContinuousSepsisMonitor
+from backend.vision.camera_detector import CameraSepsisDetector
 
 
 @dataclass
@@ -36,6 +38,7 @@ class OpticalAssessment:
     triggered_rules: list
     camera_quality: float
     channels_used: Dict[str, float]
+    camera_monitor: Optional[Dict[str, Any]] = None   # integrated continuous risk
     narrative: Optional[str] = None
     narrative_source: Optional[str] = None
 
@@ -54,6 +57,9 @@ class OpticalSepsisAssessor:
         self.explainer = AlertExplainer()
         self.clinical_history = clinical_history or {"wbc": 7.5, "gcs": 15}
         self.explain_on = explain_on
+        # Continuous sequential-Bayesian monitor — integrates camera evidence
+        # over time into a stable, low-false-alarm sepsis risk.
+        self.monitor = ContinuousSepsisMonitor()
 
     def assess(self, cam: CameraVitals, explain: Optional[bool] = None) -> OpticalAssessment:
         """Assess one camera reading. ``explain`` overrides the auto LLM trigger."""
@@ -78,6 +84,13 @@ class OpticalSepsisAssessor:
             float(detection.get("confidence", 0.0)) * max(cam.overall_quality, 0.05), 4
         )
 
+        # Integrate this reading into the continuous monitor (the accurate path).
+        mon = self.monitor.update_from_camera(cam)
+        # The integrated monitor escalates risk when it is confident; it never
+        # downgrades the transparent per-frame clinical read.
+        order = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+        risk = max(risk, mon.risk_level, key=lambda r: order.get(r, 0))
+
         assessment = OpticalAssessment(
             risk_level=risk,
             sirs_score=sirs,
@@ -86,6 +99,7 @@ class OpticalSepsisAssessor:
             triggered_rules=rules,
             camera_quality=cam.overall_quality,
             channels_used={k: cam.confidence.get(k, 0.0) for k in channels},
+            camera_monitor=mon.to_dict(),
         )
 
         do_explain = (risk == self.explain_on) if explain is None else explain

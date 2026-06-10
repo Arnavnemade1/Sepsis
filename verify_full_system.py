@@ -292,6 +292,30 @@ def test_reasoning_plane() -> None:
         f"oracle->HIGH ({len(rs.safety['flags'])} flags); fully explainable")
 
 
+def test_camera_detection() -> None:
+    print("[15] Camera detection — sharp HR + sequential-Bayesian sepsis monitor")
+    from backend.vision import signal_processing as sp
+    from backend.vision.monitor import ContinuousSepsisMonitor
+    from backend.vision.scripts_camera_eval import simulate_stream
+    import numpy as np
+    # (a) HR accuracy with parabolic interpolation
+    errs = [abs(sp.analyze_window_robust(sp.synthesize_rgb(hr, 15.0, 30.0, seed=hr).astype(float), 30.0).hr_bpm - hr)
+            for hr in (58, 72, 96, 120)]
+    assert max(errs) <= 2.5, f"rPPG HR error too high: {errs}"
+    # (b) monitor separates a septic stream from a healthy one
+    def run(septic, seed):
+        readings, q, _ = simulate_stream(septic, seed=seed)
+        m = ContinuousSepsisMonitor(); peak = 0.0; alarm = False
+        for r in readings:
+            s = m.update(r, q); peak = max(peak, s.probability); alarm = alarm or s.alarm
+        return peak, alarm
+    sp_peak, sp_alarm = run(True, 1)
+    hp_peak, hp_alarm = run(False, 2)
+    assert sp_peak > 0.5 and sp_alarm, f"septic stream should alarm (peak {sp_peak:.2f})"
+    assert hp_peak < 0.3 and not hp_alarm, f"healthy stream must not alarm (peak {hp_peak:.2f})"
+    _ok(f"HR err≤{max(errs):.1f}bpm; monitor septic peak {sp_peak:.2f}(alarm) vs healthy {hp_peak:.2f}")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -310,7 +334,7 @@ def main() -> int:
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
-             test_aegis_os, test_reasoning_plane, test_llm_fallback]
+             test_aegis_os, test_reasoning_plane, test_camera_detection, test_llm_fallback]
     failed = 0
     for t in tests:
         try:

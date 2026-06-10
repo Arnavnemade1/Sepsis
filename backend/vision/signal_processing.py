@@ -112,14 +112,55 @@ def _band_power_peak(x: np.ndarray, fs: float, band: Tuple[float, float]) -> Tup
 
 
 def estimate_hr(pulse: np.ndarray, fs: float) -> Tuple[float, float]:
-    """Heart rate (bpm) and SNR (dB) from a pulse signal."""
+    """Heart rate (bpm) and SNR (dB) from a pulse signal.
+
+    The peak frequency is refined with parabolic (quadratic) interpolation over
+    the Welch PSD, which lifts HR resolution well below the raw bin width
+    (≈±1 bpm instead of the ≈±7 bpm a coarse bin would give)."""
     filt = _bandpass(pulse, fs, *HR_BAND_HZ)
-    peak_f, peak_p, total_p = _band_power_peak(filt, fs, (HR_BAND_HZ[0], 3.5))
+    nperseg = min(len(filt), int(fs * 8))
+    if nperseg < 16:
+        return 0.0, -np.inf
+    freqs, psd = signal.welch(filt, fs=fs, nperseg=nperseg, detrend="constant")
+    band = (freqs >= HR_BAND_HZ[0]) & (freqs <= 3.5)
+    if not band.any():
+        return 0.0, -np.inf
+    bf, bp = freqs[band], psd[band]
+    k = int(np.argmax(bp))
+    peak_f = float(bf[k])
+    # parabolic interpolation around the discrete peak
+    if 0 < k < len(bp) - 1:
+        a, b, c = bp[k - 1], bp[k], bp[k + 1]
+        denom = a - 2 * b + c
+        if denom != 0:
+            offset = 0.5 * (a - c) / denom
+            peak_f = float(bf[k] + offset * (bf[1] - bf[0]))
     if peak_f <= 0:
         return 0.0, -np.inf
-    # SNR: peak (plus its first harmonic neighbourhood) vs the rest of the band.
-    snr = peak_p / max(total_p - peak_p, 1e-12)
+    snr = float(bp[k]) / max(float(bp.sum() - bp[k]), 1e-12)
     return peak_f * 60.0, 10.0 * np.log10(snr + 1e-12)
+
+
+def analyze_window_robust(rgb: np.ndarray, fs: float) -> PulseEstimate:
+    """SNR-weighted fusion of POS and CHROM — pick whichever extraction yields
+    the cleaner pulse this window. More robust to skin tone / lighting / motion
+    than any single method, which directly improves HR/HRV accuracy."""
+    rgb = np.asarray(rgb, dtype=np.float64)
+    if rgb.ndim != 2 or rgb.shape[1] != 3 or len(rgb) < int(fs * 4):
+        return PulseEstimate(0, 0, 0, 0, -np.inf, 0.0, 0)
+    cands = []
+    for pulse in (pos_pulse(rgb, fs), chrom_pulse(rgb, fs)):
+        hr, snr = estimate_hr(pulse, fs)
+        cands.append((snr, pulse, hr))
+    snr, pulse, hr = max(cands, key=lambda c: c[0])
+    sdnn, rmssd, n_beats = estimate_hrv(pulse, fs, hr)
+    resp = estimate_resp(rgb[:, 1], fs)
+    snr_q = float(np.clip((snr + 3.0) / 10.0, 0.0, 1.0))
+    hr_q = 1.0 if 40.0 <= hr <= 200.0 else 0.0
+    beat_q = float(np.clip(n_beats / 8.0, 0.0, 1.0))
+    quality = float(np.clip(0.5 * snr_q + 0.3 * hr_q + 0.2 * beat_q, 0.0, 1.0))
+    return PulseEstimate(round(hr, 1), round(sdnn, 1), round(rmssd, 1), round(resp, 1),
+                         round(snr, 2), round(quality, 3), n_beats)
 
 
 def estimate_hrv(pulse: np.ndarray, fs: float, hr_bpm: float) -> Tuple[float, float, int]:
