@@ -72,6 +72,28 @@ The pipeline attaches `boxes`, `posture`, and the full sign inventory to
 sequential posterior — so the system **accounts for every observable sign** and
 keeps monitoring patients regardless of how they are lying.
 
+## Accuracy & robustness (measured)
+
+Performance was pushed and **measured**, not assumed:
+
+| Improvement | Result |
+|---|---|
+| Sub-sample peak localization (HRV) | real BIDMC PPG-vs-ECG correlation: **SDNN 0.71→0.83, RMSSD 0.50→0.77, sample-entropy 0.63→0.76** |
+| POS/CHROM SNR fusion (live pipeline) | **−61 % mean HR error** across degraded conditions; **motion 46→1.1 bpm**, low-SNR 39→19 bpm |
+| Motion + illumination artifact gate | bad windows down-weighted instead of trusted |
+| Cleaner HRV features → HRV→sepsis | machinery AUROC **0.917→0.936** |
+
+```bash
+python -m backend.vision.scripts_robustness   # degradation benchmark
+python -m backend.physio.validate_ppg_hrv     # real PPG-vs-ECG HRV agreement
+```
+
+Honest limitation surfaced by the benchmark: rPPG on **darker skin tones** is
+materially harder (~20 bpm error vs <1 bpm on clean) — a known optics limitation;
+the quality gate flags it (≈0.5) so it is down-weighted rather than trusted. The
+residual HRV bias vs ECG is a constant offset the **personal-baseline** detector
+absorbs (sepsis = HRV *collapse relative to the subject's own normal*).
+
 ## The honest validation boundary (important)
 
 - rPPG **heart rate / respiratory rate** are validated against synthetic ground

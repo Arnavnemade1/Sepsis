@@ -126,15 +126,17 @@ class VisionVitalsPipeline:
             if vals:
                 region_redness[name] = vals
 
-        pulse = sp.analyze_window(roi_u, grid_fs, method="pos")
+        # SNR-weighted POS/CHROM fusion: use whichever extraction is cleaner this
+        # window, then derive HR/HRV from that SAME chosen pulse (consistency).
+        pulse_sig, _snr, _method = sp.best_pulse(roi_u, grid_fs)
+        pulse = sp.analyze_window_robust(roi_u, grid_fs)
+
         perf = analyze_perfusion(roi_u, region_redness, grid_fs)
 
-        # Rich HRV feature set from the rPPG pulse (time/freq/nonlinear + HeRO
-        # descriptors) — the same features the HRV->sepsis model consumes, so the
-        # camera can drive that model directly once it is trained on labelled data.
+        # Rich HRV feature set from the chosen rPPG pulse (time/freq/nonlinear +
+        # HeRO descriptors) — what the HRV->sepsis model consumes.
         from backend.physio import hrv as _hrv
-        _pulse_sig = sp.pos_pulse(roi_u, grid_fs)
-        _rr = _hrv.rr_intervals_ms(_hrv.detect_ppg_peaks(_pulse_sig, grid_fs), grid_fs)
+        _rr = _hrv.rr_intervals_ms(_hrv.detect_ppg_peaks(pulse_sig, grid_fs), grid_fs)
         hrv_features = _hrv.hrv_features(_rr).as_dict()
 
         # Landmarks/pupil resampled for distress analysis.
@@ -155,7 +157,15 @@ class VisionVitalsPipeline:
         perf_conf = round(perf.quality * coverage, 3)
         stress_conf = round(dist.quality * coverage, 3)
 
-        overall = round(float(np.mean([hr_conf, perf_conf, stress_conf])), 3)
+        # --- Artifact gating: motion + illumination instability degrade rPPG; --- #
+        # down-weight instead of emitting a confident wrong reading.
+        motion = float(np.mean(np.linalg.norm(np.diff(lm_u, axis=0), axis=2))) if lm_u.shape[0] > 1 else 0.0
+        face_scale = float(np.linalg.norm(lm_u[:, 0] - lm_u[:, 1], axis=1).mean()) if K > 1 else 1.0
+        motion_norm = motion / max(face_scale, 1.0)
+        bright = roi_u.mean(axis=1)
+        illum = float(np.std(np.diff(bright))) / (float(np.mean(bright)) + 1e-6)
+        artifact_q = float(np.clip(1.0 - 6.0 * motion_norm - 8.0 * illum, 0.2, 1.0))
+        overall = round(float(np.mean([hr_conf, perf_conf, stress_conf]) * artifact_q), 3)
 
         # --- Areas of interest, posture, and the observable-sign inventory --- #
         boxes, posture, posture_gate, sign_features = self._spatial_signs(

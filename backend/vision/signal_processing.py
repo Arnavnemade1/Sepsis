@@ -163,6 +163,19 @@ def analyze_window_robust(rgb: np.ndarray, fs: float) -> PulseEstimate:
                          round(snr, 2), round(quality, 3), n_beats)
 
 
+def best_pulse(rgb: np.ndarray, fs: float) -> Tuple[np.ndarray, float, str]:
+    """Return the higher-SNR of the POS and CHROM pulse signals for this window,
+    so downstream HR/HRV use whichever extraction the lighting/skin-tone/motion
+    favoured. Returns (pulse_signal, snr_db, method)."""
+    rgb = np.asarray(rgb, dtype=np.float64)
+    best = (np.zeros(len(rgb)), -np.inf, "pos")
+    for method, pulse in (("pos", pos_pulse(rgb, fs)), ("chrom", chrom_pulse(rgb, fs))):
+        _, snr = estimate_hr(pulse, fs)
+        if snr > best[1]:
+            best = (pulse, snr, method)
+    return best
+
+
 def estimate_hrv(pulse: np.ndarray, fs: float, hr_bpm: float) -> Tuple[float, float, int]:
     """SDNN, RMSSD (ms) and beat count from inter-beat intervals.
 

@@ -316,6 +316,23 @@ def test_camera_detection() -> None:
     _ok(f"HR err≤{max(errs):.1f}bpm; monitor septic peak {sp_peak:.2f}(alarm) vs healthy {hp_peak:.2f}")
 
 
+def test_rppg_robustness() -> None:
+    print("[16b] rPPG robustness — POS/CHROM fusion survives motion vs POS-only")
+    import numpy as np
+    from backend.vision import signal_processing as sp
+    rng = np.random.default_rng(3)
+    fs, hr = 30.0, 84.0
+    rgb = sp.synthesize_rgb(hr, 12.0, fs, seed=1) / 255.0
+    # inject motion bursts
+    for _ in range(4):
+        s = rng.integers(0, len(rgb) - int(fs))
+        rgb[s:s + int(0.6 * fs)] += rng.normal(0, 0.08, (int(0.6 * fs), 3))
+    e_pos = abs(sp.analyze_window(rgb, fs, method="pos").hr_bpm - hr)
+    e_fus = abs(sp.analyze_window_robust(rgb, fs).hr_bpm - hr)
+    assert e_fus <= e_pos + 1.0 and e_fus < 8.0, f"fusion should beat POS under motion: pos={e_pos:.1f} fus={e_fus:.1f}"
+    _ok(f"under motion: POS err {e_pos:.1f} bpm -> fusion {e_fus:.1f} bpm")
+
+
 def test_signs_and_posture() -> None:
     print("[16] Observable-sign inventory + supine/rotated-face handling")
     import numpy as np
@@ -362,7 +379,7 @@ def main() -> int:
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
-             test_signs_and_posture, test_llm_fallback]
+             test_rppg_robustness, test_signs_and_posture, test_llm_fallback]
     failed = 0
     for t in tests:
         try:
