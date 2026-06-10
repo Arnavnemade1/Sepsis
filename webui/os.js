@@ -30,8 +30,8 @@ async function boot() {
   }
   await sleep(360);
   $("#boot").classList.add("gone");
-  setTimeout(() => { $("#boot").remove(); $("#os").classList.remove("hidden"); }, 650);
-  buildBody(); connect(); animate(); tickClock();
+  setTimeout(() => { $("#boot").remove(); $("#os").classList.remove("hidden"); window.AegisTwin?.resize(); }, 650);
+  connect(); animate(); tickClock();
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -93,33 +93,9 @@ function drawArc(p) {
        style="filter:drop-shadow(0 0 8px ${col});transition:stroke-dashoffset .6s"/>`;
 }
 
-/* ---------------- BODY TWIN ---------------- */
-function buildBody() {
-  $("#twin-stage").innerHTML = `
-  <svg viewBox="0 0 240 460" xmlns="http://www.w3.org/2000/svg">
-    <!-- skin / silhouette -->
-    <path id="organ-skin" class="organ unmonitored" d="M120 14c16 0 28 12 28 28 0 11-5 18-11 23 14 3 26 9 30 20 5 13 6 33 7 50 1 13-1 22-4 24-4 2-7-3-9-14-1-7-3-19-5-19s-2 10-2 22l3 96c1 14 3 40-1 46-3 5-11 5-13-1-3-8-6-30-9-52-1 22-4 44-7 52-2 6-10 6-13 1-4-6-2-32-1-46l3-96c0-12 0-22-2-22s-4 12-5 19c-2 11-5 16-9 14-3-2-5-11-4-24 1-17 2-37 7-50 4-11 16-17 30-20-6-5-11-12-11-23 0-16 12-28 28-28z"/>
-    <!-- vascular (blood/coagulation) -->
-    <path id="organ-blood" class="organ unmonitored" d="M120 96 V250" stroke-width="3" fill="none"/>
-    <!-- brain -->
-    <ellipse id="organ-brain" class="organ unmonitored" cx="120" cy="40" rx="17" ry="13"/>
-    <!-- lungs -->
-    <path id="organ-lungs" class="organ unmonitored" d="M104 116c-12 4-16 26-13 44 1 8 13 7 16-2 3-10 3-30 1-40-1-3-2-3-4-2z M136 116c12 4 16 26 13 44-1 8-13 7-16-2-3-10-3-30-1-40 1-3 2-3 4-2z"/>
-    <!-- heart -->
-    <path id="organ-heart" class="organ unmonitored heartbeat" d="M120 132c-5-9-20-9-20 3 0 10 14 18 20 24 6-6 20-14 20-24 0-12-15-12-20-3z"/>
-    <!-- liver -->
-    <path id="organ-liver" class="organ unmonitored" d="M104 168c14-3 30-2 38 2 4 2 3 12-2 16-10 7-30 8-37 2-4-4-3-18 1-20z"/>
-    <!-- kidneys -->
-    <path id="organ-kidneys" class="organ unmonitored" d="M101 196c5-1 8 4 8 11s-4 12-8 11c-5-1-6-7-6-11s1-10 6-11z M139 196c-5-1-8 4-8 11s4 12 8 11c5-1 6-7 6-11s-1-10-6-11z"/>
-  </svg>`;
-}
+/* ---------------- BODY TWIN (3D — see twin3d.js) ---------------- */
 function renderTwin(d) {
-  const regions = d.body_state?.regions || {};
-  ["heart", "lungs", "brain", "skin", "kidneys", "liver", "blood"].forEach(reg => {
-    const el = $("#organ-" + reg); if (!el) return;
-    const st = regions[reg]?.status || "UNMONITORED";
-    el.setAttribute("class", "organ " + TIER[st] + (reg === "heart" ? " heartbeat" : ""));
-  });
+  window.AegisTwin?.update(d.body_state?.regions || {});
 }
 
 /* ---------------- VITALS ---------------- */
@@ -236,9 +212,6 @@ function animate() {
   while (ppgBuf.length > W) ppgBuf.shift();
   drawTrace("#ecg", ecgBuf, "#34e1ff", 74);
   drawTrace("#ppg", ppgBuf, "#2bd6ff", 58, true);
-  // heartbeat scale
-  const hb = $("#organ-heart");
-  if (hb) { const s = 1 + 0.07 * Math.max(0, Math.sin(ecgPhase * 2 * Math.PI)); hb.style.transform = `scale(${s})`; }
   requestAnimationFrame(animate);
 }
 function drawTrace(id, buf, color, h, fill) {

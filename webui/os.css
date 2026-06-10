@@ -87,20 +87,25 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
 .win{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
   backdrop-filter:blur(16px);display:flex;flex-direction:column;min-height:0;
   box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.03)}
-.win-bar{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(255,255,255,.025),transparent)}
-.dots{display:flex;gap:5px}.dots i{width:9px;height:9px;border-radius:50%;background:#26324d}
-.dots i:first-child{background:#ff5f57}.dots i:nth-child(2){background:#ffbd2e}.dots i:last-child{background:#28c940}
-.win-title{font-family:var(--mono);font-size:11px;letter-spacing:1.5px;color:var(--muted);text-transform:uppercase}
+.win-bar{display:flex;align-items:center;gap:11px;padding:10px 14px;border-bottom:1px solid var(--line);
+  background:linear-gradient(180deg,rgba(255,255,255,.02),transparent);position:relative}
+/* premium accent instead of generic window dots */
+.dots{width:3px;height:13px;border-radius:3px;background:linear-gradient(var(--cyan),var(--blue));
+  box-shadow:0 0 8px rgba(52,225,255,.5);flex:0 0 auto}
+.dots i{display:none}
+.win-title{font-family:var(--mono);font-size:10.5px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;font-weight:500}
 .win-tag{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--cyan);
   border:1px solid var(--line-bright);padding:2px 8px;border-radius:12px}
 .win-body{flex:1;min-height:0;overflow:auto;padding:12px}
 .win-body::-webkit-scrollbar{width:8px}.win-body::-webkit-scrollbar-thumb{background:rgba(80,120,180,.25);border-radius:8px}
 
 /* ===================== TWIN ===================== */
-.twin-body{display:flex;flex-direction:column;align-items:center;padding:4px}
-.twin-stage{flex:1;width:100%;display:grid;place-items:center;min-height:0}
-.twin-stage svg{height:100%;max-height:62vh;width:auto}
+.twin-body{display:flex;flex-direction:column;align-items:center;padding:0;position:relative}
+.twin-stage{flex:1;width:100%;min-height:0;position:relative;cursor:grab}
+.twin-stage:active{cursor:grabbing}
+.twin-stage canvas{display:block;width:100%!important;height:100%!important}
+.twin-hint{position:absolute;top:10px;right:14px;font-family:var(--mono);
+  font-size:9.5px;color:var(--dim);letter-spacing:.5px;pointer-events:none;opacity:.6}
 .organ{transition:fill .5s,filter .5s;cursor:default}
 .organ.normal{fill:rgba(40,90,140,.30);stroke:rgba(90,170,230,.5)}
 .organ.stress{fill:rgba(255,210,59,.32);stroke:var(--stress);filter:drop-shadow(0 0 8px rgba(255,210,59,.5))}

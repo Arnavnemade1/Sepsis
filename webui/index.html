@@ -50,6 +50,7 @@
         <span class="win-tag" id="twin-risk">monitoring</span></div>
       <div class="win-body twin-body">
         <div id="twin-stage" class="twin-stage"></div>
+        <div class="twin-hint">drag to rotate · scroll to zoom</div>
         <div class="twin-legend">
           <span><i class="lg normal"></i>normal</span>
           <span><i class="lg stress"></i>stress</span>
@@ -151,6 +152,10 @@
   </defs>
 </svg>
 
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+<script type="module" src="twin3d.js"></script>
 <script src="os.js"></script>
 </body>
 </html>
