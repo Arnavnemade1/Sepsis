@@ -316,6 +316,33 @@ def test_camera_detection() -> None:
     _ok(f"HR err≤{max(errs):.1f}bpm; monitor septic peak {sp_peak:.2f}(alarm) vs healthy {hp_peak:.2f}")
 
 
+def test_signs_and_posture() -> None:
+    print("[16] Observable-sign inventory + supine/rotated-face handling")
+    import numpy as np
+    from backend.vision.signs import build_inventory
+    from backend.vision.pose import head_pose, posture_signal_gate
+    septic = {"heart_rate": 128, "hr_baseline": 74, "hrv_sdnn": 18, "hrv_sdnn_baseline": 52,
+              "respiratory_rate": 28, "perfusion_index": 0.32, "pallor": 0.6, "cyanosis": 0.5,
+              "responsiveness": 0.3, "eye_openness": 0.35, "movement_index": 0.15}
+    inv = build_inventory(septic, 0.85)
+    cats = set(s.category for s in inv.present)
+    assert len(inv.present) >= 8 and {"cardiovascular", "perfusion", "neurologic"} <= cats, \
+        f"expected broad multi-system signs, got {cats}"
+    assert build_inventory({"heart_rate": 72, "hr_baseline": 74, "hrv_sdnn": 55,
+                            "hrv_sdnn_baseline": 52, "perfusion_index": 0.85}, 0.85).added_log_odds < 0.15
+    # supine / rotated faces must still be monitored (high gate); profile down-weighted
+    base = {"left_eye": [-1, 0, .4], "right_eye": [1, 0, .4], "nose": [0, .6, 1],
+            "mouth_left": [-.6, 1.3, .4], "mouth_right": [.6, 1.3, .4], "chin": [0, 2.1, .3]}
+    def rot(deg):
+        a = np.radians(deg); c, s = np.cos(a), np.sin(a)
+        R = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+        return {k: (R @ np.array(v, float)).tolist() for k, v in base.items()}
+    inverted = head_pose(rot(180), "overhead")     # supine, camera at head of bed
+    assert inverted.valid and posture_signal_gate(inverted) > 0.9, "supine face must stay monitored"
+    _ok(f"{len(inv.present)} signs across {len(cats)} systems; supine gate "
+        f"{posture_signal_gate(inverted):.2f} (monitored), posture='{inverted.posture}'")
+
+
 def test_llm_fallback() -> None:
     print("[6] LLM narrative — graceful deterministic fallback")
     from backend.llm.explainer import AlertExplainer
@@ -334,7 +361,8 @@ def main() -> int:
              test_streaming_features, test_aegis_orchestration,
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
-             test_aegis_os, test_reasoning_plane, test_camera_detection, test_llm_fallback]
+             test_aegis_os, test_reasoning_plane, test_camera_detection,
+             test_signs_and_posture, test_llm_fallback]
     failed = 0
     for t in tests:
         try:

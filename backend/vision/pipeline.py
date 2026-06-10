@@ -63,7 +63,9 @@ class VisionVitalsPipeline:
         self._regions: Deque[Dict[str, np.ndarray]] = deque(maxlen=maxlen)
         self._landmarks: Deque[np.ndarray] = deque(maxlen=maxlen)
         self._pupil: Deque[float] = deque(maxlen=maxlen)
+        self._eye_open: Deque[float] = deque(maxlen=maxlen)
         self._found_flags: Deque[int] = deque(maxlen=maxlen)
+        self._last_obs: Optional[FaceObservation] = None
         self._extractor: Optional[FaceROIExtractor] = None
 
     # ------------------------------------------------------------------ #
@@ -78,6 +80,9 @@ class VisionVitalsPipeline:
         """Lower-level ingest (also used for camera-free testing)."""
         self._t.append(timestamp)
         self._found_flags.append(1 if obs.found else 0)
+        if obs.found:
+            self._last_obs = obs            # latest boxes / pose / eye-openness
+            self._eye_open.append(float(getattr(obs, "eye_openness", 0.0) or 0.0))
         if obs.found and obs.roi_rgb is not None:
             self._roi.append(obs.roi_rgb)
             self._regions.append(obs.region_rgb)
@@ -152,6 +157,10 @@ class VisionVitalsPipeline:
 
         overall = round(float(np.mean([hr_conf, perf_conf, stress_conf])), 3)
 
+        # --- Areas of interest, posture, and the observable-sign inventory --- #
+        boxes, posture, posture_gate, sign_features = self._spatial_signs(
+            roi_u, region_redness, grid_fs, perf, dist, pulse)
+
         return CameraVitals(
             found=found_frac > 0.3,
             heart_rate=pulse.hr_bpm or None,
@@ -171,8 +180,42 @@ class VisionVitalsPipeline:
                 "pulse": pulse.__dict__, "perfusion": perf.__dict__,
                 "distress": dist.__dict__, "found_fraction": round(found_frac, 3),
                 "hrv_features": hrv_features,
+                "boxes": boxes, "posture": posture, "posture_gate": posture_gate,
+                "sign_features": sign_features,
             },
         )
+
+    def _spatial_signs(self, roi_u, region_redness, grid_fs, perf, dist, pulse):
+        """Compute the recognition boxes, head posture, and the colour/motion
+        features that drive the observable-sign inventory."""
+        from backend.vision.signs import skin_color_features
+        from backend.vision.pose import head_pose, posture_signal_gate
+        obs = self._last_obs
+        boxes = list(getattr(obs, "boxes", []) or []) if obs else []
+        # head pose / posture (supine-aware) from the latest face landmarks
+        posture, gate = {"posture": "unknown", "valid": False}, 1.0
+        if obs and getattr(obs, "pose_landmarks", None):
+            hp = head_pose(obs.pose_landmarks, camera_mount="overhead")
+            posture = hp.to_dict(); gate = posture_signal_gate(hp)
+        # colour-based skin signs (pallor / cyanosis / jaundice / mottling / flush)
+        region_rgb = {}
+        for k in ("forehead", "left_cheek", "right_cheek", "lips"):
+            vals = [r[k] for r in self._regions if isinstance(r, dict) and r.get(k) is not None]
+            if vals:
+                region_rgb[k] = np.mean(np.stack([np.asarray(v, float) for v in vals]), axis=0)
+        color = skin_color_features(region_rgb)
+        eye_open = float(np.mean(self._eye_open)) if self._eye_open else 0.0
+        movement = float(np.clip(dist.tremor_power * 1.5 + 0.2, 0, 1))   # crude activity proxy
+        sign_features = {
+            "pallor": color.get("pallor"), "mottling": color.get("mottling"),
+            "cyanosis": color.get("cyanosis"), "yellowness": color.get("yellowness"),
+            "redness": color.get("redness"), "diaphoresis": color.get("brightness"),
+            "tremor_power": dist.tremor_power, "pupil_instability": dist.pupil_instability,
+            "eye_openness": eye_open, "movement_index": movement,
+            "resp_irregularity": 0.0,
+        }
+        sign_features = {k: v for k, v in sign_features.items() if v is not None}
+        return boxes, posture, round(gate, 3), sign_features
 
     def close(self) -> None:
         if self._extractor is not None:

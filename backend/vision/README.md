@@ -59,6 +59,19 @@ streams *with ~10% motion-artifact frames*, the monitor reaches AUROC ≈ 1.0 wi
 **0 false alarms** (artifacts are rejected by integration + hysteresis) and a
 healthy median lead time. Run: `python -m backend.vision.scripts_camera_eval`.
 
+## Every observable sign + posture + recognition boxes
+
+| Module | Role |
+|---|---|
+| `signs.py` | **Comprehensive observable-sign inventory** — every camera-visible sepsis sign across cardiovascular / respiratory / perfusion / integument / autonomic / neurologic (AMS), each with confidence, severity, a **validated / proxy / experimental** grade, and calibrated log-odds. Skin-colour features: pallor, cyanosis (lips), jaundice, flush, mottling, diaphoresis. |
+| `pose.py` | **Head pose + posture** — pitch/yaw/roll from landmarks; classifies upright / reclined / supine / lateral / inverted. **Supine & rolled faces stay fully monitored** (gate ≈ 1.0); only true profile views are down-weighted. Built for a **perched camera over a lying patient**. |
+| `face.py` | Per-ROI **bounding boxes** (forehead, cheeks, eyes, lips) + `annotate_frame()` overlay; named 3D landmarks for pose; eye-openness. |
+
+The pipeline attaches `boxes`, `posture`, and the full sign inventory to
+`CameraVitals.raw`, and the monitor folds the (non-core) signs' evidence into the
+sequential posterior — so the system **accounts for every observable sign** and
+keeps monitoring patients regardless of how they are lying.
+
 ## The honest validation boundary (important)
 
 - rPPG **heart rate / respiratory rate** are validated against synthetic ground

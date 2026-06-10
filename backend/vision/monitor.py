@@ -60,11 +60,13 @@ class ContinuousSepsisMonitor:
 
     # ------------------------------------------------------------------ #
     def update(self, reading: Dict[str, float], quality: float = 1.0,
-               timestamp: Optional[float] = None) -> MonitorState:
+               timestamp: Optional[float] = None, extra_log_odds: float = 0.0) -> MonitorState:
         ts = timestamp if timestamp is not None else time.time()
         ev: CameraEvidence = self.detector.score(reading, quality)
-        # leaky integration toward the prior + new evidence
-        self.L = self.prior + self.decay * (self.L - self.prior) + ev.log_odds
+        # leaky integration toward the prior + core vitals evidence + extra
+        # evidence from the broader observable-sign inventory (signs.py).
+        reading_lo = ev.log_odds + float(extra_log_odds)
+        self.L = self.prior + self.decay * (self.L - self.prior) + reading_lo
         self.L = float(np.clip(self.L, self.prior - self.clip, self.prior + self.clip))
         prob = 1.0 / (1.0 + np.exp(-self.L))
         self._n += 1
@@ -88,7 +90,22 @@ class ContinuousSepsisMonitor:
 
     def update_from_camera(self, cam: Any, timestamp: Optional[float] = None) -> MonitorState:
         reading = CameraSepsisDetector.from_camera_vitals(cam)
-        return self.update(reading, getattr(cam, "overall_quality", 1.0), timestamp)
+        quality = getattr(cam, "overall_quality", 1.0)
+        # broaden the evidence with the full observable-sign inventory + apply the
+        # posture/quality gate, so supine/rolled faces are still scored fairly.
+        extra = 0.0
+        raw = getattr(cam, "raw", {}) or {}
+        try:
+            from backend.vision.signs import build_inventory
+            feats = dict(reading)
+            feats.update({"hr_baseline": self.detector.baseline.get("heart_rate"),
+                          "hrv_sdnn_baseline": self.detector.baseline.get("hrv_sdnn")})
+            feats.update(raw.get("sign_features", {}))
+            extra = build_inventory(feats, quality).added_log_odds
+            quality *= float(raw.get("posture_gate", 1.0))
+        except Exception:
+            pass
+        return self.update(reading, quality, timestamp, extra_log_odds=extra)
 
     def _trend(self) -> str:
         if len(self._prob_hist) < 6:
