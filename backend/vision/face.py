@@ -68,6 +68,29 @@ _BOX_GROUPS = {"forehead": _FOREHEAD, "left_cheek": _LEFT_CHEEK, "right_cheek": 
                "lips": _LIPS, "left_eye": _LEFT_EYE, "right_eye": _RIGHT_EYE}
 
 
+def skin_pixels(pix: np.ndarray) -> np.ndarray:
+    """Tone-AGNOSTIC skin-pixel mask for an (N,3) RGB pixel set.
+
+    Rather than a skin-colour box (which is biased against darker tones and would
+    hurt fairness), we reject only what corrupts the rPPG trace regardless of skin
+    colour: specular glare (near-white / desaturated-bright), deep shadow, and
+    statistical outliers (hair, glasses, background bleed). The remaining pixels
+    are the clean skin signal.
+    """
+    pix = np.asarray(pix, dtype=np.float64)
+    if pix.ndim != 2 or pix.shape[1] != 3 or len(pix) < 8:
+        return np.ones(len(pix), dtype=bool)
+    bright = pix.mean(axis=1)
+    sat = pix.max(axis=1) - pix.min(axis=1)
+    glare = (pix.min(axis=1) > 230) | ((bright > 200) & (sat < 12))   # highlights
+    shadow = bright < 25
+    # robust per-channel outlier rejection (median ± 2.5·MAD)
+    med = np.median(pix, axis=0)
+    mad = np.median(np.abs(pix - med), axis=0) * 1.4826 + 1e-6
+    outlier = np.any(np.abs(pix - med) > 2.5 * mad, axis=1)
+    return ~(glare | shadow | outlier)
+
+
 def _bbox(pts: np.ndarray, idx: List[int]) -> Optional[Dict[str, int]]:
     """Axis-aligned bounding box (pixels) around a landmark group."""
     valid = [i for i in idx if i < len(pts)]
@@ -200,8 +223,10 @@ class FaceROIExtractor:
         area = int(mask.sum() // 255)
         if area < 30:
             return None, 0.0
-        mean = cv2.mean(rgb, mask=mask)[:3]   # returns RGB means
-        return np.array(mean, dtype=np.float64), area / float(h * w)
+        pix = rgb[mask > 0].astype(np.float64)            # (N,3) ROI pixels
+        keep = skin_pixels(pix)
+        used = pix[keep] if keep.sum() >= max(20, 0.3 * len(pix)) else pix
+        return used.mean(axis=0), used.shape[0] / float(h * w)
 
     def _pupil_ratio(self, pts: np.ndarray) -> float:
         """Iris diameter normalized by inter-ocular distance (scale-invariant

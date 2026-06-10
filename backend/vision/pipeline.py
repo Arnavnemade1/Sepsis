@@ -66,6 +66,7 @@ class VisionVitalsPipeline:
         self._eye_open: Deque[float] = deque(maxlen=maxlen)
         self._found_flags: Deque[int] = deque(maxlen=maxlen)
         self._last_obs: Optional[FaceObservation] = None
+        self._hr_tracker = sp.HRTracker()       # temporal HR smoothing across windows
         self._extractor: Optional[FaceROIExtractor] = None
 
     # ------------------------------------------------------------------ #
@@ -126,10 +127,24 @@ class VisionVitalsPipeline:
             if vals:
                 region_redness[name] = vals
 
-        # SNR-weighted POS/CHROM fusion: use whichever extraction is cleaner this
-        # window, then derive HR/HRV from that SAME chosen pulse (consistency).
-        pulse_sig, _snr, _method = sp.best_pulse(roi_u, grid_fs)
-        pulse = sp.analyze_window_robust(roi_u, grid_fs)
+        # Multi-ROI SNR + agreement-weighted pulse fusion: extract a pulse from
+        # each skin ROI and combine, so a poor/occluded/motion ROI is down-
+        # weighted instead of contaminating an averaged trace. Falls back to the
+        # averaged ROI if per-ROI traces are unavailable.
+        roi_traces = {}
+        for name in ("forehead", "left_cheek", "right_cheek"):
+            tr = [r[name] for r in self._regions if isinstance(r, dict) and r.get(name) is not None]
+            if len(tr) >= 4:
+                arr = np.stack([np.asarray(v, float) for v in tr])
+                tt = np.linspace(t[0], t[-1], len(arr))
+                roi_traces[name] = np.stack([np.interp(grid, tt, arr[:, c]) for c in range(3)], axis=1)
+        if len(roi_traces) >= 2:
+            pulse_sig, _snr, per_roi = sp.multi_roi_pulse(roi_traces, grid_fs)
+            pulse = sp.pulse_estimate(pulse_sig, grid_fs, roi_u[:, 1])
+        else:
+            pulse_sig, _snr, _m = sp.best_pulse(roi_u, grid_fs)
+            pulse = sp.analyze_window_robust(roi_u, grid_fs)
+            per_roi = {}
 
         perf = analyze_perfusion(roi_u, region_redness, grid_fs)
 
@@ -166,6 +181,8 @@ class VisionVitalsPipeline:
         illum = float(np.std(np.diff(bright))) / (float(np.mean(bright)) + 1e-6)
         artifact_q = float(np.clip(1.0 - 6.0 * motion_norm - 8.0 * illum, 0.2, 1.0))
         overall = round(float(np.mean([hr_conf, perf_conf, stress_conf]) * artifact_q), 3)
+        # Temporal HR smoothing (Kalman) across windows — rejects outlier windows.
+        hr_smoothed = self._hr_tracker.update(pulse.hr_bpm or 0.0, overall) if pulse.hr_bpm else None
 
         # --- Areas of interest, posture, and the observable-sign inventory --- #
         boxes, posture, posture_gate, sign_features = self._spatial_signs(
@@ -173,7 +190,7 @@ class VisionVitalsPipeline:
 
         return CameraVitals(
             found=found_frac > 0.3,
-            heart_rate=pulse.hr_bpm or None,
+            heart_rate=(round(hr_smoothed, 1) if hr_smoothed else (pulse.hr_bpm or None)),
             hrv=pulse.hrv_sdnn_ms or None,
             hrv_rmssd=pulse.hrv_rmssd_ms or None,
             respiratory_rate=pulse.resp_bpm or None,
@@ -191,7 +208,8 @@ class VisionVitalsPipeline:
                 "distress": dist.__dict__, "found_fraction": round(found_frac, 3),
                 "hrv_features": hrv_features,
                 "boxes": boxes, "posture": posture, "posture_gate": posture_gate,
-                "sign_features": sign_features,
+                "sign_features": sign_features, "roi_snr": per_roi,
+                "hr_instant": pulse.hr_bpm,
             },
         )
 

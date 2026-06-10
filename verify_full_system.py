@@ -333,6 +333,34 @@ def test_rppg_robustness() -> None:
     _ok(f"under motion: POS err {e_pos:.1f} bpm -> fusion {e_fus:.1f} bpm")
 
 
+def test_signal_levers() -> None:
+    print("[16c] Signal levers — HR Kalman smoothing, multi-ROI fusion, skin masking")
+    import numpy as np
+    from backend.vision import signal_processing as sp
+    from backend.vision.face import skin_pixels
+    rng = np.random.default_rng(0)
+    # HR Kalman smoother vs raw on a noisy/outlier stream
+    true = 75 + 15 * np.sin(np.linspace(0, 3, 120))
+    meas = true + rng.normal(0, 4, 120); qual = np.clip(rng.normal(0.7, 0.15, 120), 0.05, 1)
+    idx = rng.choice(120, 12, replace=False); meas[idx] = rng.uniform(40, 200, 12); qual[idx] = 0.2
+    tr = sp.HRTracker(); sm = np.array([tr.update(m, q) for m, q in zip(meas, qual)])
+    assert np.mean(np.abs(sm - true)) < 0.5 * np.mean(np.abs(meas - true)), "Kalman must halve HR jitter"
+    # multi-ROI: a motion-wrong ROI is identified and the fused HR stays correct
+    fs, hr = 30.0, 84.0
+    fused, _, per = sp.multi_roi_pulse({
+        "forehead": sp.synthesize_rgb(hr, 12, fs, seed=1) / 255.0,
+        "left_cheek": sp.synthesize_rgb(hr, 12, fs, seed=2) / 255.0,
+        "right_cheek": sp.synthesize_rgb(138, 12, fs, seed=9) / 255.0}, fs)
+    assert abs(sp.estimate_hr(fused, fs)[0] - hr) < 6.0, "multi-ROI must reject the wrong-rate ROI"
+    # tone-agnostic skin mask rejects glare/shadow on a dark-skin patch
+    patch = np.vstack([np.clip(rng.normal([90, 65, 55], 6, (200, 3)), 0, 255),
+                       np.full((15, 3), 245.0), np.full((10, 3), 10.0)])
+    keep = skin_pixels(patch)
+    assert keep[:200].sum() > 180 and keep[200:].sum() == 0, "skin mask must keep dark skin, drop glare/shadow"
+    _ok(f"HR jitter {np.mean(np.abs(meas-true)):.1f}->{np.mean(np.abs(sm-true)):.1f} bpm; "
+        f"multi-ROI rejects 138bpm ROI; skin mask drops glare/shadow keeps dark skin")
+
+
 def test_signs_and_posture() -> None:
     print("[16] Observable-sign inventory + supine/rotated-face handling")
     import numpy as np
@@ -379,7 +407,7 @@ def main() -> int:
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
-             test_rppg_robustness, test_signs_and_posture, test_llm_fallback]
+             test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback]
     failed = 0
     for t in tests:
         try:

@@ -163,6 +163,95 @@ def analyze_window_robust(rgb: np.ndarray, fs: float) -> PulseEstimate:
                          round(snr, 2), round(quality, 3), n_beats)
 
 
+class HRTracker:
+    """Temporal 1-D Kalman smoother for the per-window HR estimate.
+
+    Successive windows jitter and occasionally throw a wild outlier (a bad
+    window). A random-walk Kalman filter whose measurement noise is driven by the
+    window's signal QUALITY (low quality => trust the prediction more) plus a
+    physiologic-jump gate yields a stable, deployment-grade HR trace.
+    """
+
+    def __init__(self, process_var: float = 4.0, max_jump_bpm: float = 18.0):
+        self.x = None              # state HR (bpm)
+        self.P = 100.0             # state variance
+        self.q = process_var       # process (random-walk) variance per step
+        self.max_jump = max_jump_bpm
+        self.rejected = 0
+
+    def update(self, hr_meas: float, quality: float) -> float:
+        if not (40.0 <= hr_meas <= 200.0):
+            return self.x if self.x is not None else hr_meas
+        if self.x is None:
+            self.x = hr_meas
+            return self.x
+        # outlier gate: a big jump on a LOW-quality window is rejected.
+        if abs(hr_meas - self.x) > self.max_jump and quality < 0.5:
+            self.rejected += 1
+            self.P += self.q
+            return self.x
+        self.P += self.q                                   # predict
+        meas_var = 9.0 / max(quality, 0.05)                # quality-driven R
+        K = self.P / (self.P + meas_var)                   # Kalman gain
+        self.x = self.x + K * (hr_meas - self.x)
+        self.P = (1 - K) * self.P
+        return float(self.x)
+
+
+def pulse_estimate(pulse: np.ndarray, fs: float, green: Optional[np.ndarray] = None) -> PulseEstimate:
+    """Full HR/HRV/RR estimate from an already-extracted pulse signal (e.g. the
+    multi-ROI fused pulse)."""
+    hr, snr = estimate_hr(pulse, fs)
+    sdnn, rmssd, n_beats = estimate_hrv(pulse, fs, hr)
+    resp = estimate_resp(green, fs) if green is not None else 0.0
+    snr_q = float(np.clip((snr + 3.0) / 10.0, 0.0, 1.0))
+    hr_q = 1.0 if 40.0 <= hr <= 200.0 else 0.0
+    beat_q = float(np.clip(n_beats / 8.0, 0.0, 1.0))
+    quality = float(np.clip(0.5 * snr_q + 0.3 * hr_q + 0.2 * beat_q, 0.0, 1.0))
+    return PulseEstimate(round(hr, 1), round(sdnn, 1), round(rmssd, 1), round(resp, 1),
+                         round(snr, 2), round(quality, 3), n_beats)
+
+
+def multi_roi_pulse(roi_traces: "dict", fs: float) -> Tuple[np.ndarray, float, dict]:
+    """SNR-weighted fusion of pulses from multiple skin ROIs.
+
+    Each ROI (forehead, cheeks, …) yields its own POS/CHROM pulse with its own
+    SNR; we combine them weighted by SNR (in linear power), so a strong forehead
+    signal dominates while a poor/occluded cheek contributes ~nothing. This is far
+    more robust on real faces than averaging the ROIs' raw colour first (where one
+    bad ROI contaminates everything). Returns (fused_pulse, fused_snr_db, per_roi).
+    """
+    cand, per_roi = [], {}
+    for name, trace in roi_traces.items():
+        trace = np.asarray(trace, dtype=np.float64)
+        if trace.ndim != 2 or trace.shape[1] != 3 or len(trace) < int(fs * 4):
+            continue
+        pulse, snr, method = best_pulse(trace, fs)
+        hr, _ = estimate_hr(pulse, fs)
+        per_roi[name] = {"snr_db": round(snr, 2), "hr": round(hr, 1), "method": method}
+        if np.isfinite(snr):
+            p = _bandpass(pulse, fs, *HR_BAND_HZ)
+            cand.append((name, p / (np.std(p) + 1e-9), snr, hr))
+    if not cand:
+        return np.zeros(1), -np.inf, per_roi
+    # Consensus HR (SNR-weighted median) — ROIs that disagree are likely showing
+    # motion/artifact at a spurious rate, so we down-weight them as well as the
+    # low-SNR ones (SNR alone can't tell a strong-but-WRONG oscillation apart).
+    hrs = np.array([c[3] for c in cand]); snrs = np.array([c[2] for c in cand])
+    consensus = float(np.median(hrs[snrs >= np.median(snrs)])) if len(hrs) else 0.0
+    weights = []
+    for _, _, snr, hr in cand:
+        w_snr = 10.0 ** (snr / 10.0)
+        agree = np.exp(-abs(hr - consensus) / 8.0)        # 8 bpm agreement scale
+        weights.append(w_snr * agree)
+    L = min(len(c[1]) for c in cand)
+    stacked = np.stack([c[1][:L] for c in cand])
+    w = np.array(weights); w = w / (w.sum() + 1e-12)
+    fused = (w[:, None] * stacked).sum(axis=0)
+    _, fused_snr = estimate_hr(fused, fs)
+    return fused, fused_snr, per_roi
+
+
 def best_pulse(rgb: np.ndarray, fs: float) -> Tuple[np.ndarray, float, str]:
     """Return the higher-SNR of the POS and CHROM pulse signals for this window,
     so downstream HR/HRV use whichever extraction the lighting/skin-tone/motion

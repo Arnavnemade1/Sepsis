@@ -52,17 +52,33 @@ def detect_ppg_peaks(ppg: np.ndarray, fs: float) -> np.ndarray:
     single biggest accuracy win for HRV at camera frame rates (33 ms at 30 fps).
     """
     x = np.asarray(ppg, dtype=np.float64)
-    bp = _bandpass(x, fs, 0.5, 8.0)
     min_dist = max(int(0.33 * fs), 1)              # cap ~180 bpm
-    # Adaptive threshold: local moving baseline (handles slow drift) + a small
-    # amplitude margin. Kept low so low-amplitude beats are not missed (missed
-    # beats fabricate double-length IBIs that bias SDNN/RMSSD upward).
-    win = max(int(fs * 2), 3)
-    base = np.convolve(bp, np.ones(win) / win, mode="same")
-    thr = base + 0.05 * np.std(bp)
-    peaks, _ = signal.find_peaks(bp, distance=min_dist, height=thr,
-                                 prominence=0.15 * np.std(bp))
+    # Pass 1 — wide band, coarse beats to estimate the cardiac fundamental.
+    bp = _bandpass(x, fs, 0.5, 8.0)
+    peaks = _find_peaks(bp, min_dist)
+    # Pass 2 — ADAPTIVE NARROW band around the detected HR: suppresses the
+    # dicrotic notch + out-of-band noise so each systolic peak is localized more
+    # precisely (cleaner IBIs => better SDNN/RMSSD). Falls back to the wide band
+    # when the coarse HR is unreliable.
+    if len(peaks) >= 4:
+        f0 = fs / np.median(np.diff(peaks))        # fundamental (Hz)
+        if 0.6 < f0 < 3.6:
+            nb = _bandpass(x, fs, max(0.5, f0 * 0.6), min(8.0, f0 * 1.9))
+            nb_peaks = _find_peaks(nb, min_dist)
+            if len(nb_peaks) >= 4:
+                return _refine_subsample(nb, nb_peaks)
     return _refine_subsample(bp, peaks)
+
+
+def _find_peaks(bp: np.ndarray, min_dist: int) -> np.ndarray:
+    """Adaptive-threshold peak picking with a local moving baseline (drift-robust)
+    and a low margin so low-amplitude beats are not missed."""
+    win = max(min_dist * 6, 3)
+    base = np.convolve(bp, np.ones(win) / win, mode="same")
+    sd = float(np.std(bp)) + 1e-9
+    peaks, _ = signal.find_peaks(bp, distance=min_dist, height=base + 0.05 * sd,
+                                 prominence=0.15 * sd)
+    return peaks
 
 
 def _refine_subsample(sig: np.ndarray, peaks: np.ndarray) -> np.ndarray:

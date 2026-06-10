@@ -76,10 +76,13 @@ keeps monitoring patients regardless of how they are lying.
 
 Performance was pushed and **measured**, not assumed:
 
-| Improvement | Result |
+| Lever | Result |
 |---|---|
-| Sub-sample peak localization (HRV) | real BIDMC PPG-vs-ECG correlation: **SDNN 0.71→0.83, RMSSD 0.50→0.77, sample-entropy 0.63→0.76** |
-| POS/CHROM SNR fusion (live pipeline) | **−61 % mean HR error** across degraded conditions; **motion 46→1.1 bpm**, low-SNR 39→19 bpm |
+| Sub-sample peak localization + **adaptive narrow-band** HRV | real BIDMC PPG-vs-ECG correlation: **SDNN 0.71→0.88, RMSSD 0.50→0.85, sample-entropy 0.63→0.70** (RMSSD bias 8.5→4.2) |
+| POS/CHROM SNR fusion (live pipeline) | **−61 % mean HR error** under degradation; **motion 46→1.1 bpm**, low-SNR 39→19 bpm |
+| **Multi-ROI** SNR + agreement fusion | per-ROI SNR diagnostics; a poor/occluded/motion ROI is identified and weighted out instead of contaminating the average |
+| **Temporal HR Kalman** smoother + outlier gate | HR jitter **6.8→1.8 bpm** on a noisy stream; rejects bad-window outliers |
+| **Skin-pixel segmentation** (tone-agnostic) | rejects glare / shadow / hair / glasses; keeps diverse skin tones (fairness-aware, not a skin-colour box) |
 | Motion + illumination artifact gate | bad windows down-weighted instead of trusted |
 | Cleaner HRV features → HRV→sepsis | machinery AUROC **0.917→0.936** |
 
