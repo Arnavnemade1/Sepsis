@@ -19,7 +19,9 @@ Run:  python -m backend.aegis.server      (or: uvicorn backend.aegis.server:app)
 from __future__ import annotations
 
 import asyncio
+import time
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import os as _os
 
@@ -53,6 +55,76 @@ TICK_SECONDS = 1.5
 _clients: List[WebSocket] = []
 _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
 
+# --- Real-data persistence (Supabase). The simulator demo is NEVER written; only
+#     real ingested readings are, and they are throttled + tagged so the database
+#     and egress stay well under the free-tier limits. -------------------------- #
+DB_PATIENT_ID = "a0e1d2c3-0000-4000-8000-000000000001"   # stable UUID for the monitored patient
+_db = None
+_last_real_ingest = 0.0
+LIVE_HOLD_SECONDS = 6.0           # after a real reading the camera owns the stream this long
+TELEMETRY_EVERY = 3.0            # max one telemetry row / 3 s  (history fidelity; tiny footprint)
+ALERT_EVERY = 15.0              # max one alert row / 15 s while elevated
+PROTOCOL_EVERY = 30.0
+RETAIN_EVERY = 3600.0          # opportunistic retention call (belt-and-suspenders w/ pg_cron)
+_persist_last = {"telemetry": 0.0, "alert": 0.0, "protocol": 0.0}
+_retain_last = 0.0
+
+
+def _live_mode() -> bool:
+    """True while real telemetry is actively flowing — the simulator stands down."""
+    return (time.time() - _last_real_ingest) < LIVE_HOLD_SECONDS
+
+
+def _persist_snapshot(snap: Dict[str, Any], telemetry: Dict[str, float], source: str) -> None:
+    """Persist a REAL reading to Supabase, throttled. Runs in a worker thread so it
+    never adds latency to the live stream. All writes are best-effort."""
+    if _db is None:
+        return
+    now = time.time()
+    try:
+        if telemetry.get("heart_rate") and now - _persist_last["telemetry"] >= TELEMETRY_EVERY:
+            _db.save_telemetry(DB_PATIENT_ID, telemetry, source=source)
+            _persist_last["telemetry"] = now
+    except Exception as exc:
+        print(f"[aegis] telemetry persist failed: {exc}")
+    try:
+        risk = snap.get("risk") or {}
+        if risk.get("level") in ("MEDIUM", "HIGH") and now - _persist_last["alert"] >= ALERT_EVERY:
+            det = snap.get("detection") or {}
+            sim = det.get("sepsis_similarity", det.get("similarity", 0.0)) or 0.0
+            _db.save_alert(str(uuid4()), DB_PATIENT_ID, risk["level"], float(sim),
+                           int(risk.get("sirs_score") or 0), int(risk.get("qsofa_score") or 0),
+                           list(snap.get("triggered_rules") or []), source=source)
+            _persist_last["alert"] = now
+    except Exception as exc:
+        print(f"[aegis] alert persist failed: {exc}")
+    try:
+        proto = snap.get("protocol")
+        if proto and now - _persist_last["protocol"] >= PROTOCOL_EVERY:
+            p = proto.get("protocol") or {}
+            ver = snap.get("verification") or {}
+            pid = str(uuid4())
+            _db.save_protocol(pid, DB_PATIENT_ID, None,
+                              float(p.get("fluid_rate") or 0), float(p.get("vasopressor_dose") or 0),
+                              str(p.get("antibiotic_selection") or p.get("antibiotic_code") or "n/a"),
+                              float(proto.get("fitness") or 0),
+                              "VERIFIED" if ver.get("safe") else "REJECTED")
+            _db.save_verification_proof(str(uuid4()), pid,
+                              str(ver.get("message") or "safety_constraints"),
+                              str(ver.get("z3_status") or "unknown"),
+                              {"violated_rules": ver.get("violated_rules", [])})
+            _persist_last["protocol"] = now
+    except Exception as exc:
+        print(f"[aegis] protocol persist failed: {exc}")
+    global _retain_last
+    if now - _retain_last >= RETAIN_EVERY:
+        _retain_last = now
+        try:
+            if getattr(_db, "use_supabase", False) and _db.supabase_client:
+                _db.supabase_client.rpc("aegis_retain").execute()
+        except Exception:
+            pass
+
 
 class TelemetryIn(BaseModel):
     telemetry: Dict[str, float]
@@ -82,10 +154,12 @@ def _apply_treatment_from(snapshot: Dict[str, Any]) -> None:
 
 
 async def _drive_loop() -> None:
-    print("[aegis] simulator drive loop started.")
+    print("[aegis] simulator drive loop started (demo mode; yields to real data).")
     while True:
         try:
-            if DRIVE_FROM_SIMULATOR:
+            # The simulator only drives the stream as a DEMO — the moment real
+            # telemetry arrives it stands down so the camera owns the live feed.
+            if DRIVE_FROM_SIMULATOR and not _live_mode():
                 vitals = simulator.next_tick(_active_treatment)
                 snap = session.tick(vitals, source="simulator")
                 _apply_treatment_from(snap)
@@ -97,6 +171,16 @@ async def _drive_loop() -> None:
 
 @app.on_event("startup")
 async def _startup() -> None:
+    global _db
+    try:
+        from backend.core.database import DatabaseClient
+        _db = DatabaseClient()
+        _db.save_patient(DB_PATIENT_ID, session.patient_name, session.age or 0,
+                         session.gender or "Unknown", session.core.clinical_history or {})
+        session.os.register_source("supabase-persistence")
+        print("[aegis] real-data persistence layer ready.")
+    except Exception as exc:  # pragma: no cover
+        print(f"[aegis] persistence unavailable ({exc}); running without it.")
     asyncio.create_task(_drive_loop())
 
 
@@ -104,6 +188,8 @@ async def _startup() -> None:
 @app.get("/aegis/health")
 def health() -> Dict[str, Any]:
     return {"status": "ok", "source": session.source,
+            "mode": "live" if _live_mode() else "demo",
+            "persistence": bool(_db is not None and getattr(_db, "use_supabase", False)),
             "model_loaded": session.core.model is not None,
             "schema_version": session.snapshot()["schema_version"]}
 
@@ -126,12 +212,19 @@ def whatif() -> Dict[str, Any]:
 
 
 @app.post("/aegis/ingest")
-def ingest(payload: TelemetryIn) -> Dict[str, Any]:
-    """Push a real telemetry reading (takes precedence over the simulator)."""
+async def ingest(payload: TelemetryIn) -> Dict[str, Any]:
+    """Push a REAL telemetry reading. This takes over the live stream from the
+    simulator demo, is broadcast to all WS clients, and is persisted (throttled)
+    to Supabase off the realtime path."""
+    global _last_real_ingest
     snap = session.tick(payload.telemetry, source=payload.source,
                         camera_vitals=payload.camera_vitals,
                         signal_quality=payload.signal_quality)
+    _last_real_ingest = time.time()
+    session.os.register_source(payload.source)
     _apply_treatment_from(snap)
+    await _broadcast(snap)
+    asyncio.create_task(asyncio.to_thread(_persist_snapshot, snap, payload.telemetry, payload.source))
     return snap
 
 
@@ -171,8 +264,23 @@ async def stream(ws: WebSocket) -> None:
 # Mounted LAST so the API routes above take precedence; "/" serves the shell.
 _WEBUI = _os.path.join(
     _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "webui")
+
+
+class _NoCacheStatic(StaticFiles):
+    """Serve the shell with no-store so live edits (incl. ES modules) always
+    load fresh — browsers otherwise cache modules across reloads/restarts."""
+
+    def is_not_modified(self, *a, **k) -> bool:  # defeat 304 revalidation
+        return False
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        return resp
+
+
 if _os.path.isdir(_WEBUI):
-    app.mount("/", StaticFiles(directory=_WEBUI, html=True), name="aegisos-shell")
+    app.mount("/", _NoCacheStatic(directory=_WEBUI, html=True), name="aegisos-shell")
 
 
 if __name__ == "__main__":  # pragma: no cover

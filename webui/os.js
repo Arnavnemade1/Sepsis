@@ -65,7 +65,11 @@ const pct = v => `${Math.round(num(v) * 100)}%`;
 function renderSysbar(d) {
   const r = d.risk?.level || "LOW";
   const rb = $("#sb-risk"); rb.textContent = r; rb.className = "sysbar-risk " + r;
-  $("#sb-source").textContent = d.source || "—";
+  const src = d.source || "idle";
+  const sb = $("#sb-source");
+  const live = src === "camera" || (src !== "simulator" && src !== "idle");
+  sb.textContent = src === "camera" ? "LIVE · CAMERA" : src === "simulator" ? "SIMULATION · DEMO" : src.toUpperCase();
+  sb.classList.toggle("live", live);
   $("#sb-ver").textContent = "v" + (d.system?.version || "0.8.0");
   const p = d.patient || {};
   $("#sb-patient").innerHTML = `<b>${p.name || "Unknown"}</b> · ${p.age ?? "—"}${p.gender ? " · " + p.gender[0] : ""}`;

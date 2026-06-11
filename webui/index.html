@@ -4,7 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>AEGIS-OS</title>
-<link rel="stylesheet" href="os.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="os.css?v=7" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -50,6 +53,7 @@
         <span class="win-tag" id="twin-risk">monitoring</span></div>
       <div class="win-body twin-body">
         <div id="twin-stage" class="twin-stage"></div>
+        <div id="twin-optical" class="twin-optical hidden">◉ optical-linked · webcam driving anatomy</div>
         <div class="twin-hint">drag to rotate · scroll to zoom</div>
         <div class="twin-legend">
           <span><i class="lg normal"></i>normal</span>
@@ -221,7 +225,20 @@
       <div class="cam-card">
         <div class="cam-card-h">SIGNAL INTEGRITY</div>
         <div class="cam-q"><div class="cam-q-bar"><div id="cam-q-fill"></div></div><span id="cam-q-val">0%</span></div>
-        <div class="cam-meta"><span>posture <b id="cam-posture">—</b></span><span>face <b id="cam-track">—</b></span></div>
+        <div class="cam-meta"><span>posture <b id="cam-posture">—</b></span><span>tracking <b id="cam-track">—</b></span></div>
+      </div>
+
+      <div class="cam-card">
+        <div class="cam-card-h">OPTICAL RISK INDEX <span id="cam-risk-trend" class="cam-badge">—</span></div>
+        <div class="cam-risk"><div class="cam-risk-bar"><div id="cam-risk-fill" class="ok"></div></div><span id="cam-risk-val">—</span></div>
+        <div class="cam-sens">
+          <span class="cam-sens-l">sensitivity</span>
+          <div class="cam-seg" id="cam-sens">
+            <button data-s="guarded">guarded</button>
+            <button data-s="balanced" class="on">balanced</button>
+            <button data-s="sensitive">sensitive</button>
+          </div>
+        </div>
       </div>
 
       <div class="cam-card">
@@ -256,8 +273,8 @@
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
-<script type="module" src="twin3d.js"></script>
-<script type="module" src="camera.js"></script>
-<script src="os.js"></script>
+<script type="module" src="twin3d.js?v=2"></script>
+<script type="module" src="camera.js?v=7"></script>
+<script src="os.js?v=7"></script>
 </body>
 </html>

@@ -235,9 +235,33 @@ function tierColor(region) {
 }
 const worse = (a, b) => (((a && a.severity) || 0) >= ((b && b.severity) || 0) ? a : b);
 
+/* Camera→Twin coupling: the optical biosensor (camera.js) publishes a region
+   severity map here. We merge it with the streamed body_state, ESCALATION-ONLY
+   (worse-of), so the webcam can light up the anatomy live but can never downgrade
+   a server-detected critical state. */
+let lastServerData = null, optical = {};
+function mergedRegions() {
+  const sr = (lastServerData && lastServerData.body_state && lastServerData.body_state.regions) || {};
+  const out = {};
+  for (const k of new Set([...Object.keys(sr), ...Object.keys(optical)])) out[k] = worse(sr[k], optical[k]);
+  return out;
+}
+
 function update(data) {
+  lastServerData = data || lastServerData;
   if (!started) { pendingData = data; return; }
-  data = data || {}; const regions = (data.body_state && data.body_state.regions) || {};
+  applyRegions();
+}
+
+/* Receive the optical region map from the camera engine (sign severities mapped
+   to anatomical zones). Empty map clears the optical overlay. */
+function setOptical(reg) {
+  optical = reg || {};
+  if (started) applyRegions();
+}
+
+function applyRegions() {
+  const regions = mergedRegions();
   ZONE.head.setHex(tierColor(regions.brain));
   ZONE.chest.setHex(tierColor(worse(regions.heart, regions.lungs)));
   ZONE.abd.setHex(tierColor(worse(regions.liver, regions.kidneys)));
@@ -245,18 +269,19 @@ function update(data) {
   ZONE.limb.setHex(tierColor(regions.skin));
 
   // worst compromised region -> threat beacon (front of the relevant zone)
-  let worst = null, ws = 0.44;
+  let worst = null, ws = 0.44, worstR = null;
   Object.keys(ZONE_Y).forEach(k => {
-    const r = regions[k]; if (r && r.monitored && (r.severity || 0) > ws && r.status !== "NORMAL") { ws = r.severity; worst = k; }
+    const r = regions[k]; if (r && r.monitored && (r.severity || 0) > ws && r.status !== "NORMAL") { ws = r.severity; worst = k; worstR = r; }
   });
   if (worst && beacon) {
     beacon.position.set(0, ZONE_Y[worst] * H, 0.22); beacon.visible = true;
-    setLabel(beaconLabel, (REGION_LABEL[worst] || worst).toUpperCase());
+    setLabel(beaconLabel, (REGION_LABEL[worst] || worst).toUpperCase() + (worstR && worstR.optical ? " ◉" : ""));
   } else if (beacon) beacon.visible = false;
 
   // wearable wrist marker
-  const live = ["wearable", "simulator", "camera"].includes(data.source) &&
-    (data.risk?.signal_quality ?? 1) > 0.15;
+  const d = lastServerData || {};
+  const live = ["wearable", "simulator", "camera"].includes(d.source) &&
+    (d.risk?.signal_quality ?? 1) > 0.15;
   if (wrist) { wrist.visible = !!wristBone; setWrist(live); }
 }
 
@@ -282,7 +307,7 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-window.AegisTwin = { start, update, resize };
+window.AegisTwin = { start, update, resize, setOptical };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
   if (el && el.clientWidth > 40 && el.clientHeight > 40) { clearInterval(probe); start(el); }

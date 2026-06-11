@@ -53,8 +53,9 @@ class DatabaseClient:
             hrv REAL NOT NULL,
             spo2 REAL NOT NULL,
             skin_temp REAL NOT NULL,
-            motion REAL NOT NULL,
+            motion REAL,
             sweat_lactate REAL,
+            source TEXT DEFAULT 'camera',
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
         );
@@ -69,6 +70,7 @@ class DatabaseClient:
             sirs_score INTEGER NOT NULL,
             qsofa_score INTEGER NOT NULL,
             triggered_rules TEXT NOT NULL, -- JSON list
+            source TEXT DEFAULT 'camera',
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (patient_id) REFERENCES patients(id) ON DELETE CASCADE
         );
@@ -132,29 +134,33 @@ class DatabaseClient:
         conn.close()
         return patient_id
 
-    def save_telemetry(self, patient_id: str, vitals: Dict[str, float]) -> None:
+    def save_telemetry(self, patient_id: str, vitals: Dict[str, float], source: str = "camera") -> None:
+        # A contactless camera measures a subset — write what is present, leave the
+        # rest NULL (the schema now allows it) rather than fabricating values.
         if self.use_supabase:
             try:
                 self.supabase_client.table("telemetry_logs").insert({
                     "patient_id": patient_id,
                     "heart_rate": vitals["heart_rate"],
-                    "hrv": vitals["hrv"],
-                    "spo2": vitals["spo2"],
-                    "skin_temp": vitals["skin_temp"],
-                    "motion": vitals["motion"],
-                    "sweat_lactate": vitals.get("sweat_lactate")
+                    "hrv": vitals.get("hrv"),
+                    "spo2": vitals.get("spo2"),
+                    "skin_temp": vitals.get("skin_temp"),
+                    "motion": vitals.get("motion"),
+                    "sweat_lactate": vitals.get("sweat_lactate"),
+                    "source": source,
                 }).execute()
                 return
             except Exception as e:
                 print(f"[DATABASE] Supabase save_telemetry failed: {e}")
-                
+
         # SQLite Fallback
         conn = sqlite3.connect(self.sqlite_path)
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT INTO telemetry_logs (patient_id, heart_rate, hrv, spo2, skin_temp, motion, sweat_lactate) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (patient_id, vitals["heart_rate"], vitals["hrv"], vitals["spo2"], vitals["skin_temp"], vitals["motion"], vitals.get("sweat_lactate"))
+            """INSERT INTO telemetry_logs (patient_id, heart_rate, hrv, spo2, skin_temp, motion, sweat_lactate, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (patient_id, vitals["heart_rate"], vitals.get("hrv"), vitals.get("spo2"),
+             vitals.get("skin_temp"), vitals.get("motion"), vitals.get("sweat_lactate"), source)
         )
         conn.commit()
         conn.close()
@@ -167,7 +173,8 @@ class DatabaseClient:
         hdc_similarity: float, 
         sirs_score: int, 
         qsofa_score: int, 
-        triggered_rules: List[str]
+        triggered_rules: List[str],
+        source: str = "camera"
     ) -> None:
         if self.use_supabase:
             try:
@@ -178,7 +185,8 @@ class DatabaseClient:
                     "hdc_similarity": hdc_similarity,
                     "sirs_score": sirs_score,
                     "qsofa_score": qsofa_score,
-                    "triggered_rules": triggered_rules
+                    "triggered_rules": triggered_rules,
+                    "source": source,
                 }).execute()
                 return
             except Exception as e:
@@ -188,9 +196,9 @@ class DatabaseClient:
         conn = sqlite3.connect(self.sqlite_path)
         cursor = conn.cursor()
         cursor.execute(
-            """INSERT OR REPLACE INTO sepsis_alerts (id, patient_id, risk_level, hdc_similarity, sirs_score, qsofa_score, triggered_rules) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
-            (alert_id, patient_id, risk_level, hdc_similarity, sirs_score, qsofa_score, json.dumps(triggered_rules))
+            """INSERT OR REPLACE INTO sepsis_alerts (id, patient_id, risk_level, hdc_similarity, sirs_score, qsofa_score, triggered_rules, source)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (alert_id, patient_id, risk_level, hdc_similarity, sirs_score, qsofa_score, json.dumps(triggered_rules), source)
         )
         conn.commit()
         conn.close()
