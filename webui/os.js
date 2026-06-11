@@ -89,12 +89,15 @@ function renderRisk(d) {
 }
 function drawArc(p) {
   const svg = $("#risk-arc"); const C = 2 * Math.PI * 52;
-  const col = p >= 0.12 ? "#ff4d5e" : p >= 0.04 ? "#ffd23b" : "#34e1ff";
+  const stops = p >= 0.12 ? ["#ff8a93", "#f2606e"] : p >= 0.04 ? ["#ffe09a", "#f5b94b"] : ["#76e4ff", "#6f8cf5"];
+  const off = C * (1 - Math.min(1, p * 3));
   svg.innerHTML =
-    `<circle cx="60" cy="60" r="52" fill="none" stroke="rgba(120,160,220,.12)" stroke-width="9"/>
-     <circle cx="60" cy="60" r="52" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round"
-       stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - Math.min(1, p * 3))}"
-       style="filter:drop-shadow(0 0 8px ${col});transition:stroke-dashoffset .6s"/>`;
+    `<defs><linearGradient id="rg" x1="0" y1="0" x2="1" y2="1">
+       <stop offset="0" stop-color="${stops[0]}"/><stop offset="1" stop-color="${stops[1]}"/></linearGradient></defs>
+     <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(140,165,210,.10)" stroke-width="8"/>
+     <circle cx="60" cy="60" r="52" fill="none" stroke="url(#rg)" stroke-width="8" stroke-linecap="round"
+       stroke-dasharray="${C}" stroke-dashoffset="${off}"
+       style="filter:drop-shadow(0 0 11px ${stops[1]}bb);transition:stroke-dashoffset .75s cubic-bezier(.2,.85,.25,1)"/>`;
 }
 
 /* ---------------- BODY TWIN (3D — see twin3d.js) ---------------- */
@@ -214,15 +217,24 @@ function animate() {
   }
   while (ecgBuf.length > W) ecgBuf.shift();
   while (ppgBuf.length > W) ppgBuf.shift();
-  drawTrace("#ecg", ecgBuf, "#34e1ff", 74);
-  drawTrace("#ppg", ppgBuf, "#2bd6ff", 58, true);
+  drawTrace("#ecg", ecgBuf, "#5ccaf0", 74);
+  drawTrace("#ppg", ppgBuf, "#39d9a2", 58, true);
   requestAnimationFrame(animate);
 }
-function drawTrace(id, buf, color, h, fill) {
+function drawTrace(id, buf, color, h) {
   const c = $(id); if (!c) return; const ctx = c.getContext("2d"), W = c.width;
-  ctx.clearRect(0, 0, W, h);
-  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.shadowBlur = 8; ctx.shadowColor = color;
-  buf.forEach((v, i) => { const x = i, y = h * 0.55 - v * h * 0.42; i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  ctx.clearRect(0, 0, W, h); if (!buf.length) return;
+  const yOf = v => h * 0.55 - v * h * 0.42;
+  // gradient area fill under the waveform
+  ctx.beginPath();
+  buf.forEach((v, i) => { i ? ctx.lineTo(i, yOf(v)) : ctx.moveTo(i, yOf(v)); });
+  ctx.lineTo(W, h); ctx.lineTo(0, h); ctx.closePath();
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, color + "30"); g.addColorStop(1, color + "00");
+  ctx.fillStyle = g; ctx.fill();
+  // glowing stroke on top
+  ctx.beginPath(); ctx.lineWidth = 1.8; ctx.strokeStyle = color; ctx.shadowBlur = 7; ctx.shadowColor = color;
+  buf.forEach((v, i) => { i ? ctx.lineTo(i, yOf(v)) : ctx.moveTo(i, yOf(v)); });
   ctx.stroke(); ctx.shadowBlur = 0;
 }
 

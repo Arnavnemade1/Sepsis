@@ -14,7 +14,7 @@
    You can also override live without redeploying:
        localStorage.setItem('aegis_backend', 'https://…onrender.com')
    ============================================================ */
-window.AEGIS_BACKEND = "";   // <-- set to your Render URL for the Vercel deploy
+window.AEGIS_BACKEND = "https://sepsis-backend-omd1.onrender.com";   // <-- set to your Render URL for the Vercel deploy
 
 window.AEGIS = (function () {
   function base() {

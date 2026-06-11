@@ -2,17 +2,20 @@
    AEGIS-OS shell — sci-fi medical operating-system aesthetic
    ============================================================ */
 :root{
-  --bg:#080a0f; --bg2:#0c0f16;
-  --panel:linear-gradient(180deg,rgba(26,30,40,.66),rgba(17,20,28,.74));
-  --panel-solid:#13161e;
-  --line:rgba(150,170,205,.12); --line-bright:rgba(120,200,240,.34); --line-soft:rgba(150,170,205,.07);
-  --ink:#f0f3f9; --muted:#a4afc4; --dim:#6c768e;
-  --cyan:#5cc8ef; --cyan-deep:#2a9fd0; --blue:#5b8def; --violet:#9a8cf0; --mag:#ef5d8f;
-  --ok:#3ad6a0; --stress:#f5c451; --dys:#f59a4b; --crit:#f0606e; --unmon:#3f4a6b;
-  --glow:0 0 14px rgba(92,200,239,.18);
-  --r-lg:16px; --r-md:12px; --r-sm:9px;
-  --elev:0 22px 60px -14px rgba(0,0,0,.62),0 6px 18px -6px rgba(0,0,0,.45);
-  --hair:inset 0 1px 0 rgba(255,255,255,.06);
+  --bg:#06080d; --bg2:#0a0d14;
+  --panel:linear-gradient(162deg,rgba(32,38,54,.60),rgba(15,19,29,.78));
+  --panel-solid:#12151d;
+  --line:rgba(150,172,212,.10); --line-bright:rgba(120,200,240,.30); --line-soft:rgba(150,172,212,.055);
+  --ink:#f3f6fc; --muted:#9fabc6; --dim:#69748e;
+  --cyan:#5ccaf0; --cyan-deep:#2a9fd0; --blue:#6f8cf5; --violet:#9a8cf0; --mag:#ef5d8f;
+  --accent:#5ccaf0; --accent2:#6f8cf5; --accent3:#9a8cf0;
+  --grad-accent:linear-gradient(100deg,var(--cyan),var(--blue) 58%,var(--violet));
+  --ok:#39d9a2; --stress:#f5c451; --dys:#f59a4b; --crit:#f2606e; --unmon:#3f4a6b;
+  --glow:0 0 16px rgba(92,202,240,.20);
+  --r-xl:20px; --r-lg:15px; --r-md:11px; --r-sm:8px;
+  --elev-1:0 2px 10px rgba(0,0,0,.30);
+  --elev:0 26px 64px -18px rgba(0,0,0,.66),0 8px 22px -10px rgba(0,0,0,.5);
+  --hair:inset 0 1px 0 rgba(255,255,255,.07);
   --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
   --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
@@ -45,14 +48,14 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .boot-inner{width:min(560px,86vw);text-align:center}
 .boot-mark{margin-bottom:22px}
 .boot-sigil{width:74px;height:74px;color:var(--cyan);filter:drop-shadow(var(--glow));animation:spin 6s linear infinite}
-.boot-title{font-size:34px;font-weight:800;letter-spacing:2px;margin-top:10px;
-  background:linear-gradient(90deg,#fff,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
-.boot-sub{color:var(--muted);font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px}
+.boot-title{font-size:36px;font-weight:800;letter-spacing:2.5px;margin-top:12px;
+  background:linear-gradient(100deg,#fff,var(--cyan) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.boot-sub{color:var(--muted);font-size:11.5px;letter-spacing:2px;text-transform:uppercase;margin-top:5px}
 .boot-log{font-family:var(--mono);font-size:12px;text-align:left;height:172px;overflow:hidden;
-  margin:22px auto 14px;color:var(--dim);line-height:1.7}
-.boot-log .ok{color:var(--cyan)}.boot-log b{color:var(--ink)}
-.boot-bar{height:3px;background:rgba(120,160,220,.14);border-radius:3px;overflow:hidden}
-.boot-fill{height:100%;width:0;background:linear-gradient(90deg,var(--blue),var(--cyan));box-shadow:var(--glow);transition:width .25s}
+  margin:24px auto 16px;color:var(--dim);line-height:1.7}
+.boot-log .ok{color:var(--ok)}.boot-log b{color:var(--ink)}
+.boot-bar{height:3px;background:rgba(120,160,220,.12);border-radius:3px;overflow:hidden}
+.boot-fill{height:100%;width:0;background:var(--grad-accent);box-shadow:0 0 18px rgba(92,202,240,.5);transition:width .25s}
 .boot-version{color:var(--dim);font-family:var(--mono);font-size:11px;margin-top:12px;letter-spacing:1px}
 
 /* ===================== SHELL ===================== */
@@ -99,18 +102,22 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
   grid-template-areas:"risk twin" "vitals twin" "camera twin" "agents agents" "whatif proto" "sys notes";}}
 
 /* windows */
-.win{background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;
-  backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);
+.win{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden;
+  backdrop-filter:blur(22px) saturate(1.25);-webkit-backdrop-filter:blur(22px) saturate(1.25);
   display:flex;flex-direction:column;min-height:0;
-  box-shadow:var(--elev),var(--hair);transition:border-color .35s,box-shadow .35s,transform .35s}
-.win::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;
-  background:radial-gradient(120% 70% at 50% -30%,rgba(150,180,220,.04),transparent 55%)}
-.win{position:relative}
-.win:hover{border-color:rgba(150,170,205,.2)}
-/* scroll-fade affordance for the content-dense panels */
-.win-agents::after,.win-vitals::after,.win-sys::after{content:"";position:absolute;left:1px;right:7px;bottom:1px;height:24px;
-  border-radius:0 0 var(--r-lg) var(--r-lg);pointer-events:none;z-index:2;
-  background:linear-gradient(180deg,transparent,rgba(9,14,28,.92))}
+  box-shadow:var(--elev),var(--hair);transition:border-color .35s,box-shadow .35s,transform .35s;
+  animation:winIn .55s cubic-bezier(.2,.85,.25,1) both}
+/* ambient top glow + a hairline accent edge across the very top of each panel */
+.win::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;z-index:0;
+  background:radial-gradient(130% 80% at 50% -25%,rgba(150,185,230,.05),transparent 52%)}
+.win::after{content:"";position:absolute;top:0;left:14%;right:14%;height:1px;pointer-events:none;z-index:3;
+  background:linear-gradient(90deg,transparent,rgba(120,200,240,.35),transparent)}
+.win:hover{border-color:rgba(150,172,212,.22);box-shadow:var(--elev),var(--hair),0 0 0 1px rgba(120,200,240,.05);transform:translateY(-1px)}
+@keyframes winIn{from{opacity:0;transform:translateY(10px) scale(.995)}to{opacity:1;transform:none}}
+/* staggered reveal so the desktop assembles itself */
+.win-risk{animation-delay:.04s}.win-vitals{animation-delay:.10s}.win-camera{animation-delay:.16s}
+.win-sys{animation-delay:.22s}.win-twin{animation-delay:.08s}.win-agents{animation-delay:.14s}
+.win-whatif{animation-delay:.20s}.win-proto{animation-delay:.26s}.win-notes{animation-delay:.30s}
 .win-bar{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line-soft);
   background:linear-gradient(180deg,rgba(255,255,255,.025),transparent);position:relative;z-index:1}
 /* premium accent instead of generic window dots */
@@ -156,13 +163,13 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .lg.critical{background:var(--crit)}.lg.unmon{background:var(--unmon)}
 
 /* ===================== RISK ===================== */
-.risk-body{display:flex;flex-direction:column;align-items:center;gap:9px}
-.risk-gauge{position:relative;width:118px;height:118px;filter:drop-shadow(0 6px 22px rgba(65,230,255,.18))}
+.risk-body{display:flex;flex-direction:column;align-items:center;gap:11px}
+.risk-gauge{position:relative;width:138px;height:138px;filter:drop-shadow(0 8px 26px rgba(92,202,240,.20))}
 .risk-gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
-.risk-readout{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:0}
-.risk-readout #risk-prob{font-size:31px;font-weight:800;font-family:var(--mono);color:#fff;
-  letter-spacing:-1px;text-shadow:0 0 22px rgba(65,230,255,.5)}
-.risk-cap{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px}
+.risk-readout{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:2px}
+.risk-readout #risk-prob{font-size:36px;font-weight:800;font-family:var(--mono);color:#fff;
+  letter-spacing:-1.5px;line-height:1;text-shadow:0 0 26px rgba(92,202,240,.45);font-feature-settings:"tnum"}
+.risk-cap{font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:1.8px}
 .risk-tiers{display:flex;gap:6px;width:100%}
 .risk-tier{flex:1;text-align:center;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.3px;padding:7px 0;
   border-radius:var(--r-sm);border:1px solid var(--line);color:var(--dim);background:rgba(255,255,255,.015);
@@ -199,10 +206,10 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .agent-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
 .agent-name{font-weight:600;font-size:13px;letter-spacing:.2px}
 .agent-conf{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim);font-feature-settings:"tnum"}
-.agent-bar{height:5px;border-radius:6px;background:rgba(120,160,220,.1);overflow:hidden}
-.agent-fill{height:100%;border-radius:6px;transition:width .6s cubic-bezier(.2,.8,.2,1);
-  background:linear-gradient(90deg,var(--blue),var(--cyan));box-shadow:0 0 10px rgba(65,230,255,.4)}
-.agent.hot .agent-fill{background:linear-gradient(90deg,var(--dys),var(--crit));box-shadow:0 0 10px rgba(255,86,102,.4)}
+.agent-bar{height:5px;border-radius:6px;background:rgba(120,160,220,.09);overflow:hidden}
+.agent-fill{height:100%;border-radius:6px;transition:width .7s cubic-bezier(.2,.85,.25,1);
+  background:var(--grad-accent);box-shadow:0 0 10px rgba(92,202,240,.35)}
+.agent.hot .agent-fill{background:linear-gradient(90deg,var(--dys),var(--crit));box-shadow:0 0 10px rgba(242,96,110,.4)}
 .agent-ev{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
 .agent-ev .tag{display:inline-block;background:rgba(52,225,255,.08);border:1px solid var(--line);
   color:var(--cyan);border-radius:5px;padding:1px 6px;margin:2px 4px 0 0;font-family:var(--mono);font-size:10px}
@@ -254,10 +261,10 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
   backdrop-filter:blur(18px) saturate(1.3);box-shadow:0 -1px 0 rgba(65,230,255,.05),0 -8px 28px -10px rgba(0,0,0,.6)}
 .dock-grp{display:flex;align-items:center;gap:8px}
 .dock-label{font-family:var(--sans);font-size:10.5px;font-weight:500;color:var(--dim);letter-spacing:.2px;margin-right:5px}
-.dock-btn{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--ink);background:rgba(59,130,255,.1);
+.dock-btn{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--ink);background:rgba(110,140,245,.09);
   border:1px solid var(--line);border-radius:10px;padding:8px 15px;cursor:pointer;
   transition:transform .18s cubic-bezier(.2,.8,.2,1),background .18s,box-shadow .18s,border-color .18s}
-.dock-btn:hover{background:rgba(65,230,255,.16);border-color:var(--line-bright);box-shadow:var(--glow);transform:translateY(-2px)}
+.dock-btn:hover{background:rgba(92,202,240,.15);border-color:var(--line-bright);box-shadow:var(--glow);transform:translateY(-2px)}
 .dock-btn:active{transform:translateY(0)}
 .dock-btn.warn{background:rgba(255,86,102,.12);border-color:rgba(255,86,102,.4);color:#ffb5bd}
 .dock-btn.warn:hover{background:rgba(255,86,102,.22);box-shadow:0 0 20px rgba(255,86,102,.3)}
