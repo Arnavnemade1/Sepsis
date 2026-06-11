@@ -1,0 +1,13 @@
+# AegisOS / HyperSepsisTwin-Ω backend — pinned to match the env the production
+# model (artifacts/gbm_wearable.joblib) was trained under, so it loads identically.
+fastapi==0.128.8
+uvicorn[standard]==0.39.0
+pydantic==2.13.4
+numpy==2.0.2
+scipy==1.13.1
+scikit-learn==1.6.1
+joblib==1.5.3
+z3-solver==4.16.0.0
+supabase==2.31.0
+python-dotenv==1.2.1
+httpx==0.28.1

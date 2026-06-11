@@ -38,7 +38,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 /* ---------------- WEBSOCKET ---------------- */
 let ws, retry = 0;
 function connect() {
-  const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/aegis/stream`;
+  const url = window.AEGIS.ws();
   ws = new WebSocket(url);
   ws.onopen = () => { retry = 0; setConn(true); };
   ws.onclose = () => { setConn(false); retry++; setTimeout(connect, Math.min(5000, 600 * retry)); };
@@ -229,7 +229,7 @@ function drawTrace(id, buf, color, h, fill) {
 /* ---------------- DOCK / CLOCK ---------------- */
 document.addEventListener("click", e => {
   const b = e.target.closest(".dock-btn"); if (!b) return;
-  fetch(`/aegis/simulate/${b.dataset.stage}`, { method: "POST" }).catch(() => {});
+  if (b.dataset.stage) fetch(window.AEGIS.http(`/aegis/simulate/${b.dataset.stage}`), { method: "POST" }).catch(() => {});
   b.animate([{ transform: "scale(.92)" }, { transform: "scale(1)" }], { duration: 180 });
 });
 function tickClock() {

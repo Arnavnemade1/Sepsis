@@ -1,0 +1,25 @@
+# Render blueprint for the AegisOS / HyperSepsisTwin-Ω backend.
+# Render supports persistent processes + WebSockets (Vercel does not), so the live
+# FastAPI server — the /aegis/stream WebSocket, the simulator/risk brain, and the
+# real-data ingest + Supabase persistence — runs here. The Vercel frontend points
+# at this service's URL (see webui/config.js).
+#
+# Deploy: render.com → New → Blueprint → connect this GitHub repo. Then set the
+# secret env vars (SUPABASE_URL, SUPABASE_KEY, OPENROUTER_API_KEY) in the dashboard.
+services:
+  - type: web
+    name: sepsis-backend
+    runtime: python
+    plan: free                       # free tier supports WebSockets; sleeps after 15 min idle
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn backend.aegis.server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /aegis/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: SUPABASE_URL            # set in dashboard (secret) — same project as backend/.env
+        sync: false
+      - key: SUPABASE_KEY            # service-role key — set in dashboard, never committed
+        sync: false
+      - key: OPENROUTER_API_KEY      # optional (LLM narrative); set in dashboard
+        sync: false

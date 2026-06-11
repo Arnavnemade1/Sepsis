@@ -542,7 +542,7 @@ function ingestToBackend() {
     quality: +(S.quality || 0).toFixed(3),
     signs: (S.signs || []).map((s) => ({ name: s.name, region: s.region, severity: +(s.sev || 0).toFixed(2), grade: s.grade })),
   };
-  fetch("/aegis/ingest", {
+  fetch(window.AEGIS.http("/aegis/ingest"), {
     method: "POST", headers: { "Content-Type": "application/json" }, keepalive: true,
     body: JSON.stringify({ telemetry: tel, source: "camera", signal_quality: +(S.quality || 0).toFixed(3), camera_vitals: cam }),
   }).catch(() => {});

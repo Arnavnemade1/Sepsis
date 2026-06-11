@@ -23,6 +23,8 @@ data/bidmc/
 artifacts/feature_cache/
 artifacts/*.joblib
 artifacts/*.log
+# …except the production model, which must ship so the deployed backend can load it
+!artifacts/gbm_wearable.joblib
 
 # macOS
 .DS_Store
