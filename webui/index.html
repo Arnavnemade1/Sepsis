@@ -120,6 +120,37 @@
         <div class="muted">Awaiting high-risk synthesis…</div></div></div>
     </section>
 
+    <!-- MINI OPTICAL FEED -->
+    <section class="win win-camera" data-win="camera">
+      <div class="win-bar"><span class="dots"></span><span class="win-title">OPTICAL FEED</span>
+        <span class="win-tag" id="mini-posture">—</span></div>
+      <div class="win-body cam-mini-body">
+        <div class="mini-stage">
+          <video id="mini-video" autoplay playsinline muted></video>
+          <canvas id="mini-overlay"></canvas>
+          <div class="mini-off cam-needs-feed">
+            <div class="mini-off-ring"></div>
+            <button class="dock-btn accent" id="mini-enable">enable camera</button>
+          </div>
+          <div class="mini-readout">
+            <span>HR <b id="mini-hr">—</b></span><span>RR <b id="mini-rr">—</b></span>
+            <span>Q <b id="mini-q">—</b></span><span class="mini-sig">◉ <b id="mini-signs">0</b></span>
+          </div>
+          <button class="mini-expand" id="mini-expand" title="open full module">⤢</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLINICAL OBSERVATIONS (auto-written from the footage) -->
+    <section class="win win-notes" data-win="notes">
+      <div class="win-bar"><span class="dots"></span><span class="win-title">CLINICAL OBSERVATIONS</span>
+        <span class="win-tag" id="notes-state">monitoring</span></div>
+      <div class="win-body notes-body">
+        <div class="notes-impression" id="notes-impression">Awaiting optical analysis…</div>
+        <div class="notes-log" id="notes-log"></div>
+      </div>
+    </section>
+
     <!-- SYSTEM LAYERS -->
     <section class="win win-sys" data-win="sys">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
@@ -144,6 +175,10 @@
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>
 </div>
+
+<!-- hidden full-res processing feed shared by all camera views -->
+<video id="cam-proc" autoplay playsinline muted
+       style="position:fixed;left:-20px;top:-20px;width:2px;height:2px;opacity:.01;pointer-events:none;z-index:-1"></video>
 
 <!-- ===================== OPTICAL BIOSENSOR (camera app) ===================== -->
 <div id="camera-app" class="cam-app hidden">

@@ -234,3 +234,55 @@ function tickClock() {
 }
 
 boot();
+
+/* ---------------- CLINICAL OBSERVATIONS (auto-written from camera) ---------------- */
+window.AegisNotes = (function () {
+  const seen = new Map();
+  const PHRASE = {
+    "Tachycardia": (s) => `Tachycardia — heart rate ${Math.round(s.hr)} bpm`,
+    "Bradycardia": (s) => `Bradycardia — heart rate ${Math.round(s.hr)} bpm`,
+    "HRV suppression": (s) => `Reduced heart-rate variability (${Math.round(s.hrv)} ms) — autonomic stress`,
+    "Tachypnea": (s) => `Tachypnea — respiratory rate ${Math.round(s.rr)}/min`,
+    "Reduced perfusion": () => `Reduced facial perfusion — possible peripheral vasoconstriction/shunting`,
+    "Pallor": () => `Facial pallor noted`,
+    "Drowsiness / ↓consciousness": () => `Reduced eye openness — drowsiness / possible altered mental status`,
+    "Facial distress / grimacing": () => `Facial signs of distress / grimacing`,
+    "Pain expression": () => `Facial expression consistent with pain`,
+    "Labored breathing (mouth open)": () => `Sustained mouth-open posture — possible laboured breathing`,
+    "Micro-tremor / rigors": () => `Facial micro-tremor — possible rigors/chills`,
+    "Elevated blink rate": (s) => `Elevated blink rate (${Math.round(s.blinkRate)}/min)`,
+    "Low signal quality": () => `Low optical signal quality — readings degraded`,
+  };
+  const now = () => new Date().toLocaleTimeString("en-GB");
+  function addNote(text, tier) {
+    const log = document.querySelector("#notes-log"); if (!log) return;
+    const d = document.createElement("div"); d.className = "note " + (tier || "");
+    d.innerHTML = `<span class="ni"></span><time>${now()}</time><span class="nt">${text}</span>`;
+    log.prepend(d); while (log.children.length > 40) log.removeChild(log.lastChild);
+  }
+  function update(s) {
+    const imp = document.querySelector("#notes-impression"); if (!imp) return;
+    const notable = (s.signs || []);
+    const active = new Map(notable.map((x) => [x.name, x]));
+    for (const [name, x] of active) if (!seen.has(name)) {
+      const ph = PHRASE[name] ? PHRASE[name](s) : name;
+      addNote("Onset — " + ph, x.tier === "crit" ? "crit" : x.tier === "dys" ? "warn" : "");
+    }
+    for (const name of seen.keys()) if (!active.has(name) && PHRASE[name]) addNote("Resolved — " + name.replace(/ \(.*\)/, ""), "");
+    seen.clear(); for (const [n, x] of active) seen.set(n, x);
+    const worst = notable.reduce((a, b) => (b.sev > (a ? a.sev : 0) ? b : a), null);
+    let txt, cls = "";
+    if (!notable.length) {
+      txt = s.hr ? `No acute distress. Optical vitals within normal limits — HR ${Math.round(s.hr)} bpm, RR ${Math.round(s.rr || 0)}/min. Posture: ${s.posture}.`
+        : "Awaiting optical analysis…";
+    } else {
+      const lead = notable.slice(0, 3).map((x) => x.name.replace(/ \/.*| \(.*/, "").toLowerCase()).join(", ");
+      txt = `Patient exhibits ${lead}${notable.length > 3 ? ` (+${notable.length - 3} more)` : ""}. `
+        + `HR ${Math.round(s.hr || 0)} bpm, RR ${Math.round(s.rr || 0)}/min, perfusion ${Math.round((s.perfusion || 0) * 100)}%. Posture: ${s.posture}.`;
+      cls = worst && worst.sev > 0.66 ? "crit" : "warn";
+    }
+    imp.className = "notes-impression " + cls; imp.textContent = txt;
+    const st = document.querySelector("#notes-state"); if (st) st.textContent = notable.length ? (cls === "crit" ? "attention" : "observing") : "monitoring";
+  }
+  return { update };
+})();

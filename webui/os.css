@@ -72,16 +72,19 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
 /* desktop grid — full OS workspace, every panel has a home */
 .desk{flex:1;display:grid;gap:12px;padding:14px;min-height:0;
   grid-template-columns:330px 1fr 380px;
-  grid-template-rows:1fr 1fr 1fr;
+  grid-template-rows:repeat(4,1fr);
   grid-template-areas:
     "risk   twin agents"
     "vitals twin whatif"
-    "sys    twin proto";}
+    "camera twin proto"
+    "sys    twin notes";}
 .win-twin{grid-area:twin}.win-risk{grid-area:risk}.win-vitals{grid-area:vitals}
 .win-agents{grid-area:agents}.win-whatif{grid-area:whatif}
 .win-proto{grid-area:proto;display:flex}.win-sys{grid-area:sys;display:flex}
-@media(max-width:1240px){.desk{grid-template-columns:300px 1fr;grid-template-rows:auto auto auto auto;
-  grid-template-areas:"risk twin" "vitals twin" "agents whatif" "sys proto"}}
+.win-camera{grid-area:camera;display:flex}.win-notes{grid-area:notes;display:flex}
+@media(max-width:1240px){.desk{grid-template-columns:300px 1fr;grid-template-rows:repeat(5,minmax(180px,1fr));
+  grid-template-areas:"risk twin" "vitals twin" "camera twin" "agents whatif" "sys notes";}
+  .win-proto{display:none}}
 
 /* windows */
 .win{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;
@@ -316,3 +319,36 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.5;
 .dock-btn.accent{background:rgba(52,225,255,.14);border-color:var(--cyan);color:#cff6ff}
 .dock-btn.accent:hover{background:rgba(52,225,255,.26)}
 @media(max-width:980px){.cam-body{flex-direction:column}.cam-rail{width:auto;flex-direction:row;overflow:auto}}
+
+/* ===================== MINI OPTICAL FEED (main page) ===================== */
+.cam-mini-body{padding:0;position:relative}
+.mini-stage{position:absolute;inset:0;overflow:hidden;border-radius:0 0 14px 14px}
+#mini-video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block;background:#02040a}
+#mini-overlay{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1);pointer-events:none}
+.mini-off{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:radial-gradient(circle at 50% 45%,#0a1326,#05070d)}
+.mini-off.feed-on{display:none}
+.mini-off-ring{width:46px;height:46px;border-radius:50%;border:2px solid rgba(52,225,255,.25);border-top-color:var(--cyan);animation:spin 2.2s linear infinite}
+.mini-readout{position:absolute;left:8px;bottom:8px;right:8px;display:flex;gap:7px;flex-wrap:wrap;
+  font-family:var(--mono);font-size:10px;color:var(--muted)}
+.mini-readout span{background:rgba(8,14,26,.72);border:1px solid var(--line);border-radius:7px;padding:4px 8px;backdrop-filter:blur(8px)}
+.mini-readout b{color:var(--cyan);font-size:13px}
+.mini-readout .mini-sig b{color:var(--stress)}
+.mini-expand{position:absolute;top:8px;right:8px;width:26px;height:26px;border-radius:7px;cursor:pointer;
+  background:rgba(8,14,26,.7);border:1px solid var(--line-bright);color:var(--cyan);font-size:13px;line-height:1;backdrop-filter:blur(8px)}
+.mini-expand:hover{background:rgba(52,225,255,.2)}
+
+/* ===================== CLINICAL OBSERVATIONS (main page) ===================== */
+.notes-body{display:flex;flex-direction:column;gap:10px}
+.notes-impression{font-size:12.5px;line-height:1.5;color:var(--ink);padding:9px 11px;border-radius:9px;
+  border:1px solid var(--line-bright);background:rgba(43,123,255,.06)}
+.notes-impression.warn{border-color:var(--stress);background:rgba(255,210,59,.07)}
+.notes-impression.crit{border-color:var(--crit);background:rgba(255,77,94,.08)}
+.notes-log{flex:1;overflow:auto;display:flex;flex-direction:column;gap:6px}
+.notes-log::-webkit-scrollbar{width:7px}.notes-log::-webkit-scrollbar-thumb{background:rgba(80,120,180,.25);border-radius:7px}
+.note{display:flex;gap:9px;font-size:11.5px;line-height:1.45;padding:7px 9px;border-radius:8px;
+  background:rgba(255,255,255,.02);border:1px solid var(--line);animation:noteIn .4s ease}
+.note time{font-family:var(--mono);font-size:9.5px;color:var(--dim);flex:0 0 auto;padding-top:1px}
+.note .nt{color:var(--muted)}.note.warn .nt{color:#ffe39a}.note.crit .nt{color:#ffb9bf}
+.note .ni{width:6px;flex:0 0 6px;border-radius:3px;align-self:stretch;background:var(--blue)}
+.note.warn .ni{background:var(--stress)}.note.crit .ni{background:var(--crit)}
+@keyframes noteIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
