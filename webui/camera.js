@@ -16,6 +16,7 @@
    ============================================================ */
 import { FaceLandmarker, PoseLandmarker, HandLandmarker, FilesetResolver }
   from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18";
+import { SHAL } from "./shal.js?v=9";   // Layer 1 — Stochastic Hardware Abstraction Layer
 
 const $ = (s) => document.querySelector(s);
 const clip01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
@@ -110,7 +111,7 @@ async function enable() {
       runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: 0.5 });
   } catch (e) { handLm = null; }
   S.enabled = true; starting = false; running = true;
-  Detector.reset();
+  Detector.reset(); SHAL.reset(); SHAL.boot();
   $("#camera-app").classList.add("live", "scanning"); setState("live", "calibrating to subject…");
   document.querySelectorAll(".cam-needs-feed").forEach((el) => el.classList.add("feed-on"));
   bufG = []; bufR = []; bufB = []; gT = []; shBuf = []; poseMotionBuf = []; handCenterBuf = []; loop();
@@ -131,15 +132,23 @@ function loop() {
   const lm = fres && fres.faceLandmarks && fres.faceLandmarks[0];
   S.tracking = !!lm;
   if (lm) {
+    // LAYER 1 (SHAL): the timed device-driver path — multi-ROI skin-masked
+    // acquisition + deterministic sample emission. beginFrame/endFrame bracket
+    // ONLY the conditioning work (not the upstream ML inference = the sensor).
+    SHAL.beginFrame(ts);
     sample(lm, w, h, ts);
+    const roi = (name, idx) => { const g = meanRGB(lm, idx, w, h)[1]; return { name, value: g, masked: g < 12 || g > 248 }; };
+    SHAL.ingestROIs([roi("forehead", G.forehead), roi("L cheek", G["left cheek"]), roi("R cheek", G["right cheek"])], ts);
+    SHAL.endFrame(true);
     trackMotion(lm, ts);
     S.posture = classifyFacePosture(lm);
     if (fres.faceBlendshapes && fres.faceBlendshapes[0]) updateBlend(fres.faceBlendshapes[0].categories, ts);
   }
 
   // BODY POSE + HANDS — throttled, and automatically backed off if fps dips so the
-  // rPPG framerate (which the HR estimate depends on) is always protected.
-  const slow = fpsEMA < 14;
+  // rPPG framerate (which the HR estimate depends on) is always protected. This is
+  // the Layer-3 load-shedding signal the SHAL reports as "background ML throttled".
+  const slow = fpsEMA < 14; SHAL.setThrottled(slow);
   if (poseLm && ts - lastPose > (slow ? 220 : POSE_INTERVAL)) {
     lastPose = ts;
     try { handlePose(poseLm.detectForVideo(proc, ts), ts, w, h); } catch {}
@@ -320,9 +329,11 @@ function computeVitals() {
   const detr = bufG.map((v, i) => v - avg(bufG, i - k, i + k));
   let bestP = 0, bestF = 0, total = 0;
   for (let bpm = 42; bpm <= 180; bpm++) { const f = bpm / 60; let re = 0, im = 0; for (let i = 0; i < detr.length; i++) { const a = 2 * Math.PI * f * (gT[i] - gT[0]) / 1000; re += detr[i] * Math.cos(a); im += detr[i] * Math.sin(a); } const p = re * re + im * im; total += p; if (p > bestP) { bestP = p; bestF = f; } }
-  S.hr = S.hr ? 0.7 * S.hr + 0.3 * bestF * 60 : bestF * 60;
   S.snr = 10 * Math.log10(bestP / Math.max(total - bestP, 1e-9));
   S.quality = Math.max(0.05, Math.min(1, (S.snr + 4) / 12));
+  // LAYER 1: stabilize the raw spectral HR estimate through the adaptive Kalman
+  // filter (measurement noise scales with signal quality) — deterministic output.
+  S.hr = SHAL.stabilizeHR(bestF * 60, S.quality);
   const wave = bp(detr, fs, bestF); S.wave = wave; S.hrv = coarseHRV(wave, fs); S.rr = estimateRR(bufG, fs);
   const dc = avg(bufG, 0, n) || 1; S.perfusion = Math.min(1, std(detr) / dc * 80);
   const mr = avg(bufR, 0, n), mg = avg(bufG, 0, n), mb = avg(bufB, 0, n);
@@ -519,8 +530,37 @@ function publishOptical() {
 
 /* ---------------- render all views + notes ---------------- */
 function render() {
-  paintApp(); paintMini(); publishOptical(); ingestToBackend();
+  paintApp(); paintMini(); publishOptical(); ingestToBackend(); paintSHAL();
   if (window.AegisNotes) window.AegisNotes.update(snapshot());
+}
+
+/* ---- LAYER 1 · SHAL diagnostics render ---- */
+function paintSHAL() {
+  const st = $("#shal-state"); if (!st || $("#camera-app").classList.contains("hidden")) return;
+  const t = SHAL.telemetry();
+  st.textContent = t.state; st.className = "shal-badge " + t.state;
+  setText("#shal-p50", t.latencyUs.p50 || "—"); setText("#shal-p95", t.latencyUs.p95 || "—"); setText("#shal-max", t.latencyUs.max || "—");
+  setText("#shal-jitter", t.jitterMs.toFixed(2)); setText("#shal-tput", t.throughputHz.toFixed(1)); setText("#shal-kgain", t.kalmanGain.toFixed(3));
+  setText("#shal-frames", t.frames); setText("#shal-dropped", t.dropped);
+  const thr = $("#shal-throttle");
+  if (thr) { thr.textContent = t.throttled ? "bg ML · throttled" : "bg ML · full-rate"; thr.classList.toggle("on", t.throttled); }
+  const rl = $("#shal-rois");
+  if (rl) rl.innerHTML = t.rois.map((r) => {
+    const w = Math.round((r.weight || 0) * 100);
+    return `<div class="shal-roi ${r.masked ? "masked" : ""}"><span>${r.name} ${r.snr}dB</span><span class="shal-roi-bar"><i style="width:${r.masked ? 0 : w}%"></i></span><span class="shal-roi-w">${r.masked ? "msk" : w + "%"}</span></div>`;
+  }).join("");
+  const c = $("#shal-spark");
+  if (c) {
+    const w = c.clientWidth || 200, h = 40; if (c.width !== w) c.width = w; c.height = h;
+    const x = c.getContext("2d"); x.clearRect(0, 0, w, h);
+    const arr = SHAL.latencyUs.toArray(); if (arr.length < 2) return;
+    const mx = Math.max(...arr, 1), yOf = (v, i) => [i / (arr.length - 1) * w, h - 2 - (v / mx) * (h - 6)];
+    x.beginPath(); arr.forEach((v, i) => { const [px, py] = yOf(v, i); i ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.lineTo(w, h); x.lineTo(0, h); x.closePath();
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#5ccaf040"); g.addColorStop(1, "#5ccaf000"); x.fillStyle = g; x.fill();
+    x.beginPath(); arr.forEach((v, i) => { const [px, py] = yOf(v, i); i ? x.lineTo(px, py) : x.moveTo(px, py); });
+    x.strokeStyle = "#5ccaf0"; x.lineWidth = 1.4; x.stroke();
+  }
 }
 
 /* ---- push REAL readings to the backend → drives the live twin off the camera
@@ -614,7 +654,7 @@ function init() {
   const av = $("#cam-video"), ao = $("#cam-overlay"); if (av && ao) register(av, ao, "app");
   const mv = $("#mini-video"), mo = $("#mini-overlay"); if (mv && mo) register(mv, mo, "mini");
 }
-window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m), _detector: Detector };
+window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m), _detector: Detector, _paintSHAL: paintSHAL };
 document.addEventListener("DOMContentLoaded", init);
 init();
 document.addEventListener("click", (e) => {

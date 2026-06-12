@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=8" />
+<link rel="stylesheet" href="os.css?v=9" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -223,6 +223,29 @@
 
     <!-- side intelligence rail -->
     <aside class="cam-rail">
+      <div class="cam-card shal-card">
+        <div class="cam-card-h">LAYER 1 · SHAL <span class="shal-sub">device-driver diagnostics</span><span id="shal-state" class="shal-badge">offline</span></div>
+        <div class="shal-lat">
+          <canvas id="shal-spark" class="shal-spark" height="40"></canvas>
+          <div class="shal-lat-nums">
+            <div><b id="shal-p50">—</b><span>p50 µs</span></div>
+            <div><b id="shal-p95">—</b><span>p95 µs</span></div>
+            <div><b id="shal-max">—</b><span>max µs</span></div>
+          </div>
+        </div>
+        <div class="shal-row">
+          <span>jitter <b id="shal-jitter">—</b> ms</span>
+          <span>rate <b id="shal-tput">—</b> Hz</span>
+          <span>K-gain <b id="shal-kgain">—</b></span>
+        </div>
+        <div id="shal-rois" class="shal-rois"></div>
+        <div class="shal-foot">
+          <span>frames <b id="shal-frames">0</b></span>
+          <span>dropped <b id="shal-dropped">0</b></span>
+          <span id="shal-throttle">bg ML · full-rate</span>
+        </div>
+      </div>
+
       <div class="cam-card">
         <div class="cam-card-h">SIGNAL INTEGRITY</div>
         <div class="cam-q"><div class="cam-q-bar"><div id="cam-q-fill"></div></div><span id="cam-q-val">0%</span></div>
@@ -275,7 +298,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=2"></script>
-<script type="module" src="camera.js?v=8"></script>
+<script type="module" src="camera.js?v=9"></script>
 <script src="os.js?v=9"></script>
 </body>
 </html>
