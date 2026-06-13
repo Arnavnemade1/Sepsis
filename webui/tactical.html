@@ -3,89 +3,91 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>AEGIS-OS · Global ICU Tactical Sphere</title>
+<title>Aegis OS · Tactical Sphere</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=1" />
+<link rel="stylesheet" href="tactical.css?v=2" />
 </head>
 <body>
+<div class="ambient"></div>
 
-<!-- ============ STATUS SPINE ============ -->
-<header class="spine">
-  <div class="spine-brand">
-    <svg class="spine-sigil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
-      <path d="M12 2l8 4v6c0 4.4-3.2 8.2-8 10-4.8-1.8-8-5.6-8-10V6l8-4z"/>
-      <path d="M12 7v10M7 12h10" stroke-width="1.1" opacity=".5"/>
-    </svg>
-    <div>
-      <div class="spine-name">AEGIS-OS <span class="spine-sub">// BIO-KERNEL</span></div>
-      <div class="spine-tag">GLOBAL ICU TACTICAL SPHERE · L1–L4 RUNTIME</div>
+<!-- ============ TOP BAR ============ -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M12 2.5l7.5 3.6v5.5c0 4.1-3 7.7-7.5 9.4-4.5-1.7-7.5-5.3-7.5-9.4V6.1L12 2.5z"/>
+        <path d="M12 8v8M8 12h8" stroke-width="1" opacity=".45"/>
+      </svg>
+    </span>
+    <div class="brand-text">
+      <div class="brand-name">Aegis<b>OS</b></div>
+      <div class="brand-sub">Bio-Kernel Runtime</div>
     </div>
   </div>
-  <div class="spine-stats">
-    <div class="stat"><label>COST Σwᵢ·Pᵢ</label><b id="s-cost">0.00</b></div>
-    <div class="stat"><label>MODE</label><b id="s-mode" class="mode-normal">NORMAL</b></div>
-    <div class="stat"><label>INTERRUPTS</label><b id="s-int">0</b></div>
-    <div class="stat"><label>L4 CAGE</label><b id="s-cage">0 / 0 · 100%</b></div>
-    <div class="stat"><label>KERNEL TICK</label><b id="s-tick">0</b></div>
+
+  <div class="metrics">
+    <div class="metric"><span class="m-k">Global cost</span><span class="m-v" id="s-cost">0.00</span></div>
+    <span class="m-sep"></span>
+    <div class="metric"><span class="m-k">Scheduler</span><span class="m-v" id="s-mode">Normal</span></div>
+    <span class="m-sep"></span>
+    <div class="metric"><span class="m-k">Interrupts</span><span class="m-v" id="s-int">0</span></div>
+    <span class="m-sep"></span>
+    <div class="metric"><span class="m-k">Safety cage</span><span class="m-v" id="s-cage">0 · 100%</span></div>
+    <span class="m-sep"></span>
+    <div class="metric"><span class="m-k">Kernel tick</span><span class="m-v" id="s-tick">0</span></div>
   </div>
-  <div class="spine-conn">
-    <span class="conn-dot" id="conn-dot"></span>
-    <span id="conn-txt">CONNECTING</span>
-    <span class="spine-clock" id="s-clock">--:--:--</span>
-    <a class="spine-home" href="index.html" title="Return to AegisOS shell">⟵ SHELL</a>
+
+  <div class="topbar-right">
+    <span class="conn" id="conn"><i></i><span id="conn-txt">Connecting</span></span>
+    <span class="clock" id="s-clock">--:--:--</span>
+    <a class="to-clinical" href="index.html" title="Camera &amp; detection live in the Clinical Console">Clinical Console →</a>
   </div>
 </header>
 
-<!-- ============ 2×2 PANEL GRID ============ -->
-<main class="grid">
+<!-- ============ BOARD ============ -->
+<main class="board">
 
-  <!-- PANEL A -->
-  <section class="panel" id="panel-a">
-    <div class="panel-hd"><span class="ix">A</span><span class="pt">GLOBAL NODE TOPOLOGY</span>
-      <span class="pg" id="a-tag">/dev/bio · 6 nodes</span></div>
-    <div class="panel-body"><canvas id="cv-topo"></canvas></div>
-    <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <section class="card span-topo">
+    <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span>
+      <h2>Cluster Topology</h2><span class="hd-meta" id="a-meta">6 nodes · /dev/bio</span></div>
+    <div class="card-body"><canvas id="cv-topo"></canvas></div>
   </section>
 
-  <!-- PANEL B -->
-  <section class="panel" id="panel-b">
-    <div class="panel-hd"><span class="ix">B</span><span class="pt">KERNEL MEMORY ADDRESS MATRIX</span>
-      <span class="pg" id="b-tag">arena · zero-copy</span></div>
-    <div class="panel-body"><canvas id="cv-mem"></canvas></div>
-    <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <section class="card span-mem">
+    <div class="card-hd"><span class="hd-dot" style="--c:var(--indigo)"></span>
+      <h2>Memory Fabric</h2><span class="hd-meta" id="b-meta">zero-copy arena</span></div>
+    <div class="card-body"><canvas id="cv-mem"></canvas></div>
   </section>
 
-  <!-- PANEL C -->
-  <section class="panel" id="panel-c">
-    <div class="panel-hd"><span class="ix">C</span><span class="pt">THREAD-LANE PREEMPTION</span>
-      <span class="pg" id="c-tag">budget 96</span></div>
-    <div class="panel-body"><canvas id="cv-lanes"></canvas></div>
-    <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <section class="card span-lanes">
+    <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span>
+      <h2>Execution Lanes</h2><span class="hd-meta" id="c-meta">budget 96</span></div>
+    <div class="card-body"><canvas id="cv-lanes"></canvas></div>
   </section>
 
-  <!-- PANEL D -->
-  <section class="panel" id="panel-d">
-    <div class="panel-hd"><span class="ix">D</span><span class="pt">MONOTONIC LATENCY INSTRUMENT</span>
-      <span class="pg" id="d-tag">µs · hw counters</span></div>
-    <div class="panel-body"><canvas id="cv-lat"></canvas></div>
-    <i class="tick tl"></i><i class="tick tr"></i><i class="tick bl"></i><i class="tick br"></i>
+  <section class="card span-lat">
+    <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span>
+      <h2>Latency Envelope</h2><span class="hd-meta" id="d-meta">µs · hardware counters</span></div>
+    <div class="card-body"><canvas id="cv-lat"></canvas></div>
   </section>
 
 </main>
 
-<!-- ============ CHAOS CONTROLLER DOCK ============ -->
-<footer class="dock">
-  <div class="dock-title">
-    <span class="dock-led"></span>CHAOS CONTROLLER
-    <span class="dock-hint">inject a crisis on any node — watch the kernel re-route compute in real time</span>
+<!-- ============ CONTROL RAIL ============ -->
+<footer class="control">
+  <div class="control-hd">
+    <div>
+      <h3>Chaos Controller</h3>
+      <p>Inject a crisis on any patient node and watch the scheduler re-route compute in real time.</p>
+    </div>
+    <div class="eventlog"><span class="el-k">Interrupt log</span><span class="el-v" id="tk-body">No events</span></div>
   </div>
-  <div class="dock-nodes" id="dock-nodes"></div>
-  <div class="dock-ticker" id="dock-ticker"><span class="tk-label">INTERRUPT LOG</span><span id="tk-body">—</span></div>
+  <div class="patients" id="dock-nodes"></div>
 </footer>
 
-<script src="tactical.js?v=1"></script>
+<script src="tactical.js?v=2"></script>
 </body>
 </html>
