@@ -25,6 +25,9 @@ from typing import Any, Dict, List, Optional
 
 from backend.aegis.core import AegisCore, AegisAssessment
 from backend.aegis.scheduler import WhatIfScheduler
+from backend.aegis.kernel.devbio import BioDevice, DevBio
+from backend.aegis.kernel.memfabric import FabricPump, MemFabric, ReadCursor
+from backend.aegis.kernel.neurosym import NeuroSymbolicRuntime, SafetyCertificate
 
 AEGIS_OS_VERSION = "0.8.0"
 
@@ -65,7 +68,10 @@ class AegisOS:
         self.kernel = self.core.hdc                       # Layer 2
         self.scheduler = WhatIfScheduler(                 # Layer 3 (predictive)
             self.core.hdc, self.core.neuro, horizon=whatif_horizon)
-        self._sources: List[str] = []                     # Layer 1 (HAL registry)
+        self._sources: List[str] = []                     # Layer 1 (legacy source tags)
+        self.devbio = DevBio()                            # Layer 1 (/dev/bio bus)
+        self.fabric = MemFabric()                         # Layer 2 (memory fabric)
+        self.safety = NeuroSymbolicRuntime()              # Layer 4 (egress cage)
         self._db = None
         if enable_persistence:
             try:
@@ -83,15 +89,53 @@ class AegisOS:
         return layers
 
     def register_source(self, name: str) -> None:
-        """HAL: register a telemetry device/driver (wearable, camera, EHR…)."""
+        """HAL: register a telemetry source tag (wearable, camera, EHR…)."""
         if name not in self._sources:
             self._sources.append(name)
 
+    def mount_sensor(self, node: str, name: str, device: BioDevice,
+                     ring_capacity: int = 1024) -> int:
+        """Mount a sensor on the /dev/bio bus (L1) and carve its ring in the
+        shared memory fabric (L2). Returns the file descriptor.
+
+        This is the honest ingress path: a driver only appears once something is
+        streaming through it, and its conditioned samples flow into a zero-copy
+        ring rather than ad-hoc copies.
+        """
+        path = self.devbio.mount(node, name, device)
+        fd = self.devbio.open(path)
+        self.fabric.map_descriptor(fd, path, device.channel_keys(), ring_capacity)
+        return fd
+
+    def subscribe(self, fd: int, replay: bool = False) -> ReadCursor:
+        """L2: get an independent zero-copy read cursor over a sensor's ring."""
+        return self.fabric.subscribe(fd, replay=replay)
+
+    def pump(self, fds: Optional[List[int]] = None) -> FabricPump:
+        """Build the L1->L2 pump for the given fds (default: all open fds)."""
+        if fds is None:
+            fds = self.devbio.open_fds()
+        return FabricPump(self.devbio, self.fabric, fds)
+
+    def safe_dispatch(self, egress: str, payload: Dict[str, Any],
+                      context: Optional[Dict[str, Any]] = None
+                      ) -> tuple[bool, SafetyCertificate]:
+        """L4: route an automated output through the formal egress cage. Nothing
+        reaches an external channel without a Z3 certificate (default-deny)."""
+        return self.safety.dispatch(egress, payload, context or {})
+
     def layers(self) -> List[LayerStatus]:
         c = self.core
+        bus = self.devbio.status()
+        if bus["mounted"]:
+            lat = bus["latency"]
+            hal_detail = (f"/dev/bio: {bus['mounted']} dev / {bus['open_fds']} fd "
+                          f"on {bus['nodes']}; cond p50={lat['p50_us']:.1f}µs")
+        else:
+            hal_detail = f"/dev/bio ready; legacy sources={self._sources or ['(none)']}"
         return [
-            LayerStatus(1, "Hardware Abstraction Layer", "device drivers / ingestion",
-                        True, f"sources={self._sources or ['(none registered)']}"),
+            LayerStatus(1, "Stochastic Hardware Abstraction Layer",
+                        "/dev/bio device-driver bus + inline Kalman", True, hal_detail),
             LayerStatus(2, "Hyperdimensional Kernel", "bind/bundle/similarity",
                         self.kernel is not None, f"D={self.kernel.D}"),
             LayerStatus(3, "Digital Twin + What-if Scheduler", "live twin + predictive sim",
@@ -115,6 +159,17 @@ class AegisOS:
             "model_loaded": self.core.model is not None,
             "patient_id": self.core.patient_id,
             "layers": [l.to_dict() for l in self.layers()],
+            "kernel": self.kernel_status(),
+        }
+
+    def kernel_status(self) -> Dict[str, Any]:
+        """The bare-metal substrate (backend/aegis/kernel): L1 /dev/bio bus +
+        L2 zero-copy memory fabric. Reported separately from the clinical layer
+        list so the Performance Diagnostics dashboard has one source of truth."""
+        return {
+            "devbio": self.devbio.status(),          # L1
+            "memfabric": self.fabric.address_matrix(),  # L2
+            "neurosym": self.safety.status(),        # L4 egress cage
         }
 
     # ------------------------------------------------------------------ #
