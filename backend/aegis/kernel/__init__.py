@@ -6,7 +6,7 @@ for the ISEF Systems Software track. Each layer is a real, inspectable artifact:
 
     Layer 1  devbio       /dev/bio unified device-driver bus + inline Kalman
     Layer 2  memfabric    zero-copy lockless ring-buffer memory fabric
-    Layer 3  scheduler    (planned) multi-tenant cognitive cost-function scheduler
+    Layer 3  scheduler    multi-tenant cognitive cost-function scheduler + cluster
     Layer 4  neurosym     (planned) formally-verified neurosymbolic safety runtime
 
 Built incrementally — see the systems-architecture-pivot direction.
@@ -32,6 +32,13 @@ from backend.aegis.kernel.memfabric import (
     ReadCursor,
     Region,
 )
+from backend.aegis.kernel.scheduler import (
+    BioCluster,
+    CognitiveScheduler,
+    NodeState,
+    ScheduleDecision,
+    risk_proxy,
+)
 
 __all__ = [
     # Layer 1
@@ -41,4 +48,7 @@ __all__ = [
     # Layer 2
     "MemFabric", "MemoryArena", "LocklessRing", "ReadCursor", "Region",
     "FabricPump",
+    # Layer 3
+    "CognitiveScheduler", "NodeState", "ScheduleDecision", "BioCluster",
+    "risk_proxy",
 ]
