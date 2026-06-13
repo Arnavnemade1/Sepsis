@@ -5,7 +5,7 @@ clinical runtime (``backend/aegis/core.py``, ``os.py``) is reframed on top of
 for the ISEF Systems Software track. Each layer is a real, inspectable artifact:
 
     Layer 1  devbio       /dev/bio unified device-driver bus + inline Kalman
-    Layer 2  memfabric    (planned) zero-copy lockless ring-buffer memory fabric
+    Layer 2  memfabric    zero-copy lockless ring-buffer memory fabric
     Layer 3  scheduler    (planned) multi-tenant cognitive cost-function scheduler
     Layer 4  neurosym     (planned) formally-verified neurosymbolic safety runtime
 
@@ -24,10 +24,21 @@ from backend.aegis.kernel.devbio import (
     DRIVER_REGISTRY,
     provision_node,
 )
+from backend.aegis.kernel.memfabric import (
+    FabricPump,
+    LocklessRing,
+    MemFabric,
+    MemoryArena,
+    ReadCursor,
+    Region,
+)
 
 __all__ = [
     # Layer 1
     "BioBlock", "BioDevice", "ChannelSpec", "DevBio", "DeviceDescriptor",
     "KalmanScalar", "OpticalRPPGDriver", "ThermalGridDriver",
     "BedsideTelemetryDriver", "DRIVER_REGISTRY", "provision_node",
+    # Layer 2
+    "MemFabric", "MemoryArena", "LocklessRing", "ReadCursor", "Region",
+    "FabricPump",
 ]
