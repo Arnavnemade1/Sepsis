@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=3" />
+<link rel="stylesheet" href="tactical.css?v=4" />
 </head>
 <body>
 <div class="ambient"></div>
@@ -88,6 +88,42 @@
   <div class="patients" id="dock-nodes"></div>
 </footer>
 
-<script src="tactical.js?v=3"></script>
+<!-- ============ MODULE B · BIOMETRIC ENTITY DOSSIER ============ -->
+<div class="dos-scrim" id="dos-scrim"></div>
+<aside class="dossier" id="dossier" aria-hidden="true">
+  <div class="dos-head">
+    <div class="dos-id">
+      <span class="dos-tag" id="dos-tag">BED</span>
+      <div><div class="dos-name" id="dos-name">—</div>
+      <div class="dos-axis" id="dos-axis">—</div></div>
+    </div>
+    <div class="dos-risk"><b id="dos-risk">0.00</b><span id="dos-tier" class="dos-tier">stable</span></div>
+    <button class="dos-close" id="dos-close" title="Close dossier">✕</button>
+  </div>
+  <div class="dos-body">
+    <section class="dos-sec">
+      <h4>Fused risk decomposition</h4>
+      <div class="dos-comps" id="dos-comps"></div>
+    </section>
+    <section class="dos-sec dos-tiers">
+      <div><h4>Edge tier <span>· 30 Hz optical</span></h4><div class="dos-kv" id="dos-edge"></div></div>
+      <div><h4>Enterprise tier <span>· labs + bedside</span></h4><div class="dos-kv" id="dos-ent"></div></div>
+    </section>
+    <section class="dos-sec">
+      <h4>Active derangements</h4>
+      <div class="dos-drivers" id="dos-drivers"></div>
+    </section>
+    <section class="dos-sec">
+      <h4>Shared-memory arena <span>· this bed · zero-copy</span></h4>
+      <div class="dos-canvas" style="height:130px"><canvas id="cv-dos-mem"></canvas></div>
+    </section>
+    <section class="dos-sec">
+      <h4>Kernel reaction latency <span>· monotonic counters</span></h4>
+      <div class="dos-canvas" style="height:124px"><canvas id="cv-dos-lat"></canvas></div>
+    </section>
+  </div>
+</aside>
+
+<script src="tactical.js?v=4"></script>
 </body>
 </html>

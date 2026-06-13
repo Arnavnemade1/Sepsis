@@ -61,6 +61,7 @@ var V={
 };
 var latBuf=new Float32Array(900), latBuf95=new Float32Array(900), latHead=0, latFill=0;
 var events=[], frame=0;
+var selectedBed=null, latestBeds={}, dosBuilt=false;
 
 function ingest(snap){
   target=snap;
@@ -81,9 +82,11 @@ function ingest(snap){
   (snap.events||[]).forEach(function(e){
     if(!events.some(function(x){return x.tick===e.tick;})) events.push(e); });
   if(events.length>40) events=events.slice(-40);
+  latestBeds={}; (snap.beds||[]).forEach(function(b){ latestBeds[b.bed_id]=b; });
   renderGrid(snap.beds);
   renderDock(snap);
   renderSpine();          // refresh metrics + ticker the instant data arrives
+  if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
 }
 
 function ease(){
@@ -165,6 +168,94 @@ function renderGrid(beds){
       [{transform:"translate("+dx+"px,"+dy+"px)"},{transform:"none"}],
       {duration:430,easing:"cubic-bezier(.2,.8,.2,1)"}); });
   gridOrder=ordered;
+}
+
+/* ============================================================
+   MODULE B — Biometric Entity Dossier (split-open micro view)
+   ============================================================ */
+var COMP_COL={cardiac:C.cyan,inflammatory:C.watch,perfusion:C.indigo,metabolic:C.violet};
+var COMP_ORDER=["cardiac","inflammatory","perfusion","metabolic"];
+
+function openDossier(id){
+  selectedBed=id;
+  if(!dosBuilt){ $("dos-comps").innerHTML=COMP_ORDER.map(function(c){
+    return '<div class="dos-comp" data-c="'+c+'"><span class="dos-comp-k">'+c+'</span>'+
+      '<span class="dos-comp-track"><i></i></span><span class="dos-comp-v">0.00</span></div>';
+  }).join(""); dosBuilt=true; }
+  $("dossier").classList.add("open"); $("dos-scrim").classList.add("open");
+  $("dossier").setAttribute("aria-hidden","false");
+  if(latestBeds[id]) updateDossier(latestBeds[id]);
+}
+function closeDossier(){ selectedBed=null;
+  $("dossier").classList.remove("open"); $("dos-scrim").classList.remove("open");
+  $("dossier").setAttribute("aria-hidden","true"); }
+
+function kvHTML(label,val,unit,cls){
+  return '<div class="kv'+(cls?" "+cls:"")+'"><span class="k">'+label+'</span>'+
+    '<span class="v">'+val+(unit?'<small>'+unit+'</small>':'')+'</span></div>';
+}
+function updateDossier(b){
+  if(!b) return;
+  var tier=tierOf(b.fused_risk), e=b.edge, en=b.enterprise;
+  $("dos-tag").textContent=bedTag(b.bed_id);
+  $("dos-name").textContent=b.name;
+  $("dos-axis").textContent=b.primary_system==="none"?"all systems nominal":b.primary_system+" axis · primary";
+  $("dos-risk").textContent=fmt(b.fused_risk,2);
+  var tEl=$("dos-tier"); tEl.textContent=tier; tEl.className="dos-tier"+(tier==="stable"?"":" "+tier);
+  $("dossier").classList.toggle("critical",tier==="critical");
+  COMP_ORDER.forEach(function(c){ var row=$("dos-comps").querySelector('[data-c="'+c+'"]'); if(!row) return;
+    var sc=b.components[c]||0, bar=row.querySelector("i");
+    bar.style.width=clamp(sc/2.5*100,0,100)+"%"; bar.style.background=COMP_COL[c];
+    row.querySelector(".dos-comp-v").textContent=fmt(sc,2); });
+  $("dos-edge").innerHTML=
+    kvHTML("Heart rate",fmt(e.hr,0),"bpm", e.hr>100?"alert":(e.hr>90?"warn":""))+
+    kvHTML("HRV (RMSSD)",fmt(e.hrv_ms,0),"ms")+
+    kvHTML("Perfusion idx",fmt(e.perfusion,2),"au")+
+    kvHTML("Vasomotion",fmt(e.vasomotion,2),"au");
+  $("dos-ent").innerHTML=
+    kvHTML("Temperature",fmt(en.temp_c,1),"°C",(en.temp_c>38||en.temp_c<36)?"alert":"")+
+    kvHTML("Resp rate",fmt(en.resp_rate,0),"/min",en.resp_rate>22?"warn":"")+
+    kvHTML("SpO₂",fmt(en.spo2,0),"%",en.spo2<92?"alert":"")+
+    kvHTML("MAP",fmt(en.map,0),"mmHg",en.map<65?"alert":"")+
+    kvHTML("ABP variability",fmt(en.abp_var,1),"σ")+
+    kvHTML("WBC",fmt(en.wbc,1),"×10³",(en.wbc>12||en.wbc<4)?"alert":"")+
+    kvHTML("Lactate",fmt(en.lactate,1),"mmol/L",en.lactate>=4?"alert":(en.lactate>2?"warn":""))+
+    kvHTML("Lactate clearance",fmt(en.lactate_clearance,0),"%",(en.lactate>2&&en.lactate_clearance<-5)?"warn":"");
+  $("dos-drivers").innerHTML=(b.drivers&&b.drivers.length)
+    ? b.drivers.map(function(d,i){ return '<div class="drv'+(i<2?" hi":"")+'">'+d+'</div>'; }).join("")
+    : '<div class="drv none">All monitored systems within range</div>';
+}
+
+/* per-bed shared-memory arena map — this patient's /dev/bio rings, WP + RP */
+var FEED_ORDER=["optical","thermal","bedside","labs"];
+function drawBedMemory(s,bedId){
+  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  var rings=V.mem.rings||{}, cursors=V.mem.cursors||[], prefix="/dev/bio/"+bedId+"/", lanes=[];
+  for(var p in rings){ if(p.indexOf(prefix)===0){
+    lanes.push({kind:p.slice(prefix.length).replace("_feed",""), ring:rings[p]}); } }
+  lanes.sort(function(a,b){return FEED_ORDER.indexOf(a.kind)-FEED_ORDER.indexOf(b.kind);});
+  if(!lanes.length) return;
+  var x0=64, x1=w-58, W=x1-x0, padT=6, padB=6, rowH=(h-padT-padB)/lanes.length;
+  ctx.textBaseline="middle";
+  lanes.forEach(function(L,i){
+    var y=padT+rowH*i+rowH/2, cap=L.ring.capacity||1, th=Math.min(11,rowH*0.5), ty=y-th/2;
+    ctx.textAlign="left"; ctx.font=FS(10,500); ctx.fillStyle=C.muted; ctx.fillText(L.kind,8,y);
+    ctx.fillStyle="rgba(255,255,255,.045)"; roundRect(ctx,x0,ty,W,th,th/2); ctx.fill();
+    // faint slot ticks
+    ctx.strokeStyle=C.grid; ctx.lineWidth=1;
+    for(var t=0;t<=8;t++){ var tx=x0+W*t/8; ctx.beginPath(); ctx.moveTo(tx,ty); ctx.lineTo(tx,ty+th); ctx.stroke(); }
+    // read cursors (amber)
+    cursors.forEach(function(cur){ if(cur.ring===L.ring.name){
+      var rx=x0+(cur.read_ptr/cap)*W; ctx.fillStyle=withAlpha(C.watch,.9);
+      roundRect(ctx,rx-1.5,ty,3,th,1.5); ctx.fill(); } });
+    // write pointer (bright sweep)
+    var wx=x0+(L.ring.write_ptr/cap)*W;
+    ctx.fillStyle=C.cyan; ctx.shadowColor=C.cyan; ctx.shadowBlur=9;
+    roundRect(ctx,wx-2,ty-2,4,th+4,2); ctx.fill(); ctx.shadowBlur=0;
+    // write index
+    ctx.textAlign="right"; ctx.font=FM(9.5,500); ctx.fillStyle=C.dim;
+    ctx.fillText((L.ring.write_index||0).toLocaleString(), w-8, y);
+  });
 }
 
 /* ============================================================
@@ -367,12 +458,24 @@ var surf={}, spineTick=0;
 function setup(){
   surf.mem=new Surface("cv-mem");
   surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
+  surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
+  // open the dossier from a bed card or a dock patient card
+  $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed");
+    if(bed) openDossier(bed.dataset.id); });
+  $("dock-nodes").addEventListener("click",function(e){
+    if(e.target.closest("button")) return; var card=e.target.closest(".patient");
+    if(card) openDossier(card.dataset.id); });
+  $("dos-close").addEventListener("click",closeDossier);
+  $("dos-scrim").addEventListener("click",closeDossier);
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeDossier(); });
   connect(); requestAnimationFrame(loop);
 }
 function loop(){ frame++;
   for(var k in surf) surf[k].fit();
   if(target) ease();
   drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
+  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit();
+    drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
 }
