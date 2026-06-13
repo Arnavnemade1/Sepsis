@@ -104,6 +104,39 @@ b{font-weight:700}
 .card-body{flex:1 1 auto;position:relative;min-height:0;min-width:0;margin:0 6px 6px}
 .card-body canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
+/* ---------------- MODULE C · NEUROSYMBOLIC PROTOCOL TERMINAL ---------------- */
+.terminal{flex:0 0 auto;margin:0 24px 4px;border:1px solid var(--hair);border-radius:14px;
+  background:linear-gradient(180deg,rgba(10,13,20,.72),rgba(7,9,14,.88));overflow:hidden;
+  max-height:48px;transition:max-height .5s cubic-bezier(.2,.85,.2,1);box-shadow:var(--shadow)}
+.terminal.active{max-height:198px;border-color:rgba(251,111,125,.32)}
+.term-bar{display:flex;align-items:center;gap:11px;padding:14px 18px}
+.terminal.active .term-bar{border-bottom:1px solid var(--hair-soft)}
+.term-dot{width:8px;height:8px;border-radius:50%;background:var(--dim);transition:.3s;flex:0 0 auto}
+.terminal.active .term-dot{background:var(--crit);box-shadow:0 0 10px var(--crit);animation:hot 1.1s infinite}
+.term-title{font-size:12.5px;font-weight:600;color:var(--ink)}
+.term-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em}
+.terminal.active .term-sub{color:var(--crit)}
+.term-stamp{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--ok);
+  letter-spacing:.04em;white-space:nowrap}
+.term-body{height:146px;overflow-y:auto;padding:11px 20px 14px;font-family:var(--mono);
+  font-size:11.5px;line-height:1.62;font-variant-numeric:tabular-nums}
+.term-body::-webkit-scrollbar{width:7px}.term-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.term-idle{color:var(--dim)}
+.tl{white-space:pre-wrap;animation:tlin .2s ease}
+@keyframes tlin{from{opacity:0;transform:translateY(3px)}to{opacity:1}}
+.tl-sys{color:var(--muted)}
+.tl-ok{color:var(--ok)}
+.tl-bad{color:var(--crit)}
+.tl-item-indicated{color:var(--cyan)}
+.tl-item-done{color:var(--muted)}
+.tl-item-not_indicated{color:var(--dim)}
+.tl-note{color:var(--muted);margin-top:7px}
+.tl-notetext{color:var(--ink);opacity:.82;padding-left:2px}
+.tl-stamp{color:var(--ok);font-weight:600;margin-top:9px;letter-spacing:.05em}
+.tl-stamp.bad{color:var(--crit)}
+.tl-cursor::after{content:"▋";color:var(--cyan);animation:blink 1s steps(2) infinite;margin-left:2px}
+@keyframes blink{50%{opacity:0}}
+
 /* ---------------- CONTROL RAIL ---------------- */
 .control{
   flex:0 0 auto;position:relative;z-index:3;

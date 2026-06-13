@@ -26,6 +26,7 @@ from backend.aegis.kernel.devbio import (
     provision_node,
 )
 from backend.aegis.kernel.fusion import BedProfile, FusionEngine
+from backend.aegis.kernel.bundle import SepsisBundleEngine
 from backend.aegis.kernel.memfabric import (
     FabricPump,
     LocklessRing,
@@ -55,8 +56,8 @@ __all__ = [
     "BioBlock", "BioDevice", "ChannelSpec", "DevBio", "DeviceDescriptor",
     "KalmanScalar", "OpticalRPPGDriver", "ThermalGridDriver",
     "BedsideTelemetryDriver", "LabsDriver", "DRIVER_REGISTRY", "provision_node",
-    # Fusion (Sepsis Ontology)
-    "FusionEngine", "BedProfile",
+    # Fusion (Sepsis Ontology) + Hour-1 bundle
+    "FusionEngine", "BedProfile", "SepsisBundleEngine",
     # Layer 2
     "MemFabric", "MemoryArena", "LocklessRing", "ReadCursor", "Region",
     "FabricPump",

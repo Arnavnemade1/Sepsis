@@ -87,6 +87,7 @@ function ingest(snap){
   renderDock(snap);
   renderSpine();          // refresh metrics + ticker the instant data arrives
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
+  renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
 }
 
 function ease(){
@@ -314,7 +315,12 @@ function drawMemory(s){
 function drawLanes(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
   var ids=nodeOrder, n=ids.length||1;
-  var padT=26, padB=12, rowH=(h-padT-padB)/n, barL=104, barR=w-52, barW=barR-barL;
+  var padT=26, padB=12, rowH0=(h-padT-padB)/n;
+  // compact mode when the panel is short (e.g. while the terminal is expanded):
+  // drop per-row labels/counts so the bars never overlap.
+  var compact=rowH0<17;
+  if(compact){ padT=16; padB=8; }
+  var rowH=(h-padT-padB)/n, barL=compact?12:104, barR=w-(compact?12:52), barW=barR-barL;
   ctx.textBaseline="middle"; ctx.textAlign="left";
   // header: under preempt show the crisis callout; otherwise the class legend
   if(V.mode==="PREEMPT"){
@@ -331,10 +337,10 @@ function drawLanes(s){
     ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(gxx+.5,padT-3); ctx.lineTo(gxx+.5,h-padB+3); ctx.stroke(); }
 
   ids.forEach(function(id,r){ var nd=V.nodes[id], L=V.lanes[id]; if(!nd) return;
-    var cyy=padT+rowH*r+rowH/2, bh=Math.min(16,rowH*0.46), by=cyy-bh/2, owner=(V.owner===id);
-    ctx.textAlign="left"; ctx.font=FS(11,owner?600:500);
-    ctx.fillStyle=owner?C.crit:(nd.tier==="WATCH"?C.watch:C.ink);
-    ctx.fillText((nd.name||id).slice(0,13), 8, cyy);
+    var cyy=padT+rowH*r+rowH/2, bh=Math.min(16,rowH*(compact?0.62:0.46)), by=cyy-bh/2, owner=(V.owner===id);
+    if(!compact){ ctx.textAlign="left"; ctx.font=FS(11,owner?600:500);
+      ctx.fillStyle=owner?C.crit:(nd.tier==="WATCH"?C.watch:C.ink);
+      ctx.fillText((nd.name||id).slice(0,13), 8, cyy); }
     // track
     ctx.fillStyle="rgba(255,255,255,.03)"; roundRect(ctx,barL,by,barW,bh,bh/2); ctx.fill();
     // segments (rounded, tiny gaps)
@@ -346,9 +352,9 @@ function drawLanes(s){
       x+=seg; });
     if(owner){ ctx.strokeStyle=withAlpha(C.crit,.7); ctx.lineWidth=1.2; ctx.shadowColor=withAlpha(C.crit,.55); ctx.shadowBlur=10;
       roundRect(ctx,barL,by,barW,bh,bh/2); ctx.stroke(); ctx.shadowBlur=0; }
-    // lane count chip
-    ctx.textAlign="right"; ctx.font=FM(10.5,500); ctx.fillStyle=C.muted;
-    ctx.fillText(Math.round(nd.lanes), w-12, cyy);
+    // lane count chip (omitted in compact mode)
+    if(!compact){ ctx.textAlign="right"; ctx.font=FM(10.5,500); ctx.fillStyle=C.muted;
+      ctx.fillText(Math.round(nd.lanes), w-12, cyy); }
   });
 }
 
@@ -399,6 +405,55 @@ function drawLatency(s){
   ctx.fillStyle=C.ok; ctx.font=FS(10,600); ctx.textAlign="left";
   ctx.fillText("▼ "+(margin>=1000?(margin/1000).toFixed(1)+"k":Math.round(margin))+"× under deadline", rx+14, ry+55);
   ctx.textBaseline="middle";
+}
+
+/* ============================================================
+   MODULE C — Neurosymbolic Protocol Terminal (streamed)
+   ============================================================ */
+var termKey=null, termTimer=null;
+function nowClock(){ return new Date().toLocaleTimeString("en-GB"); }
+function buildTermLines(b){
+  var L=[], p=b.protocol;
+  L.push(["sys","SEPSIS VECTOR BREACH — "+bedTag(b.bed_id)+" · "+b.name+" · fused risk "+fmt(b.fused_risk,2)]);
+  L.push(["sys","Layer-4 neurosymbolic plane engaged · "+b.primary_system+" axis"]);
+  L.push([b.alert.certified?"ok":"bad",(b.alert.certified?"[✓] ":"[✗] ")+"ALERT "+b.severity_name+
+    " — Z3 "+b.alert.z3.toUpperCase()+" · coherent with calibrated risk"]);
+  L.push(["sys","Compiling Hour-1 Sepsis Bundle …"]);
+  b.checklist.forEach(function(it){ L.push(["item-"+it.status,"["+it.n+"] "+it.title+" — "+it.detail]); });
+  L.push(["sys","Verifying orders against patient-specific invariants …"]);
+  L.push([p.certified?"ok":"bad",(p.certified?"[✓] ":"[✗] ")+"PROTOCOL ("+p.antibiotic+
+    " · fluid "+p.fluid_rate+" · vaso "+p.vasopressor_dose+") — Z3 "+p.z3.toUpperCase()+
+    (p.certified?"":" — "+(p.violations[0]||"violation"))]);
+  L.push(["note","Clinical note (certified):"]);
+  L.push(["notetext",'"'+b.note.text+'"']);
+  L.push([b.note.certified?"ok":"bad",(b.note.certified?"[✓] ":"[✗] ")+
+    "NOTE — chain-of-trust to certified protocol"]);
+  L.push([b.all_verified?"stamp":"stamp bad", b.all_verified
+    ?"══ FORMALLY VERIFIED · SAFE TO DISPATCH ══":"══ QUARANTINED · MANUAL REVIEW REQUIRED ══"]);
+  return L;
+}
+function streamLines(lines){
+  var body=$("term-body"); body.innerHTML=""; if(termTimer){ clearTimeout(termTimer); termTimer=null; }
+  var i=0;
+  (function step(){
+    if(i>0 && body.children[i-1]) body.children[i-1].classList.remove("tl-cursor");
+    if(i>=lines.length){ termTimer=null; $("term-stamp").textContent="verified "+nowClock(); return; }
+    var L=lines[i], ln=document.createElement("div");
+    ln.className="tl tl-"+L[0]+" tl-cursor"; ln.textContent=L[1];
+    body.appendChild(ln); body.scrollTop=body.scrollHeight; i++;
+    termTimer=setTimeout(step, L[0]==="notetext"?240:92);
+  })();
+}
+function renderTerminal(bundle){
+  var term=$("terminal");
+  if(!bundle){ if(termKey!==null){ term.classList.remove("active");
+      $("term-sub").textContent="Layer-4 formal verification · standing by"; $("term-stamp").textContent="";
+      $("term-body").innerHTML='<div class="term-idle">// no active sepsis vectors — all beds within range</div>';
+      termKey=null; if(termTimer){ clearTimeout(termTimer); termTimer=null; } } return; }
+  term.classList.add("active");
+  $("term-sub").textContent="active focus · "+bundle.name;
+  if(bundle.bed_id===termKey) return;          // already streamed for this bed
+  termKey=bundle.bed_id; streamLines(buildTermLines(bundle));
 }
 
 /* ============================================================

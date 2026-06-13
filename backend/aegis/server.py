@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.aegis.stream import AegisSession
-from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime
+from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -70,6 +70,18 @@ cluster = BioCluster(n_nodes=6, lane_budget=96,
                      weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7,
                      names=[CLUSTER_NODE_NAMES[f"node_{i}"] for i in range(6)])
 cluster_safety = NeuroSymbolicRuntime()
+# Per-bed clinical history drives the bundle's patient-specific, provably-safe
+# treatment derivation (CHF fluid caps, penicillin-sparing antibiotics, …).
+CLUSTER_HISTORIES = {
+    "node_0": {"chf": True},
+    "node_1": {"penicillin_allergy": True},
+    "node_2": {"renal_failure": True},
+    "node_3": {},
+    "node_4": {"chf": True, "penicillin_allergy": True},
+    "node_5": {},
+}
+bundle_engine = SepsisBundleEngine()
+_bundle = {"bed": None, "ts": 0.0, "data": None}
 CLUSTER_TICK_SECONDS = 0.6
 _cluster_clients: List[WebSocket] = []
 cluster.run(12)                                   # warm the rings before serving
@@ -286,12 +298,37 @@ def _certify_cluster_headline(decision) -> None:
     })
 
 
+def _focus_bundle() -> Optional[Dict[str, Any]]:
+    """Compile + certify the Hour-1 bundle for the critical focus bed (the preempt
+    owner, else the highest-risk bed once it breaches). Throttled so the Z3 prover
+    runs at most ~every 2.5 s per bed rather than every broadcast tick."""
+    owner = cluster.sched.last.owner if cluster.sched.last else None
+    focus = None
+    if owner and owner in cluster.profiles and cluster.profiles[owner].fused_risk >= 0.70:
+        focus = owner
+    else:
+        crit = [(p.fused_risk, nid) for nid, p in cluster.profiles.items() if p.fused_risk >= 0.70]
+        if crit:
+            focus = max(crit)[1]
+    if not focus:
+        _bundle.update(bed=None, data=None)
+        return None
+    now = time.time()
+    if _bundle["bed"] != focus or now - _bundle["ts"] > 2.5:
+        _bundle["data"] = bundle_engine.generate(
+            cluster.profiles[focus], CLUSTER_HISTORIES.get(focus, {}))
+        _bundle["bed"] = focus
+        _bundle["ts"] = now
+    return _bundle["data"]
+
+
 def _cluster_payload() -> Dict[str, Any]:
     snap = cluster.snapshot()
     for node in snap["topology"]:                 # attach human-readable names
         node["name"] = CLUSTER_NODE_NAMES.get(node["node_id"], node["node_id"])
     snap["devbio"] = cluster.bus.status()         # Panel D — µs conditioning latency
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
+    snap["bundle"] = _focus_bundle()              # Module C — certified Hour-1 bundle
     snap["ts"] = time.time()
     return snap
 

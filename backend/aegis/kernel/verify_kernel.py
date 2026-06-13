@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from backend.aegis.kernel import verify_devbio, verify_memfabric
-from backend.aegis.kernel import verify_neurosym, verify_scheduler, verify_fusion
+from backend.aegis.kernel import verify_neurosym, verify_scheduler, verify_fusion, verify_bundle
 
 
 def main() -> None:
@@ -19,6 +19,8 @@ def main() -> None:
     verify_scheduler.main()    # L3 multi-tenant cognitive scheduler
     print()
     verify_fusion.main()       # Core Data Fusion Engine (Sepsis Ontology)
+    print()
+    verify_bundle.main()       # Hour-1 Sepsis Bundle engine (Module C)
     print()
     verify_neurosym.main()     # L4 neurosymbolic egress cage
     print("\n" + "#" * 64)
