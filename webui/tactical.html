@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=2" />
+<link rel="stylesheet" href="tactical.css?v=3" />
 </head>
 <body>
 <div class="ambient"></div>
@@ -50,10 +50,10 @@
 <!-- ============ BOARD ============ -->
 <main class="board">
 
-  <section class="card span-topo">
+  <section class="card span-ops">
     <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span>
-      <h2>Cluster Topology</h2><span class="hd-meta" id="a-meta">6 nodes · /dev/bio</span></div>
-    <div class="card-body"><canvas id="cv-topo"></canvas></div>
+      <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">6 beds · fused ontology</span></div>
+    <div class="card-body"><div class="opgrid" id="opgrid"></div></div>
   </section>
 
   <section class="card span-mem">
@@ -88,6 +88,6 @@
   <div class="patients" id="dock-nodes"></div>
 </footer>
 
-<script src="tactical.js?v=2"></script>
+<script src="tactical.js?v=3"></script>
 </body>
 </html>

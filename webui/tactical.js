@@ -81,7 +81,9 @@ function ingest(snap){
   (snap.events||[]).forEach(function(e){
     if(!events.some(function(x){return x.tick===e.tick;})) events.push(e); });
   if(events.length>40) events=events.slice(-40);
+  renderGrid(snap.beds);
   renderDock(snap);
+  renderSpine();          // refresh metrics + ticker the instant data arrives
 }
 
 function ease(){
@@ -105,65 +107,64 @@ function ease(){
 }
 
 /* ============================================================
-   PANEL — Cluster Topology
+   MODULE A — ICU Operations Grid (DOM; FLIP reorder)
+   A dense bed matrix fed by the fused per-bed ontology. A bed that
+   crosses critical expands, flashes crimson and floats to top-left.
    ============================================================ */
-function drawTopology(s){
-  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
-  // ellipse fills the wide panel horizontally; Ry keeps ~50px label room
-  var cx=w/2, cy=h/2, Ry=Math.max(54,h/2-56), Rx=Math.min(w*0.30,Ry*1.95);
-  var ids=nodeOrder, n=ids.length||1;
-  ctx.textAlign="center"; ctx.textBaseline="middle";
+var gridOrder=[];
+function bedTag(id){ var m=id.match(/(\d+)/); var i=m?(+m[1]+1):0; return "BED "+(i<10?"0"+i:i); }
+function tierOf(p){ return p>=0.70?"critical":p>=0.40?"watch":"stable"; }
+function vital(label,val,dec){ return "<span><i>"+label+"</i>"+fmt(val,dec)+"</span>"; }
 
-  // faint elliptical guide rings
-  for(var gi=1;gi<=3;gi++){ ctx.strokeStyle=withAlpha(C.indigo,.05*(4-gi)/3); ctx.lineWidth=1;
-    ctx.beginPath(); ctx.ellipse(cx,cy,Rx*gi/3,Ry*gi/3,0,0,7); ctx.stroke(); }
-
-  ids.forEach(function(id,i){ var a=-Math.PI/2+i*2*Math.PI/n, nd=V.nodes[id]; if(!nd) return;
-    nd.x=cx+Math.cos(a)*Rx; nd.y=cy+Math.sin(a)*Ry; });
-
-  var totalLanes=0; ids.forEach(function(id){ totalLanes+=V.nodes[id]?V.nodes[id].lanes:0; });
-
-  // edges (gradient hub->node) + flow particles
-  ids.forEach(function(id){ var nd=V.nodes[id]; if(!nd) return;
-    var share=nd.lanes/Math.max(totalLanes,1), col=TIER_COL[nd.tier]||C.cyan;
-    var g=ctx.createLinearGradient(cx,cy,nd.x,nd.y);
-    g.addColorStop(0,withAlpha(C.indigo,.22)); g.addColorStop(1,withAlpha(col,.42));
-    ctx.strokeStyle=g; ctx.lineWidth=1+share*9; ctx.lineCap="round";
-    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(nd.x,nd.y); ctx.stroke();
-    var dx=nd.x-cx,dy=nd.y-cy,len=Math.hypot(dx,dy)||1,ux=dx/len,uy=dy/len, speed=0.5+share*3.0;
-    for(var k=0;k<3;k++){ var ph=((frame*speed*0.01)+k/3)%1, px=cx+ux*len*ph, py=cy+uy*len*ph;
-      ctx.fillStyle=withAlpha(col,.85*(1-ph*0.55)); ctx.beginPath();
-      ctx.arc(px,py,1.2+share*2.4,0,7); ctx.fill(); } });
-
-  // hub
-  var hg=ctx.createRadialGradient(cx,cy,2,cx,cy,30);
-  hg.addColorStop(0,withAlpha(C.indigo,.30)); hg.addColorStop(1,withAlpha(C.indigo,.04));
-  ctx.fillStyle=hg; ctx.beginPath(); ctx.arc(cx,cy,30,0,7); ctx.fill();
-  ctx.strokeStyle=withAlpha(C.indigo,.45); ctx.lineWidth=1; ctx.beginPath(); ctx.arc(cx,cy,30,0,7); ctx.stroke();
-  ctx.fillStyle=C.dim; ctx.font=FS(8.5,600); ctx.fillText("Σ w·P", cx, cy-9);
-  ctx.fillStyle=C.ink; ctx.font=FM(15,600); ctx.fillText(fmt(V.cost,2), cx, cy+8);
-
-  // nodes
-  ids.forEach(function(id){ var nd=V.nodes[id]; if(!nd) return;
-    var col=TIER_COL[nd.tier]||C.cyan, rad=10+clamp(nd.lanes/V.budget,0,1)*15;
-    var crit=nd.tier==="CRITICAL", pulse=crit?1+Math.sin(frame*0.11)*0.10:1, x=nd.x, y=nd.y;
-    // halo
-    var hgl=ctx.createRadialGradient(x,y,rad*0.5,x,y,rad*2.1*pulse);
-    hgl.addColorStop(0,withAlpha(col,crit?.30:.16)); hgl.addColorStop(1,withAlpha(col,0));
-    ctx.fillStyle=hgl; ctx.beginPath(); ctx.arc(x,y,rad*2.1*pulse,0,7); ctx.fill();
-    // core
-    var cg=ctx.createRadialGradient(x-rad*0.3,y-rad*0.3,1,x,y,rad);
-    cg.addColorStop(0,withAlpha(col,.34)); cg.addColorStop(1,withAlpha(col,.10));
-    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(x,y,rad*pulse,0,7); ctx.fill();
-    // ring
-    ctx.strokeStyle=col; ctx.lineWidth=crit?2.2:1.5;
-    if(crit){ ctx.shadowColor=col; ctx.shadowBlur=16; }
-    ctx.beginPath(); ctx.arc(x,y,rad*pulse,0,7); ctx.stroke(); ctx.shadowBlur=0;
-    // labels
-    var below=y>=cy, ly1=clamp(y+(below?rad+15:-rad-26),14,h-16), ly2=clamp(y+(below?rad+28:-rad-13),26,h-5);
-    ctx.fillStyle=C.ink; ctx.font=FS(11,600); ctx.fillText((nd.name||id).split(",")[0], x, ly1);
-    ctx.fillStyle=withAlpha(col,.95); ctx.font=FM(9.5,500); ctx.fillText("p "+fmt(nd.p,2), x, ly2);
-  });
+function bedCellHTML(b){
+  return '<div class="bed-top"><span class="bed-tag">'+bedTag(b.bed_id)+'</span>'+
+    '<span class="bed-name">'+b.name+'</span>'+
+    '<span class="bed-risk">P <b>0.00</b></span></div>'+
+    '<div class="bed-sys">—</div>'+
+    '<div class="bed-driver"></div>'+
+    '<div class="bed-vitals"></div>'+
+    '<div class="bed-bar"><i></i></div>';
+}
+function updateBed(el,b){
+  var tier=tierOf(b.fused_risk), en=b.enterprise, ed=b.edge;
+  if(el.dataset.tier!==tier){
+    if(tier==="critical" && el.dataset.tier && el.dataset.tier!=="critical"){
+      el.classList.add("just-crit");
+      setTimeout(function(){ el.classList.remove("just-crit"); }, 2700);
+    }
+    el.dataset.tier=tier;
+    el.className="bed "+tier+(el.classList.contains("just-crit")?" just-crit":"");
+  }
+  el.querySelector(".bed-risk b").textContent=fmt(b.fused_risk,2);
+  el.querySelector(".bed-sys").textContent=
+    b.primary_system==="none"?"nominal":b.primary_system+" axis";
+  el.querySelector(".bed-driver").textContent=b.drivers&&b.drivers.length?("▸ "+b.drivers[0]):"";
+  var compact=vital("HR",ed.hr,0)+vital("MAP",en.map,0)+vital("T°",en.temp_c,1)+
+    vital("SpO₂",en.spo2,0)+vital("Lac",en.lactate,1)+vital("WBC",en.wbc,1);
+  var full=compact+vital("RR",en.resp_rate,0)+vital("HRV",ed.hrv_ms,0)+
+    vital("Perf",ed.perfusion,2);
+  el.querySelector(".bed-vitals").innerHTML=(tier==="critical")?full:compact;
+  el.querySelector(".bed-bar i").style.width=clamp(b.fused_risk*100,2,100)+"%";
+}
+function renderGrid(beds){
+  var host=$("opgrid"); if(!host||!beds) return;
+  beds.forEach(function(b){ if(!host.querySelector('[data-id="'+b.bed_id+'"]')){
+    var el=document.createElement("div"); el.className="bed stable"; el.dataset.id=b.bed_id;
+    el.innerHTML=bedCellHTML(b); host.appendChild(el); } });
+  // order: highest fused risk first (critical floats to top-left)
+  var ordered=beds.slice().sort(function(a,b){return b.fused_risk-a.fused_risk;})
+                  .map(function(b){return b.bed_id;});
+  // FLIP — capture, reorder + restyle, animate the delta
+  var first={}; [].forEach.call(host.children,function(el){ first[el.dataset.id]=el.getBoundingClientRect(); });
+  ordered.forEach(function(id){ host.appendChild(host.querySelector('[data-id="'+id+'"]')); });
+  var byId={}; beds.forEach(function(b){ byId[b.bed_id]=b; });
+  [].forEach.call(host.children,function(el){ if(byId[el.dataset.id]) updateBed(el,byId[el.dataset.id]); });
+  [].forEach.call(host.children,function(el){ var f=first[el.dataset.id]; if(!f) return;
+    var l=el.getBoundingClientRect(), dx=f.left-l.left, dy=f.top-l.top;
+    if(Math.abs(dx)>0.5||Math.abs(dy)>0.5) el.animate(
+      [{transform:"translate("+dx+"px,"+dy+"px)"},{transform:"none"}],
+      {duration:430,easing:"cubic-bezier(.2,.8,.2,1)"}); });
+  gridOrder=ordered;
 }
 
 /* ============================================================
@@ -171,19 +172,19 @@ function drawTopology(s){
    ============================================================ */
 function drawMemory(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
-  var pad=14, headH=34;
+  var pad=14, headH=30;
   ctx.textBaseline="middle"; ctx.textAlign="left";
-  ctx.font=FS(9.5,600); ctx.fillStyle=C.dim; ctx.fillText("BASE", pad,14);
-  ctx.font=FM(11,500); ctx.fillStyle=C.muted; ctx.fillText(V.mem.base||"0x0", pad+36,14);
-  var sx=pad+170;
-  ctx.fillStyle=V.mem.stable?C.ok:C.crit; ctx.beginPath(); ctx.arc(sx,14,3.2,0,7); ctx.fill();
-  ctx.font=FS(10.5,500); ctx.fillStyle=V.mem.stable?C.ok:C.crit;
-  ctx.fillText(V.mem.stable?"Pointer stable":"Pointer moved", sx+9,14);
-  ctx.textAlign="right";
-  ctx.font=FS(9.5,600); ctx.fillStyle=C.dim; ctx.fillText("UTIL", w-118,14);
-  ctx.font=FM(11,500); ctx.fillStyle=C.muted; ctx.fillText(fmt(V.mem.util*100,2)+"%", w-78,14);
-  ctx.font=FS(9.5,600); ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText("PUBLISHED", w-pad,28);
-  ctx.font=FM(10.5,500); ctx.fillStyle=C.muted; ctx.fillText((V.mem.published||0).toLocaleString(), w-pad,14);
+  // left: BASE + pointer + stable badge (placed after the address, width-aware)
+  ctx.font=FS(9.5,600); ctx.fillStyle=C.dim; ctx.fillText("BASE", pad,13);
+  ctx.font=FM(10.5,500); ctx.fillStyle=C.muted; var bv=V.mem.base||"0x0"; ctx.fillText(bv, pad+34,13);
+  var dotx=pad+40+ctx.measureText(bv).width;
+  ctx.fillStyle=V.mem.stable?C.ok:C.crit; ctx.beginPath(); ctx.arc(dotx,13,3,0,7); ctx.fill();
+  ctx.font=FS(9.5,500); ctx.fillStyle=V.mem.stable?C.ok:C.crit;
+  ctx.fillText(V.mem.stable?"stable":"moved", dotx+7,13);
+  // right: util% · published
+  var pub=V.mem.published>=1000?(V.mem.published/1000).toFixed(1)+"k":(V.mem.published||0)+"";
+  ctx.textAlign="right"; ctx.font=FM(10.5,500); ctx.fillStyle=C.muted;
+  ctx.fillText(fmt(V.mem.util*100,2)+"% · "+pub+" pub", w-pad,13);
   ctx.textAlign="left";
 
   var sorted=V.mem._sorted, byName=V.mem._byName||{}; if(!sorted||!sorted.length) return;
@@ -223,16 +224,17 @@ function drawLanes(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
   var ids=nodeOrder, n=ids.length||1;
   var padT=26, padB=12, rowH=(h-padT-padB)/n, barL=104, barR=w-52, barW=barR-barL;
-  ctx.textBaseline="middle";
-  // header: mode + legend
-  ctx.textAlign="left"; ctx.font=FS(10.5,600);
-  ctx.fillStyle=V.mode==="PREEMPT"?C.crit:C.muted;
-  ctx.fillText(V.mode==="PREEMPT"?("Hard preempt → "+(V.owner||"")):"Normal · lanes ∝ risk", barL, 13);
-  var lx=barR; ctx.textAlign="right";
-  for(var i=LANE_ORDER.length-1;i>=0;i--){ var c=LANE_ORDER[i], lbl=LANE_LABEL[c];
-    ctx.font=FS(9.5,500); ctx.fillStyle=C.dim; ctx.fillText(lbl,lx,13);
-    var tw=ctx.measureText(lbl).width; ctx.fillStyle=LANE_COL[c];
-    ctx.fillRect(lx-tw-12,9,7,7); lx-=tw+24; }
+  ctx.textBaseline="middle"; ctx.textAlign="left";
+  // header: under preempt show the crisis callout; otherwise the class legend
+  if(V.mode==="PREEMPT"){
+    ctx.font=FS(10.5,600); ctx.fillStyle=C.crit;
+    ctx.fillText("⚡ Hard preempt → "+(V.owner||""), 10, 13);
+  } else {
+    var lx=10;
+    LANE_ORDER.forEach(function(c){ ctx.fillStyle=LANE_COL[c]; ctx.fillRect(lx,8,7,7);
+      ctx.font=FS(9.5,500); ctx.fillStyle=C.dim; var lbl=LANE_LABEL[c];
+      ctx.fillText(lbl,lx+11,13); lx+=11+ctx.measureText(lbl).width+15; });
+  }
   // budget guides
   for(var g=1;g<4;g++){ var gxx=barL+barW*g/4;
     ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(gxx+.5,padT-3); ctx.lineTo(gxx+.5,h-padB+3); ctx.stroke(); }
@@ -363,14 +365,14 @@ setInterval(function(){ if(connected && performance.now()-lastMsg<4000) return;
    ============================================================ */
 var surf={}, spineTick=0;
 function setup(){
-  surf.topo=new Surface("cv-topo"); surf.mem=new Surface("cv-mem");
+  surf.mem=new Surface("cv-mem");
   surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
   connect(); requestAnimationFrame(loop);
 }
 function loop(){ frame++;
   for(var k in surf) surf[k].fit();
   if(target) ease();
-  drawTopology(surf.topo); drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
+  drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
 }

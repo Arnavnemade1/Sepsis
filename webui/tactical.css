@@ -77,12 +77,12 @@ b{font-weight:700}
 /* ---------------- BOARD ---------------- */
 .board{
   flex:1 1 auto;position:relative;z-index:1;min-height:0;
-  display:grid;gap:18px;padding:18px 24px;
-  grid-template-columns:1.32fr 1fr;
-  grid-template-rows:1.18fr 1fr;
-  grid-template-areas:"topo mem" "lanes lat";
+  display:grid;gap:16px;padding:16px 24px;
+  grid-template-columns:1fr 1fr 1fr;
+  grid-template-rows:1.32fr 1fr;
+  grid-template-areas:"ops ops ops" "mem lanes lat";
 }
-.span-topo{grid-area:topo}.span-mem{grid-area:mem}
+.span-ops{grid-area:ops}.span-mem{grid-area:mem}
 .span-lanes{grid-area:lanes}.span-lat{grid-area:lat}
 
 .card{
@@ -153,8 +153,53 @@ b{font-weight:700}
 .p-actions .b-noise:hover{color:#fbe7ad;border-color:rgba(242,193,78,.5);background:rgba(242,193,78,.1)}
 .p-actions button:active{transform:translateY(1px)}
 
+/* ---------------- MODULE A · ICU OPERATIONS GRID ---------------- */
+.opgrid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(3,1fr);
+  grid-auto-rows:1fr;grid-auto-flow:row dense;gap:8px;padding:1px}
+.bed{position:relative;min-width:0;min-height:0;border:1px solid var(--hair);border-radius:11px;
+  background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.004));
+  padding:9px 11px;display:flex;flex-direction:column;gap:5px;overflow:hidden;
+  transition:border-color .35s,box-shadow .35s,background .35s}
+.bed::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;
+  background:var(--cyan);opacity:.5;transition:.35s}
+.bed.watch::before{background:var(--watch);opacity:.85}
+.bed.critical::before{background:var(--crit);opacity:1;width:3px}
+.bed.watch{border-color:rgba(242,193,78,.3)}
+.bed.critical{grid-column:span 2;grid-row:span 2;border-color:rgba(251,111,125,.5);
+  box-shadow:0 0 0 1px rgba(251,111,125,.14),0 18px 50px -22px rgba(251,111,125,.6);
+  background:linear-gradient(180deg,rgba(251,111,125,.06),rgba(251,111,125,.012))}
+.bed-top{display:flex;align-items:center;gap:8px}
+.bed-tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--dim);
+  background:rgba(255,255,255,.04);padding:2px 6px;border-radius:5px;flex:0 0 auto}
+.bed-name{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;transition:font-size .3s}
+.bed.critical .bed-name{font-size:15px}
+.bed-risk{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--muted);flex:0 0 auto}
+.bed-risk b{color:var(--ink);font-weight:600}
+.bed.critical .bed-risk b{color:var(--crit)}
+.bed-sys{font-size:10px;color:var(--dim);text-transform:capitalize;letter-spacing:.02em}
+.bed.critical .bed-sys,.bed.watch .bed-sys{color:var(--watch)}
+.bed.critical .bed-sys{color:var(--crit)}
+.bed-driver{font-family:var(--mono);font-size:10px;color:var(--crit);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:0;opacity:0;transition:.3s}
+.bed.watch .bed-driver,.bed.critical .bed-driver{height:auto;opacity:.92}
+.bed.watch .bed-driver{color:var(--watch)}
+.bed-vitals{display:flex;flex-wrap:wrap;gap:2px 12px;font-family:var(--mono);
+  font-size:10.5px;line-height:1.5;color:var(--muted);margin-top:auto;padding-top:3px}
+.bed-vitals span{display:inline-flex;gap:4px;font-variant-numeric:tabular-nums}
+.bed-vitals i{color:var(--dim);font-style:normal}
+.bed.critical .bed-vitals{font-size:12px;gap:6px 18px}
+.bed-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.05);overflow:hidden;flex:0 0 auto}
+.bed-bar i{display:block;height:100%;border-radius:2px;background:var(--cyan);
+  transition:width .6s cubic-bezier(.2,.8,.2,1),background .35s}
+.bed.watch .bed-bar i{background:var(--watch)}
+.bed.critical .bed-bar i{background:var(--crit)}
+@keyframes bedflash{0%,100%{box-shadow:0 0 0 1px rgba(251,111,125,.14),0 18px 50px -22px rgba(251,111,125,.6)}
+  45%{box-shadow:0 0 0 2px rgba(251,111,125,.7),0 0 44px -4px rgba(251,111,125,.95)}}
+.bed.just-crit{animation:bedflash 1.3s ease 2}
+
 @media (max-width:1080px){
   .board{grid-template-columns:1fr;grid-template-rows:repeat(4,minmax(180px,1fr));
-    grid-template-areas:"topo" "mem" "lanes" "lat"}
+    grid-template-areas:"ops" "mem" "lanes" "lat"}
   .metrics{display:none}.patients{grid-template-columns:repeat(3,1fr)}
 }
