@@ -31,6 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.aegis.stream import AegisSession
+from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -54,6 +55,23 @@ TICK_SECONDS = 1.5
 
 _clients: List[WebSocket] = []
 _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
+
+# --- The simulated ICU wing: a live BioCluster driving the Tactical-Sphere
+#     cockpit. This is the kernel's multi-tenant face — N patient nodes on one
+#     DevBio bus + zero-copy memory fabric, governed by the cognitive scheduler,
+#     with a Chaos Controller for live crisis injection. Every headline alert is
+#     routed through the Layer-4 egress cage so the dashboard shows real Z3
+#     certification counts. -------------------------------------------------- #
+CLUSTER_NODE_NAMES = {
+    "node_0": "Okafor, A.", "node_1": "Bauer, M.", "node_2": "Reyes, L.",
+    "node_3": "Nguyen, T.", "node_4": "Castellano, R.", "node_5": "Yusuf, D.",
+}
+cluster = BioCluster(n_nodes=6, lane_budget=96,
+                     weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7)
+cluster_safety = NeuroSymbolicRuntime()
+CLUSTER_TICK_SECONDS = 0.6
+_cluster_clients: List[WebSocket] = []
+cluster.run(12)                                   # warm the rings before serving
 
 # --- Real-data persistence (Supabase). The simulator demo is NEVER written; only
 #     real ingested readings are, and they are throttled + tagged so the database
@@ -182,6 +200,7 @@ async def _startup() -> None:
     except Exception as exc:  # pragma: no cover
         print(f"[aegis] persistence unavailable ({exc}); running without it.")
     asyncio.create_task(_drive_loop())
+    asyncio.create_task(_cluster_loop())
 
 
 # --- REST ------------------------------------------------------------------- #
@@ -238,6 +257,116 @@ def simulate(stage: str) -> Dict[str, str]:
     if stage == "STABLE":
         _active_treatment = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
     return {"status": "ok", "stage": stage}
+
+
+# --- Cluster cockpit (Tactical Sphere) -------------------------------------- #
+def _evidence_count(v: Dict[str, float]) -> int:
+    """How many vital axes are deranged — feeds the L4 alert evidence term."""
+    n = 0
+    if v.get("hr", 0) > 100: n += 1
+    if v.get("resp_rate", 0) > 22: n += 1
+    t = v.get("temp_c")
+    if t is not None and (t > 38.0 or t < 36.0): n += 1
+    if v.get("map", 999) < 65: n += 1
+    if v.get("spo2", 100) < 92: n += 1
+    return n
+
+
+def _certify_cluster_headline(decision) -> None:
+    """Route the cluster's highest-risk node alert through the Z3 egress cage."""
+    if not cluster.sched.nodes:
+        return
+    top = max(cluster.sched.nodes.values(), key=lambda nd: nd.p)
+    p = float(top.p)
+    severity = 3 if p >= 0.70 else 2 if p >= 0.40 else 1 if p >= 0.20 else 0
+    cluster_safety.dispatch(ALERT, {"severity": severity}, {
+        "probability": p, "calibrated": True,
+        "evidence_count": _evidence_count(top.vitals),
+    })
+
+
+def _cluster_payload() -> Dict[str, Any]:
+    snap = cluster.snapshot()
+    for node in snap["topology"]:                 # attach human-readable names
+        node["name"] = CLUSTER_NODE_NAMES.get(node["node_id"], node["node_id"])
+    snap["devbio"] = cluster.bus.status()         # Panel D — µs conditioning latency
+    snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
+    snap["ts"] = time.time()
+    return snap
+
+
+async def _broadcast_cluster(payload: Dict[str, Any]) -> None:
+    dead = []
+    for ws in _cluster_clients:
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        if ws in _cluster_clients:
+            _cluster_clients.remove(ws)
+
+
+async def _cluster_loop() -> None:
+    print("[aegis] ICU-wing cluster loop started (Tactical Sphere telemetry).")
+    while True:
+        try:
+            decision = cluster.tick()
+            _certify_cluster_headline(decision)
+            await _broadcast_cluster(_cluster_payload())
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] cluster loop error: {exc}")
+        await asyncio.sleep(CLUSTER_TICK_SECONDS)
+
+
+class ChaosIn(BaseModel):
+    node: str
+    action: str = "crisis"            # crisis | clear | noise
+    intensity: float = 1.0
+
+
+@app.get("/aegis/cluster/snapshot")
+def cluster_snapshot() -> Dict[str, Any]:
+    """Full Tactical-Sphere snapshot: topology (A), memfabric (B), lane map (C),
+    devbio latency (D), scheduler + L4 cage counters + interrupt events."""
+    return _cluster_payload()
+
+
+@app.post("/aegis/cluster/chaos")
+async def cluster_chaos(payload: ChaosIn) -> Dict[str, Any]:
+    """The judges' Chaos Controller: inject/clear a crisis or a noise surge on a
+    node and watch the cluster reallocate compute in real time."""
+    if payload.node not in cluster.node_ids:
+        return {"status": "error", "detail": f"unknown node '{payload.node}'"}
+    act = payload.action.lower()
+    if act == "crisis":
+        cluster.inject_crisis(payload.node, intensity=payload.intensity)
+    elif act == "clear":
+        cluster.clear_crisis(payload.node)
+    elif act == "noise":
+        cluster.inject_noise_surge(payload.node)
+    else:
+        return {"status": "error", "detail": f"unknown action '{payload.action}'"}
+    return {"status": "ok", "node": payload.node, "action": act}
+
+
+@app.websocket("/aegis/cluster/stream")
+async def cluster_stream(ws: WebSocket) -> None:
+    await ws.accept()
+    _cluster_clients.append(ws)
+    await ws.send_json(_cluster_payload())
+    try:
+        while True:
+            msg = await ws.receive_text()
+            if msg == "ping":
+                await ws.send_text("pong")
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        if ws in _cluster_clients:
+            _cluster_clients.remove(ws)
 
 
 # --- WebSocket -------------------------------------------------------------- #
