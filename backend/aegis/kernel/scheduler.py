@@ -43,6 +43,7 @@ from typing import Any, Deque, Dict, List, Optional, Sequence, Tuple
 
 from backend.aegis.kernel.devbio import DevBio, provision_node
 from backend.aegis.kernel.memfabric import FabricPump, MemFabric
+from backend.aegis.kernel.fusion import BedProfile, FusionEngine
 
 # Lane classes, in priority order. ``safety`` is essential and never throttled;
 # ``ml_tracking`` is the elastic class that absorbs reallocation; ``render`` and
@@ -313,23 +314,33 @@ class BioCluster:
     edge cluster (the scheduler logic is what the orchestrator would run).
     """
 
+    # high-frequency edge + low-frequency enterprise tiers, both via /dev/bio
+    FEEDS = ("optical", "thermal", "bedside", "labs")
+    EDGE_KEYS = ("hr", "perfusion")
+    ENTERPRISE_KEYS = ("temp_c", "resp_rate", "spo2", "map", "wbc", "lactate")
+
     def __init__(self, n_nodes: int = 4, lane_budget: int = 64,
-                 weights: Optional[Sequence[float]] = None, seed: int = 0):
+                 weights: Optional[Sequence[float]] = None, seed: int = 0,
+                 names: Optional[Sequence[str]] = None):
         self.bus = DevBio()
         self.fabric = MemFabric()
         self.sched = CognitiveScheduler(lane_budget=lane_budget)
+        self.fusion = FusionEngine()
         self.node_ids: List[str] = []
+        self.names: Dict[str, str] = {}
+        self.profiles: Dict[str, BedProfile] = {}
         self._fds: Dict[str, Dict[str, int]] = {}
         self._cursors: Dict[str, Dict[str, Any]] = {}
         for i in range(n_nodes):
             nid = f"node_{i}"
             w = weights[i] if weights else 1.0
-            fds = provision_node(self.bus, nid, seed=seed * 10 + i)
+            fds = provision_node(self.bus, nid, kinds=self.FEEDS, seed=seed * 10 + i)
             self.fabric.map_bus(self.bus, fds, capacity=512)
             self.sched.register_node(nid, weight=w)
             self._fds[nid] = fds
             self._cursors[nid] = {k: self.fabric.subscribe(fd)
                                   for k, fd in fds.items()}
+            self.names[nid] = names[i] if names and i < len(names) else f"Bed {i + 1:02d}"
             self.node_ids.append(nid)
         self.pump = FabricPump(
             self.bus, self.fabric,
@@ -346,9 +357,10 @@ class BioCluster:
         self._driver(node_id, "thermal").set_bias({"temp_c": 2.5 * k})
         self._driver(node_id, "bedside").set_bias(
             {"resp_rate": 14.0 * k, "map": -28.0 * k, "spo2": -9.0 * k})
+        self._driver(node_id, "labs").set_bias({"wbc": 7.5 * k, "lactate": 4.2 * k})
 
     def clear_crisis(self, node_id: str) -> None:
-        for kind in ("optical", "thermal", "bedside"):
+        for kind in self.FEEDS:
             self._driver(node_id, kind).set_bias({})
 
     def inject_noise_surge(self, node_id: str) -> None:
@@ -372,8 +384,12 @@ class BioCluster:
     def tick(self) -> ScheduleDecision:
         self.pump.step()                                # L1->L2 for all nodes
         for nid in self.node_ids:
-            vit = self._sample_vitals(nid)
-            self.sched.observe(nid, risk_proxy(vit), vit)
+            vit = self._sample_vitals(nid)              # zero-copy ring reads
+            edge = {k: vit[k] for k in self.EDGE_KEYS if k in vit}
+            ent = {k: vit[k] for k in self.ENTERPRISE_KEYS if k in vit}
+            prof = self.fusion.update(nid, self.names[nid], edge, ent)  # the ontology bind
+            self.profiles[nid] = prof
+            self.sched.observe(nid, prof.fused_risk, vit)  # scheduler runs on fused risk
         return self.sched.schedule()
 
     def run(self, ticks: int) -> ScheduleDecision:
@@ -388,6 +404,8 @@ class BioCluster:
             "lane_map": self.sched.lane_map(),          # Panel C
             "scheduler": self.sched.status(),
             "memfabric": self.fabric.address_matrix(),  # Panel B
+            "beds": [self.profiles[nid].to_dict()       # fused per-bed ontology
+                     for nid in self.node_ids if nid in self.profiles],
             "events": self.sched.events[-16:],
         }
 

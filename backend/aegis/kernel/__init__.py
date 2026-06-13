@@ -21,9 +21,11 @@ from backend.aegis.kernel.devbio import (
     OpticalRPPGDriver,
     ThermalGridDriver,
     BedsideTelemetryDriver,
+    LabsDriver,
     DRIVER_REGISTRY,
     provision_node,
 )
+from backend.aegis.kernel.fusion import BedProfile, FusionEngine
 from backend.aegis.kernel.memfabric import (
     FabricPump,
     LocklessRing,
@@ -52,7 +54,9 @@ __all__ = [
     # Layer 1
     "BioBlock", "BioDevice", "ChannelSpec", "DevBio", "DeviceDescriptor",
     "KalmanScalar", "OpticalRPPGDriver", "ThermalGridDriver",
-    "BedsideTelemetryDriver", "DRIVER_REGISTRY", "provision_node",
+    "BedsideTelemetryDriver", "LabsDriver", "DRIVER_REGISTRY", "provision_node",
+    # Fusion (Sepsis Ontology)
+    "FusionEngine", "BedProfile",
     # Layer 2
     "MemFabric", "MemoryArena", "LocklessRing", "ReadCursor", "Region",
     "FabricPump",

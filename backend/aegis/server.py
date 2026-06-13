@@ -67,7 +67,8 @@ CLUSTER_NODE_NAMES = {
     "node_3": "Nguyen, T.", "node_4": "Castellano, R.", "node_5": "Yusuf, D.",
 }
 cluster = BioCluster(n_nodes=6, lane_budget=96,
-                     weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7)
+                     weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7,
+                     names=[CLUSTER_NODE_NAMES[f"node_{i}"] for i in range(6)])
 cluster_safety = NeuroSymbolicRuntime()
 CLUSTER_TICK_SECONDS = 0.6
 _cluster_clients: List[WebSocket] = []

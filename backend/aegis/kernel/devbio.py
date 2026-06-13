@@ -422,11 +422,31 @@ class BedsideTelemetryDriver(_SeededDriver):
             noise={"resp_rate": 1.5, "spo2": 0.8, "map": 2.5}, seed=seed, feed=feed)
 
 
+class LabsDriver(_SeededDriver):
+    """Enterprise tier — low-frequency structured labs (MIMIC-IV/eICU shaped).
+
+    Slow-moving clinical chemistry the bedside optics can't see: white-blood-cell
+    count and serum lactate. Heavy base measurement noise (r0) makes the inline
+    Kalman integrate these toward their true level slowly, so they behave like
+    intermittently-sampled lab draws rather than a live waveform.
+    """
+    kind = "labs"
+
+    def __init__(self, seed=0, feed=None):
+        super().__init__(
+            channels=[ChannelSpec("wbc", "10^3/uL", q=1e-3, r0=6.0),
+                      ChannelSpec("lactate", "mmol/L", q=1e-3, r0=5.0)],
+            sample_rate_hz=0.1,
+            baseline={"wbc": 8.0, "lactate": 1.0},
+            noise={"wbc": 0.6, "lactate": 0.18}, seed=seed, feed=feed)
+
+
 # A registry so a node can be provisioned by kind name (used by the demo/cluster).
 DRIVER_REGISTRY: Dict[str, Callable[..., BioDevice]] = {
     "optical": OpticalRPPGDriver,
     "thermal": ThermalGridDriver,
     "bedside": BedsideTelemetryDriver,
+    "labs": LabsDriver,
 }
 
 
