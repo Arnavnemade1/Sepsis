@@ -31,7 +31,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.aegis.stream import AegisSession
-from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
+from backend.aegis.kernel import ALERT, NeuroSymbolicRuntime, SepsisBundleEngine
+from backend.aegis.cohort import CohortCluster
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -56,30 +57,14 @@ TICK_SECONDS = 1.5
 _clients: List[WebSocket] = []
 _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
 
-# --- The simulated ICU wing: a live BioCluster driving the Tactical-Sphere
-#     cockpit. This is the kernel's multi-tenant face — N patient nodes on one
-#     DevBio bus + zero-copy memory fabric, governed by the cognitive scheduler,
-#     with a Chaos Controller for live crisis injection. Every headline alert is
-#     routed through the Layer-4 egress cage so the dashboard shows real Z3
-#     certification counts. -------------------------------------------------- #
-CLUSTER_NODE_NAMES = {
-    "node_0": "Okafor, A.", "node_1": "Bauer, M.", "node_2": "Reyes, L.",
-    "node_3": "Nguyen, T.", "node_4": "Castellano, R.", "node_5": "Yusuf, D.",
-}
-cluster = BioCluster(n_nodes=6, lane_budget=96,
-                     weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7,
-                     names=[CLUSTER_NODE_NAMES[f"node_{i}"] for i in range(6)])
+# --- The live ICU wing: a CohortCluster of REAL de-identified ICU patients from
+#     the PhysioNet/CinC-2019 corpus. Each bed replays its actual hourly vitals +
+#     labs through /dev/bio (Kalman-conditioned) -> memory fabric -> fusion ->
+#     cognitive scheduler -> Layer-4 cage. Septic patients deteriorate on their
+#     own per the real record and cross threshold near their true onset; the
+#     Chaos Controller fast-forwards a bed to its onset on demand. ------------- #
+cluster = CohortCluster(n=12, lane_budget=160, seed=7)
 cluster_safety = NeuroSymbolicRuntime()
-# Per-bed clinical history drives the bundle's patient-specific, provably-safe
-# treatment derivation (CHF fluid caps, penicillin-sparing antibiotics, …).
-CLUSTER_HISTORIES = {
-    "node_0": {"chf": True},
-    "node_1": {"penicillin_allergy": True},
-    "node_2": {"renal_failure": True},
-    "node_3": {},
-    "node_4": {"chf": True, "penicillin_allergy": True},
-    "node_5": {},
-}
 bundle_engine = SepsisBundleEngine()
 _bundle = {"bed": None, "ts": 0.0, "data": None}
 CLUSTER_TICK_SECONDS = 0.6
@@ -316,7 +301,7 @@ def _focus_bundle() -> Optional[Dict[str, Any]]:
     now = time.time()
     if _bundle["bed"] != focus or now - _bundle["ts"] > 2.5:
         _bundle["data"] = bundle_engine.generate(
-            cluster.profiles[focus], CLUSTER_HISTORIES.get(focus, {}))
+            cluster.profiles[focus], cluster.histories.get(focus, {}))
         _bundle["bed"] = focus
         _bundle["ts"] = now
     return _bundle["data"]
@@ -325,7 +310,7 @@ def _focus_bundle() -> Optional[Dict[str, Any]]:
 def _cluster_payload() -> Dict[str, Any]:
     snap = cluster.snapshot()
     for node in snap["topology"]:                 # attach human-readable names
-        node["name"] = CLUSTER_NODE_NAMES.get(node["node_id"], node["node_id"])
+        node["name"] = cluster.names.get(node["node_id"], node["node_id"])
     snap["devbio"] = cluster.bus.status()         # Panel D — µs conditioning latency
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
     snap["bundle"] = _focus_bundle()              # Module C — certified Hour-1 bundle
@@ -368,6 +353,22 @@ def cluster_snapshot() -> Dict[str, Any]:
     """Full Tactical-Sphere snapshot: topology (A), memfabric (B), lane map (C),
     devbio latency (D), scheduler + L4 cage counters + interrupt events."""
     return _cluster_payload()
+
+
+@app.get("/aegis/cohort")
+def cohort_roster() -> Dict[str, Any]:
+    """The monitored patient roster — real de-identified CinC-2019 ICU stays."""
+    return {"source": "PhysioNet/CinC-2019 Sepsis Challenge",
+            "n": len(cluster.node_ids), "patients": cluster.roster()}
+
+
+@app.get("/aegis/cohort/{bed_id}/chart")
+def cohort_chart(bed_id: str) -> Dict[str, Any]:
+    """One patient's real vitals/labs trajectory + ground-truth sepsis label."""
+    ch = cluster.chart(bed_id)
+    if ch is None:
+        return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
+    return ch
 
 
 @app.post("/aegis/cluster/chaos")

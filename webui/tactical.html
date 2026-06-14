@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=5" />
+<link rel="stylesheet" href="tactical.css?v=6" />
 </head>
 <body>
 <div class="ambient"></div>
@@ -52,7 +52,7 @@
 
   <section class="card span-ops">
     <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span>
-      <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">6 beds · fused ontology</span></div>
+      <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">real ICU cohort</span></div>
     <div class="card-body"><div class="opgrid" id="opgrid"></div></div>
   </section>
 
@@ -92,13 +92,15 @@
 <!-- ============ CONTROL RAIL ============ -->
 <footer class="control">
   <div class="control-hd">
-    <div>
-      <h3>Chaos Controller</h3>
-      <p>Inject a crisis on any patient node and watch the scheduler re-route compute in real time.</p>
+    <h3>ICU Command</h3>
+    <p>Click any bed to open its dossier — fast-forward a patient to sepsis onset, inspect its trajectory, memory &amp; latency.</p>
+    <div class="legend">
+      <span><i style="background:var(--cyan)"></i>stable</span>
+      <span><i style="background:var(--watch)"></i>watch</span>
+      <span><i style="background:var(--crit)"></i>critical</span>
     </div>
     <div class="eventlog"><span class="el-k">Interrupt log</span><span class="el-v" id="tk-body">No events</span></div>
   </div>
-  <div class="patients" id="dock-nodes"></div>
 </footer>
 
 <!-- ============ MODULE B · BIOMETRIC ENTITY DOSSIER ============ -->
@@ -115,6 +117,16 @@
   </div>
   <div class="dos-body">
     <section class="dos-sec">
+      <h4>Patient record <span>· PhysioNet/CinC-2019 ICU stay</span></h4>
+      <div class="dos-demo" id="dos-demo"></div>
+      <div class="dos-truth" id="dos-truth"></div>
+      <div class="dos-actions">
+        <button class="dos-act crisis" data-act="crisis">⏵ Advance to onset</button>
+        <button class="dos-act clear" data-act="clear">↺ Reset replay</button>
+        <button class="dos-act noise" data-act="noise">≈ Noise surge</button>
+      </div>
+    </section>
+    <section class="dos-sec">
       <h4>Fused risk decomposition</h4>
       <div class="dos-comps" id="dos-comps"></div>
     </section>
@@ -127,6 +139,10 @@
       <div class="dos-drivers" id="dos-drivers"></div>
     </section>
     <section class="dos-sec">
+      <h4>Vitals &amp; labs trajectory <span>· real hourly record</span></h4>
+      <div class="dos-canvas" style="height:172px"><canvas id="cv-dos-trend"></canvas></div>
+    </section>
+    <section class="dos-sec">
       <h4>Shared-memory arena <span>· this bed · zero-copy</span></h4>
       <div class="dos-canvas" style="height:130px"><canvas id="cv-dos-mem"></canvas></div>
     </section>
@@ -137,6 +153,6 @@
   </div>
 </aside>
 
-<script src="tactical.js?v=5"></script>
+<script src="tactical.js?v=6"></script>
 </body>
 </html>

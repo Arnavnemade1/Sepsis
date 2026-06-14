@@ -83,8 +83,10 @@ function ingest(snap){
     if(!events.some(function(x){return x.tick===e.tick;})) events.push(e); });
   if(events.length>40) events=events.slice(-40);
   latestBeds={}; (snap.beds||[]).forEach(function(b){ latestBeds[b.bed_id]=b; });
+  if(snap.beds){ var sp=snap.beds.filter(function(b){return b.will_be_septic;}).length;
+    $("a-meta").textContent=snap.beds.length+" real patients · "+sp+" septic"; }
+  if(snap.lane_map){ $("c-meta").textContent="budget "+snap.lane_map.budget; }
   renderGrid(snap.beds);
-  renderDock(snap);
   renderSpine();          // refresh metrics + ticker the instant data arrives
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
@@ -141,12 +143,12 @@ function updateBed(el,b){
   }
   el.querySelector(".bed-risk b").textContent=fmt(b.fused_risk,2);
   el.querySelector(".bed-sys").textContent=
-    b.primary_system==="none"?"nominal":b.primary_system+" axis";
+    (b.primary_system==="none"?"nominal":b.primary_system+" axis")+
+    (b.icu_hour!=null?" · ICU h"+b.icu_hour:"");
   el.querySelector(".bed-driver").textContent=b.drivers&&b.drivers.length?("▸ "+b.drivers[0]):"";
-  var compact=vital("HR",ed.hr,0)+vital("MAP",en.map,0)+vital("T°",en.temp_c,1)+
-    vital("SpO₂",en.spo2,0)+vital("Lac",en.lactate,1)+vital("WBC",en.wbc,1);
-  var full=compact+vital("RR",en.resp_rate,0)+vital("HRV",ed.hrv_ms,0)+
-    vital("Perf",ed.perfusion,2);
+  var compact=vital("HR",ed.hr,0)+vital("MAP",en.map,0)+vital("T°",en.temp_c,1)+vital("Lac",en.lactate,1);
+  var full=compact+vital("SpO₂",en.spo2,0)+vital("RR",en.resp_rate,0)+
+    vital("WBC",en.wbc,1)+vital("HRV",ed.hrv_ms,0);
   el.querySelector(".bed-vitals").innerHTML=(tier==="critical")?full:compact;
   el.querySelector(".bed-bar i").style.width=clamp(b.fused_risk*100,2,100)+"%";
 }
@@ -176,9 +178,14 @@ function renderGrid(beds){
    ============================================================ */
 var COMP_COL={cardiac:C.cyan,inflammatory:C.watch,perfusion:C.indigo,metabolic:C.violet};
 var COMP_ORDER=["cardiac","inflammatory","perfusion","metabolic"];
+var dosChart=null, dosChartTimer=null;
 
+function fetchChart(id){
+  fetch(window.AEGIS.http("/aegis/cohort/"+id+"/chart")).then(function(r){return r.json();})
+    .then(function(c){ if(selectedBed===id && c && c.hours) dosChart=c; }).catch(function(){});
+}
 function openDossier(id){
-  selectedBed=id;
+  selectedBed=id; dosChart=null;
   if(!dosBuilt){ $("dos-comps").innerHTML=COMP_ORDER.map(function(c){
     return '<div class="dos-comp" data-c="'+c+'"><span class="dos-comp-k">'+c+'</span>'+
       '<span class="dos-comp-track"><i></i></span><span class="dos-comp-v">0.00</span></div>';
@@ -186,8 +193,12 @@ function openDossier(id){
   $("dossier").classList.add("open"); $("dos-scrim").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);
+  fetchChart(id);
+  if(dosChartTimer) clearInterval(dosChartTimer);
+  dosChartTimer=setInterval(function(){ if(selectedBed) fetchChart(selectedBed); }, 4000);
 }
-function closeDossier(){ selectedBed=null;
+function closeDossier(){ selectedBed=null; dosChart=null;
+  if(dosChartTimer){ clearInterval(dosChartTimer); dosChartTimer=null; }
   $("dossier").classList.remove("open"); $("dos-scrim").classList.remove("open");
   $("dossier").setAttribute("aria-hidden","true"); }
 
@@ -204,6 +215,27 @@ function updateDossier(b){
   $("dos-risk").textContent=fmt(b.fused_risk,2);
   var tEl=$("dos-tier"); tEl.textContent=tier; tEl.className="dos-tier"+(tier==="stable"?"":" "+tier);
   $("dossier").classList.toggle("critical",tier==="critical");
+  // patient record — real demographics + ground-truth validation
+  if(b.mrn){
+    $("dos-demo").innerHTML=
+      kvHTML("MRN",b.mrn,"")+
+      kvHTML("Age / Sex",Math.round(b.age)+"y "+(b.gender||"?"),"")+
+      kvHTML("ICU hour",b.icu_hour,"of "+(b.los_total||"—"))+
+      kvHTML("Source","CinC-2019","");
+    var truth=$("dos-truth");
+    if(b.will_be_septic){
+      var h2o=b.hours_to_onset;
+      var lead = (h2o!=null&&h2o>0) ? "<span class='lead'>flagged "+h2o+" h before labelled onset</span>"
+        : (h2o!=null&&h2o<=0 ? "labelled onset reached "+(-h2o)+" h ago" : "");
+      truth.className="dos-truth sepsis";
+      truth.innerHTML="Ground truth: <b>develops sepsis</b> · labelled onset ICU hour "+b.onset_hour+
+        " · fused risk "+fmt(b.fused_risk,2)+" · "+lead;
+    } else {
+      truth.className="dos-truth clear";
+      truth.innerHTML="Ground truth: <b>no sepsis</b> this admission · fused risk "+
+        fmt(b.fused_risk,2)+" tracking baseline physiology";
+    }
+  }
   COMP_ORDER.forEach(function(c){ var row=$("dos-comps").querySelector('[data-c="'+c+'"]'); if(!row) return;
     var sc=b.components[c]||0, bar=row.querySelector("i");
     bar.style.width=clamp(sc/2.5*100,0,100)+"%"; bar.style.background=COMP_COL[c];
@@ -407,6 +439,48 @@ function drawLatency(s){
   ctx.textBaseline="middle";
 }
 
+/* real vitals/labs trajectory sparklines (from /aegis/cohort/<bed>/chart) */
+var TREND_CH=[["hr","HR",0,100,9e9],["map","MAP",0,-9e9,65],["temp_c","Temp",1,38,36],
+  ["resp_rate","Resp",0,22,9e9],["lactate","Lac",1,2,9e9],["wbc","WBC",1,12,4]];
+function _deranged(key,v,hi,lo){ if(key==="temp_c"||key==="wbc") return v>hi||v<lo;
+  if(key==="map") return v<lo; return v>hi; }
+function drawTrends(s){
+  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  var c=dosChart;
+  if(!c||!c.hours||c.hours.length<2){ ctx.fillStyle=C.dim; ctx.font=FS(10,500);
+    ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText("loading real trajectory …",w/2,h/2); return; }
+  var hours=c.hours,n=hours.length,h0=hours[0],h1=hours[n-1],span=Math.max(1,h1-h0);
+  var padL=44,padR=58,padT=3,padB=3,plotW=w-padL-padR,rows=TREND_CH.length,rowH=(h-padT-padB)/rows;
+  function xAt(hr){ return padL+(hr-h0)/span*plotW; }
+  if(c.onset_hour!=null && c.onset_hour>=h0 && c.onset_hour<=h1){
+    var ox=xAt(c.onset_hour); ctx.strokeStyle=withAlpha(C.crit,.55); ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(ox,padT); ctx.lineTo(ox,h-padB); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=C.crit; ctx.font=FS(8,600); ctx.textAlign="center"; ctx.textBaseline="top";
+    ctx.fillText("onset",ox,padT+1); }
+  TREND_CH.forEach(function(spec,ri){
+    var key=spec[0],data=c.series[key]; if(!data) return;
+    var y0=padT+rowH*ri,yMid=y0+rowH/2;
+    var vals=[]; data.forEach(function(v){ if(v!=null&&isFinite(v)) vals.push(v); });
+    if(!vals.length) return;
+    var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals); if(mx-mn<1e-6) mx=mn+1;
+    var pad=rowH*0.26;
+    function yAt(v){ return y0+rowH-pad-(v-mn)/(mx-mn)*(rowH-2*pad); }
+    ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.font=FS(9.5,600); ctx.fillStyle=C.muted; ctx.fillText(spec[1],6,yMid);
+    var last=data[data.length-1], der=_deranged(key,last,spec[3],spec[4]);
+    ctx.strokeStyle=der?C.crit:C.cyan; ctx.lineWidth=1.3; ctx.lineJoin="round"; ctx.beginPath();
+    var started=false;
+    data.forEach(function(v,i){ if(v==null||!isFinite(v))return; var x=xAt(hours[i]),y=yAt(v);
+      started?ctx.lineTo(x,y):ctx.moveTo(x,y); started=true; });
+    ctx.stroke();
+    if(started){ var lx=xAt(hours[n-1]),ly=yAt(last); ctx.fillStyle=der?C.crit:C.cyan;
+      ctx.beginPath(); ctx.arc(lx,ly,2,0,7); ctx.fill(); }
+    ctx.textAlign="right"; ctx.font=FM(10,500); ctx.fillStyle=der?C.crit:C.ink;
+    ctx.fillText(fmt(last,spec[2]),w-8,yMid);
+    if(ri<rows-1){ ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath();
+      ctx.moveTo(padL,y0+rowH-0.5); ctx.lineTo(w-padR,y0+rowH-0.5); ctx.stroke(); }
+  });
+}
+
 /* ============================================================
    MODULE C — Neurosymbolic Protocol Terminal (streamed)
    ============================================================ */
@@ -469,27 +543,11 @@ function renderSpine(){
   if(events.length){ $("tk-body").innerHTML=events.slice(-3).reverse().map(function(ev){
     return '<span class="hot">⚡ t'+ev.tick+' · '+ev.owner+' ('+ev.reason+' p='+fmt(ev.p,2)+')</span>'; }).join("&nbsp;&nbsp;·&nbsp;&nbsp;"); }
 }
-function renderDock(snap){
-  var host=$("dock-nodes");
-  if(host.childElementCount!==snap.topology.length){ host.innerHTML="";
-    snap.topology.forEach(function(nd){ var el=document.createElement("div"); el.className="patient"; el.dataset.id=nd.node_id;
-      el.innerHTML='<div class="p-row"><span class="p-name">'+nd.name+'</span><span class="p-risk">p&nbsp;<b>0.00</b></span></div>'+
-        '<div class="p-meta">bed '+nd.node_id.replace("node_","#")+' · w '+nd.weight+'</div>'+
-        '<div class="p-actions"><button class="b-crisis" data-act="crisis">Crisis</button>'+
-        '<button class="b-clear" data-act="clear">Clear</button>'+
-        '<button class="b-noise" data-act="noise">Noise</button></div>';
-      host.appendChild(el); }); }
-  snap.topology.forEach(function(nd){ var el=host.querySelector('[data-id="'+nd.node_id+'"]'); if(!el) return;
-    var t=nd.tier==="CRITICAL"?"crit":nd.tier==="WATCH"?"watch":"";
-    el.className="patient"+(t?" "+t:"");
-    el.querySelector(".p-risk").innerHTML="p&nbsp;<b>"+fmt(nd.p,2)+"</b>"; });
-}
-$("dock-nodes").addEventListener("click",function(e){ var b=e.target.closest("button"); if(!b) return;
-  var node=b.closest(".patient").dataset.id;
+function chaos(node, action){
+  if(!node) return;
   fetch(window.AEGIS.http("/aegis/cluster/chaos"),{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({node:node,action:b.dataset.act,intensity:1.0})}).catch(function(){});
-  b.animate([{opacity:.45},{opacity:1}],{duration:280});
-});
+    body:JSON.stringify({node:node,action:action,intensity:1.0})}).catch(function(){});
+}
 
 /* ============================================================
    WEBSOCKET
@@ -514,12 +572,14 @@ function setup(){
   surf.mem=new Surface("cv-mem");
   surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
   surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
-  // open the dossier from a bed card or a dock patient card
+  surf.dosTrend=new Surface("cv-dos-trend");
+  // open the dossier from a bed card
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed");
     if(bed) openDossier(bed.dataset.id); });
-  $("dock-nodes").addEventListener("click",function(e){
-    if(e.target.closest("button")) return; var card=e.target.closest(".patient");
-    if(card) openDossier(card.dataset.id); });
+  // chaos / replay controls live in the open patient's dossier
+  $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
+    if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act);
+    b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
   $("dos-close").addEventListener("click",closeDossier);
   $("dos-scrim").addEventListener("click",closeDossier);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeDossier(); });
@@ -529,8 +589,8 @@ function loop(){ frame++;
   for(var k in surf) surf[k].fit();
   if(target) ease();
   drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
-  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit();
-    drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
+  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit();
+    drawTrends(surf.dosTrend); drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
 }
