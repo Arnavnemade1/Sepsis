@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=8" />
+<link rel="stylesheet" href="tactical.css?v=9" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -127,10 +127,15 @@
     <div class="val-grid">
       <div class="card val-card">
         <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Early-warning lead time</h2>
-          <span class="hd-meta">hours before labelled onset</span></div>
+          <span class="hd-meta">hours before onset</span></div>
         <div class="card-body"><canvas id="cv-leadhist"></canvas></div>
       </div>
       <div class="card val-card">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Sensitivity / specificity</h2>
+          <span class="hd-meta">across alarm thresholds</span></div>
+        <div class="card-body"><canvas id="cv-sweep"></canvas></div>
+      </div>
+      <div class="card val-card val-card-wide">
         <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Per-patient detection</h2></div>
         <div class="card-body val-table" id="val-table"></div>
       </div>
@@ -182,6 +187,7 @@
       <div><h4>Enterprise tier <span>· labs + bedside</span></h4><div class="dos-kv" id="dos-ent"></div></div>
     </section>
     <section class="dos-sec"><h4>Active derangements</h4><div class="dos-drivers" id="dos-drivers"></div></section>
+    <section class="dos-sec"><h4>Certified Hour-1 protocol <span>· Z3-verified egress</span></h4><div class="dos-bundle" id="dos-bundle"></div></section>
     <section class="dos-sec">
       <h4>Vitals &amp; labs trajectory <span>· real hourly record</span></h4>
       <div class="dos-canvas" style="height:172px"><canvas id="cv-dos-trend"></canvas></div>
@@ -197,6 +203,6 @@
   </div>
 </aside>
 
-<script src="tactical.js?v=8"></script>
+<script src="tactical.js?v=9"></script>
 </body>
 </html>

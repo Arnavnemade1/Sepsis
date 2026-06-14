@@ -82,7 +82,8 @@ function ingest(snap){
   (snap.events||[]).forEach(function(e){
     if(!events.some(function(x){return x.tick===e.tick;})) events.push(e); });
   if(events.length>40) events=events.slice(-40);
-  latestBeds={}; (snap.beds||[]).forEach(function(b){ latestBeds[b.bed_id]=b; });
+  latestBeds={}; (snap.beds||[]).forEach(function(b){ latestBeds[b.bed_id]=b;
+    var h=riskHist[b.bed_id]||(riskHist[b.bed_id]=[]); h.push(b.fused_risk); if(h.length>24) h.shift(); });
   if(snap.beds){ var sp=snap.beds.filter(function(b){return b.will_be_septic;}).length;
     var real=snap.data_mode && snap.data_mode.indexOf("real")===0;
     $("a-meta").textContent=real ? (snap.beds.length+" real ICU patients · "+sp+" septic")
@@ -120,15 +121,17 @@ function ease(){
    A dense bed matrix fed by the fused per-bed ontology. A bed that
    crosses critical expands, flashes crimson and floats to top-left.
    ============================================================ */
-var gridOrder=[];
+var gridOrder=[], riskHist={};
 function bedTag(id){ var m=id.match(/(\d+)/); var i=m?(+m[1]+1):0; return "BED "+(i<10?"0"+i:i); }
+function trendOf(id){ var h=riskHist[id]||[]; if(h.length<6) return 0;
+  var r=(h[h.length-1]+h[h.length-2]+h[h.length-3])/3, o=(h[h.length-4]+h[h.length-5]+h[h.length-6])/3; return r-o; }
 function tierOf(p){ return p>=0.70?"critical":p>=0.40?"watch":"stable"; }
 function vital(label,val,dec){ return "<span><i>"+label+"</i>"+fmt(val,dec)+"</span>"; }
 
 function bedCellHTML(b){
   return '<div class="bed-top"><span class="bed-tag">'+bedTag(b.bed_id)+'</span>'+
     '<span class="bed-name">'+b.name+'</span>'+
-    '<span class="bed-risk">P <b>0.00</b></span></div>'+
+    '<span class="bed-risk">P <b>0.00</b><i class="bed-trend"></i></span></div>'+
     '<div class="bed-sys">—</div>'+
     '<div class="bed-driver"></div>'+
     '<div class="bed-vitals"></div>'+
@@ -146,6 +149,9 @@ function updateBed(el,b,isFocus){
     el.className="bed "+tier+(isFocus?" focus":"")+(el.classList.contains("just-crit")?" just-crit":"");
   }
   el.querySelector(".bed-risk b").textContent=fmt(b.fused_risk,2);
+  var tr=trendOf(b.bed_id), te=el.querySelector(".bed-trend");
+  if(te){ te.textContent=tr>0.012?"▲":tr<-0.012?"▼":"→";
+    te.className="bed-trend "+(tr>0.012?"up":tr<-0.012?"down":"flat"); }
   el.querySelector(".bed-sys").textContent=
     (b.primary_system==="none"?"nominal":b.primary_system+" axis")+
     (b.icu_hour!=null?" · ICU h"+b.icu_hour:"");
@@ -190,6 +196,25 @@ function fetchChart(id){
   fetch(window.AEGIS.http("/aegis/cohort/"+id+"/chart")).then(function(r){return r.json();})
     .then(function(c){ if(selectedBed===id && c && c.hours) dosChart=c; }).catch(function(){});
 }
+function refreshBundle(id){
+  var b=latestBeds[id];
+  if(b && b.fused_risk>=0.4){
+    fetch(window.AEGIS.http("/aegis/cohort/"+id+"/bundle")).then(function(r){return r.json();})
+      .then(function(d){ if(selectedBed===id && d && d.checklist) renderBundleDossier(d); }).catch(function(){});
+  } else { renderBundleDossier(null); }
+}
+function renderBundleDossier(b){
+  var host=$("dos-bundle"); if(!host) return;
+  if(!b){ host.innerHTML='<div class="db-idle">✓ No sepsis protocol indicated · patient within range.</div>'; return; }
+  var p=b.protocol;
+  var items=b.checklist.map(function(it){ return '<div class="db-item '+it.status+'">'+
+    '<span class="db-n">'+it.n+'</span>'+it.title+' <em>'+it.detail+'</em></div>'; }).join("");
+  host.innerHTML='<div class="db-head"><span class="db-sev '+(b.severity_name||"").toLowerCase()+'">'+
+    (b.severity_name||"")+'</span><span class="db-stamp '+(b.all_verified?"ok":"bad")+'">'+
+    (b.all_verified?"✓ formally verified · safe to dispatch":"✗ quarantined")+'</span></div>'+items+
+    '<div class="db-proto">'+p.antibiotic+' · fluid '+p.fluid_rate+' mL/kg/h · vaso '+p.vasopressor_dose+
+    ' mcg/kg/min — <span class="db-z3">Z3 '+p.z3.toUpperCase()+'</span></div>';
+}
 function openDossier(id){
   selectedBed=id; dosChart=null;
   if(!dosBuilt){ $("dos-comps").innerHTML=COMP_ORDER.map(function(c){
@@ -199,9 +224,9 @@ function openDossier(id){
   $("dossier").classList.add("open"); $("dos-scrim").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);
-  fetchChart(id);
+  fetchChart(id); refreshBundle(id);
   if(dosChartTimer) clearInterval(dosChartTimer);
-  dosChartTimer=setInterval(function(){ if(selectedBed) fetchChart(selectedBed); }, 4000);
+  dosChartTimer=setInterval(function(){ if(selectedBed){ fetchChart(selectedBed); refreshBundle(selectedBed); } }, 4000);
 }
 function closeDossier(){ selectedBed=null; dosChart=null;
   if(dosChartTimer){ clearInterval(dosChartTimer); dosChartTimer=null; }
@@ -654,6 +679,30 @@ function drawLeadHist(s){ var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h); if(
     ctx.textAlign="center"; ctx.fillStyle=C.ink; ctx.font=FM(14,600); ctx.textBaseline="bottom"; if(c) ctx.fillText(c,x+bw/2,y-5);
     ctx.fillStyle=C.dim; ctx.font=FS(10,500); ctx.textBaseline="top"; ctx.fillText(labels[i],x+bw/2,h-padB+9); }); }
 
+function drawSweep(s){ var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  if(!valData||!valData.summary.sweep) return; var sw=valData.summary.sweep, n=sw.length; if(!n) return;
+  var padL=36,padR=14,padT=24,padB=28,pw=w-padL-padR,ph=h-padT-padB, t0=sw[0].thr, t1=sw[n-1].thr;
+  function xAt(t){ return padL+(t-t0)/(t1-t0)*pw; } function yAt(v){ return padT+ph-v*ph; }
+  ctx.textBaseline="middle"; ctx.font=FS(9,500);
+  [0,0.5,1].forEach(function(v){ var y=yAt(v); ctx.strokeStyle=C.grid; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(Math.round(v*100)+"%",padL-5,y); });
+  var op=valData.summary.alarm_threshold||0.7, ox=xAt(op);
+  ctx.strokeStyle=withAlpha(C.ink,.22); ctx.lineWidth=1; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(ox,padT); ctx.lineTo(ox,h-padB); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle=C.muted; ctx.font=FS(8.5,600); ctx.textAlign="center"; ctx.textBaseline="top";
+  ctx.fillText("operating "+op,ox,h-padB+9);
+  ctx.fillStyle=C.dim; ctx.font=FS(9,500);
+  [t0,(t0+t1)/2,t1].forEach(function(t){ if(Math.abs(t-op)>0.06) ctx.fillText(t.toFixed(2),xAt(t),h-padB+9); });
+  function line(key,col,glow){ ctx.strokeStyle=col; ctx.lineWidth=1.9; ctx.lineJoin="round";
+    if(glow){ ctx.shadowColor=withAlpha(col,.5); ctx.shadowBlur=6; } ctx.beginPath();
+    sw.forEach(function(p,i){ var x=xAt(p.thr),y=yAt(p[key]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }); ctx.stroke(); ctx.shadowBlur=0;
+    sw.forEach(function(p){ ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(p.thr),yAt(p[key]),1.7,0,7); ctx.fill(); }); }
+  line("sens",C.ok,true); line("fpr",C.crit,false);
+  ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.font=FS(9.5,600);
+  ctx.fillStyle=C.ok; ctx.fillRect(padL,padT-14,8,8); ctx.fillStyle=C.muted; ctx.fillText("sensitivity",padL+12,padT-10);
+  ctx.fillStyle=C.crit; ctx.fillRect(padL+96,padT-14,8,8); ctx.fillStyle=C.muted; ctx.fillText("false positive",padL+108,padT-10); }
+
 /* ============================================================
    ROSTER VIEW
    ============================================================ */
@@ -690,7 +739,7 @@ function setup(){
   ambientInit(); runBoot();
   surf.mem=new Surface("cv-mem"); surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
   surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
-  surf.dosTrend=new Surface("cv-dos-trend"); surf.leadhist=new Surface("cv-leadhist");
+  surf.dosTrend=new Surface("cv-dos-trend"); surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
     if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act); b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
@@ -711,7 +760,8 @@ function loop(){ frame++;
   if(target) ease();
   if(currentView==="ops"){ surf.mem.fit(); surf.lanes.fit(); surf.lat.fit();
     drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
-  } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist); }
+  } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
+    surf.sweep.fit(); drawSweep(surf.sweep); }
   if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit();
     drawTrends(surf.dosTrend); drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
   if((spineTick++ %6)===0) renderSpine();

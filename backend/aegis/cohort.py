@@ -394,21 +394,27 @@ class CohortCluster:
         for p in self.patients:
             fe = FusionEngine()
             first: Optional[int] = None
+            risk_series: List[float] = []
             for hr in range(p.los_total):
                 vals = {ch: float(p._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
                 edge = {"hr": vals["hr"],
                         "perfusion": max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0))}
                 ent = {k: vals[k] for k in self.ENTERPRISE_KEYS}
                 prof = fe.update(p.bed_id, p.name, edge, ent)
+                risk_series.append(prof.fused_risk)
                 if first is None and prof.fused_risk >= alarm:
                     first = hr
             lead = (p.onset_hour - first) if (p.is_septic and p.onset_hour is not None
                                               and first is not None) else None
+            # peaks used for the threshold sweep (no re-replay needed)
+            on = p.onset_hour if p.onset_hour is not None else p.los_total
+            pre = max(risk_series[:on + 1]) if risk_series[:on + 1] else 0.0
             rows.append({
                 "bed_id": p.bed_id, "name": p.name, "mrn": p.mrn,
                 "age": p.age, "gender": p.gender, "los": p.los_total,
                 "septic": p.is_septic, "onset_hour": p.onset_hour,
                 "first_alarm": first, "lead": lead,
+                "_pre_peak": pre, "_peak": max(risk_series) if risk_series else 0.0,
             })
         septic = [r for r in rows if r["septic"]]
         detected = [r for r in septic if r["first_alarm"] is not None
@@ -419,6 +425,18 @@ class CohortCluster:
 
         def _mean(xs): return round(sum(xs) / len(xs), 1) if xs else 0.0
         def _median(xs): return float(xs[len(xs) // 2]) if xs else 0.0
+        # threshold sweep: sensitivity (detected at/before onset) vs false-positive
+        sweep = []
+        for thr in [round(0.30 + 0.05 * i, 2) for i in range(13)]:    # 0.30 … 0.90
+            det = sum(1 for r in septic if r["_pre_peak"] >= thr)
+            fpr = sum(1 for r in stable if r["_peak"] >= thr)
+            sweep.append({
+                "thr": thr,
+                "sens": round(det / max(len(septic), 1), 3),
+                "fpr": round(fpr / max(len(stable), 1), 3),
+            })
+        for r in rows:                                                # drop internals
+            r.pop("_pre_peak", None); r.pop("_peak", None)
         summary = {
             "alarm_threshold": alarm, "n": len(rows), "n_septic": len(septic),
             "n_detected": len(detected),
@@ -426,7 +444,8 @@ class CohortCluster:
             "mean_lead_h": _mean(leads), "median_lead_h": _median(leads),
             "max_lead_h": max(leads) if leads else 0,
             "fp_rate": round(len(fp) / max(len(stable), 1), 3),
-            "leads": leads, "source": "PhysioNet/CinC-2019 (this cohort)",
+            "leads": leads, "sweep": sweep,
+            "source": "PhysioNet/CinC-2019 (this cohort)",
         }
         self._val_cache = {"summary": summary, "patients": rows}
         return self._val_cache

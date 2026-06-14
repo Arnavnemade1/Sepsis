@@ -387,6 +387,15 @@ def cohort_validation() -> Dict[str, Any]:
     return cluster.validation(alarm=0.70)
 
 
+@app.get("/aegis/cohort/{bed_id}/bundle")
+def cohort_bundle(bed_id: str) -> Dict[str, Any]:
+    """On-demand certified Hour-1 bundle for ANY bed (the dossier's protocol)."""
+    if bed_id not in getattr(cluster, "profiles", {}):
+        return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
+    return bundle_engine.generate(
+        cluster.profiles[bed_id], getattr(cluster, "histories", {}).get(bed_id, {}))
+
+
 @app.get("/aegis/cohort/{bed_id}/chart")
 def cohort_chart(bed_id: str) -> Dict[str, Any]:
     """One patient's real vitals/labs trajectory + ground-truth sepsis label."""
