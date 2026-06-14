@@ -59,7 +59,7 @@ var V={
   safety:{certified:0,blocked:0,pass_rate:1},
   devbio:{},
 };
-var latBuf=new Float32Array(900), latBuf95=new Float32Array(900), latHead=0, latFill=0;
+var latBuf=new Float32Array(900), latBuf95=new Float32Array(900), latHead=0, latFill=0, latYMax=14;
 var events=[], frame=0;
 var selectedBed=null, latestBeds={}, dosBuilt=false;
 
@@ -112,6 +112,10 @@ function ease(){
     V.mem.rings=V.mem._t.rings; V.mem.cursors=V.mem._t.cursors; }
   if(V.safety._t){ V.safety.certified=V.safety._t.certified; V.safety.blocked=V.safety._t.blocked;
     V.safety.pass_rate=V.safety._t.pass_rate; }
+  if(latFill===0 && V.lat._t){          // pre-seed so the envelope is full at once
+    for(var sp=0;sp<latBuf.length;sp++){ latBuf[sp]=V.lat.p50; latBuf95[sp]=V.lat.p95; }
+    latFill=latBuf.length; latHead=0;
+  }
   latBuf[latHead]=V.lat.p50; latBuf95[latHead]=V.lat.p95;
   latHead=(latHead+1)%latBuf.length; latFill=Math.min(latFill+1,latBuf.length);
 }
@@ -377,48 +381,48 @@ function drawMemory(s){
    ============================================================ */
 function drawLanes(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
-  var ids=nodeOrder, n=ids.length||1;
-  var padT=26, padB=12, rowH0=(h-padT-padB)/n;
-  // compact mode when the panel is short (e.g. while the terminal is expanded):
-  // drop per-row labels/counts so the bars never overlap.
-  var compact=rowH0<17;
-  if(compact){ padT=16; padB=8; }
-  var rowH=(h-padT-padB)/n, barL=compact?12:104, barR=w-(compact?12:52), barW=barR-barL;
+  var ids=nodeOrder.filter(function(id){return V.nodes[id];}), budget=V.budget||1;
+  var L=12, R=w-12, BW=R-L;
   ctx.textBaseline="middle"; ctx.textAlign="left";
-  // header: under preempt show the crisis callout; otherwise the class legend
-  if(V.mode==="PREEMPT"){
-    ctx.font=FS(10.5,600); ctx.fillStyle=C.crit;
-    ctx.fillText("⚡ Hard preempt → "+(V.owner||""), 10, 13);
-  } else {
-    var lx=10;
-    LANE_ORDER.forEach(function(c){ ctx.fillStyle=LANE_COL[c]; ctx.fillRect(lx,8,7,7);
-      ctx.font=FS(9.5,500); ctx.fillStyle=C.dim; var lbl=LANE_LABEL[c];
-      ctx.fillText(lbl,lx+11,13); lx+=11+ctx.measureText(lbl).width+15; });
-  }
-  // budget guides
-  for(var g=1;g<4;g++){ var gxx=barL+barW*g/4;
-    ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(gxx+.5,padT-3); ctx.lineTo(gxx+.5,h-padB+3); ctx.stroke(); }
+  // header — mode
+  ctx.font=FS(10.5,600); ctx.fillStyle=V.mode==="PREEMPT"?C.crit:C.muted;
+  ctx.fillText(V.mode==="PREEMPT"?("⚡ Hard preempt → "+(V.owner||"")):"Normal · compute ∝ clinical risk", L, 14);
 
-  ids.forEach(function(id,r){ var nd=V.nodes[id], L=V.lanes[id]; if(!nd) return;
-    var cyy=padT+rowH*r+rowH/2, bh=Math.min(16,rowH*(compact?0.62:0.46)), by=cyy-bh/2, owner=(V.owner===id);
-    if(!compact){ ctx.textAlign="left"; ctx.font=FS(11,owner?600:500);
-      ctx.fillStyle=owner?C.crit:(nd.tier==="WATCH"?C.watch:C.ink);
-      ctx.fillText((nd.name||id).slice(0,13), 8, cyy); }
-    // track
-    ctx.fillStyle="rgba(255,255,255,.03)"; roundRect(ctx,barL,by,barW,bh,bh/2); ctx.fill();
-    // segments (rounded, tiny gaps)
-    var x=barL;
-    LANE_ORDER.forEach(function(c){ var seg=clamp((L[c]||0)/V.budget,0,1)*barW; if(seg<=1) return;
-      var col=LANE_COL[c], gr=ctx.createLinearGradient(x,0,x+seg,0);
-      gr.addColorStop(0,withAlpha(col,.95)); gr.addColorStop(1,withAlpha(col,.62));
-      ctx.fillStyle=gr; roundRect(ctx,x,by,Math.max(seg-1.5,1.5),bh,Math.min(bh/2,4)); ctx.fill();
-      x+=seg; });
-    if(owner){ ctx.strokeStyle=withAlpha(C.crit,.7); ctx.lineWidth=1.2; ctx.shadowColor=withAlpha(C.crit,.55); ctx.shadowBlur=10;
-      roundRect(ctx,barL,by,barW,bh,bh/2); ctx.stroke(); ctx.shadowBlur=0; }
-    // lane count chip (omitted in compact mode)
-    if(!compact){ ctx.textAlign="right"; ctx.font=FM(10.5,500); ctx.fillStyle=C.muted;
-      ctx.fillText(Math.round(nd.lanes), w-12, cyy); }
-  });
+  var bh=Math.min(24, Math.max(16, h*0.15));
+  var y1=Math.round(h*0.30), y2=Math.round(h*0.66), small=h<128;
+
+  // ---- bar 1: compute allocation per patient ----
+  ctx.font=FS(8.5,600); ctx.fillStyle=C.dim; ctx.fillText("BY PATIENT", L, y1-9);
+  ctx.fillStyle="rgba(255,255,255,.03)"; roundRect(ctx,L,y1,BW,bh,bh/2); ctx.fill();
+  var sorted=ids.slice().sort(function(a,b){return V.nodes[b].lanes-V.nodes[a].lanes;});
+  var x=L;
+  sorted.forEach(function(id){ var nd=V.nodes[id], seg=nd.lanes/budget*BW; if(seg<0.6) return;
+    var owner=(V.owner===id), col=owner||nd.tier==="CRITICAL"?C.crit:nd.tier==="WATCH"?C.watch:C.cyan, a=owner?.97:.55;
+    var g=ctx.createLinearGradient(x,0,x+seg,0); g.addColorStop(0,withAlpha(col,a)); g.addColorStop(1,withAlpha(col,a*.66));
+    ctx.fillStyle=g; roundRect(ctx,x,y1,Math.max(seg-1.6,1.6),bh,Math.min(bh/2,5)); ctx.fill();
+    if(seg>58){ ctx.fillStyle=owner?"#fff":withAlpha(C.ink,.88); ctx.font=FM(10.5,600); ctx.textAlign="left";
+      ctx.fillText((nd.name||id).split(",")[0]+" · "+Math.round(nd.lanes), x+9, y1+bh/2); }
+    x+=seg; });
+
+  // ---- bar 2: compute allocation per lane class ----
+  ctx.textBaseline="middle"; ctx.textAlign="left"; ctx.font=FS(8.5,600); ctx.fillStyle=C.dim;
+  ctx.fillText("BY LANE CLASS", L, y2-9);
+  ctx.fillStyle="rgba(255,255,255,.03)"; roundRect(ctx,L,y2,BW,bh,bh/2); ctx.fill();
+  var tot={safety:0,ml_tracking:0,render:0,logging:0};
+  ids.forEach(function(id){ var lv=V.lanes[id]; if(lv) LANE_ORDER.forEach(function(c){ tot[c]+=lv[c]||0; }); });
+  var x2=L;
+  LANE_ORDER.forEach(function(c){ var seg=tot[c]/budget*BW; if(seg<0.6) return;
+    var col=LANE_COL[c], g=ctx.createLinearGradient(x2,0,x2+seg,0);
+    g.addColorStop(0,withAlpha(col,.92)); g.addColorStop(1,withAlpha(col,.6));
+    ctx.fillStyle=g; roundRect(ctx,x2,y2,Math.max(seg-1.6,1.6),bh,Math.min(bh/2,5)); ctx.fill();
+    if(seg>64){ ctx.fillStyle=withAlpha(C.ink,.88); ctx.font=FS(9.5,600); ctx.textAlign="left";
+      ctx.fillText(LANE_LABEL[c]+" "+Math.round(tot[c]), x2+9, y2+bh/2); }
+    x2+=seg; });
+  // class legend
+  if(!small){ var lx=L, ly=y2+bh+13;
+    LANE_ORDER.forEach(function(c){ ctx.fillStyle=LANE_COL[c]; ctx.fillRect(lx,ly-4,7,7);
+      ctx.fillStyle=C.dim; ctx.font=FS(9,500); ctx.textAlign="left"; ctx.fillText(LANE_LABEL[c],lx+11,ly);
+      lx+=11+ctx.measureText(LANE_LABEL[c]).width+14; }); }
 }
 
 /* ============================================================
@@ -427,47 +431,48 @@ function drawLanes(s){
 function logY(v,h,pt,pb){ var lv=Math.log10(Math.max(v,1)); return (h-pb)-(lv/5)*(h-pt-pb); }
 function drawLatency(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
-  var padT=14, padB=22, x0=42, x1=w-12, span=x1-x0;
-  ctx.textBaseline="middle"; ctx.font=FM(9,500);
-  for(var e=0;e<=5;e++){ var v=Math.pow(10,e), y=logY(v,h,padT,padB);
-    ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y+.5); ctx.lineTo(x1,y+.5); ctx.stroke();
-    ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(v>=1000?(v/1000)+"k":v+"", x0-6,y); }
-  // deadline
-  var dy=logY(DEADLINE_US,h,padT,padB);
-  ctx.strokeStyle=withAlpha(C.crit,.8); ctx.lineWidth=1.3; ctx.setLineDash([5,4]);
-  ctx.beginPath(); ctx.moveTo(x0,dy+.5); ctx.lineTo(x1,dy+.5); ctx.stroke(); ctx.setLineDash([]);
-  ctx.textAlign="left"; ctx.font=FS(9.5,600); ctx.fillStyle=C.crit; ctx.fillText("HARD DEADLINE · 50,000 µs", x0+6, dy-8);
+  var n=latFill, i;
+  function idx(k){ return (latHead-latFill+k+latBuf.length)%latBuf.length; }
 
-  var n=latFill, step=span/(latBuf.length-1);
-  function idx(i){ return (latHead-latFill+i+latBuf.length)%latBuf.length; }
-  // p95 fill band -> baseline
-  ctx.beginPath();
-  for(var i=0;i<n;i++){ var xx=x0+i*step, yy=logY(latBuf95[idx(i)],h,padT,padB); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); }
-  if(n){ ctx.lineTo(x0+(n-1)*step,h-padB); ctx.lineTo(x0,h-padB); ctx.closePath();
-    var fg=ctx.createLinearGradient(0,padT,0,h-padB); fg.addColorStop(0,withAlpha(C.cyan,.16)); fg.addColorStop(1,withAlpha(C.cyan,.01));
-    ctx.fillStyle=fg; ctx.fill(); }
-  // p50 line
-  ctx.lineJoin="round"; ctx.lineWidth=1.7; ctx.shadowColor=withAlpha(C.cyan,.6); ctx.shadowBlur=8; ctx.strokeStyle=C.cyan;
-  ctx.beginPath(); for(i=0;i<n;i++){ var x=x0+i*step, y=logY(latBuf[idx(i)],h,padT,padB); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
-  ctx.stroke(); ctx.shadowBlur=0;
-  if(n){ var lx=x0+(n-1)*step, ly=logY(latBuf[idx(n-1)],h,padT,padB);
-    ctx.fillStyle=C.cyan; ctx.beginPath(); ctx.arc(lx,ly,2.6,0,7); ctx.fill();
-    ctx.strokeStyle=withAlpha(C.cyan,.35); ctx.beginPath(); ctx.arc(lx,ly,5.5,0,7); ctx.stroke(); }
-
-  // floating readout card
+  // ---- top readout row: p50 (big), p95, deadline headroom ----
+  ctx.textBaseline="alphabetic"; ctx.textAlign="left";
+  ctx.fillStyle=C.dim; ctx.font=FS(9.5,600); ctx.fillText("p50", 6, 17);
+  var vt=fmt(V.lat.p50,2);
+  ctx.fillStyle=C.ink; ctx.font=FM(20,600); ctx.fillText(vt, 32, 20);
+  var px=32+ctx.measureText(vt).width;
+  ctx.fillStyle=C.dim; ctx.font=FM(10.5,500); ctx.fillText("µs", px+5, 20);
+  ctx.fillStyle=C.muted; ctx.font=FM(11,500); ctx.fillText("p95 "+fmt(V.lat.p95,1)+"µs", px+36, 19);
   var margin=DEADLINE_US/Math.max(V.lat.p50,.01);
-  var rw=196, rx=w-rw-10, ry=10, rh=62;
-  ctx.fillStyle="rgba(10,13,20,.82)"; roundRect(ctx,rx,ry,rw,rh,11); ctx.fill();
-  ctx.strokeStyle=C.grid; ctx.lineWidth=1; roundRect(ctx,rx,ry,rw,rh,11); ctx.stroke();
-  ctx.textAlign="left"; ctx.textBaseline="alphabetic";
-  ctx.fillStyle=C.dim; ctx.font=FS(9.5,600); ctx.fillText("p50 conditioning latency", rx+14, ry+17);
-  ctx.fillStyle=C.ink; ctx.font=FM(20,600); var vt=fmt(V.lat.p50,2); ctx.fillText(vt, rx+14, ry+40);
-  ctx.fillStyle=C.dim; ctx.font=FM(11,500); ctx.fillText("µs", rx+14+ctx.measureText(vt).width+7, ry+40);
-  ctx.fillStyle=C.muted; ctx.font=FM(9.5,500); ctx.textAlign="right";
-  ctx.fillText("p95 "+fmt(V.lat.p95,1)+"µs", rx+rw-14, ry+40);
-  ctx.fillStyle=C.ok; ctx.font=FS(10,600); ctx.textAlign="left";
-  ctx.fillText("▼ "+(margin>=1000?(margin/1000).toFixed(1)+"k":Math.round(margin))+"× under deadline", rx+14, ry+55);
-  ctx.textBaseline="middle";
+  ctx.fillStyle=C.ok; ctx.font=FS(10.5,600); ctx.textAlign="right";
+  ctx.fillText("▼ "+(margin>=1000?(margin/1000).toFixed(1)+"k":Math.round(margin))+"× under 50,000 µs deadline", w-6, 19);
+
+  // ---- auto-scaled oscilloscope (shows the real µs jitter, in-frame) ----
+  var topH=30, padL=42, padR=10, padB=8;
+  var x0=padL, x1=w-padR, span=x1-x0, top=topH+8, bot=h-padB, ph=bot-top;
+  var tmax=10; for(i=0;i<n;i++){ var v=latBuf95[idx(i)]; if(v>tmax) tmax=v; }
+  tmax=Math.max(8, tmax)*1.3;
+  latYMax += (tmax-latYMax)*0.04;               // smooth rescale
+  var ymax=latYMax;
+  function yAt(v){ return bot-Math.min(v,ymax)/ymax*ph; }
+  ctx.textBaseline="middle"; ctx.font=FM(9,500);
+  [0,0.5,1].forEach(function(f){ var y=bot-f*ph;
+    ctx.strokeStyle=C.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x0,y+.5); ctx.lineTo(x1,y+.5); ctx.stroke();
+    ctx.fillStyle=C.dim; ctx.textAlign="right"; var lv=ymax*f; ctx.fillText((lv<10?lv.toFixed(1):Math.round(lv))+"µs", x0-5, y); });
+  if(n>1){ var step=span/(latBuf.length-1);
+    // p95 fill + faint line
+    ctx.beginPath(); for(i=0;i<n;i++){ var xx=x0+i*step, yy=yAt(latBuf95[idx(i)]); i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy); }
+    ctx.lineTo(x0+(n-1)*step,bot); ctx.lineTo(x0,bot); ctx.closePath();
+    var fg=ctx.createLinearGradient(0,top,0,bot); fg.addColorStop(0,withAlpha(C.cyan,.24)); fg.addColorStop(1,withAlpha(C.cyan,.02));
+    ctx.fillStyle=fg; ctx.fill();
+    ctx.strokeStyle=withAlpha(C.cyan,.28); ctx.lineWidth=1; ctx.beginPath();
+    for(i=0;i<n;i++){ var xa=x0+i*step, ya=yAt(latBuf95[idx(i)]); i?ctx.lineTo(xa,ya):ctx.moveTo(xa,ya); } ctx.stroke();
+    // p50 glowing line
+    ctx.lineJoin="round"; ctx.lineWidth=2; ctx.shadowColor=withAlpha(C.cyan,.7); ctx.shadowBlur=9; ctx.strokeStyle=C.cyan;
+    ctx.beginPath(); for(i=0;i<n;i++){ var xb=x0+i*step, yb=yAt(latBuf[idx(i)]); i?ctx.lineTo(xb,yb):ctx.moveTo(xb,yb); } ctx.stroke(); ctx.shadowBlur=0;
+    var lx=x0+(n-1)*step, ly=yAt(latBuf[idx(n-1)]);
+    ctx.fillStyle=C.cyan; ctx.beginPath(); ctx.arc(lx,ly,2.8,0,7); ctx.fill();
+    ctx.strokeStyle=withAlpha(C.cyan,.4); ctx.lineWidth=1; ctx.beginPath(); ctx.arc(lx,ly,5.5,0,7); ctx.stroke();
+  }
 }
 
 /* real vitals/labs trajectory sparklines (from /aegis/cohort/<bed>/chart) */
