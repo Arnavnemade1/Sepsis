@@ -133,15 +133,16 @@ function bedCellHTML(b){
     '<div class="bed-vitals"></div>'+
     '<div class="bed-bar"><i></i></div>';
 }
-function updateBed(el,b){
+function updateBed(el,b,isFocus){
   var tier=tierOf(b.fused_risk), en=b.enterprise, ed=b.edge;
-  if(el.dataset.tier!==tier){
-    if(tier==="critical" && el.dataset.tier && el.dataset.tier!=="critical"){
+  var key=tier+(isFocus?".focus":"");
+  if(el.dataset.tier!==key){
+    if(tier==="critical" && el.dataset.tier && el.dataset.tier.indexOf("critical")!==0){
       el.classList.add("just-crit");
       setTimeout(function(){ el.classList.remove("just-crit"); }, 2700);
     }
-    el.dataset.tier=tier;
-    el.className="bed "+tier+(el.classList.contains("just-crit")?" just-crit":"");
+    el.dataset.tier=key;
+    el.className="bed "+tier+(isFocus?" focus":"")+(el.classList.contains("just-crit")?" just-crit":"");
   }
   el.querySelector(".bed-risk b").textContent=fmt(b.fused_risk,2);
   el.querySelector(".bed-sys").textContent=
@@ -151,7 +152,7 @@ function updateBed(el,b){
   var compact=vital("HR",ed.hr,0)+vital("MAP",en.map,0)+vital("T°",en.temp_c,1)+vital("Lac",en.lactate,1);
   var full=compact+vital("SpO₂",en.spo2,0)+vital("RR",en.resp_rate,0)+
     vital("WBC",en.wbc,1)+vital("HRV",ed.hrv_ms,0);
-  el.querySelector(".bed-vitals").innerHTML=(tier==="critical")?full:compact;
+  el.querySelector(".bed-vitals").innerHTML=isFocus?full:compact;
   el.querySelector(".bed-bar i").style.width=clamp(b.fused_risk*100,2,100)+"%";
 }
 function renderGrid(beds){
@@ -166,7 +167,9 @@ function renderGrid(beds){
   var first={}; [].forEach.call(host.children,function(el){ first[el.dataset.id]=el.getBoundingClientRect(); });
   ordered.forEach(function(id){ host.appendChild(host.querySelector('[data-id="'+id+'"]')); });
   var byId={}; beds.forEach(function(b){ byId[b.bed_id]=b; });
-  [].forEach.call(host.children,function(el){ if(byId[el.dataset.id]) updateBed(el,byId[el.dataset.id]); });
+  // only the single highest-risk critical bed expands (the crisis focus)
+  var focus=(ordered.length && byId[ordered[0]] && tierOf(byId[ordered[0]].fused_risk)==="critical")?ordered[0]:null;
+  [].forEach.call(host.children,function(el){ if(byId[el.dataset.id]) updateBed(el,byId[el.dataset.id],el.dataset.id===focus); });
   [].forEach.call(host.children,function(el){ var f=first[el.dataset.id]; if(!f) return;
     var l=el.getBoundingClientRect(), dx=f.left-l.left, dy=f.top-l.top;
     if(Math.abs(dx)>0.5||Math.abs(dy)>0.5) el.animate(

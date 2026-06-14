@@ -201,15 +201,17 @@ b{font-weight:700}
 .bed.watch::before{background:var(--watch);opacity:.85}
 .bed.critical::before{background:var(--crit);opacity:1;width:3px}
 .bed.watch{border-color:rgba(242,193,78,.3)}
-.bed.critical{grid-column:span 2;grid-row:span 2;border-color:rgba(251,111,125,.5);
-  box-shadow:0 0 0 1px rgba(251,111,125,.14),0 18px 50px -22px rgba(251,111,125,.6);
-  background:linear-gradient(180deg,rgba(251,111,125,.06),rgba(251,111,125,.012))}
+.bed.critical{border-color:rgba(251,111,125,.5);
+  box-shadow:0 0 0 1px rgba(251,111,125,.12),0 14px 38px -22px rgba(251,111,125,.5);
+  background:linear-gradient(180deg,rgba(251,111,125,.05),rgba(251,111,125,.01))}
+.bed.focus{grid-column:span 2;grid-row:span 2;
+  box-shadow:0 0 0 1px rgba(251,111,125,.18),0 20px 54px -22px rgba(251,111,125,.65)}
 .bed-top{display:flex;align-items:center;gap:8px}
 .bed-tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--dim);
   background:rgba(255,255,255,.04);padding:2px 6px;border-radius:5px;flex:0 0 auto}
 .bed-name{font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;transition:font-size .3s}
-.bed.critical .bed-name{font-size:15px}
+.bed.focus .bed-name{font-size:15px}
 .bed-risk{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--muted);flex:0 0 auto}
 .bed-risk b{color:var(--ink);font-weight:600}
 .bed.critical .bed-risk b{color:var(--crit)}
@@ -224,7 +226,7 @@ b{font-weight:700}
   font-size:10.5px;line-height:1.5;color:var(--muted);margin-top:auto;padding-top:3px}
 .bed-vitals span{display:inline-flex;gap:4px;font-variant-numeric:tabular-nums}
 .bed-vitals i{color:var(--dim);font-style:normal}
-.bed.critical .bed-vitals{font-size:12px;gap:6px 18px}
+.bed.focus .bed-vitals{font-size:12px;gap:6px 18px}
 .bed-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.05);overflow:hidden;flex:0 0 auto}
 .bed-bar i{display:block;height:100%;border-radius:2px;background:var(--cyan);
   transition:width .6s cubic-bezier(.2,.8,.2,1),background .35s}
