@@ -84,7 +84,9 @@ function ingest(snap){
   if(events.length>40) events=events.slice(-40);
   latestBeds={}; (snap.beds||[]).forEach(function(b){ latestBeds[b.bed_id]=b; });
   if(snap.beds){ var sp=snap.beds.filter(function(b){return b.will_be_septic;}).length;
-    $("a-meta").textContent=snap.beds.length+" real patients · "+sp+" septic"; }
+    var real=snap.data_mode && snap.data_mode.indexOf("real")===0;
+    $("a-meta").textContent=real ? (snap.beds.length+" real ICU patients · "+sp+" septic")
+                                 : (snap.beds.length+" patients · synthetic wing"); }
   if(snap.lane_map){ $("c-meta").textContent="budget "+snap.lane_map.budget; }
   renderGrid(snap.beds);
   renderSpine();          // refresh metrics + ticker the instant data arrives

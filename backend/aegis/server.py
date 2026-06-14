@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from backend.aegis.stream import AegisSession
-from backend.aegis.kernel import ALERT, NeuroSymbolicRuntime, SepsisBundleEngine
+from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
 from backend.aegis.cohort import CohortCluster
 from backend.core.simulator import PatientTelemetrySimulator
 
@@ -57,13 +57,26 @@ TICK_SECONDS = 1.5
 _clients: List[WebSocket] = []
 _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
 
-# --- The live ICU wing: a CohortCluster of REAL de-identified ICU patients from
-#     the PhysioNet/CinC-2019 corpus. Each bed replays its actual hourly vitals +
-#     labs through /dev/bio (Kalman-conditioned) -> memory fabric -> fusion ->
-#     cognitive scheduler -> Layer-4 cage. Septic patients deteriorate on their
-#     own per the real record and cross threshold near their true onset; the
-#     Chaos Controller fast-forwards a bed to its onset on demand. ------------- #
-cluster = CohortCluster(n=12, lane_budget=160, seed=7)
+# --- The live ICU wing. Preferred: a CohortCluster of REAL de-identified ICU
+#     patients from the PhysioNet/CinC-2019 corpus (each bed replays its actual
+#     hourly vitals + labs through /dev/bio -> memory fabric -> fusion -> scheduler
+#     -> L4 cage; septic patients deteriorate per the real record and cross
+#     threshold near their true onset). The corpus is gitignored (PhysioNet
+#     redistribution terms), so when it is absent — e.g. on a fresh deploy — we
+#     fall back to the synthetic wing, which exercises the identical kernel. ---- #
+try:
+    cluster = CohortCluster(n=12, lane_budget=160, seed=7)
+    if not cluster.node_ids:
+        raise RuntimeError("CinC-2019 corpus not found under data/cinc2019")
+    DATA_MODE = "real-cinc2019"
+    print(f"[aegis] ICU wing: {len(cluster.node_ids)} REAL CinC-2019 patients.")
+except Exception as exc:  # pragma: no cover
+    print(f"[aegis] real cohort unavailable ({exc}); using synthetic wing.")
+    cluster = BioCluster(
+        n_nodes=6, lane_budget=96, weights=[1.0, 1.2, 1.5, 1.0, 1.3, 1.1], seed=7,
+        names=["Okafor, A.", "Bauer, M.", "Reyes, L.", "Nguyen, T.",
+               "Castellano, R.", "Yusuf, D."])
+    DATA_MODE = "synthetic"
 cluster_safety = NeuroSymbolicRuntime()
 bundle_engine = SepsisBundleEngine()
 _bundle = {"bed": None, "ts": 0.0, "data": None}
@@ -301,7 +314,7 @@ def _focus_bundle() -> Optional[Dict[str, Any]]:
     now = time.time()
     if _bundle["bed"] != focus or now - _bundle["ts"] > 2.5:
         _bundle["data"] = bundle_engine.generate(
-            cluster.profiles[focus], cluster.histories.get(focus, {}))
+            cluster.profiles[focus], getattr(cluster, "histories", {}).get(focus, {}))
         _bundle["bed"] = focus
         _bundle["ts"] = now
     return _bundle["data"]
@@ -314,6 +327,7 @@ def _cluster_payload() -> Dict[str, Any]:
     snap["devbio"] = cluster.bus.status()         # Panel D — µs conditioning latency
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
     snap["bundle"] = _focus_bundle()              # Module C — certified Hour-1 bundle
+    snap["data_mode"] = DATA_MODE
     snap["ts"] = time.time()
     return snap
 
@@ -358,13 +372,18 @@ def cluster_snapshot() -> Dict[str, Any]:
 @app.get("/aegis/cohort")
 def cohort_roster() -> Dict[str, Any]:
     """The monitored patient roster — real de-identified CinC-2019 ICU stays."""
-    return {"source": "PhysioNet/CinC-2019 Sepsis Challenge",
+    if not hasattr(cluster, "roster"):
+        return {"source": "synthetic", "mode": DATA_MODE, "n": len(cluster.node_ids),
+                "patients": []}
+    return {"source": "PhysioNet/CinC-2019 Sepsis Challenge", "mode": DATA_MODE,
             "n": len(cluster.node_ids), "patients": cluster.roster()}
 
 
 @app.get("/aegis/cohort/{bed_id}/chart")
 def cohort_chart(bed_id: str) -> Dict[str, Any]:
     """One patient's real vitals/labs trajectory + ground-truth sepsis label."""
+    if not hasattr(cluster, "chart"):
+        return {"status": "unavailable", "mode": DATA_MODE}
     ch = cluster.chart(bed_id)
     if ch is None:
         return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
