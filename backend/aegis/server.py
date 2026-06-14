@@ -379,6 +379,14 @@ def cohort_roster() -> Dict[str, Any]:
             "n": len(cluster.node_ids), "patients": cluster.roster()}
 
 
+@app.get("/aegis/cohort/validation")
+def cohort_validation() -> Dict[str, Any]:
+    """Real sepsis-detection performance across the cohort vs ground-truth labels."""
+    if not hasattr(cluster, "validation"):
+        return {"status": "unavailable", "mode": DATA_MODE}
+    return cluster.validation(alarm=0.70)
+
+
 @app.get("/aegis/cohort/{bed_id}/chart")
 def cohort_chart(bed_id: str) -> Dict[str, Any]:
     """One patient's real vitals/labs trajectory + ground-truth sepsis label."""

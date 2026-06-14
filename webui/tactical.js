@@ -11,10 +11,10 @@
 
 /* ---------- palette (mirrors tactical.css) ---------- */
 var C = {
-  ink:"#eef2f9", muted:"#97a2bb", dim:"#5d6884",
-  cyan:"#63cdf2", indigo:"#7e8cf8", violet:"#a98cf5",
-  ok:"#4ade9e", watch:"#f2c14e", crit:"#fb6f7d",
-  grid:"rgba(126,140,248,.06)", gridHi:"rgba(126,140,248,.12)",
+  ink:"#f0f4ff", muted:"#9aa6c8", dim:"#5a6488",
+  cyan:"#5fd0f7", indigo:"#7d8cff", violet:"#b08cff",
+  ok:"#41e6a4", watch:"#ffc24d", crit:"#ff6b86",
+  grid:"rgba(108,140,255,.06)", gridHi:"rgba(108,140,255,.13)",
 };
 var TIER_COL = { STABLE:C.cyan, WATCH:C.watch, CRITICAL:C.crit };
 var LANE_COL = { safety:C.ok, ml_tracking:C.cyan, render:C.indigo, logging:C.violet };
@@ -92,6 +92,7 @@ function ingest(snap){
   renderSpine();          // refresh metrics + ticker the instant data arrives
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
+  if(currentView==="roster") renderRoster();
 }
 
 function ease(){
@@ -570,30 +571,147 @@ setInterval(function(){ if(connected && performance.now()-lastMsg<4000) return;
   fetch(window.AEGIS.http("/aegis/cluster/snapshot")).then(function(r){return r.json();}).then(ingest).catch(function(){}); },2500);
 
 /* ============================================================
+   AMBIENT BACKGROUND — drifting node mesh
+   ============================================================ */
+var amb={cv:null,ctx:null,w:0,h:0,nodes:[]};
+function ambientInit(){ amb.cv=$("ambient"); if(!amb.cv) return; amb.ctx=amb.cv.getContext("2d");
+  ambientFit(); var n=Math.min(64,Math.floor(window.innerWidth/28)); amb.nodes=[];
+  for(var i=0;i<n;i++) amb.nodes.push({x:Math.random(),y:Math.random(),
+    vx:(Math.random()-.5)*0.00010,vy:(Math.random()-.5)*0.00010,r:Math.random()*1.5+0.5}); }
+function ambientFit(){ if(!amb.cv) return; var dpr=Math.min(window.devicePixelRatio||1,2);
+  amb.w=window.innerWidth; amb.h=window.innerHeight; amb.cv.width=amb.w*dpr; amb.cv.height=amb.h*dpr;
+  amb.ctx.setTransform(dpr,0,0,dpr,0,0); }
+function ambientDraw(){ if(!amb.ctx) return; var ctx=amb.ctx,w=amb.w,h=amb.h,ns=amb.nodes; ctx.clearRect(0,0,w,h);
+  for(var i=0;i<ns.length;i++){ var p=ns[i]; p.x+=p.vx; p.y+=p.vy; if(p.x<0||p.x>1)p.vx*=-1; if(p.y<0||p.y>1)p.vy*=-1; }
+  for(i=0;i<ns.length;i++) for(var j=i+1;j<ns.length;j++){ var a=ns[i],b=ns[j],dx=(a.x-b.x)*w,dy=(a.y-b.y)*h,d=Math.hypot(dx,dy);
+    if(d<160){ ctx.strokeStyle="rgba(108,140,255,"+(0.045*(1-d/160))+")"; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(a.x*w,a.y*h); ctx.lineTo(b.x*w,b.y*h); ctx.stroke(); } }
+  for(i=0;i<ns.length;i++){ var q=ns[i]; ctx.fillStyle="rgba(125,140,255,.20)"; ctx.beginPath(); ctx.arc(q.x*w,q.y*h,q.r,0,7); ctx.fill(); } }
+
+/* ============================================================
+   BOOT SEQUENCE
+   ============================================================ */
+function runBoot(){ var log=$("boot-log"), fill=$("boot-fill"); if(!log) return;
+  var lines=[["init  kernel image",0],["L1  SHAL   /dev/bio device-driver bus",1],
+    ["L2  VMM    zero-copy biometric memory fabric",1],["L3  SCHED  multi-tenant cognitive scheduler",1],
+    ["L4  NSYM   neurosymbolic egress cage · Z3",1],["mount  PhysioNet/CinC-2019 cohort",1],
+    ["fusion ontology  edge + enterprise tiers",1],["ICU WING ONLINE",2]];
+  var i=0, html="";
+  (function step(){ if(i>=lines.length){ fill.style.width="100%";
+      setTimeout(function(){ $("boot").classList.add("gone"); },650); return; }
+    var L=lines[i], tag=L[1]===1?'<span class="ok">ONLINE</span>':(L[1]===2?'<span class="ok">▸ READY</span>':'');
+    var pad=L[1]===1?(" "+new Array(Math.max(2,46-L[0].length)).join(".")+" "):"  ";
+    html+='<div>'+(L[1]===2?'<b>':'')+L[0]+(L[1]===2?'</b>':'')+pad+tag+'</div>';
+    log.innerHTML=html; log.scrollTop=log.scrollHeight; fill.style.width=Math.round((i+1)/lines.length*100)+"%";
+    i++; setTimeout(step, L[1]===2?500:230); })(); }
+
+/* ============================================================
+   VIEW SWITCHING
+   ============================================================ */
+var currentView="ops";
+function setView(name){ currentView=name;
+  ["ops","val","roster"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
+  [].forEach.call(document.querySelectorAll(".tab"),function(t){ t.classList.toggle("active",t.dataset.view===name); });
+  if(name==="val") loadValidation();
+  if(name==="roster") renderRoster();
+}
+
+/* ============================================================
+   VALIDATION VIEW
+   ============================================================ */
+var valData=null;
+function kpiHTML(cls,k,v,unit,s){ return '<div class="kpi'+(cls?" "+cls:"")+'"><div class="k">'+k+
+  '</div><div class="v" data-count="'+v+'">0<small>'+unit+'</small></div><div class="s">'+s+'</div></div>'; }
+function loadValidation(){ fetch(window.AEGIS.http("/aegis/cohort/validation")).then(function(r){return r.json();})
+  .then(function(d){ if(d&&d.summary){ valData=d; renderValidation(d); } }).catch(function(){}); }
+function renderValidation(d){ var s=d.summary;
+  $("val-kpis").innerHTML=
+    kpiHTML("good","Detection rate",Math.round(s.detection_rate*100),"%",s.n_detected+" / "+s.n_septic+" septic stays")+
+    kpiHTML("lead","Mean lead time",s.mean_lead_h,"h","before labelled onset")+
+    kpiHTML("lead","Max lead time",s.max_lead_h,"h","earliest flagged")+
+    kpiHTML("","Cohort size",s.n,"","monitored real stays")+
+    kpiHTML("warn","False positive",Math.round(s.fp_rate*100),"%","of stable patients");
+  var rows='<div class="vrow hdr"><span>Patient</span><span>Onset</span><span>First alarm</span><span>Result</span></div>';
+  d.patients.slice().sort(function(a,b){return (b.lead==null?-99:b.lead)-(a.lead==null?-99:a.lead);}).forEach(function(r){
+    var dot=!r.septic?C.dim:(r.first_alarm!=null&&(r.onset_hour==null||r.first_alarm<=r.onset_hour))?C.ok:C.crit;
+    var res=!r.septic?(r.first_alarm!=null?'<span class="tag-na">stable · alarmed</span>':'<span class="tag-na">stable</span>')
+      :(r.lead!=null&&r.lead>=0?'<span class="tag-pos">+'+r.lead+' h early</span>':'<span class="tag-miss">missed</span>');
+    rows+='<div class="vrow"><span class="nm" data-id="'+r.bed_id+'"><i style="background:'+dot+'"></i>'+r.name+'</span>'+
+      '<span class="mono">'+(r.onset_hour!=null?'h'+r.onset_hour:'—')+'</span>'+
+      '<span class="mono">'+(r.first_alarm!=null?'h'+r.first_alarm:'—')+'</span><span class="mono">'+res+'</span></div>'; });
+  $("val-table").innerHTML=rows;
+  requestAnimationFrame(animateCounts);
+}
+function drawLeadHist(s){ var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h); if(!valData) return;
+  var leads=valData.summary.leads||[]; ctx.textBaseline="middle";
+  if(!leads.length){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center"; ctx.fillText("no detections",w/2,h/2); return; }
+  var bins=[[0,6],[6,12],[12,24],[24,48],[48,1e9]], labels=["0–6","6–12","12–24","24–48","48 h+"];
+  var counts=bins.map(function(b){return leads.filter(function(l){return l>=b[0]&&l<b[1];}).length;});
+  var mx=Math.max.apply(null,counts)||1, padL=14,padR=14,padT=16,padB=26,bw=(w-padL-padR)/bins.length;
+  counts.forEach(function(c,i){ var bh=(c/mx)*(h-padT-padB), x=padL+i*bw, y=h-padB-bh;
+    var g=ctx.createLinearGradient(0,y,0,h-padB); g.addColorStop(0,withAlpha(C.cyan,.95)); g.addColorStop(1,withAlpha(C.cyan,.32));
+    ctx.fillStyle=g; roundRect(ctx,x+7,y,bw-14,Math.max(bh,2),5); ctx.fill();
+    ctx.textAlign="center"; ctx.fillStyle=C.ink; ctx.font=FM(14,600); ctx.textBaseline="bottom"; if(c) ctx.fillText(c,x+bw/2,y-5);
+    ctx.fillStyle=C.dim; ctx.font=FS(10,500); ctx.textBaseline="top"; ctx.fillText(labels[i],x+bw/2,h-padB+9); }); }
+
+/* ============================================================
+   ROSTER VIEW
+   ============================================================ */
+var rosterFilter="all", rosterQuery="";
+function renderRoster(){ var host=$("roster-list"); if(!host) return;
+  var beds=Object.keys(latestBeds).map(function(k){return latestBeds[k];});
+  if(!beds.length){ host.innerHTML='<div style="color:var(--dim);font-size:13px">awaiting cohort …</div>'; return; }
+  beds.sort(function(a,b){return b.fused_risk-a.fused_risk;});
+  var q=rosterQuery.toLowerCase(), html="";
+  beds.forEach(function(b){ var tier=tierOf(b.fused_risk);
+    if(rosterFilter==="septic"&&!b.will_be_septic) return;
+    if(rosterFilter==="stable"&&b.will_be_septic) return;
+    if(rosterFilter==="critical"&&tier!=="critical") return;
+    if(q&&(b.name+" "+(b.mrn||"")).toLowerCase().indexOf(q)<0) return;
+    html+='<div class="pcard '+tier+'" data-id="'+b.bed_id+'"><div class="pcard-top">'+
+      '<span class="pcard-name">'+b.name+'</span><span class="pcard-risk">'+fmt(b.fused_risk,2)+'</span></div>'+
+      '<div class="pcard-meta">'+(b.mrn||"—")+(b.age!=null?' · '+Math.round(b.age)+'y '+(b.gender||''):'')+
+        (b.icu_hour!=null?' · ICU h'+b.icu_hour+'/'+b.los_total:'')+'</div><div class="pcard-foot">'+
+        (b.will_be_septic?'<span class="pchip sep">sepsis h'+b.onset_hour+'</span>':'<span class="pchip ok">no sepsis</span>')+
+        '<span class="pchip">'+(b.primary_system==="none"?"nominal":b.primary_system)+'</span></div></div>'; });
+  host.innerHTML=html||'<div style="color:var(--dim);font-size:13px">no patients match.</div>'; }
+
+function animateCounts(){ [].forEach.call(document.querySelectorAll("[data-count]"),function(el){
+  if(el.dataset.done) return; el.dataset.done="1";
+  var tgt=parseFloat(el.dataset.count)||0, u=el.querySelector("small"), us=u?u.outerHTML:"", t0=performance.now();
+  (function tick(now){ var p=Math.min(1,(now-t0)/850), e=1-Math.pow(1-p,3), v=tgt*e;
+    el.innerHTML=(tgt%1?v.toFixed(1):Math.round(v))+us; if(p<1) requestAnimationFrame(tick); })(t0); }); }
+
+/* ============================================================
    MAIN LOOP
    ============================================================ */
 var surf={}, spineTick=0;
 function setup(){
-  surf.mem=new Surface("cv-mem");
-  surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
+  ambientInit(); runBoot();
+  surf.mem=new Surface("cv-mem"); surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
   surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
-  surf.dosTrend=new Surface("cv-dos-trend");
-  // open the dossier from a bed card
-  $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed");
-    if(bed) openDossier(bed.dataset.id); });
-  // chaos / replay controls live in the open patient's dossier
+  surf.dosTrend=new Surface("cv-dos-trend"); surf.leadhist=new Surface("cv-leadhist");
+  $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
-    if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act);
-    b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
+    if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act); b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
   $("dos-close").addEventListener("click",closeDossier);
   $("dos-scrim").addEventListener("click",closeDossier);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeDossier(); });
+  $("tabs").addEventListener("click",function(e){ var t=e.target.closest(".tab"); if(t) setView(t.dataset.view); });
+  $("roster-list").addEventListener("click",function(e){ var c=e.target.closest(".pcard"); if(c) openDossier(c.dataset.id); });
+  $("view-val").addEventListener("click",function(e){ var n=e.target.closest(".nm"); if(n&&n.dataset.id) openDossier(n.dataset.id); });
+  $("roster-search").addEventListener("input",function(e){ rosterQuery=e.target.value; renderRoster(); });
+  $("roster-filters").addEventListener("click",function(e){ var b=e.target.closest(".rf"); if(!b) return;
+    rosterFilter=b.dataset.f; [].forEach.call(this.children,function(x){x.classList.toggle("active",x===b);}); renderRoster(); });
+  window.addEventListener("resize",ambientFit);
   connect(); requestAnimationFrame(loop);
 }
 function loop(){ frame++;
-  for(var k in surf) surf[k].fit();
+  ambientDraw();
   if(target) ease();
-  drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
+  if(currentView==="ops"){ surf.mem.fit(); surf.lanes.fit(); surf.lat.fit();
+    drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
+  } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist); }
   if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit();
     drawTrends(surf.dosTrend); drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
   if((spineTick++ %6)===0) renderSpine();
