@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=11" />
+<link rel="stylesheet" href="tactical.css?v=13" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -172,55 +172,62 @@
   </header>
 
   <div class="dos-body clinical">
-    <!-- left column -->
-    <div class="cl-col">
+    <!-- left column — synchronized signal acquisition + vitals -->
+    <div class="cl-col cl-left">
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Synchronized Detection Hub</h2>
+          <span class="hd-meta" id="dos-sync">— · in sync</span></div>
+        <div class="card-body cl-pad"><div class="dos-hub" id="dos-hub"></div></div>
+      </section>
       <section class="card cl-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Vital signs</h2><span class="hd-meta">live</span></div>
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--indigo)"></span><h2>Vital Signs</h2><span class="hd-meta">live</span></div>
         <div class="card-body cl-pad"><div class="dos-vitals" id="dos-vitals"></div></div>
       </section>
       <section class="card cl-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Organ-system load</h2><span class="hd-meta">fused</span></div>
-        <div class="card-body cl-pad"><div class="dos-comps" id="dos-comps"></div></div>
-      </section>
-      <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Ground truth</h2><span class="hd-meta">CinC-2019 label</span></div>
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Ground Truth</h2><span class="hd-meta">CinC-2019 label</span></div>
         <div class="card-body cl-pad"><div class="dos-truth" id="dos-truth"></div></div>
       </section>
     </div>
 
-    <!-- center column -->
+    <!-- center column — anatomical 3D bio-twin + risk timeline -->
     <div class="cl-col cl-main">
-      <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Vitals &amp; labs trajectory</h2><span class="hd-meta">real hourly record</span></div>
-        <div class="card-body"><canvas id="cv-dos-trend"></canvas></div>
+      <section class="card cl-card cl-grow cl-twin">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Anatomical Bio-Twin</h2>
+          <span class="hd-meta">organ-system load · live</span></div>
+        <div class="card-body">
+          <div id="twin-stage" class="twin-stage"></div>
+          <div class="twin-legend" id="dos-organs"></div>
+        </div>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--crit)"></span><h2>Fused sepsis-risk timeline</h2><span class="hd-meta">history + forecast vs labelled onset</span></div>
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--crit)"></span><h2>Fused Sepsis-Risk Timeline</h2><span class="hd-meta">history + forecast vs labelled onset</span></div>
         <div class="card-body"><canvas id="cv-dos-risk"></canvas></div>
       </section>
     </div>
 
-    <!-- right column -->
-    <div class="cl-col">
+    <!-- right column — learned behaviour + problems + protocol -->
+    <div class="cl-col cl-right">
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--watch)"></span><h2>Active problems</h2><span class="hd-meta">ranked</span></div>
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Learned Behaviour</h2>
+          <span class="hd-meta" id="dos-learn-meta">baseline —</span></div>
+        <div class="card-body cl-pad"><div class="dos-learned" id="dos-learned"></div></div>
+      </section>
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--watch)"></span><h2>Active Problems</h2><span class="hd-meta">ranked</span></div>
         <div class="card-body cl-pad"><div class="dos-drivers" id="dos-drivers"></div></div>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Certified Hour-1 protocol</h2><span class="hd-meta">Z3-verified</span></div>
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Certified Hour-1 Protocol</h2><span class="hd-meta">Z3-verified</span></div>
         <div class="card-body cl-pad"><div class="dos-bundle" id="dos-bundle"></div></div>
       </section>
     </div>
   </div>
-
-  <footer class="dos-kernel">
-    <div class="dk-lbl">KERNEL · this bed</div>
-    <div class="dk-tiers"><div class="dos-kv" id="dos-edge"></div><div class="dos-kv" id="dos-ent"></div></div>
-    <div class="dk-canvas"><span>shared-memory arena</span><div class="dos-canvas"><canvas id="cv-dos-mem"></canvas></div></div>
-    <div class="dk-canvas"><span>reaction latency</span><div class="dos-canvas"><canvas id="cv-dos-lat"></canvas></div></div>
-  </footer>
 </aside>
 
-<script src="tactical.js?v=11"></script>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/three.module.js" } }
+</script>
+<script type="module" src="twin3d.js?v=3"></script>
+<script src="tactical.js?v=12"></script>
 </body>
 </html>

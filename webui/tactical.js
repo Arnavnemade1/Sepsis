@@ -222,10 +222,6 @@ function renderBundleDossier(b){
 }
 function openDossier(id){
   selectedBed=id; dosChart=null;
-  if(!dosBuilt){ $("dos-comps").innerHTML=COMP_ORDER.map(function(c){
-    return '<div class="dos-comp" data-c="'+c+'"><span class="dos-comp-k">'+c+'</span>'+
-      '<span class="dos-comp-track"><i></i></span><span class="dos-comp-v">0.00</span></div>';
-  }).join(""); dosBuilt=true; }
   $("dossier").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);
@@ -286,20 +282,137 @@ function updateDossier(b){
     vsMon("Lactate",fmt(en.lactate,1),"mmol/L",en.lactate>=4?"alert":en.lactate>2?"warn":"")+
     vsMon("WBC",fmt(en.wbc,1),"k/µL",(en.wbc>12||en.wbc<4)?"alert":"")+
     vsMon("HRV",fmt(e.hrv_ms,0),"ms","");
-  COMP_ORDER.forEach(function(c){ var row=$("dos-comps").querySelector('[data-c="'+c+'"]'); if(!row) return;
-    var sc=b.components[c]||0, bar=row.querySelector("i");
-    bar.style.width=clamp(sc/2.5*100,0,100)+"%"; bar.style.background=COMP_COL[c];
-    row.querySelector(".dos-comp-v").textContent=fmt(sc,2); });
-  // derived autonomic + perfusion markers (kernel footer; main vitals are in the monitor)
-  $("dos-edge").innerHTML=
-    kvHTML("Perfusion idx",fmt(e.perfusion,2),"au")+
-    kvHTML("Vasomotion",fmt(e.vasomotion,2),"au");
-  $("dos-ent").innerHTML=
-    kvHTML("ABP variability",fmt(en.abp_var,1),"σ")+
-    kvHTML("Lactate clearance",fmt(en.lactate_clearance,0),"%",(en.lactate>2&&en.lactate_clearance<-5)?"warn":"");
+  renderHub(b);
+  renderLearned(b);
+  renderOrgans(b);
+  feedTwin(b);
   $("dos-drivers").innerHTML=(b.drivers&&b.drivers.length)
     ? b.drivers.map(function(d,i){ return '<div class="drv'+(i<2?" hi":"")+'">'+d+'</div>'; }).join("")
     : '<div class="drv none">All monitored systems within range</div>';
+}
+
+/* ============================================================
+   CLINICAL — Synchronized Detection Hub
+   The three acquisition tiers (optical/wearable · bedside telemetry ·
+   labs) shown sampling in lockstep, converging to the fused risk.
+   ============================================================ */
+function chCls(v,wlo,whi,alo,ahi){ if(v==null) return "";
+  if((alo!=null&&v<=alo)||(ahi!=null&&v>=ahi)) return "alert";
+  if((wlo!=null&&v<=wlo)||(whi!=null&&v>=whi)) return "warn"; return ""; }
+function chip(k,v,d,cls){ return '<span class="hub-chip '+(cls||"")+'">'+k+' <b>'+fmt(v,d)+'</b></span>'; }
+function renderHub(b){
+  var host=$("dos-hub"); if(!host) return; var e=b.edge||{}, en=b.enterprise||{};
+  var tiers=[
+    {nm:"Optical / Wearable", src:"camera·30 Hz", chips:[
+      chip("HR",e.hr,0,chCls(e.hr,null,92,null,120)),
+      chip("HRV",e.hrv_ms,0,chCls(e.hrv_ms,28,null,18,null)),
+      chip("PERF",e.perfusion,2,chCls(e.perfusion,0.6,null,0.45,null))]},
+    {nm:"Bedside Telemetry", src:"monitor·1 Hz", chips:[
+      chip("MAP",en.map,0,chCls(en.map,72,null,65,null)),
+      chip("SpO₂",en.spo2,0,chCls(en.spo2,94,null,92,null)),
+      chip("RESP",en.resp_rate,0,chCls(en.resp_rate,null,22,null,24))]},
+    {nm:"Laboratory", src:"LIS·hourly", chips:[
+      chip("WBC",en.wbc,1,chCls(en.wbc,null,12,4,16)),
+      chip("LAC",en.lactate,1,chCls(en.lactate,null,2,null,4)),
+      chip("TEMP",en.temp_c,1,chCls(en.temp_c,36.2,37.8,36,38.3))]}];
+  var html=tiers.map(function(t){ return '<div class="hub-tier"><div class="hub-tier-hd">'+
+    '<span class="ht-dot"></span><span class="ht-name">'+t.nm+'</span>'+
+    '<span class="ht-src">'+t.src+'</span></div><div class="hub-chips">'+t.chips.join("")+'</div></div>'; }).join("");
+  function fuseRow(k,v,col,fin){ return '<div class="hub-fuse-row'+(fin?" final":"")+'">'+
+    '<span class="hf-k">'+k+'</span><span class="hf-track"><i style="width:'+clamp(v*100,0,100)+'%;background:'+col+'"></i></span>'+
+    '<span class="hf-v">'+fmt(v,2)+'</span></div>'; }
+  var dev=b.deviation||0;
+  html+='<div class="hub-fuse">'+
+    fuseRow("Population",b.population_risk||0,C.indigo,false)+
+    fuseRow("Baseline Δ",clamp(dev/3,0,1),C.violet,false)+
+    fuseRow("Fused",b.fused_risk||0,tierOf(b.fused_risk)==="critical"?C.crit:tierOf(b.fused_risk)==="watch"?C.watch:C.cyan,true)+
+    '</div>';
+  host.innerHTML=html;
+  var sync=$("dos-sync"); if(sync) sync.innerHTML=(b.icu_hour!=null?"ICU h"+b.icu_hour+" · ":"")+"<em>3 tiers in sync</em>";
+}
+
+/* ============================================================
+   CLINICAL — Learned Behaviour (per-patient baseline)
+   ============================================================ */
+function chVal(b,ch){ var e=b.edge||{}, en=b.enterprise||{};
+  return ch==="hr"?e.hr:({temp_c:en.temp_c,resp_rate:en.resp_rate,spo2:en.spo2,map:en.map,wbc:en.wbc,lactate:en.lactate})[ch]; }
+function renderLearned(b){
+  var host=$("dos-learned"); if(!host) return;
+  var mat=b.baseline_maturity||0, dev=b.deviation||0, top=b.personal_top||[];
+  var devCls=dev>=2?"alert":dev>=1?"warn":"";
+  var html='<div class="lb-mat"><span class="lb-k">Baseline learned</span>'+
+    '<span class="lb-track"><i style="width:'+Math.round(mat*100)+'%"></i></span>'+
+    '<span class="lb-v">'+Math.round(mat*100)+'%</span></div>'+
+    '<div class="lb-dev '+devCls+'"><b>'+dev.toFixed(1)+'σ</b> from own baseline</div>';
+  if(top.length){
+    html+=top.map(function(t){ var now=chVal(b,t.ch), z=t.z||0;
+      var col=z>=2?C.crit:z>=1?C.watch:C.cyan, wpct=clamp(z/3*50,2,50);
+      return '<div class="lb-ch"><span class="lc-k">'+(CH_LABEL[t.ch]||t.ch)+'</span>'+
+        '<span class="lc-bar"><i style="width:'+wpct+'%;background:'+col+'"></i></span>'+
+        '<span class="lc-v">now <b>'+fmt(now,now>=10?0:1)+'</b> · base '+fmt(t.baseline,t.baseline>=10?0:1)+' · +'+z.toFixed(1)+'σ</span></div>'; }).join("");
+  } else {
+    html+='<div class="lb-none">Tracking — no channel significantly above this patient’s own baseline.</div>';
+  }
+  host.innerHTML=html;
+  var m=$("dos-learn-meta"); if(m) m.textContent="baseline "+Math.round(mat*100)+"%";
+}
+
+/* ============================================================
+   CLINICAL — Anatomical Bio-Twin (real-3D point-cloud body)
+   Honest organ-system load: monitored systems glow by severity;
+   systems that need labs we don't have (renal/hepatic/neuro) render
+   as hollow "NO DATA" nodes — never a fabricated green light.
+   ============================================================ */
+function bodyState(b){
+  var e=b.edge||{}, en=b.enterprise||{}, c=b.components||{};
+  function comp(k){ return clamp((c[k]||0)/2.5,0,1); }
+  function mx(){ var m=0; for(var i=0;i<arguments.length;i++){ var v=arguments[i]; if(v===v&&v>m) m=v; } return clamp(m,0,1); }
+  return {
+    brain:{mon:false,sev:0},
+    lungs:{mon:true,sev:mx(comp("perfusion")*0.4, en.spo2!=null?(94-en.spo2)/12:0, en.resp_rate!=null?(en.resp_rate-20)/16:0)},
+    heart:{mon:true,sev:mx(comp("cardiac"), en.map!=null?(75-en.map)/30:0, e.hr!=null?(e.hr-100)/55:0)},
+    liver:{mon:false,sev:0},
+    kidneys:{mon:false,sev:0},
+    immune:{mon:true,sev:mx(comp("inflammatory"), en.wbc!=null?(en.wbc-12)/12:0, en.wbc!=null?(4-en.wbc)/4:0)},
+    core:{mon:true,sev:mx(comp("metabolic"), en.lactate!=null?(en.lactate-2)/4:0)},
+    skin:{mon:true,sev:mx(comp("perfusion"), e.perfusion!=null?(1-e.perfusion):0, (en.temp_c>38.3||en.temp_c<36)?0.4:0)}
+  };
+}
+var ORGAN_LEGEND=[
+  {key:"heart",name:"Cardiovascular"},{key:"lungs",name:"Respiratory"},
+  {key:"core",name:"Metabolic"},{key:"immune",name:"Immune / WBC"},
+  {key:"skin",name:"Perfusion"},{key:"brain",name:"Neurologic"},
+  {key:"liver",name:"Hepatic"},{key:"kidneys",name:"Renal"}
+];
+/* Feed the real Three.js anatomical hologram (twin3d.js) the patient's organ
+   regions, in the body_state schema it already understands. Metabolic load
+   (lactate) folds into the cardiovascular zone, as the SOFA mapping does. */
+function regionsFromBed(b){
+  var st=bodyState(b);
+  function R(mon,sev){ sev=clamp(sev,0,1);
+    var status=!mon?"UNMONITORED":sev>=0.75?"CRITICAL":sev>=0.45?"DYSFUNCTION":sev>=0.2?"STRESS":"NORMAL";
+    return {monitored:mon,severity:Math.round(sev*1000)/1000,status:status}; }
+  return {
+    brain:R(false,0), lungs:R(true,st.lungs.sev),
+    heart:R(true,Math.max(st.heart.sev,st.core.sev)),
+    liver:R(false,0), kidneys:R(false,0),
+    skin:R(true,st.skin.sev), blood:R(true,st.immune.sev)
+  };
+}
+function feedTwin(b){
+  if(!window.AegisTwin||!b) return;
+  try{ window.AegisTwin.update({source:"simulator",
+    body_state:{regions:regionsFromBed(b)},
+    risk:{signal_quality:1}}); }catch(e){}
+}
+function renderOrgans(b){
+  var host=$("dos-organs"); if(!host) return; var st=bodyState(b);
+  host.innerHTML=ORGAN_LEGEND.map(function(o){ var s=st[o.key]||{mon:false,sev:0};
+    if(!s.mon) return '<div class="tl-organ unmon"><span class="to-dot"></span>'+
+      '<span class="to-name">'+o.name+'</span><span class="to-sev">NO DATA</span></div>';
+    var col=s.sev>=0.6?C.crit:s.sev>=0.3?C.watch:C.ok;
+    return '<div class="tl-organ"><span class="to-dot" style="background:'+col+';color:'+col+'"></span>'+
+      '<span class="to-name">'+o.name+'</span><span class="to-sev">'+Math.round(s.sev*100)+'%</span></div>'; }).join("");
 }
 
 /* per-bed shared-memory arena map — this patient's /dev/bio rings, WP + RP */
@@ -919,8 +1032,7 @@ var surf={}, spineTick=0;
 function setup(){
   ambientInit(); runBoot();
   surf.learn=new Surface("cv-learn"); surf.blind=new Surface("cv-blind");
-  surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
-  surf.dosTrend=new Surface("cv-dos-trend"); surf.dosRisk=new Surface("cv-dos-risk");
+  surf.dosRisk=new Surface("cv-dos-risk");
   surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
@@ -943,9 +1055,7 @@ function loop(){ frame++;
     drawLearn(surf.learn); drawBlind(surf.blind);
   } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
     surf.sweep.fit(); drawSweep(surf.sweep); }
-  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit(); surf.dosRisk.fit();
-    drawTrends(surf.dosTrend); drawRiskTimeline(surf.dosRisk);
-    drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
+  if(selectedBed){ surf.dosRisk.fit(); drawRiskTimeline(surf.dosRisk); }
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
 }
