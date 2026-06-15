@@ -102,8 +102,8 @@ b{font-weight:700}
 /* ---------------- BOARD (ops) ---------------- */
 .board{flex:1 1 auto;min-height:0;display:grid;gap:15px;padding:15px 22px;
   grid-template-columns:1fr 1fr 1fr;grid-template-rows:1.34fr 1fr;
-  grid-template-areas:"ops ops ops" "mem lanes lat"}
-.span-ops{grid-area:ops}.span-mem{grid-area:mem}.span-lanes{grid-area:lanes}.span-lat{grid-area:lat}
+  grid-template-areas:"ops ops ops" "learn learn blind"}
+.span-ops{grid-area:ops}.span-learn{grid-area:learn}.span-blind{grid-area:blind}
 .card{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;
   background:linear-gradient(180deg,var(--surface-1),var(--surface-2));
   border:1px solid var(--hair);border-radius:var(--r);box-shadow:var(--shadow),var(--hilite);overflow:hidden;
@@ -356,7 +356,7 @@ b{font-weight:700}
 .dos-canvas canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 
 @media (max-width:1100px){
-  .board{grid-template-columns:1fr;grid-template-rows:repeat(4,minmax(170px,1fr));grid-template-areas:"ops" "mem" "lanes" "lat"}
+  .board{grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(190px,1fr));grid-template-areas:"ops" "learn" "blind"}
   .metrics{display:none}.val-kpis{grid-template-columns:repeat(2,1fr)}.val-grid{grid-template-columns:1fr}
   .dos-body.clinical{grid-template-columns:1fr;overflow-y:auto}
   .dos-kernel{grid-template-columns:1fr 1fr}

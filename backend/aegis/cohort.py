@@ -304,6 +304,7 @@ from backend.aegis.kernel.devbio import DRIVER_REGISTRY, DevBio
 from backend.aegis.kernel.fusion import BedProfile, FusionEngine
 from backend.aegis.kernel.memfabric import FabricPump, MemFabric
 from backend.aegis.kernel.scheduler import CognitiveScheduler
+from backend.aegis.learner import CohortLearner, PatientBaselineLearner, personalized_risk
 
 
 def _clinical_history(rec: cinc2019.PatientRecord) -> Dict[str, Any]:
@@ -330,6 +331,8 @@ class CohortCluster:
         self.fabric = MemFabric()
         self.sched = CognitiveScheduler(lane_budget=lane_budget)
         self.fusion = FusionEngine()
+        self.learner = CohortLearner()                # per-patient behavioural baselines
+        self.personalized: Dict[str, Dict[str, Any]] = {}
         self.profiles: Dict[str, BedProfile] = {}
         self.node_ids: List[str] = []
         self.names: Dict[str, str] = {}
@@ -390,7 +393,15 @@ class CohortCluster:
             ent = {k: vit[k] for k in self.ENTERPRISE_KEYS if k in vit}
             prof = self.fusion.update(nid, self.names[nid], edge, ent)
             self.profiles[nid] = prof
-            self.sched.observe(nid, prof.fused_risk, vit)
+            # per-patient behavioural learning: deviation from the patient's OWN baseline
+            lz = self.learner.get(nid)
+            scored = {ch: vit[ch] for ch in CHANNELS if ch in vit}
+            lz.observe(scored)
+            snap = lz.snapshot(scored)
+            risk = personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"])
+            self.personalized[nid] = {"risk": risk, **snap}
+            # the system acts on the PERSONALIZED risk
+            self.sched.observe(nid, risk, vit)
         return self.sched.schedule()
 
     def run(self, ticks: int):
@@ -405,12 +416,19 @@ class CohortCluster:
         p = self._by[nid]
         d = prof.to_dict()
         lab_i = min(p.icu_hour, p.los_total - 1)
+        pz = self.personalized.get(nid, {})
         d.update({
             "mrn": p.mrn, "age": p.age, "gender": p.gender,
             "icu_hour": p.icu_hour, "los_total": p.los_total,
             "will_be_septic": p.is_septic, "onset_hour": p.onset_hour,
             "hours_to_onset": p.hours_to_onset,
             "label_now": int(p.record.labels[lab_i]),
+            # the effective (personalized) risk drives the UI; population kept for comparison
+            "population_risk": d["fused_risk"],
+            "fused_risk": pz.get("risk", d["fused_risk"]),
+            "deviation": pz.get("deviation", 0.0),
+            "baseline_maturity": pz.get("maturity", 0.0),
+            "personal_top": pz.get("top", []),
         })
         return d
 
@@ -438,31 +456,48 @@ class CohortCluster:
         Honest, real-data detection metrics — the number judges actually want."""
         if getattr(self, "_val_cache", None):
             return self._val_cache
+        # clinical alarms are sustained, not single-hour blips
+        def _first_sustained(series, thr, k=2):
+            run = 0
+            for i, r in enumerate(series):
+                run = run + 1 if r >= thr else 0
+                if run >= k:
+                    return i - k + 1
+            return None
+
+        def _sustained_peak(series, k=2):
+            return max((min(series[i:i + k]) for i in range(len(series) - k + 1)),
+                       default=(series[0] if series else 0.0))
+
         rows: List[Dict[str, Any]] = []
         for p in self.patients:
             fe = FusionEngine()
-            first: Optional[int] = None
-            risk_series: List[float] = []
+            lz = PatientBaselineLearner()
+            pers_series: List[float] = []
+            pop_series: List[float] = []
             for hr in range(p.los_total):
                 vals = {ch: float(p._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
                 edge = {"hr": vals["hr"],
                         "perfusion": max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0))}
                 ent = {k: vals[k] for k in self.ENTERPRISE_KEYS}
-                prof = fe.update(p.bed_id, p.name, edge, ent)
-                risk_series.append(prof.fused_risk)
-                if first is None and prof.fused_risk >= alarm:
-                    first = hr
+                pop = fe.update(p.bed_id, p.name, edge, ent).fused_risk
+                lz.observe(vals)
+                snap = lz.snapshot(vals)
+                pers = personalized_risk(pop, snap["deviation"], snap["maturity"])
+                pop_series.append(pop)
+                pers_series.append(pers)
+            first = _first_sustained(pers_series, alarm)
+            first_pop = _first_sustained(pop_series, alarm)
             lead = (p.onset_hour - first) if (p.is_septic and p.onset_hour is not None
                                               and first is not None) else None
-            # peaks used for the threshold sweep (no re-replay needed)
             on = p.onset_hour if p.onset_hour is not None else p.los_total
-            pre = max(risk_series[:on + 1]) if risk_series[:on + 1] else 0.0
+            pre = _sustained_peak(pers_series[:on + 1])
             rows.append({
                 "bed_id": p.bed_id, "name": p.name, "mrn": p.mrn,
                 "age": p.age, "gender": p.gender, "los": p.los_total,
                 "septic": p.is_septic, "onset_hour": p.onset_hour,
-                "first_alarm": first, "lead": lead,
-                "_pre_peak": pre, "_peak": max(risk_series) if risk_series else 0.0,
+                "first_alarm": first, "lead": lead, "first_alarm_pop": first_pop,
+                "_pre_peak": pre, "_peak": _sustained_peak(pers_series),
             })
         septic = [r for r in rows if r["septic"]]
         detected = [r for r in septic if r["first_alarm"] is not None
@@ -470,6 +505,10 @@ class CohortCluster:
         leads = sorted(r["lead"] for r in detected if r["lead"] is not None and r["lead"] >= 0)
         stable = [r for r in rows if not r["septic"]]
         fp = [r for r in stable if r["first_alarm"] is not None]
+        # population-only baseline (for the personalization improvement metric)
+        det_pop = [r for r in septic if r["first_alarm_pop"] is not None
+                   and (r["onset_hour"] is None or r["first_alarm_pop"] <= r["onset_hour"])]
+        fp_pop = [r for r in stable if r["first_alarm_pop"] is not None]
 
         def _mean(xs): return round(sum(xs) / len(xs), 1) if xs else 0.0
         def _median(xs): return float(xs[len(xs) // 2]) if xs else 0.0
@@ -492,7 +531,13 @@ class CohortCluster:
             "mean_lead_h": _mean(leads), "median_lead_h": _median(leads),
             "max_lead_h": max(leads) if leads else 0,
             "fp_rate": round(len(fp) / max(len(stable), 1), 3),
-            "leads": leads, "sweep": sweep,
+            "leads": leads, "sweep": sweep, "model": "personalized",
+            # population-only baseline, so the personalization gain is honest + visible
+            "population": {
+                "detection_rate": round(len(det_pop) / max(len(septic), 1), 3),
+                "n_detected": len(det_pop),
+                "fp_rate": round(len(fp_pop) / max(len(stable), 1), 3),
+            },
             "source": "PhysioNet/CinC-2019 (this cohort)",
         }
         self._val_cache = {"summary": summary, "patients": rows}

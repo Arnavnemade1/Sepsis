@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=10" />
+<link rel="stylesheet" href="tactical.css?v=11" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -76,20 +76,17 @@
           <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">real ICU cohort</span></div>
         <div class="card-body"><div class="opgrid" id="opgrid"></div></div>
       </section>
-      <section class="card span-mem">
+      <section class="card span-learn">
         <div class="card-hd"><span class="hd-dot" style="--c:var(--indigo)"></span>
-          <h2>Memory Fabric</h2><span class="hd-meta" id="b-meta">zero-copy arena</span></div>
-        <div class="card-body"><canvas id="cv-mem"></canvas></div>
+          <h2>Per-Patient Baseline Learning</h2>
+          <span class="hd-meta" id="b-meta">deviation from each patient's <em>own</em> learned norm</span></div>
+        <div class="card-body"><canvas id="cv-learn"></canvas></div>
       </section>
-      <section class="card span-lanes">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span>
-          <h2>Execution Lanes</h2><span class="hd-meta" id="c-meta">budget 96</span></div>
-        <div class="card-body"><canvas id="cv-lanes"></canvas></div>
-      </section>
-      <section class="card span-lat">
+      <section class="card span-blind">
         <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span>
-          <h2>Latency Envelope</h2><span class="hd-meta" id="d-meta">µs · hardware counters</span></div>
-        <div class="card-body"><canvas id="cv-lat"></canvas></div>
+          <h2>Personalization Map</h2>
+          <span class="hd-meta" id="d-meta">where learning changes the call</span></div>
+        <div class="card-body"><canvas id="cv-blind"></canvas></div>
       </section>
     </main>
 
@@ -224,6 +221,6 @@
   </footer>
 </aside>
 
-<script src="tactical.js?v=10"></script>
+<script src="tactical.js?v=11"></script>
 </body>
 </html>

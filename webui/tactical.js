@@ -88,7 +88,6 @@ function ingest(snap){
     var real=snap.data_mode && snap.data_mode.indexOf("real")===0;
     $("a-meta").textContent=real ? (snap.beds.length+" real ICU patients · "+sp+" septic")
                                  : (snap.beds.length+" patients · synthetic wing"); }
-  if(snap.lane_map){ $("c-meta").textContent="budget "+snap.lane_map.budget; }
   renderGrid(snap.beds);
   renderSpine();          // refresh metrics + ticker the instant data arrives
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
@@ -156,9 +155,11 @@ function updateBed(el,b,isFocus){
   var tr=trendOf(b.bed_id), te=el.querySelector(".bed-trend");
   if(te){ te.textContent=tr>0.012?"▲":tr<-0.012?"▼":"→";
     te.className="bed-trend "+(tr>0.012?"up":tr<-0.012?"down":"flat"); }
+  var dev=b.deviation||0;
   el.querySelector(".bed-sys").textContent=
     (b.primary_system==="none"?"nominal":b.primary_system+" axis")+
-    (b.icu_hour!=null?" · ICU h"+b.icu_hour:"");
+    (b.icu_hour!=null?" · ICU h"+b.icu_hour:"")+
+    (dev>=0.6?" · Δ"+dev.toFixed(1)+"σ own-baseline":"");
   el.querySelector(".bed-driver").textContent=b.drivers&&b.drivers.length?("▸ "+b.drivers[0]):"";
   var compact=vital("HR",ed.hr,0)+vital("MAP",en.map,0)+vital("T°",en.temp_c,1)+vital("Lac",en.lactate,1);
   var full=compact+vital("SpO₂",en.spo2,0)+vital("RR",en.resp_rate,0)+
@@ -748,6 +749,105 @@ function renderValidation(d){ var s=d.summary;
   $("val-table").innerHTML=rows;
   requestAnimationFrame(animateCounts);
 }
+/* ============================================================
+   PANEL — Per-Patient Baseline Learning
+   Each bed's deviation from ITS OWN learned baseline (σ), ranked.
+   This is the behavioural model made visible: the system learns every
+   patient's personal norm and tracks how far each has drifted from it.
+   ============================================================ */
+var CH_LABEL={hr:"HR",temp_c:"T°",resp_rate:"RR",spo2:"SpO₂",map:"MAP",wbc:"WBC",lactate:"Lac"};
+function devCol(d){ return d>=2.0?C.crit:d>=1.0?C.watch:d>=0.4?C.cyan:C.dim; }
+function drawLearn(s){
+  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  var beds=Object.keys(latestBeds).map(function(k){return latestBeds[k];});
+  ctx.textBaseline="middle"; ctx.textAlign="left";
+  if(!beds.length){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center";
+    ctx.fillText("learning patient baselines …",w/2,h/2); return; }
+  beds.sort(function(a,b){return (b.deviation||0)-(a.deviation||0);});
+  var pad=13, top=8, DMAX=3.0;                    // 3σ from own baseline = full bar
+  // header
+  ctx.font=FS(8.5,700); ctx.fillStyle=C.dim;
+  ctx.fillText("σ FROM OWN BASELINE", pad, top+5);
+  ctx.textAlign="right"; ctx.fillText("LEARNED NORM ▸ NOW", w-pad, top+5); ctx.textAlign="left";
+  var y0=top+20, avail=h-y0-6;
+  var nshow=clamp(Math.floor(avail/20),3,Math.min(beds.length,9));
+  var rowH=avail/nshow;
+  var labW=86, barX=pad+labW, barW=w-pad-labW-150;
+  for(var i=0;i<nshow;i++){ var b=beds[i], dev=b.deviation||0, mat=b.baseline_maturity||0;
+    var cy=y0+i*rowH+rowH/2, col=devCol(dev), nm=(b.name||b.bed_id).split(",")[0];
+    // maturity dot (filled ring = how learned this baseline is)
+    ctx.beginPath(); ctx.arc(pad+4,cy,3.4,0,7); ctx.strokeStyle=withAlpha(C.dim,.7); ctx.lineWidth=1.2; ctx.stroke();
+    if(mat>0){ ctx.beginPath(); ctx.moveTo(pad+4,cy); ctx.arc(pad+4,cy,3.4,-Math.PI/2,-Math.PI/2+7*mat); ctx.closePath();
+      ctx.fillStyle=withAlpha(mat>=.99?C.ok:C.indigo,.9); ctx.fill(); }
+    // name
+    ctx.fillStyle=C.muted; ctx.font=FS(11,600); ctx.textAlign="left";
+    ctx.fillText(nm.length>9?nm.slice(0,9):nm, pad+13, cy);
+    // track + bar
+    ctx.fillStyle="rgba(255,255,255,.04)"; roundRect(ctx,barX,cy-5,barW,10,5); ctx.fill();
+    var fw=clamp(dev/DMAX,0,1)*barW;
+    if(fw>1){ var g=ctx.createLinearGradient(barX,0,barX+fw,0);
+      g.addColorStop(0,withAlpha(col,.5)); g.addColorStop(1,withAlpha(col,.95));
+      ctx.fillStyle=g; roundRect(ctx,barX,cy-5,Math.max(fw,3),10,5); ctx.fill(); }
+    // 1σ + 2σ ticks
+    [1,2].forEach(function(t){ var tx=barX+(t/DMAX)*barW; ctx.strokeStyle=withAlpha(C.dim,.5);
+      ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(tx,cy-6); ctx.lineTo(tx,cy+6); ctx.stroke(); });
+    // value + top driver "HR 78 (was 60)"
+    ctx.textAlign="left"; ctx.fillStyle=col; ctx.font=FM(11.5,700);
+    ctx.fillText(dev.toFixed(1)+"σ", barX+barW+10, cy);
+    var tp=(b.personal_top&&b.personal_top[0])?b.personal_top[0]:null;
+    if(tp){ ctx.fillStyle=C.dim; ctx.font=FS(10,500);
+      ctx.fillText((CH_LABEL[tp.ch]||tp.ch)+" ▸"+(tp.baseline!=null?" was "+tp.baseline:""), barX+barW+52, cy); }
+  }
+}
+
+/* ============================================================
+   PANEL — Personalization Map
+   Scatter of population (qSOFA/SIRS) risk vs personalized risk.
+   Above the diagonal = learning LIFTED the call (within-band drift
+   caught early); below = learning DAMPENED it (chronic-abnormal at
+   the patient's own baseline → fewer false alarms). Honest: most beds
+   sit on the line — personalization only moves the ones it should.
+   ============================================================ */
+function drawBlind(s){
+  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  var beds=Object.keys(latestBeds).map(function(k){return latestBeds[k];});
+  var padL=34,padR=12,padT=14,padB=24, pw=w-padL-padR, ph=h-padT-padB;
+  function X(v){ return padL+v*pw; } function Y(v){ return padT+(1-v)*ph; }
+  // frame + grid
+  ctx.strokeStyle=C.grid; ctx.lineWidth=1;
+  for(var g=0;g<=4;g++){ var gx=padL+pw*g/4, gy=padT+ph*g/4;
+    ctx.beginPath(); ctx.moveTo(gx,padT); ctx.lineTo(gx,padT+ph); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(padL,gy); ctx.lineTo(padL+pw,gy); ctx.stroke(); }
+  // alarm thresholds (0.70) guide lines
+  ctx.strokeStyle=withAlpha(C.crit,.25); ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(X(.7),padT); ctx.lineTo(X(.7),padT+ph); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(padL,Y(.7)); ctx.lineTo(padL+pw,Y(.7)); ctx.stroke();
+  ctx.setLineDash([]);
+  // diagonal (no change)
+  ctx.strokeStyle=withAlpha(C.muted,.4); ctx.setLineDash([5,4]); ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(X(0),Y(0)); ctx.lineTo(X(1),Y(1)); ctx.stroke(); ctx.setLineDash([]);
+  // axis labels
+  ctx.fillStyle=C.dim; ctx.font=FS(9,600); ctx.textBaseline="middle";
+  ctx.textAlign="center"; ctx.fillText("population risk →", padL+pw/2, padT+ph+13);
+  ctx.save(); ctx.translate(11,padT+ph/2); ctx.rotate(-Math.PI/2);
+  ctx.textAlign="center"; ctx.fillText("personalized risk →",0,0); ctx.restore();
+  // region hints
+  ctx.font=FS(8.5,600); ctx.textAlign="left";
+  ctx.fillStyle=withAlpha(C.ok,.6); ctx.fillText("↑ caught early", X(.04), Y(.92));
+  ctx.textAlign="right"; ctx.fillStyle=withAlpha(C.cyan,.6); ctx.fillText("dampened ↓", X(.96), Y(.12));
+  if(!beds.length){ return; }
+  // dots
+  beds.forEach(function(b){ var pop=clamp(b.population_risk||0,0,1), per=clamp(b.fused_risk||0,0,1);
+    var x=X(pop), y=Y(per), tier=tierOf(per), col=tier==="critical"?C.crit:tier==="watch"?C.watch:C.cyan;
+    var moved=Math.abs(per-pop);
+    if(moved>0.03){ ctx.strokeStyle=withAlpha(per>pop?C.ok:C.cyan,.5); ctx.lineWidth=1.4;
+      ctx.beginPath(); ctx.moveTo(X(pop),Y(pop)); ctx.lineTo(x,y); ctx.stroke(); }
+    ctx.beginPath(); ctx.arc(x,y,moved>0.03?4.6:3.4,0,7);
+    ctx.fillStyle=withAlpha(col,.92); ctx.shadowColor=col; ctx.shadowBlur=moved>0.03?9:0; ctx.fill(); ctx.shadowBlur=0;
+    ctx.strokeStyle=withAlpha("#0a0e1c",.6); ctx.lineWidth=1; ctx.stroke();
+  });
+}
+
 function drawLeadHist(s){ var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h); if(!valData) return;
   var leads=valData.summary.leads||[]; ctx.textBaseline="middle";
   if(!leads.length){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center"; ctx.fillText("no detections",w/2,h/2); return; }
@@ -818,7 +918,7 @@ function animateCounts(){ [].forEach.call(document.querySelectorAll("[data-count
 var surf={}, spineTick=0;
 function setup(){
   ambientInit(); runBoot();
-  surf.mem=new Surface("cv-mem"); surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
+  surf.learn=new Surface("cv-learn"); surf.blind=new Surface("cv-blind");
   surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
   surf.dosTrend=new Surface("cv-dos-trend"); surf.dosRisk=new Surface("cv-dos-risk");
   surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
@@ -839,8 +939,8 @@ function setup(){
 function loop(){ frame++;
   ambientDraw();
   if(target) ease();
-  if(currentView==="ops"){ surf.mem.fit(); surf.lanes.fit(); surf.lat.fit();
-    drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
+  if(currentView==="ops"){ surf.learn.fit(); surf.blind.fit();
+    drawLearn(surf.learn); drawBlind(surf.blind);
   } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
     surf.sweep.fit(); drawSweep(surf.sweep); }
   if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit(); surf.dosRisk.fit();
