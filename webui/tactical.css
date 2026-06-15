@@ -257,31 +257,59 @@ b{font-weight:700}
 .pchip.ok{background:rgba(65,230,164,.1);color:var(--ok)}
 
 /* ---------------- DOSSIER ---------------- */
-.dos-scrim{position:fixed;inset:0;z-index:40;background:rgba(4,6,12,.6);backdrop-filter:blur(3px);
-  opacity:0;pointer-events:none;transition:opacity .35s}
-.dos-scrim.open{opacity:1;pointer-events:auto}
-.dossier{position:fixed;top:0;right:0;bottom:0;width:min(660px,49vw);z-index:41;
-  background:linear-gradient(180deg,#0b0e1a,#070912);border-left:1px solid var(--hair);
-  box-shadow:-40px 0 100px -40px rgba(0,0,0,.9);transform:translateX(102%);
-  transition:transform .42s cubic-bezier(.2,.85,.2,1);display:flex;flex-direction:column}
-.dossier.open{transform:none}
-.dos-head{flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:18px 22px;border-bottom:1px solid var(--hair-soft)}
-.dos-tag{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);background:rgba(255,255,255,.05);padding:4px 9px;border-radius:6px}
-.dos-name{font-size:19px;font-weight:700;letter-spacing:-.01em}
-.dos-axis{font-size:11px;color:var(--dim);text-transform:capitalize;margin-top:2px}
-.dos-risk{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
-.dos-risk b{font-family:var(--mono);font-size:28px;font-weight:600;line-height:1;color:var(--ink)}
-.dos-tier{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:2px 8px;border-radius:5px;color:var(--cyan);background:rgba(95,208,247,.12)}
+/* full-screen per-patient CLINICAL VIEW */
+.dossier{position:fixed;inset:0;z-index:41;display:flex;flex-direction:column;
+  background:radial-gradient(1100px 640px at 80% -10%,rgba(60,90,180,.1),transparent 60%),
+    linear-gradient(180deg,#080b14,#05070e);
+  opacity:0;visibility:hidden;transform:scale(.99);
+  transition:opacity .35s,transform .35s,visibility .35s}
+.dossier.open{opacity:1;visibility:visible;transform:none}
+.dos-head{flex:0 0 auto;display:flex;align-items:center;gap:16px;padding:16px 24px;
+  border-bottom:1px solid var(--hair-soft);background:linear-gradient(180deg,rgba(14,18,32,.6),transparent)}
+.dos-close{flex:0 0 auto;border-radius:10px;border:1px solid var(--hair);background:rgba(255,255,255,.02);
+  color:var(--muted);cursor:pointer;font-size:13px;font-weight:600;padding:9px 15px;transition:.2s}
+.dos-close:hover{color:var(--ink);border-color:rgba(95,208,247,.4);background:rgba(95,208,247,.07)}
+.dos-tag{font-family:var(--mono);font-size:10px;letter-spacing:.08em;color:var(--dim);background:rgba(255,255,255,.05);padding:4px 9px;border-radius:6px;flex:0 0 auto}
+.dos-id{flex:0 0 auto}
+.dos-name{font-size:21px;font-weight:800;letter-spacing:-.01em}
+.dos-axis{font-size:11px;color:var(--dim);text-transform:capitalize;margin-top:1px}
+.dos-demo{display:flex;gap:22px;flex:1 1 auto;margin-left:8px}
+.dos-risk{display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.dos-risk b{font-family:var(--mono);font-size:30px;font-weight:600;line-height:1;color:var(--ink)}
+.dos-tier{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:6px;color:var(--cyan);background:rgba(95,208,247,.12)}
 .dos-tier.watch{color:var(--watch);background:rgba(255,194,77,.12)}
 .dos-tier.critical{color:var(--crit);background:rgba(255,107,134,.14)}
 .dossier.critical .dos-risk b{color:var(--crit)}
-.dos-close{width:34px;height:34px;flex:0 0 auto;border-radius:9px;border:1px solid var(--hair);background:rgba(255,255,255,.02);color:var(--muted);cursor:pointer;font-size:14px;transition:.2s}
-.dos-close:hover{color:var(--ink);border-color:rgba(255,107,134,.4);background:rgba(255,107,134,.08)}
-.dos-body{flex:1 1 auto;overflow-y:auto;padding:18px 22px 30px;display:flex;flex-direction:column;gap:22px}
-.dos-body::-webkit-scrollbar{width:8px}.dos-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+.dos-head .dos-actions{display:flex;gap:8px;margin:0;flex:0 0 auto}
+.dos-head .dos-act{flex:0 0 auto;padding:9px 13px;font-size:11px}
+/* clinical grid */
+.dos-body.clinical{flex:1 1 auto;min-height:0;display:grid;gap:14px;padding:14px 24px;
+  grid-template-columns:300px 1fr 320px}
+.cl-col{display:flex;flex-direction:column;gap:13px;min-height:0;overflow:hidden}
+.cl-main{min-width:0}
+.cl-card{display:flex;flex-direction:column;min-height:0;flex:0 0 auto}
+.cl-card.cl-grow{flex:1 1 auto}
+.cl-pad{overflow-y:auto;padding:12px 14px}
+.cl-pad::-webkit-scrollbar{width:7px}.cl-pad::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:4px}
+/* vital-signs monitor */
+.dos-vitals{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.vs{border:1px solid var(--hair-soft);border-radius:10px;padding:8px 10px;background:rgba(255,255,255,.012);position:relative;overflow:hidden}
+.vs .vk{font-size:9px;letter-spacing:.04em;color:var(--dim);text-transform:uppercase}
+.vs .vv{font-family:var(--mono);font-size:21px;font-weight:600;line-height:1.05;margin-top:3px;color:var(--ink);font-variant-numeric:tabular-nums}
+.vs .vv small{font-size:10px;color:var(--dim);margin-left:2px;font-weight:400}
+.vs.alert{border-color:rgba(255,107,134,.4);background:rgba(255,107,134,.05)}.vs.alert .vv{color:var(--crit)}
+.vs.warn{border-color:rgba(255,194,77,.35)}.vs.warn .vv{color:var(--watch)}
+/* kernel footer */
+.dos-kernel{flex:0 0 auto;height:104px;display:grid;grid-template-columns:auto 1fr 1.2fr 1.2fr;align-items:center;gap:18px;
+  padding:8px 24px;border-top:1px solid var(--hair-soft);background:rgba(8,11,20,.55)}
+.dk-lbl{font-family:var(--mono);font-size:8.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);writing-mode:vertical-rl;transform:rotate(180deg);align-self:stretch;display:flex;align-items:center;justify-content:center}
+.dk-tiers{display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+.dk-tiers .kv .v{font-size:12px}
+.dk-canvas{display:flex;flex-direction:column;gap:3px}
+.dk-canvas>span{font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;color:var(--dim)}
+.dk-canvas .dos-canvas{height:62px}
 .dos-sec h4{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:11px}
 .dos-sec h4 span{text-transform:none;letter-spacing:0;color:var(--dim);opacity:.7;font-weight:500}
-.dos-demo{display:grid;grid-template-columns:repeat(4,1fr);gap:9px 14px;margin-bottom:12px}
 .dos-truth{font-family:var(--mono);font-size:11.5px;line-height:1.55;padding:11px 13px;border-radius:9px;border:1px solid var(--hair-soft);background:rgba(255,255,255,.012);color:var(--muted)}
 .dos-truth b{font-weight:600}.dos-truth .lead{color:var(--cyan)}
 .dos-truth.sepsis{border-color:rgba(255,107,134,.32);background:rgba(255,107,134,.05)}.dos-truth.sepsis b{color:var(--crit)}
@@ -329,5 +357,7 @@ b{font-weight:700}
 
 @media (max-width:1100px){
   .board{grid-template-columns:1fr;grid-template-rows:repeat(4,minmax(170px,1fr));grid-template-areas:"ops" "mem" "lanes" "lat"}
-  .metrics{display:none}.dossier{width:100vw}.val-kpis{grid-template-columns:repeat(2,1fr)}.val-grid{grid-template-columns:1fr}
+  .metrics{display:none}.val-kpis{grid-template-columns:repeat(2,1fr)}.val-grid{grid-template-columns:1fr}
+  .dos-body.clinical{grid-template-columns:1fr;overflow-y:auto}
+  .dos-kernel{grid-template-columns:1fr 1fr}
 }

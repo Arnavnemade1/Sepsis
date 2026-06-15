@@ -202,21 +202,31 @@ class RealPatient:
             "set": self.record.set_name,
         }
 
-    def chart(self, window: int = 36) -> Dict[str, Any]:
-        """Real vitals/labs trajectory up to the current replay hour (for the
-        dossier trends), plus the ground-truth label track."""
+    def chart(self, window: int = 48) -> Dict[str, Any]:
+        """Real vitals/labs trajectory up to the current replay hour, the fused
+        risk our engine assigns each hour, and the ground-truth label track."""
         hi = max(1, int(self.pos) + 1)
         lo = max(0, hi - window)
         series: Dict[str, List[Optional[float]]] = {}
         for k, ch in enumerate(CHANNELS):
             col = self._ff[lo:hi, k]
-            fresh = self._fresh[lo:hi, k]
-            series[ch] = [round(float(v), 2) if fr else round(float(v), 2)
-                          for v, fr in zip(col, fresh)]
+            series[ch] = [round(float(v), 2) for v in col]
+        # fused risk per hour (warm the fusion from hour 0 so windows are valid)
+        from backend.aegis.kernel.fusion import FusionEngine
+        ent_keys = ("temp_c", "resp_rate", "spo2", "map", "wbc", "lactate")
+        fe = FusionEngine()
+        risk_full: List[float] = []
+        for hr in range(hi):
+            vals = {ch: float(self._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
+            edge = {"hr": vals["hr"],
+                    "perfusion": max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0))}
+            ent = {k: vals[k] for k in ent_keys}
+            risk_full.append(round(fe.update(self.bed_id, self.name, edge, ent).fused_risk, 3))
         labels = self.record.labels[lo:hi].astype(int).tolist()
         return {
             "hours": list(range(lo, hi)), "series": series, "labels": labels,
-            "onset_hour": self.onset_hour, "icu_hour": self.icu_hour,
+            "risk": risk_full[lo:hi], "onset_hour": self.onset_hour,
+            "icu_hour": self.icu_hour, "alarm": 0.70,
         }
 
 

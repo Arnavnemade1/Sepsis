@@ -225,7 +225,7 @@ function openDossier(id){
     return '<div class="dos-comp" data-c="'+c+'"><span class="dos-comp-k">'+c+'</span>'+
       '<span class="dos-comp-track"><i></i></span><span class="dos-comp-v">0.00</span></div>';
   }).join(""); dosBuilt=true; }
-  $("dossier").classList.add("open"); $("dos-scrim").classList.add("open");
+  $("dossier").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);
   fetchChart(id); refreshBundle(id);
@@ -234,12 +234,16 @@ function openDossier(id){
 }
 function closeDossier(){ selectedBed=null; dosChart=null;
   if(dosChartTimer){ clearInterval(dosChartTimer); dosChartTimer=null; }
-  $("dossier").classList.remove("open"); $("dos-scrim").classList.remove("open");
+  $("dossier").classList.remove("open");
   $("dossier").setAttribute("aria-hidden","true"); }
 
 function kvHTML(label,val,unit,cls){
   return '<div class="kv'+(cls?" "+cls:"")+'"><span class="k">'+label+'</span>'+
     '<span class="v">'+val+(unit?'<small>'+unit+'</small>':'')+'</span></div>';
+}
+function vsMon(k,v,u,cls){
+  return '<div class="vs '+(cls||"")+'"><div class="vk">'+k+'</div>'+
+    '<div class="vv">'+v+'<small>'+u+'</small></div></div>';
 }
 function updateDossier(b){
   if(!b) return;
@@ -271,23 +275,26 @@ function updateDossier(b){
         fmt(b.fused_risk,2)+" tracking baseline physiology";
     }
   }
+  // vital-signs monitor
+  $("dos-vitals").innerHTML=
+    vsMon("HR",fmt(e.hr,0),"bpm",e.hr>110?"alert":e.hr>90?"warn":"")+
+    vsMon("MAP",fmt(en.map,0),"mmHg",en.map<65?"alert":en.map<72?"warn":"")+
+    vsMon("Temp",fmt(en.temp_c,1),"°C",(en.temp_c>38.3||en.temp_c<36)?"alert":(en.temp_c>37.8?"warn":""))+
+    vsMon("SpO₂",fmt(en.spo2,0),"%",en.spo2<92?"alert":en.spo2<94?"warn":"")+
+    vsMon("Resp",fmt(en.resp_rate,0),"/min",en.resp_rate>24?"alert":en.resp_rate>22?"warn":"")+
+    vsMon("Lactate",fmt(en.lactate,1),"mmol/L",en.lactate>=4?"alert":en.lactate>2?"warn":"")+
+    vsMon("WBC",fmt(en.wbc,1),"k/µL",(en.wbc>12||en.wbc<4)?"alert":"")+
+    vsMon("HRV",fmt(e.hrv_ms,0),"ms","");
   COMP_ORDER.forEach(function(c){ var row=$("dos-comps").querySelector('[data-c="'+c+'"]'); if(!row) return;
     var sc=b.components[c]||0, bar=row.querySelector("i");
     bar.style.width=clamp(sc/2.5*100,0,100)+"%"; bar.style.background=COMP_COL[c];
     row.querySelector(".dos-comp-v").textContent=fmt(sc,2); });
+  // derived autonomic + perfusion markers (kernel footer; main vitals are in the monitor)
   $("dos-edge").innerHTML=
-    kvHTML("Heart rate",fmt(e.hr,0),"bpm", e.hr>100?"alert":(e.hr>90?"warn":""))+
-    kvHTML("HRV (RMSSD)",fmt(e.hrv_ms,0),"ms")+
     kvHTML("Perfusion idx",fmt(e.perfusion,2),"au")+
     kvHTML("Vasomotion",fmt(e.vasomotion,2),"au");
   $("dos-ent").innerHTML=
-    kvHTML("Temperature",fmt(en.temp_c,1),"°C",(en.temp_c>38||en.temp_c<36)?"alert":"")+
-    kvHTML("Resp rate",fmt(en.resp_rate,0),"/min",en.resp_rate>22?"warn":"")+
-    kvHTML("SpO₂",fmt(en.spo2,0),"%",en.spo2<92?"alert":"")+
-    kvHTML("MAP",fmt(en.map,0),"mmHg",en.map<65?"alert":"")+
     kvHTML("ABP variability",fmt(en.abp_var,1),"σ")+
-    kvHTML("WBC",fmt(en.wbc,1),"×10³",(en.wbc>12||en.wbc<4)?"alert":"")+
-    kvHTML("Lactate",fmt(en.lactate,1),"mmol/L",en.lactate>=4?"alert":(en.lactate>2?"warn":""))+
     kvHTML("Lactate clearance",fmt(en.lactate_clearance,0),"%",(en.lactate>2&&en.lactate_clearance<-5)?"warn":"");
   $("dos-drivers").innerHTML=(b.drivers&&b.drivers.length)
     ? b.drivers.map(function(d,i){ return '<div class="drv'+(i<2?" hi":"")+'">'+d+'</div>'; }).join("")
@@ -517,6 +524,42 @@ function drawTrends(s){
   });
 }
 
+/* fused sepsis-risk timeline — our risk per ICU hour vs labelled onset + label band */
+function drawRiskTimeline(s){
+  var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
+  var c=dosChart;
+  if(!c||!c.risk||c.risk.length<2){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center";
+    ctx.textBaseline="middle"; ctx.fillText("loading risk timeline …",w/2,h/2); return; }
+  var hours=c.hours, risk=c.risk, n=hours.length, h0=hours[0], h1=hours[n-1], span=Math.max(1,h1-h0);
+  var padL=32,padR=12,padT=12,padB=28,pw=w-padL-padR,labelH=11,plotBot=h-padB,plotTop=padT,ph=plotBot-plotTop-labelH;
+  function xAt(hr){ return padL+(hr-h0)/span*pw; } function yAt(v){ return plotTop+ph-clamp(v,0,1)*ph; }
+  ctx.textBaseline="middle"; ctx.font=FM(9,500);
+  [0,0.5,1].forEach(function(v){ var y=yAt(v); ctx.strokeStyle=C.grid; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
+    ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(v.toFixed(1),padL-5,y); });
+  var al=c.alarm||0.7, ay=yAt(al);
+  ctx.strokeStyle=withAlpha(C.crit,.5); ctx.lineWidth=1; ctx.setLineDash([4,3]);
+  ctx.beginPath(); ctx.moveTo(padL,ay); ctx.lineTo(w-padR,ay); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle=C.crit; ctx.font=FS(8.5,600); ctx.textAlign="left"; ctx.textBaseline="bottom"; ctx.fillText("alarm "+al,padL+4,ay-2);
+  if(c.onset_hour!=null && c.onset_hour>=h0 && c.onset_hour<=h1){ var ox=xAt(c.onset_hour);
+    ctx.strokeStyle=withAlpha(C.crit,.7); ctx.lineWidth=1.3; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(ox,plotTop); ctx.lineTo(ox,plotBot); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=C.crit; ctx.font=FS(8.5,700); ctx.textAlign="center"; ctx.textBaseline="top"; ctx.fillText("labelled onset",ox,plotTop+1); }
+  var last=risk[n-1], col=last>=al?C.crit:last>=0.4?C.watch:C.cyan, i;
+  ctx.beginPath(); for(i=0;i<n;i++){ var x=xAt(hours[i]),y=yAt(risk[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
+  ctx.lineTo(xAt(hours[n-1]),plotBot-labelH); ctx.lineTo(xAt(hours[0]),plotBot-labelH); ctx.closePath();
+  var fg=ctx.createLinearGradient(0,plotTop,0,plotBot); fg.addColorStop(0,withAlpha(col,.3)); fg.addColorStop(1,withAlpha(col,.03));
+  ctx.fillStyle=fg; ctx.fill();
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.shadowColor=withAlpha(col,.6); ctx.shadowBlur=8;
+  ctx.beginPath(); for(i=0;i<n;i++){ var x2=xAt(hours[i]),y2=yAt(risk[i]); i?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2); } ctx.stroke(); ctx.shadowBlur=0;
+  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(hours[n-1]),yAt(last),3,0,7); ctx.fill();
+  var by=plotBot-labelH+2, bw=pw/Math.max(n-1,1);
+  for(i=0;i<n;i++){ if(c.labels[i]){ ctx.fillStyle=withAlpha(C.crit,.55); ctx.fillRect(xAt(hours[i])-bw/2,by,bw+1,labelH-3); } }
+  ctx.fillStyle=C.dim; ctx.font=FS(8,500); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillText("ground-truth label",padL+2,by+(labelH-2)/2);
+  ctx.fillStyle=C.dim; ctx.font=FM(9,500); ctx.textAlign="center"; ctx.textBaseline="bottom";
+  [h0,Math.round((h0+h1)/2),h1].forEach(function(hr){ ctx.fillText("h"+hr,xAt(hr),h-3); });
+}
+
 /* ============================================================
    MODULE C — Neurosymbolic Protocol Terminal (streamed)
    ============================================================ */
@@ -744,12 +787,12 @@ function setup(){
   ambientInit(); runBoot();
   surf.mem=new Surface("cv-mem"); surf.lanes=new Surface("cv-lanes"); surf.lat=new Surface("cv-lat");
   surf.dosMem=new Surface("cv-dos-mem"); surf.dosLat=new Surface("cv-dos-lat");
-  surf.dosTrend=new Surface("cv-dos-trend"); surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
+  surf.dosTrend=new Surface("cv-dos-trend"); surf.dosRisk=new Surface("cv-dos-risk");
+  surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
     if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act); b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
   $("dos-close").addEventListener("click",closeDossier);
-  $("dos-scrim").addEventListener("click",closeDossier);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeDossier(); });
   $("tabs").addEventListener("click",function(e){ var t=e.target.closest(".tab"); if(t) setView(t.dataset.view); });
   $("roster-list").addEventListener("click",function(e){ var c=e.target.closest(".pcard"); if(c) openDossier(c.dataset.id); });
@@ -767,8 +810,9 @@ function loop(){ frame++;
     drawMemory(surf.mem); drawLanes(surf.lanes); drawLatency(surf.lat);
   } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
     surf.sweep.fit(); drawSweep(surf.sweep); }
-  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit();
-    drawTrends(surf.dosTrend); drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
+  if(selectedBed){ surf.dosMem.fit(); surf.dosLat.fit(); surf.dosTrend.fit(); surf.dosRisk.fit();
+    drawTrends(surf.dosTrend); drawRiskTimeline(surf.dosRisk);
+    drawBedMemory(surf.dosMem,selectedBed); drawLatency(surf.dosLat); }
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
 }

@@ -159,48 +159,69 @@
 
 </div>
 
-<!-- ============ DOSSIER ============ -->
-<div class="dos-scrim" id="dos-scrim"></div>
+<!-- ============ PER-PATIENT CLINICAL VIEW ============ -->
 <aside class="dossier" id="dossier" aria-hidden="true">
-  <div class="dos-head">
-    <div class="dos-id">
-      <span class="dos-tag" id="dos-tag">BED</span>
-      <div><div class="dos-name" id="dos-name">—</div><div class="dos-axis" id="dos-axis">—</div></div>
-    </div>
+  <header class="dos-head">
+    <button class="dos-close" id="dos-close" title="Back">← Back</button>
+    <span class="dos-tag" id="dos-tag">BED</span>
+    <div class="dos-id"><div class="dos-name" id="dos-name">—</div><div class="dos-axis" id="dos-axis">—</div></div>
+    <div class="dos-demo" id="dos-demo"></div>
     <div class="dos-risk"><b id="dos-risk">0.00</b><span id="dos-tier" class="dos-tier">stable</span></div>
-    <button class="dos-close" id="dos-close" title="Close dossier">✕</button>
+    <div class="dos-actions">
+      <button class="dos-act crisis" data-act="crisis">⏵ Advance to onset</button>
+      <button class="dos-act clear" data-act="clear">↺ Reset</button>
+      <button class="dos-act noise" data-act="noise">≈ Noise</button>
+    </div>
+  </header>
+
+  <div class="dos-body clinical">
+    <!-- left column -->
+    <div class="cl-col">
+      <section class="card cl-card">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Vital signs</h2><span class="hd-meta">live</span></div>
+        <div class="card-body cl-pad"><div class="dos-vitals" id="dos-vitals"></div></div>
+      </section>
+      <section class="card cl-card">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Organ-system load</h2><span class="hd-meta">fused</span></div>
+        <div class="card-body cl-pad"><div class="dos-comps" id="dos-comps"></div></div>
+      </section>
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Ground truth</h2><span class="hd-meta">CinC-2019 label</span></div>
+        <div class="card-body cl-pad"><div class="dos-truth" id="dos-truth"></div></div>
+      </section>
+    </div>
+
+    <!-- center column -->
+    <div class="cl-col cl-main">
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Vitals &amp; labs trajectory</h2><span class="hd-meta">real hourly record</span></div>
+        <div class="card-body"><canvas id="cv-dos-trend"></canvas></div>
+      </section>
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--crit)"></span><h2>Fused sepsis-risk timeline</h2><span class="hd-meta">our risk vs labelled onset</span></div>
+        <div class="card-body"><canvas id="cv-dos-risk"></canvas></div>
+      </section>
+    </div>
+
+    <!-- right column -->
+    <div class="cl-col">
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--watch)"></span><h2>Active problems</h2><span class="hd-meta">ranked</span></div>
+        <div class="card-body cl-pad"><div class="dos-drivers" id="dos-drivers"></div></div>
+      </section>
+      <section class="card cl-card cl-grow">
+        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Certified Hour-1 protocol</h2><span class="hd-meta">Z3-verified</span></div>
+        <div class="card-body cl-pad"><div class="dos-bundle" id="dos-bundle"></div></div>
+      </section>
+    </div>
   </div>
-  <div class="dos-body">
-    <section class="dos-sec">
-      <h4>Patient record <span>· PhysioNet/CinC-2019 ICU stay</span></h4>
-      <div class="dos-demo" id="dos-demo"></div>
-      <div class="dos-truth" id="dos-truth"></div>
-      <div class="dos-actions">
-        <button class="dos-act crisis" data-act="crisis">⏵ Advance to onset</button>
-        <button class="dos-act clear" data-act="clear">↺ Reset replay</button>
-        <button class="dos-act noise" data-act="noise">≈ Noise surge</button>
-      </div>
-    </section>
-    <section class="dos-sec"><h4>Fused risk decomposition</h4><div class="dos-comps" id="dos-comps"></div></section>
-    <section class="dos-sec dos-tiers">
-      <div><h4>Edge tier <span>· 30 Hz optical</span></h4><div class="dos-kv" id="dos-edge"></div></div>
-      <div><h4>Enterprise tier <span>· labs + bedside</span></h4><div class="dos-kv" id="dos-ent"></div></div>
-    </section>
-    <section class="dos-sec"><h4>Active derangements</h4><div class="dos-drivers" id="dos-drivers"></div></section>
-    <section class="dos-sec"><h4>Certified Hour-1 protocol <span>· Z3-verified egress</span></h4><div class="dos-bundle" id="dos-bundle"></div></section>
-    <section class="dos-sec">
-      <h4>Vitals &amp; labs trajectory <span>· real hourly record</span></h4>
-      <div class="dos-canvas" style="height:172px"><canvas id="cv-dos-trend"></canvas></div>
-    </section>
-    <section class="dos-sec">
-      <h4>Shared-memory arena <span>· this bed · zero-copy</span></h4>
-      <div class="dos-canvas" style="height:130px"><canvas id="cv-dos-mem"></canvas></div>
-    </section>
-    <section class="dos-sec">
-      <h4>Kernel reaction latency <span>· monotonic counters</span></h4>
-      <div class="dos-canvas" style="height:124px"><canvas id="cv-dos-lat"></canvas></div>
-    </section>
-  </div>
+
+  <footer class="dos-kernel">
+    <div class="dk-lbl">KERNEL · this bed</div>
+    <div class="dk-tiers"><div class="dos-kv" id="dos-edge"></div><div class="dos-kv" id="dos-ent"></div></div>
+    <div class="dk-canvas"><span>shared-memory arena</span><div class="dos-canvas"><canvas id="cv-dos-mem"></canvas></div></div>
+    <div class="dk-canvas"><span>reaction latency</span><div class="dos-canvas"><canvas id="cv-dos-lat"></canvas></div></div>
+  </footer>
 </aside>
 
 <script src="tactical.js?v=9"></script>
