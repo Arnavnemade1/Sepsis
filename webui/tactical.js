@@ -524,40 +524,73 @@ function drawTrends(s){
   });
 }
 
-/* fused sepsis-risk timeline — our risk per ICU hour vs labelled onset + label band */
+/* fused sepsis-risk timeline — history + FORECAST (predicted future risk + band) */
 function drawRiskTimeline(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
   var c=dosChart;
   if(!c||!c.risk||c.risk.length<2){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center";
     ctx.textBaseline="middle"; ctx.fillText("loading risk timeline …",w/2,h/2); return; }
-  var hours=c.hours, risk=c.risk, n=hours.length, h0=hours[0], h1=hours[n-1], span=Math.max(1,h1-h0);
-  var padL=32,padR=12,padT=12,padB=28,pw=w-padL-padR,labelH=11,plotBot=h-padB,plotTop=padT,ph=plotBot-plotTop-labelH;
+  var hours=c.hours, risk=c.risk, n=hours.length, h0=hours[0], h1=hours[n-1], i;
+  var fc=c.forecast, H=(fc&&fc.risk_mean)?fc.horizon:0;
+  var xMax=h1+H, span=Math.max(1,xMax-h0);
+  var padL=32,padR=14,padT=24,padB=28,pw=w-padL-padR,labelH=11,plotBot=h-padB,plotTop=padT,ph=plotBot-plotTop-labelH;
   function xAt(hr){ return padL+(hr-h0)/span*pw; } function yAt(v){ return plotTop+ph-clamp(v,0,1)*ph; }
   ctx.textBaseline="middle"; ctx.font=FM(9,500);
   [0,0.5,1].forEach(function(v){ var y=yAt(v); ctx.strokeStyle=C.grid; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
     ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(v.toFixed(1),padL-5,y); });
+  // forecast region shading (subtle) + "now" divider
+  var nx=xAt(h1);
+  if(H){ ctx.fillStyle="rgba(125,140,255,.04)"; ctx.fillRect(nx,plotTop,xAt(xMax)-nx,ph);
+    ctx.strokeStyle=withAlpha(C.indigo,.4); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(nx,plotTop); ctx.lineTo(nx,plotBot); ctx.stroke();
+    ctx.fillStyle=C.indigo; ctx.font=FS(8.5,700); ctx.textAlign="left"; ctx.textBaseline="top"; ctx.fillText("now",nx+3,plotTop+1);
+    ctx.textAlign="right"; ctx.fillStyle=C.dim; ctx.fillText("forecast +"+H+"h",xAt(xMax)-2,plotTop+1); }
   var al=c.alarm||0.7, ay=yAt(al);
   ctx.strokeStyle=withAlpha(C.crit,.5); ctx.lineWidth=1; ctx.setLineDash([4,3]);
   ctx.beginPath(); ctx.moveTo(padL,ay); ctx.lineTo(w-padR,ay); ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle=C.crit; ctx.font=FS(8.5,600); ctx.textAlign="left"; ctx.textBaseline="bottom"; ctx.fillText("alarm "+al,padL+4,ay-2);
-  if(c.onset_hour!=null && c.onset_hour>=h0 && c.onset_hour<=h1){ var ox=xAt(c.onset_hour);
-    ctx.strokeStyle=withAlpha(C.crit,.7); ctx.lineWidth=1.3; ctx.setLineDash([3,3]);
-    ctx.beginPath(); ctx.moveTo(ox,plotTop); ctx.lineTo(ox,plotBot); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle=C.crit; ctx.font=FS(8.5,700); ctx.textAlign="center"; ctx.textBaseline="top"; ctx.fillText("labelled onset",ox,plotTop+1); }
-  var last=risk[n-1], col=last>=al?C.crit:last>=0.4?C.watch:C.cyan, i;
+  function onsetMark(hr,lbl,solid){ var ox=xAt(hr); ctx.strokeStyle=withAlpha(C.crit,solid?.7:.5);
+    ctx.lineWidth=1.3; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(ox,plotTop); ctx.lineTo(ox,plotBot); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle=C.crit; ctx.font=FS(8.5,700); ctx.textAlign="center"; ctx.textBaseline="top"; ctx.fillText(lbl,ox,plotTop+11); }
+  if(c.onset_hour!=null && c.onset_hour>=h0 && c.onset_hour<=xMax) onsetMark(c.onset_hour,"labelled onset",true);
+  // ---- history risk (solid) ----
+  var last=risk[n-1], col=last>=al?C.crit:last>=0.4?C.watch:C.cyan;
   ctx.beginPath(); for(i=0;i<n;i++){ var x=xAt(hours[i]),y=yAt(risk[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
-  ctx.lineTo(xAt(hours[n-1]),plotBot-labelH); ctx.lineTo(xAt(hours[0]),plotBot-labelH); ctx.closePath();
-  var fg=ctx.createLinearGradient(0,plotTop,0,plotBot); fg.addColorStop(0,withAlpha(col,.3)); fg.addColorStop(1,withAlpha(col,.03));
+  ctx.lineTo(xAt(h1),plotBot-labelH); ctx.lineTo(xAt(h0),plotBot-labelH); ctx.closePath();
+  var fg=ctx.createLinearGradient(0,plotTop,0,plotBot); fg.addColorStop(0,withAlpha(col,.28)); fg.addColorStop(1,withAlpha(col,.03));
   ctx.fillStyle=fg; ctx.fill();
   ctx.strokeStyle=col; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.shadowColor=withAlpha(col,.6); ctx.shadowBlur=8;
   ctx.beginPath(); for(i=0;i<n;i++){ var x2=xAt(hours[i]),y2=yAt(risk[i]); i?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2); } ctx.stroke(); ctx.shadowBlur=0;
-  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(hours[n-1]),yAt(last),3,0,7); ctx.fill();
-  var by=plotBot-labelH+2, bw=pw/Math.max(n-1,1);
+  // ---- forecast (band + dashed mean) ----
+  if(H){ var fcol=C.indigo;
+    // band hi/lo
+    ctx.beginPath(); ctx.moveTo(xAt(h1),yAt(last));
+    for(i=0;i<H;i++) ctx.lineTo(xAt(h1+i+1),yAt(fc.risk_hi[i]));
+    for(i=H-1;i>=0;i--) ctx.lineTo(xAt(h1+i+1),yAt(fc.risk_lo[i]));
+    ctx.lineTo(xAt(h1),yAt(last)); ctx.closePath(); ctx.fillStyle=withAlpha(fcol,.14); ctx.fill();
+    // mean dashed
+    ctx.strokeStyle=fcol; ctx.lineWidth=1.8; ctx.setLineDash([5,3]); ctx.beginPath(); ctx.moveTo(xAt(h1),yAt(last));
+    for(i=0;i<H;i++) ctx.lineTo(xAt(h1+i+1),yAt(fc.risk_mean[i])); ctx.stroke(); ctx.setLineDash([]);
+    // projected onset marker
+    if(fc.projected_onset_hour!=null && fc.projected_onset_hour<=xMax){
+      var px=xAt(fc.projected_onset_hour); ctx.fillStyle=fcol; ctx.beginPath(); ctx.arc(px,yAt(al),3.5,0,7); ctx.fill();
+      ctx.strokeStyle=withAlpha(fcol,.5); ctx.beginPath(); ctx.arc(px,yAt(al),6.5,0,7); ctx.stroke(); }
+  }
+  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(h1),yAt(last),3,0,7); ctx.fill();
+  // ground-truth label band
+  var by=plotBot-labelH+2, bw=pw/Math.max(span,1);
   for(i=0;i<n;i++){ if(c.labels[i]){ ctx.fillStyle=withAlpha(C.crit,.55); ctx.fillRect(xAt(hours[i])-bw/2,by,bw+1,labelH-3); } }
   ctx.fillStyle=C.dim; ctx.font=FS(8,500); ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.fillText("ground-truth label",padL+2,by+(labelH-2)/2);
+  // forecast summary banner (top)
+  if(fc){ var tc=fc.trajectory==="deteriorating"?C.crit:fc.trajectory==="improving"?C.ok:C.muted;
+    ctx.textAlign="left"; ctx.textBaseline="middle"; ctx.font=FS(10.5,700); ctx.fillStyle=tc;
+    var msg="▸ "+fc.trajectory.toUpperCase();
+    if(fc.projected_onset_in!=null) msg+=" · projected critical in ~"+fc.projected_onset_in+"h";
+    ctx.fillText(msg, padL, 11);
+    ctx.textAlign="right"; ctx.fillStyle=C.dim; ctx.font=FM(9.5,500);
+    ctx.fillText("forecast confidence "+Math.round(fc.confidence*100)+"%", w-padR, 11); }
   ctx.fillStyle=C.dim; ctx.font=FM(9,500); ctx.textAlign="center"; ctx.textBaseline="bottom";
-  [h0,Math.round((h0+h1)/2),h1].forEach(function(hr){ ctx.fillText("h"+hr,xAt(hr),h-3); });
+  ctx.fillText("h"+h0,xAt(h0),h-3); ctx.fillText("h"+h1,xAt(h1),h-3); if(H) ctx.fillText("h"+xMax,xAt(xMax),h-3);
 }
 
 /* ============================================================

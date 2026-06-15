@@ -223,10 +223,16 @@ class RealPatient:
             ent = {k: vals[k] for k in ent_keys}
             risk_full.append(round(fe.update(self.bed_id, self.name, edge, ent).fused_risk, 3))
         labels = self.record.labels[lo:hi].astype(int).tolist()
+        # trajectory forecast from the recent window
+        from backend.aegis.forecast import TrajectoryForecaster
+        wlo = max(0, hi - 12)
+        windows = {ch: [float(self._ff[h, k]) for h in range(wlo, hi)]
+                   for k, ch in enumerate(CHANNELS)}
+        forecast = TrajectoryForecaster(8).forecast(windows, start_hour=self.icu_hour)
         return {
             "hours": list(range(lo, hi)), "series": series, "labels": labels,
             "risk": risk_full[lo:hi], "onset_hour": self.onset_hour,
-            "icu_hour": self.icu_hour, "alarm": 0.70,
+            "icu_hour": self.icu_hour, "alarm": 0.70, "forecast": forecast,
         }
 
 
