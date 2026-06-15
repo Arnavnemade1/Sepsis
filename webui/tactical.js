@@ -401,8 +401,10 @@ function regionsFromBed(b){
 }
 function feedTwin(b){
   if(!window.AegisTwin||!b) return;
+  var e=b.edge||{}, en=b.enterprise||{};
   try{ window.AegisTwin.update({source:"simulator",
     body_state:{regions:regionsFromBed(b)},
+    vitals:{heart_rate:e.hr, respiratory_rate:en.resp_rate},
     risk:{signal_quality:1}}); }catch(e){}
 }
 function renderOrgans(b){
