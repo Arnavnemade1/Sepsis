@@ -25,12 +25,44 @@ the fusion engine anyway).
 """
 from __future__ import annotations
 
+import glob
+import os
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Iterable, Optional, Tuple
 
 import numpy as np
 
+from backend.ml import config as _mlcfg
 from backend.ml.data import cinc2019
+
+# Bundled CC-BY real-patient sample — committed so the demo runs on REAL data
+# even when the full 40k corpus (data/cinc2019, gitignored) is absent.
+_SAMPLE_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "cohort_sample")
+
+
+def _full_corpus_available() -> bool:
+    for s in _mlcfg.CINC_SETS:
+        d = os.path.join(_mlcfg.DATA_DIR, s)
+        if os.path.isdir(d) and any(f.endswith(".psv") for f in os.listdir(d)):
+            return True
+    return False
+
+
+def _source_patients(scan: int) -> Iterable["cinc2019.PatientRecord"]:
+    """Real ICU stays from the full corpus if present, else the bundled sample."""
+    if _full_corpus_available():
+        yield from cinc2019.iter_patients(limit=scan)
+        return
+    for path in sorted(glob.glob(os.path.join(_SAMPLE_DIR, "*.psv"))):
+        rec = cinc2019._parse_psv(path, os.path.basename(path)[:-4], "sample")
+        if rec is not None:
+            yield rec
+
+
+def data_source() -> str:
+    return "full-corpus" if _full_corpus_available() else "bundled-sample"
 
 # CinC column -> kernel channel. These are the seven real signals the fusion
 # engine actually scores on (HR/Temp/Resp/SpO2/MAP/WBC/Lactate).
@@ -213,7 +245,7 @@ def build_cohort(n: int = 12, seed: int = 7, scan: int = 1500) -> List[RealPatie
     varied demographics. Deterministic for a given seed."""
     rng = np.random.default_rng(seed)
     severe, mild, stable = [], [], []
-    for rec in cinc2019.iter_patients(limit=scan):
+    for rec in _source_patients(scan):
         if not (10 <= rec.n_hours <= 320):
             continue
         if rec.is_septic and rec.label_onset_hour is not None and rec.label_onset_hour >= 6:

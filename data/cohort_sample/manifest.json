@@ -1,0 +1,226 @@
+[
+{
+"id": "p001446",
+"set": "training_setA",
+"hours": 86,
+"septic": true,
+"onset": 76
+},
+{
+"id": "p001128",
+"set": "training_setA",
+"hours": 17,
+"septic": true,
+"onset": 7
+},
+{
+"id": "p001895",
+"set": "training_setA",
+"hours": 265,
+"septic": true,
+"onset": 256
+},
+{
+"id": "p000754",
+"set": "training_setA",
+"hours": 108,
+"septic": true,
+"onset": 98
+},
+{
+"id": "p002156",
+"set": "training_setA",
+"hours": 25,
+"septic": true,
+"onset": 16
+},
+{
+"id": "p001441",
+"set": "training_setA",
+"hours": 37,
+"septic": true,
+"onset": 27
+},
+{
+"id": "p000188",
+"set": "training_setA",
+"hours": 84,
+"septic": true,
+"onset": 75
+},
+{
+"id": "p002404",
+"set": "training_setA",
+"hours": 38,
+"septic": true,
+"onset": 28
+},
+{
+"id": "p002097",
+"set": "training_setA",
+"hours": 27,
+"septic": true,
+"onset": 17
+},
+{
+"id": "p002080",
+"set": "training_setA",
+"hours": 97,
+"septic": true,
+"onset": 87
+},
+{
+"id": "p000401",
+"set": "training_setA",
+"hours": 214,
+"septic": true,
+"onset": 204
+},
+{
+"id": "p001666",
+"set": "training_setA",
+"hours": 127,
+"septic": true,
+"onset": 117
+},
+{
+"id": "p001502",
+"set": "training_setA",
+"hours": 28,
+"septic": true,
+"onset": 19
+},
+{
+"id": "p000272",
+"set": "training_setA",
+"hours": 100,
+"septic": true,
+"onset": 90
+},
+{
+"id": "p001429",
+"set": "training_setA",
+"hours": 16,
+"septic": true,
+"onset": 6
+},
+{
+"id": "p000468",
+"set": "training_setA",
+"hours": 92,
+"septic": true,
+"onset": 83
+},
+{
+"id": "p000129",
+"set": "training_setA",
+"hours": 26,
+"septic": false,
+"onset": null
+},
+{
+"id": "p000251",
+"set": "training_setA",
+"hours": 49,
+"septic": false,
+"onset": null
+},
+{
+"id": "p002094",
+"set": "training_setA",
+"hours": 41,
+"septic": false,
+"onset": null
+},
+{
+"id": "p002371",
+"set": "training_setA",
+"hours": 27,
+"septic": false,
+"onset": null
+},
+{
+"id": "p000019",
+"set": "training_setA",
+"hours": 48,
+"septic": false,
+"onset": null
+},
+{
+"id": "p002485",
+"set": "training_setA",
+"hours": 41,
+"septic": false,
+"onset": null
+},
+{
+"id": "p000298",
+"set": "training_setA",
+"hours": 41,
+"septic": false,
+"onset": null
+},
+{
+"id": "p000976",
+"set": "training_setA",
+"hours": 59,
+"septic": false,
+"onset": null
+},
+{
+"id": "p001679",
+"set": "training_setA",
+"hours": 42,
+"septic": false,
+"onset": null
+},
+{
+"id": "p001284",
+"set": "training_setA",
+"hours": 38,
+"septic": false,
+"onset": null
+},
+{
+"id": "p000310",
+"set": "training_setA",
+"hours": 30,
+"septic": false,
+"onset": null
+},
+{
+"id": "p002437",
+"set": "training_setA",
+"hours": 47,
+"septic": false,
+"onset": null
+},
+{
+"id": "p001279",
+"set": "training_setA",
+"hours": 44,
+"septic": false,
+"onset": null
+},
+{
+"id": "p002389",
+"set": "training_setA",
+"hours": 45,
+"septic": false,
+"onset": null
+},
+{
+"id": "p001340",
+"set": "training_setA",
+"hours": 56,
+"septic": false,
+"onset": null
+},
+{
+"id": "p001859",
+"set": "training_setA",
+"hours": 35,
+"septic": false,
+"onset": null
+}
+]

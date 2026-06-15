@@ -32,3 +32,6 @@ artifacts/*.log
 # IDE
 .idea/
 .vscode/
+
+# Bundled CC-BY real-patient sample IS committed (small, attributed)
+!data/cohort_sample/
