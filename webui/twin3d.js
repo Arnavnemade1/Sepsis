@@ -1,14 +1,15 @@
 /* ============================================================
    AEGIS-OS — 3D anatomical digital twin (Three.js r160, vendored)
 
-   A medical hologram, not a coloured silhouette. A real rigged
-   humanoid shell (translucent, with scanlines + a rising diagnostic
-   scan-sweep + fresnel rim) houses DIGITIZED INTERNAL ORGANS — heart,
-   lungs, brain, liver, kidneys, spleen, gut — each a low-poly wireframe
-   volume that glows the colour of ITS system's severity. The heart
-   beats at the patient's heart-rate; the lungs breathe at the
-   respiratory rate. Organs whose system we don't actually monitor are
-   dimmed to honest "no data" — never a confident healthy glow.
+   A medical hologram, not a coloured silhouette. A real rigged humanoid
+   shell (translucent, scanlines + a rising diagnostic scan-sweep + fresnel
+   rim) houses REAL ANATOMICAL ORGANS — heart, lungs, liver, kidneys, spleen
+   — loaded from the HuBMAP CCF reference meshes (Visible Human, CC BY 4.0;
+   see vendor/models/organs/ATTRIBUTION.md). The meshes are co-registered, so
+   they assemble into a true torso; each glows the colour of ITS system's
+   severity. The heart beats at the patient's heart-rate; the lungs breathe at
+   the respiratory rate. Systems we don't actually monitor (renal/hepatic/
+   neuro) are dimmed to honest "no data" — never a confident healthy glow.
 
    A holo-platform (rings + radial grid), a drifting cellular particle
    field, and a slow diagnostic reticle complete the console look.
@@ -30,20 +31,24 @@ const REGION_LABEL = {
   liver: "Hepatic", kidneys: "Renal", skin: "Peripheral", blood: "Immune",
 };
 
-/* Anatomical organ atlas — world Y is in body units (feet≈0, head≈1.62).
+/* Real anatomical organ atlas — HuBMAP CCF v1.2 reference meshes (Visible Human,
+   CC BY 4.0, see vendor/models/organs/ATTRIBUTION.md). All six are co-registered
+   in one coordinate space, so loading them together assembles a correct torso;
+   we then scale/place the whole assembly inside the body shell.
    region = which body_state region drives this organ's colour. */
-const ORGANS = [
-  { key: "brain",   region: "brain",   pos: [0.00, 1.560, 0.012], scale: [0.080, 0.074, 0.086], detail: 2, jit: 0.09 },
-  { key: "lungL",   region: "lungs",   pos: [-0.076, 1.280, 0.004], scale: [0.044, 0.118, 0.050], detail: 1, jit: 0.10, breathe: true },
-  { key: "lungR",   region: "lungs",   pos: [0.076, 1.280, 0.004], scale: [0.044, 0.118, 0.050], detail: 1, jit: 0.10, breathe: true },
-  { key: "heart",   region: "heart",   pos: [-0.020, 1.225, 0.052], scale: [0.044, 0.052, 0.044], detail: 1, jit: 0.20, beat: true },
-  { key: "liver",   region: "liver",   pos: [0.060, 1.060, 0.040], scale: [0.082, 0.046, 0.058], detail: 1, jit: 0.16 },
-  { key: "spleen",  region: "blood",   pos: [-0.072, 1.055, 0.024], scale: [0.034, 0.040, 0.034], detail: 1, jit: 0.18 },
-  { key: "kidneyL", region: "kidneys", pos: [-0.058, 0.985, -0.042], scale: [0.028, 0.046, 0.032], detail: 1, jit: 0.12 },
-  { key: "kidneyR", region: "kidneys", pos: [0.058, 0.985, -0.042], scale: [0.028, 0.046, 0.032], detail: 1, jit: 0.12 },
-  // anatomical context only — we don't monitor the GI tract, so it stays dim
-  { key: "gut",     region: "_gut",    pos: [0.00, 0.940, 0.040], scale: [0.072, 0.060, 0.052], detail: 2, jit: 0.10 },
+const ORGAN_FILES = [
+  { key: "lung",    file: "VH_M_Lung.glb",     region: "lungs",   breathe: true },
+  { key: "heart",   file: "VH_M_Heart.glb",    region: "heart",   beat: true },
+  { key: "liver",   file: "VH_M_Liver.glb",    region: "liver" },
+  { key: "spleen",  file: "VH_M_Spleen.glb",   region: "blood" },
+  { key: "kidneyL", file: "VH_M_Kidney_L.glb", region: "kidneys" },
+  { key: "kidneyR", file: "VH_M_Kidney_R.glb", region: "kidneys" },
 ];
+// placement of the assembled organ atlas inside the body (tuned to the Xbot mesh)
+let ORGAN_SPAN = 0.44;       // vertical extent of the organ stack in body units
+let TORSO_Y = 1.13;          // world Y of the atlas centre (mid-torso)
+let TORSO_Z = 0.0;           // forward offset
+let ORGAN_FLIP = 1;          // liver→screen-left (patient's right), spleen→screen-right
 
 // shell zone colours (mutated in place → live in the shader)
 const ZONE = {
@@ -52,7 +57,8 @@ const ZONE = {
 };
 
 let renderer, scene, camera, controls, container, ro, clock;
-let modelGroup, organGroup, organs = {}, ground, particles, pData, reticle;
+let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub;
+let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
 let shellU = null;                                // shell shader uniforms
 let started = false, pendingData = null;
@@ -111,51 +117,68 @@ function bodyMaterial() {
         float sl = 0.86 + 0.14*sin(vWY*150.0 - uTime*2.2);
         // rising diagnostic sweep band
         float sweep = exp(-pow((h - uScan)*8.0, 2.0));
-        vec3 outc = col*(0.22 + 0.55*fres) + uRim*fres*0.6;
+        vec3 outc = col*(0.30 + 0.6*fres) + uRim*fres*0.75;
         outc *= sl;
         outc += col*sweep*0.9 + vec3(0.55,0.85,1.0)*sweep*0.5;
         outc *= (1.0 + 0.08*uPulse);
-        float a = clamp(0.12 + fres*0.52 + sweep*0.35, 0.0, 0.92);
+        float a = clamp(0.17 + fres*0.6 + sweep*0.35, 0.0, 0.95);
         gl_FragColor = vec4(outc, a);`);
     shellU = sh.uniforms;
   };
   return m;
 }
 
-/* ---------------- internal organs ---------------- */
-function organGeo(detail, jit) {
-  const g = new THREE.IcosahedronGeometry(1, detail);
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const f = 1 + (Math.random() * 2 - 1) * jit;
-    p.setXYZ(i, p.getX(i) * f, p.getY(i) * f, p.getZ(i) * f);
-  }
-  g.computeVertexNormals(); return g;
-}
-function buildOrgans() {
-  organGroup = new THREE.Group(); scene.add(organGroup);
-  ORGANS.forEach((cfg) => {
-    const geo = organGeo(cfg.detail, cfg.jit);
-    const core = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      color: BASE, transparent: true, opacity: 0.42, depthWrite: false }));
-    const wire = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-      color: BASE, wireframe: true, transparent: true, opacity: 0.55,
-      depthWrite: false, blending: THREE.AdditiveBlending }));
-    const glow = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: glowTex, color: BASE, transparent: true, opacity: 0,
-      depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
-    const halo = new THREE.Mesh(new THREE.TorusGeometry(1, 0.045, 8, 44),
-      new THREE.MeshBasicMaterial({ color: 0xff4d5e, transparent: true, opacity: 0,
-        depthWrite: false, blending: THREE.AdditiveBlending }));
-    halo.rotation.x = Math.PI / 2.4;
-    const g = new THREE.Group(); g.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
-    core.scale.set(...cfg.scale); wire.scale.set(...cfg.scale);
-    const gs = Math.max(...cfg.scale) * 3.4; glow.scale.set(gs, gs, 1);
-    halo.scale.setScalar(Math.max(...cfg.scale) * 2.0);
-    g.add(core, wire, glow, halo); g.renderOrder = 4; organGroup.add(g);
-    organs[cfg.key] = { g, core, wire, glow, halo, cfg, base: cfg.scale.slice(),
-      ph: Math.random() * 6.28, sev: 0, mon: false, target: 0, worst: false };
+/* ---------------- internal organs (real anatomy) ----------------
+   Holographic organ material: dark surface lit only by a settable emissive
+   colour + a fresnel rim, so each organ glows its system's tier colour and the
+   edges read crisply against the translucent shell. */
+function makeOrganMat() {
+  // translucent "wet tissue" look: a real shaded surface (key light gives form)
+  // tinted by the system colour, plus a bright fresnel rim so the organ reads as
+  // a glowing volume rather than a flat blob.
+  const m = new THREE.MeshStandardMaterial({
+    color: 0x222a38, emissive: BASE.clone(), emissiveIntensity: 0.5,
+    transparent: true, opacity: 0.6, roughness: 0.42, metalness: 0.0,
+    depthWrite: true, side: THREE.DoubleSide,
   });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>", `#include <dithering_fragment>
+      float fr = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 1.7);
+      gl_FragColor.rgb += emissive.rgb * (0.35 + 1.7 * fr);
+      gl_FragColor.a = clamp(gl_FragColor.a + fr * 0.42, 0.0, 1.0);`);
+  };
+  return m;
+}
+function loadOrgans() {
+  atlasGroup = new THREE.Group(); scene.add(atlasGroup);
+  const loader = new GLTFLoader();
+  ORGAN_FILES.forEach((cfg) => {
+    loader.load("./vendor/models/organs/" + cfg.file, (g) => {
+      const root = g.scene, mat = makeOrganMat();
+      root.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; o.castShadow = o.receiveShadow = false; } });
+      // wrap in a pivot at the organ's own centre so beat/breathe scale about it
+      const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
+      const pivot = new THREE.Group(); pivot.position.copy(c); root.position.sub(c); pivot.add(root);
+      atlasGroup.add(pivot);
+      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false };
+      if (++organLoadCount === ORGAN_FILES.length) calibrateAtlas();
+    }, undefined, (e) => console.error("[twin] organ load failed", cfg.file, e));
+  });
+  // dim placeholder for the (unmonitored) brain so the head isn't empty
+  const bg = new THREE.IcosahedronGeometry(0.072, 2);
+  brainStub = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({
+    color: NODATA, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
+  brainStub.position.set(0, 1.555, 0.01); brainStub.scale.set(1, 1.05, 1.12); scene.add(brainStub);
+}
+/* Assemble + fit the co-registered organ atlas inside the body shell. */
+function calibrateAtlas() {
+  atlasGroup.scale.set(1, 1, 1); atlasGroup.position.set(0, 0, 0); atlasGroup.updateWorldMatrix(true, true);
+  const box = new THREE.Box3().setFromObject(atlasGroup);
+  const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  const s = ORGAN_SPAN / (size.y || 1);
+  atlasGroup.scale.set(ORGAN_FLIP * s, s, s);
+  atlasGroup.position.set(-ORGAN_FLIP * s * c.x, TORSO_Y - s * c.y, TORSO_Z - s * c.z);
+  if (lastServerData || pendingData) applyRegions();
 }
 
 /* ---------------- holo platform ---------------- */
@@ -340,13 +363,15 @@ function start(el) {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.06; controls.enablePan = false;
   controls.target.set(0, H * 0.50, 0);
-  controls.autoRotate = true; controls.autoRotateSpeed = 0.42;
-  controls.minPolarAngle = Math.PI * 0.36; controls.maxPolarAngle = Math.PI * 0.60;
-  scene.add(new THREE.AmbientLight(0xffffff, 1));
+  controls.autoRotate = true; controls.autoRotateSpeed = 0.28;
+  controls.minPolarAngle = Math.PI * 0.38; controls.maxPolarAngle = Math.PI * 0.56;
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const key = new THREE.DirectionalLight(0xcfe4ff, 1.5); key.position.set(0.6, 1.4, 1.2); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x6080c0, 0.6); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
 
   glowTex = glowTexture();
   buildGround(); buildParticles(); buildReticle();
-  loadBody(); buildOrgans(); buildBeacon();
+  loadBody(); loadOrgans(); buildBeacon();
   clock = new THREE.Clock(); started = true;
   ro = new ResizeObserver(resize); ro.observe(el); animate();
 }
@@ -380,39 +405,34 @@ function setOptical(reg) { optical = reg || {}; if (started) applyRegions(); }
 
 function applyRegions() {
   const regions = mergedRegions();
-  ZONE.head.copy(tierColor(regions.brain));
-  ZONE.chest.copy(tierColor(worse(regions.heart, regions.lungs)));
-  ZONE.abd.copy(tierColor(worse(worse(regions.liver, regions.kidneys), regions.blood)));
-  ZONE.pelvis.copy(tierColor(regions.skin));   // pelvis follows peripheral, not immune
-  ZONE.limb.copy(tierColor(regions.skin));
 
-  // organs
+  // organs — recolour each real mesh by its system's severity
   overall = 0; let worstKey = null, worstSev = 0.30, worstRegion = null;
-  ORGANS.forEach((cfg) => {
-    const o = organs[cfg.key]; if (!o) return;
-    const reg = regions[cfg.region];
+  for (const k in organs) {
+    const o = organs[k]; const reg = regions[o.region];
     const mon = !!(reg && reg.monitored);
     const sev = mon ? (reg.severity || 0) : 0;
-    const col = tierColor(reg);
-    o.core.material.color.copy(col); o.wire.material.color.copy(col); o.glow.material.color.copy(col);
-    o.mon = mon; o.sev = sev;
-    if (!mon) { o.core.material.opacity = 0.08; o.wire.material.opacity = 0.16; o.target = 0; }
-    else {
-      o.core.material.opacity = 0.36 + 0.30 * sev;
-      o.wire.material.opacity = 0.45 + 0.42 * sev;
-      o.target = cfg.mute ? Math.min(0.5, sev) : Math.min(0.95, 0.12 + sev * 1.05);
-      if (mon) overall = Math.max(overall, sev);
-    }
-    o.worst = false;
-    if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = cfg.key; worstRegion = reg; }
-  });
-  ORGANS.forEach((cfg) => { if (organs[cfg.key]) organs[cfg.key].worst = (cfg.key === worstKey); });
+    o.mon = mon; o.sev = sev; o.worst = false;
+    o.mat.emissive.copy(tierColor(reg));
+    o.mat.emissiveIntensity = mon ? (0.65 + 0.95 * sev) : 0.32;
+    o.mat.opacity = mon ? (0.62 + 0.26 * sev) : 0.34;
+    if (mon) overall = Math.max(overall, sev);
+    if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
+  }
+  for (const k in organs) organs[k].worst = (k === worstKey);
 
-  // worst-system label beacon (at that organ)
-  if (worstKey && beacon) {
-    const p = organs[worstKey].cfg.pos;
-    beacon.position.set(p[0], p[1] + 0.12, Math.max(p[2], 0) + 0.16); beacon.visible = true;
-    const lbl = (REGION_LABEL[organs[worstKey].cfg.region] || worstKey).toUpperCase();
+  // body shell: a single clean translucent tint (neutral blue, washing gently
+  // toward the overall tier colour in a crisis) — the diagnostic colour lives in
+  // the organs, so the body always reads as a body, not a patchy heat-map.
+  const tierHex = overall >= 0.75 ? 0xff4d5e : overall >= 0.45 ? 0xff9a3b : overall >= 0.2 ? 0xffd23b : null;
+  const bc = BASE.clone(); if (tierHex) bc.lerp(new THREE.Color(tierHex), 0.4);
+  ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
+
+  // worst-system label beacon (at that organ, in world space)
+  if (worstKey && beacon && organs[worstKey].pivot) {
+    organs[worstKey].pivot.getWorldPosition(_v);
+    beacon.position.set(_v.x, _v.y + 0.14, _v.z + 0.16); beacon.visible = true;
+    const lbl = (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase();
     setLabel(beaconLabel, lbl + (worstRegion && worstRegion.optical ? " ◉" : ""));
   } else if (beacon) beacon.visible = false;
 
@@ -449,20 +469,18 @@ function animate() {
     shellU.uScan.value = ((t * 0.20) % 1.5) - 0.15;   // rising scan band, then repeat
   }
 
-  // organs: per-system pulse, heart beat, lungs breathe, worst-system halo
+  // organs: heart beats at HR, lungs breathe at the respiratory rate, the
+  // worst-affected organ throbs; emissive brightness tracks the pulse.
   for (const k in organs) {
-    const o = organs[k]; const b = o.base;
-    let sx = b[0], sy = b[1], sz = b[2];
-    if (o.cfg.beat) { const f = 1 + 0.17 * beat; sx *= f; sy *= f; sz *= f; }
-    if (o.cfg.breathe) { sy *= 1 + 0.16 * breathe; sx *= 1 + 0.05 * breathe; sz *= 1 + 0.05 * breathe; }
-    o.core.scale.set(sx, sy, sz); o.wire.scale.set(sx, sy, sz);
-    const env = o.cfg.beat ? (0.35 + 0.65 * beat) : (0.55 + 0.45 * Math.sin(t * 1.8 + o.ph));
-    o.glow.material.opacity = o.target * env;
-    if (o.worst) {
-      o.halo.material.opacity = 0.30 + 0.30 * Math.abs(Math.sin(t * 3.4));
-      o.halo.scale.setScalar(Math.max(...b) * (1.9 + 0.18 * Math.sin(t * 3.4)));
-      o.halo.rotation.z += dt * 0.6;
-    } else o.halo.material.opacity = 0;
+    const o = organs[k]; if (!o.pivot) continue;
+    if (o.cfg.beat) o.pivot.scale.setScalar(1 + 0.11 * beat);
+    else if (o.cfg.breathe) o.pivot.scale.set(1 + 0.035 * breathe, 1 + 0.075 * breathe, 1 + 0.035 * breathe);
+    else if (o.worst) o.pivot.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(t * 3.0)));
+    else o.pivot.scale.setScalar(1);
+    if (o.mon) {
+      const env = o.cfg.beat ? (0.6 + 0.7 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
+      o.mat.emissiveIntensity = (0.65 + 0.95 * o.sev) * env;
+    }
   }
 
   // particle field drifts upward, recycles at the feet
@@ -490,7 +508,21 @@ function animate() {
   renderer.render(scene, camera);
 }
 
-window.AegisTwin = { start, update, resize, setOptical };
+/* live calibration helpers (used to tune organ placement against the Xbot mesh) */
+function _setAtlas(span, y, z, flip) {
+  if (span != null) ORGAN_SPAN = span; if (y != null) TORSO_Y = y;
+  if (z != null) TORSO_Z = z; if (flip != null) ORGAN_FLIP = flip;
+  if (atlasGroup && organLoadCount === ORGAN_FILES.length) calibrateAtlas();
+  return { ORGAN_SPAN, TORSO_Y, TORSO_Z, ORGAN_FLIP };
+}
+function _measure() {
+  const out = {};
+  if (modelGroup) { const b = new THREE.Box3().setFromObject(modelGroup); out.body = { min: b.min.toArray().map(n => +n.toFixed(3)), max: b.max.toArray().map(n => +n.toFixed(3)) }; }
+  if (atlasGroup) { const b = new THREE.Box3().setFromObject(atlasGroup); out.atlas = { min: b.min.toArray().map(n => +n.toFixed(3)), max: b.max.toArray().map(n => +n.toFixed(3)) }; }
+  for (const k in organs) { const o = organs[k]; if (o.pivot) { o.pivot.getWorldPosition(_v); out[k] = { p: _v.toArray().map(n => +n.toFixed(3)), col: "#" + o.mat.emissive.getHexString(), mon: o.mon, sev: +(o.sev || 0).toFixed(2), op: +o.mat.opacity.toFixed(2) }; } }
+  return out;
+}
+window.AegisTwin = { start, update, resize, setOptical, _setAtlas, _measure };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
   if (el && el.clientWidth > 40 && el.clientHeight > 40) { clearInterval(probe); start(el); }
