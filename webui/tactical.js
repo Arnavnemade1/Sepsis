@@ -872,34 +872,102 @@ function setView(name){ currentView=name;
 var devTimer=null, devFleet=null, selectedDevice=null;
 function devBeds(){ return Object.keys(latestBeds).map(function(k){return latestBeds[k];}); }
 function devIcon(t){ return t==="wearable"?"⌚":t==="optical"?"◉":"⛁"; }
+function devIconSVG(t,cls){ cls=cls||"dv-ic";
+  if(t==="wearable") return '<svg class="'+cls+' w" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="6.5" y="6.5" width="11" height="11" rx="3"/><path d="M9 6.5l.6-3h4.8l.6 3M9 17.5l.6 3h4.8l.6-3"/><path d="M12 9.6v2.4l1.7 1" stroke-width="1.3"/></svg>';
+  if(t==="optical") return '<svg class="'+cls+' o" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3.1"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
+  return '<svg class="'+cls+' g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4.5" width="18" height="6" rx="1.8"/><rect x="3" y="13.5" width="18" height="6" rx="1.8"/><circle cx="6.6" cy="7.5" r=".9" fill="currentColor"/><circle cx="6.6" cy="16.5" r=".9" fill="currentColor"/><path d="M10 7.5h7M10 16.5h7" stroke-width="1.1"/></svg>';
+}
 function startDevices(){ refreshFleet(); if(devTimer) clearInterval(devTimer); devTimer=setInterval(refreshFleet,2600); }
 function stopDevices(){ if(devTimer){ clearInterval(devTimer); devTimer=null; } }
 function refreshFleet(){
   fetch(window.AEGIS.http("/aegis/devices")).then(function(r){return r.json();})
     .then(function(d){ devFleet=d; renderFleet(d); }).catch(function(){});
 }
-function renderFleet(d){
-  var c=d.counts||{}, cnt=$("dev-counts");
-  if(cnt) cnt.innerHTML=
-    devCount("fleet",c.total,C.cyan)+devCount("streaming",c.streaming,C.ok)+
-    devCount("degraded",c.degraded,C.watch)+devCount("offline",c.offline,C.dim)+
-    devCount("unassigned",c.unassigned,C.indigo);
-  var grid=$("dev-grid"); if(grid) grid.innerHTML=(d.devices||[]).map(devCardHTML).join("");
+function renderDevCounts(c){
+  var cnt=$("dev-counts"); if(!cnt) return;
+  var tiles=[["fleet",c.total,C.cyan],["live",c.streaming,C.ok],["degraded",c.degraded,C.watch],
+             ["offline",c.offline,C.dim],["unassigned",c.unassigned,C.indigo]];
+  cnt.innerHTML=tiles.map(function(t){ return '<span class="dev-count"><b style="color:'+t[2]+
+    '">'+(t[1]||0)+'</b><span>'+t[0]+'</span></span>'; }).join("");
 }
-function devCount(k,v,col){ return '<span class="dev-count"><b style="color:'+col+'">'+(v||0)+'</b>'+k+'</span>'; }
-function devCardHTML(dev){
-  var batt=dev.battery==null?'<span class="dv-batt ac">AC</span>'
-    :'<span class="dv-batt'+(dev.battery<=15?' low':'')+'">'+dev.battery+'%</span>';
-  var sig=dev.signal_quality||0, sigCol=sig>=0.6?C.ok:sig>=0.4?C.watch:C.crit;
-  return '<div class="dev-card h-'+dev.health+'" data-id="'+dev.id+'">'+
-    '<div class="dv-top"><span class="dv-ic">'+devIcon(dev.type)+'</span>'+
-      '<span class="dv-id">'+dev.id+'</span><span class="dv-st st-'+dev.status+'">'+dev.status+'</span></div>'+
+function renderFleet(d){
+  renderDevCounts(d.counts||{});
+  var grid=$("dev-grid"); if(!grid) return;
+  var devs=d.devices||[], ids={};
+  devs.forEach(function(dev){ ids[dev.id]=1;
+    var el=grid.querySelector('.dev-card[data-id="'+dev.id+'"]');
+    if(!el){ el=document.createElement("div"); el.className="dev-card"; el.dataset.id=dev.id;
+      el.innerHTML=devCardShell(dev); grid.appendChild(el); }
+    updateCard(el,dev); });
+  [].forEach.call(grid.querySelectorAll(".dev-card"),function(el){ if(!ids[el.dataset.id]) el.remove(); });
+  var ord={streaming:0,degraded:1,assigned:2,provisioned:3,pairing:4,offline:5,decommissioned:6};
+  devs.slice().sort(function(a,b){return (ord[a.status]||9)-(ord[b.status]||9);})
+    .forEach(function(dev){ var el=grid.querySelector('.dev-card[data-id="'+dev.id+'"]'); if(el) grid.appendChild(el); });
+}
+function devCardShell(dev){
+  return '<span class="dv-rail"></span><span class="dv-glow"></span>'+
+    '<div class="dv-top"><span class="dv-icw">'+devIconSVG(dev.type)+'</span>'+
+      '<span class="dv-id">'+dev.id+'</span>'+
+      '<span class="dv-pill"><i class="dv-dot"></i><span class="dv-st"></span></span></div>'+
     '<div class="dv-model">'+dev.model+' · '+dev.type+'</div>'+
-    '<div class="dv-meta"><span class="dv-fw'+(dev.fw_outdated?" old":"")+'">fw '+dev.firmware+(dev.fw_outdated?" ⬆":"")+'</span>'+
-      batt+'<span class="dv-rssi">'+(dev.status==="offline"?"— dBm":dev.rssi+" dBm")+'</span></div>'+
-    '<div class="dv-sig"><span>signal</span><div class="dv-bar"><i style="width:'+Math.round(sig*100)+'%;background:'+sigCol+'"></i></div>'+
-      (dev.streams?'<span class="dv-live">● LIVE</span>':(dev.assigned_bed&&!dev.calibrated?'<span class="dv-warn">calibrate</span>':''))+'</div>'+
-    '<div class="dv-assign">'+(dev.assigned_label?('▸ '+dev.assigned_label):'<i>unassigned</i>')+'</div></div>';
+    '<div class="dv-trace"><canvas class="dv-spark"></canvas><span class="dv-sigv"></span></div>'+
+    '<div class="dv-meta"><span class="dv-fw"></span><span class="dv-batt"><i></i><b></b></span>'+
+      '<span class="dv-rssi"></span></div>'+
+    '<div class="dv-assign"></div>';
+}
+function updateCard(el,dev){
+  el.className="dev-card h-"+dev.health+(dev.status==="streaming"?" streaming":"");
+  el.dataset.status=dev.status; el.dataset.sig=dev.signal_quality||0;
+  el.dataset.health=dev.health; el.dataset.streams=dev.streams?1:0; el.dataset.type=dev.type;
+  var st=el.querySelector(".dv-st"); st.textContent=dev.status;
+  el.querySelector(".dv-pill").className="dv-pill st-"+dev.status;
+  var fw=el.querySelector(".dv-fw"); fw.innerHTML="fw "+dev.firmware+(dev.fw_outdated?' <b>⬆</b>':"");
+  fw.className="dv-fw"+(dev.fw_outdated?" old":"");
+  var batt=el.querySelector(".dv-batt"), bi=batt.querySelector("i"), bb=batt.querySelector("b");
+  if(dev.battery==null){ batt.className="dv-batt ac"; bb.textContent="AC"; bi.style.width="100%"; }
+  else { batt.className="dv-batt"+(dev.battery<=15?" low":dev.battery<=35?" mid":"");
+    bb.textContent=dev.battery+"%"; bi.style.width=clamp(dev.battery,4,100)+"%"; }
+  el.querySelector(".dv-rssi").textContent=dev.status==="offline"?"— dBm":dev.rssi+" dBm";
+  var sv=el.querySelector(".dv-sigv");
+  sv.textContent=dev.streams?"● LIVE":(dev.assigned_bed&&!dev.calibrated?"CALIBRATE":Math.round((dev.signal_quality||0)*100)+"%");
+  sv.className="dv-sigv"+(dev.streams?" live":(dev.assigned_bed&&!dev.calibrated?" warn":""));
+  el.querySelector(".dv-assign").innerHTML=dev.assigned_label
+    ? '<span class="dv-pt"><i></i>'+dev.assigned_label+'</span>' : '<span class="dv-un">unassigned</span>';
+}
+/* live telemetry sparkline — a scrolling PPG-style pulse per streaming device */
+function _ppg(t){ var p=((t%6.2832)+6.2832)%6.2832/6.2832;
+  var a=Math.exp(-Math.pow((p-0.16)/0.06,2)), b=0.32*Math.exp(-Math.pow((p-0.4)/0.085,2));
+  return (a+b)-0.22; }
+function _uplink(t){ return 0.5*Math.sin(t*4.0)+0.28*Math.sin(t*9.0+1.0)+0.16*Math.sin(t*15.0); }
+var devTick=0;
+function drawDeviceSparks(){
+  devTick++;
+  var cards=document.querySelectorAll("#dev-grid .dev-card");
+  for(var i=0;i<cards.length;i++){
+    var el=cards[i], cv=el.querySelector(".dv-spark"); if(!cv) continue;
+    var w=cv.clientWidth, h=cv.clientHeight; if(!w||!h) continue;
+    var dpr=Math.min(2,window.devicePixelRatio||1);
+    if(cv.width!==Math.round(w*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+    var ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+    var streams=el.dataset.streams==="1", sig=parseFloat(el.dataset.sig)||0,
+        health=el.dataset.health, type=el.dataset.type, status=el.dataset.status;
+    var col=health==="degraded"?C.watch:health==="offline"?C.dim:type==="gateway"?C.indigo:C.cyan;
+    if(status==="streaming"&&health==="ok") col=C.ok;
+    var mid=h*0.55;
+    if(status==="offline"||status==="decommissioned"){
+      ctx.strokeStyle=withAlpha(C.dim,.45); ctx.lineWidth=1; ctx.setLineDash([2,4]);
+      ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke(); ctx.setLineDash([]); continue;
+    }
+    ctx.strokeStyle=withAlpha(col,.10); ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke();
+    var amp=(0.22+0.62*sig)*h*0.4, fn=type==="gateway"?_uplink:_ppg;
+    var sp=streams?(type==="gateway"?0.14:0.085):0.0, base=devTick*sp, cyc=type==="gateway"?3.2:5.6;
+    ctx.beginPath();
+    for(var x=0;x<=w;x+=2){ var tt=(x/w)*cyc+base, y=mid-fn(tt)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+    ctx.strokeStyle=withAlpha(col,streams?0.95:0.4); ctx.lineWidth=1.6; ctx.lineJoin="round";
+    ctx.shadowColor=col; ctx.shadowBlur=streams?7:0; ctx.stroke(); ctx.shadowBlur=0;
+    if(streams){ var lt=cyc+base, ly=mid-fn(lt)*amp; ctx.fillStyle=col;
+      ctx.beginPath(); ctx.arc(w-2,ly,2.2,0,6.28); ctx.fill(); }
+  }
 }
 function openDevice(id,dev){
   dev=dev||(devFleet&&devFleet.devices||[]).filter(function(d){return d.id===id;})[0];
@@ -912,35 +980,74 @@ function closeDevice(){ selectedDevice=null; $("dev-drawer").classList.remove("o
 function reopenDevice(id){ fetch(window.AEGIS.http("/aegis/devices/"+id)).then(function(r){return r.json();})
   .then(function(d){ if(d&&d.id&&selectedDevice===id) renderDeviceDrawer(d); }); }
 function statRow(k,v){ return '<div class="dd-stat"><span>'+k+'</span><b>'+v+'</b></div>'; }
+function devAgo(ts){ if(!ts) return "—"; var s=Date.now()/1000-ts;
+  return s<60?Math.round(s)+"s ago":s<3600?Math.round(s/60)+"m ago":s<86400?Math.round(s/3600)+"h ago":Math.round(s/86400)+"d ago"; }
+function gaugeRing(label,frac,text,col){ frac=clamp(frac,0,1); var c=2*Math.PI*20, off=c*(1-frac);
+  return '<div class="dd-gauge"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="20" fill="none" stroke="rgba(190,205,255,.09)" stroke-width="4"/>'+
+    '<circle cx="26" cy="26" r="20" fill="none" stroke="'+col+'" stroke-width="4" stroke-linecap="round" stroke-dasharray="'+c.toFixed(1)+
+    '" stroke-dashoffset="'+off.toFixed(1)+'" transform="rotate(-90 26 26)"/></svg>'+
+    '<span class="dg-v" style="color:'+col+'">'+text+'</span><span class="dg-k">'+label+'</span></div>'; }
+var devDrawerDev=null;
 function renderDeviceDrawer(dev){
-  var sig=dev.signal_quality||0;
+  devDrawerDev=dev; var sig=dev.signal_quality||0;
   var beds=devBeds().sort(function(a,b){return a.bed_id<b.bed_id?-1:1;});
   var opts=beds.map(function(b){return '<option value="'+b.bed_id+'" data-label="'+b.name+'">'+bedTag(b.bed_id)+' · '+b.name+'</option>';}).join("");
   var assign=dev.assigned_bed
-    ? '<div class="dd-assigned">Streaming to <b>'+dev.assigned_label+'</b><button class="dd-btn" data-act="unassign">Unassign</button></div>'
+    ? '<div class="dd-assigned"><i></i>Streaming to <b>'+dev.assigned_label+'</b><button class="dd-btn" data-act="unassign">Unassign</button></div>'
     : (beds.length?'<div class="dd-assign"><select id="dd-bed">'+opts+'</select><button class="dd-btn primary" data-act="assign">Assign to bed</button></div>':'<div class="dd-note">No beds available to assign.</div>');
   var acts='';
-  if(!dev.calibrated) acts+='<button class="dd-btn" data-act="calibrate">Calibrate</button>';
-  if(dev.fw_outdated) acts+='<button class="dd-btn" data-act="ota">Update → '+dev.fw_latest+'</button>';
-  if(dev.status==="offline") acts+='<button class="dd-btn" data-act="wake">Wake</button>';
-  acts+='<button class="dd-btn" data-act="reboot">Reboot</button>';
-  acts+='<button class="dd-btn danger" data-act="decommission">Decommission</button>';
+  if(!dev.calibrated) acts+='<button class="dd-btn glow" data-act="calibrate">⊹ Calibrate</button>';
+  if(dev.fw_outdated) acts+='<button class="dd-btn" data-act="ota">⬆ Update → '+dev.fw_latest+'</button>';
+  if(dev.status==="offline") acts+='<button class="dd-btn" data-act="wake">◐ Wake</button>';
+  acts+='<button class="dd-btn" data-act="reboot">↻ Reboot</button>';
+  acts+='<button class="dd-btn danger" data-act="decommission">⊘ Decommission</button>';
+  var battFrac=dev.battery==null?1:dev.battery/100, battTxt=dev.battery==null?"AC":dev.battery+"%",
+      battCol=dev.battery!=null&&dev.battery<=15?C.crit:dev.battery!=null&&dev.battery<=35?C.watch:C.ok;
   $("dev-drawer-inner").innerHTML=
-    '<div class="dd-head"><span class="dv-ic big">'+devIcon(dev.type)+'</span>'+
+    '<div class="dd-head"><span class="dd-hero-ic">'+devIconSVG(dev.type,"dd-ic")+'</span>'+
       '<div class="dd-id"><div class="dd-idn">'+dev.id+'</div><div class="dd-idm">'+dev.model+' · '+dev.type+'</div></div>'+
-      '<span class="dv-st st-'+dev.status+'">'+dev.status+'</span>'+
+      '<span class="dv-pill st-'+dev.status+'"><i class="dv-dot"></i><span class="dv-st">'+dev.status+'</span></span>'+
       '<button class="dd-x" data-act="close">✕</button></div>'+
     '<div class="dd-sim">◉ simulated device · serial '+dev.serial+'</div>'+
+    '<div class="dd-hero"><canvas id="dd-trace"></canvas><span class="dd-hero-lbl '+(dev.streams?"live":"")+'">'+
+      (dev.streams?"● LIVE TELEMETRY":(dev.status==="offline"?"◌ OFFLINE":"◌ STANDBY"))+'</span></div>'+
+    '<div class="dd-gauges">'+
+      gaugeRing("Battery",battFrac,battTxt,battCol)+
+      gaugeRing("Signal",sig,Math.round(sig*100)+"%",sig>=0.6?C.ok:sig>=0.4?C.watch:C.crit)+
+      gaugeRing("Calibration",dev.calibrated?(dev.calibration_quality||0.9):0,dev.calibrated?"✓":"—",dev.calibrated?C.cyan:C.dim)+
+    '</div>'+
     assign+
+    '<div class="dd-gate '+(dev.streams?"on":"off")+'"><b>'+(dev.streams?"✓ DRIVING DETECTION":"✗ DETECTION GATED")+'</b>'+
+      '<span>'+(dev.streams?"calibrated &amp; streaming live":"needs pair + assign + calibration + signal")+'</span></div>'+
     '<div class="dd-stats">'+
-      statRow("Battery", dev.battery==null?"mains (AC)":dev.battery+"%")+
-      statRow("Signal", Math.round(sig*100)+"% · "+(dev.status==="offline"?"—":dev.rssi+" dBm"))+
-      statRow("Calibration", dev.calibrated?("✓ "+Math.round((dev.calibration_quality||0)*100)+"%"):"✗ required")+
-      statRow("Firmware", dev.firmware+(dev.fw_outdated?" (update available)":" (current)"))+
+      statRow("Firmware", dev.firmware+(dev.fw_outdated?" · update":" · current"))+
+      statRow("Link", dev.status==="offline"?"—":dev.rssi+" dBm")+
       statRow("Channels", dev.channels.join(", "))+
-      statRow("Drives detection", dev.streams?"✓ yes":"✗ gated (needs pair+assign+calibration+signal)")+
+      statRow("Paired", devAgo(dev.paired_at))+
     '</div>'+
     '<div class="dd-acts">'+acts+'</div>';
+}
+function drawDrawerTrace(){
+  var cv=document.getElementById("dd-trace"); if(!cv||!devDrawerDev) return;
+  var w=cv.clientWidth,h=cv.clientHeight; if(!w||!h) return;
+  var dpr=Math.min(2,window.devicePixelRatio||1);
+  if(cv.width!==Math.round(w*dpr)){ cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); }
+  var ctx=cv.getContext("2d"); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  var dev=devDrawerDev, streams=dev.streams, sig=dev.signal_quality||0, type=dev.type, status=dev.status;
+  var col=status==="offline"?C.dim:dev.health==="degraded"?C.watch:streams?C.ok:type==="gateway"?C.indigo:C.cyan;
+  ctx.strokeStyle=withAlpha(col,.06); ctx.lineWidth=1;
+  for(var gx=0;gx<w;gx+=Math.max(18,w/14)){ ctx.beginPath(); ctx.moveTo(gx,0); ctx.lineTo(gx,h); ctx.stroke(); }
+  var mid=h*0.55;
+  if(status==="offline"){ ctx.strokeStyle=withAlpha(C.dim,.4); ctx.setLineDash([3,5]);
+    ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(w,mid); ctx.stroke(); ctx.setLineDash([]); return; }
+  var amp=(0.25+0.6*sig)*h*0.42, fn=type==="gateway"?_uplink:_ppg;
+  var sp=streams?(type==="gateway"?0.14:0.085):0, base=devTick*sp, cyc=type==="gateway"?5:9;
+  ctx.beginPath();
+  for(var x=0;x<=w;x+=1.5){ var tt=(x/w)*cyc+base, y=mid-fn(tt)*amp; x===0?ctx.moveTo(x,y):ctx.lineTo(x,y); }
+  ctx.strokeStyle=withAlpha(col,streams?0.95:0.45); ctx.lineWidth=1.8; ctx.lineJoin="round";
+  ctx.shadowColor=col; ctx.shadowBlur=streams?8:0; ctx.stroke(); ctx.shadowBlur=0;
+  if(streams){ var lt=cyc+base, ly=mid-fn(lt)*amp; ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(w-2,ly,2.6,0,6.28); ctx.fill(); }
 }
 function devCallAction(act){
   if(!selectedDevice) return; var id=selectedDevice;
@@ -958,18 +1065,28 @@ function devCallAction(act){
 /* ---- pairing wizard ---- */
 function openWizard(){ $("dev-modal").classList.add("open"); $("dev-modal").setAttribute("aria-hidden","false"); wizScan(); }
 function closeWizard(){ $("dev-modal").classList.remove("open"); $("dev-modal").setAttribute("aria-hidden","true"); }
-function wizScan(){
-  $("dev-wiz-body").innerHTML='<div class="wiz-scan"><div class="wiz-radar"></div><p>Scanning for nearby devices… <em>(simulated BLE)</em></p></div>';
-  fetch(window.AEGIS.http("/aegis/devices/discover")).then(function(r){return r.json();})
-    .then(function(d){ renderWizList(d.devices||[]); }).catch(function(){});
+function radarHTML(){
+  return '<div class="wiz-radar"><div class="wr-sweep"></div>'+
+    '<span class="wr-ring r1"></span><span class="wr-ring r2"></span><span class="wr-ring r3"></span>'+
+    '<span class="wr-cross h"></span><span class="wr-cross v"></span><span class="wr-core"></span></div>';
 }
+function wizScan(){
+  $("dev-wiz-body").innerHTML='<div class="wiz-scan">'+radarHTML()+
+    '<p>Scanning for nearby devices…</p><span class="wiz-sub">simulated BLE · 2.4 GHz</span></div>';
+  setTimeout(function(){
+    fetch(window.AEGIS.http("/aegis/devices/discover")).then(function(r){return r.json();})
+      .then(function(d){ renderWizList(d.devices||[]); }).catch(function(){});
+  }, 850);   // let the radar sweep land before results pop in
+}
+function wizRssiBars(rssi){ var n=rssi>=-58?4:rssi>=-68?3:rssi>=-78?2:1, b="";
+  for(var i=1;i<=4;i++) b+='<i class="'+(i<=n?"on":"")+'" style="height:'+(3+i*2.4)+'px"></i>'; return '<span class="wiz-rssi">'+b+'</span>'; }
 function renderWizList(list){
   var body=$("dev-wiz-body");
-  if(!list.length){ body.innerHTML='<div class="wiz-empty">No devices in range.<button class="dd-btn" id="wiz-rescan">↻ Rescan</button></div>'; return; }
-  body.innerHTML='<div class="wiz-hint">SIMULATED scan · '+list.length+' device(s) in range — select one to pair</div>'+
-    list.map(function(d){ return '<div class="wiz-dev"><span class="dv-ic">'+devIcon(d.type)+'</span>'+
-      '<div class="wiz-info"><b>'+d.id+'</b><span>'+d.model+' · '+d.type+' · '+d.rssi+' dBm</span></div>'+
-      '<button class="dd-btn primary" data-pair="'+d.id+'">Pair</button></div>'; }).join("")+
+  if(!list.length){ body.innerHTML='<div class="wiz-empty"><div class="wiz-empty-ic">⊘</div>No devices in range.<button class="dd-btn" id="wiz-rescan">↻ Rescan</button></div>'; return; }
+  body.innerHTML='<div class="wiz-hint"><span class="wiz-dot"></span>SIMULATED SCAN · '+list.length+' DEVICE(S) IN RANGE</div>'+
+    list.map(function(d,i){ return '<div class="wiz-dev" style="animation-delay:'+(i*60)+'ms"><span class="wiz-ic">'+devIconSVG(d.type,"dv-ic")+'</span>'+
+      '<div class="wiz-info"><b>'+d.id+'</b><span>'+d.model+' · '+d.type+'</span></div>'+
+      wizRssiBars(d.rssi)+'<button class="dd-btn primary" data-pair="'+d.id+'">Pair</button></div>'; }).join("")+
     '<button class="dd-btn wiz-rescan" id="wiz-rescan">↻ Rescan</button>';
 }
 function wizPair(id){
@@ -1205,6 +1322,7 @@ function loop(){ frame++;
     drawLearn(surf.learn); drawBlind(surf.blind);
   } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
     surf.sweep.fit(); drawSweep(surf.sweep); }
+  else if(currentView==="devices"){ drawDeviceSparks(); if(selectedDevice) drawDrawerTrace(); }
   if(selectedBed){ surf.dosRisk.fit(); drawRiskTimeline(surf.dosRisk); }
   if((spineTick++ %6)===0) renderSpine();
   requestAnimationFrame(loop);
