@@ -859,10 +859,122 @@ function runBoot(){ var log=$("boot-log"), fill=$("boot-fill"); if(!log) return;
    ============================================================ */
 var currentView="ops";
 function setView(name){ currentView=name;
-  ["ops","val","roster"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
+  ["ops","val","roster","devices"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
   [].forEach.call(document.querySelectorAll(".tab"),function(t){ t.classList.toggle("active",t.dataset.view===name); });
   if(name==="val") loadValidation();
   if(name==="roster") renderRoster();
+  if(name==="devices") startDevices(); else stopDevices();
+}
+
+/* ============================================================
+   DEVICES — pairing & management hub (SIMULATED fleet, Phase A)
+   ============================================================ */
+var devTimer=null, devFleet=null, selectedDevice=null;
+function devBeds(){ return Object.keys(latestBeds).map(function(k){return latestBeds[k];}); }
+function devIcon(t){ return t==="wearable"?"⌚":t==="optical"?"◉":"⛁"; }
+function startDevices(){ refreshFleet(); if(devTimer) clearInterval(devTimer); devTimer=setInterval(refreshFleet,2600); }
+function stopDevices(){ if(devTimer){ clearInterval(devTimer); devTimer=null; } }
+function refreshFleet(){
+  fetch(window.AEGIS.http("/aegis/devices")).then(function(r){return r.json();})
+    .then(function(d){ devFleet=d; renderFleet(d); }).catch(function(){});
+}
+function renderFleet(d){
+  var c=d.counts||{}, cnt=$("dev-counts");
+  if(cnt) cnt.innerHTML=
+    devCount("fleet",c.total,C.cyan)+devCount("streaming",c.streaming,C.ok)+
+    devCount("degraded",c.degraded,C.watch)+devCount("offline",c.offline,C.dim)+
+    devCount("unassigned",c.unassigned,C.indigo);
+  var grid=$("dev-grid"); if(grid) grid.innerHTML=(d.devices||[]).map(devCardHTML).join("");
+}
+function devCount(k,v,col){ return '<span class="dev-count"><b style="color:'+col+'">'+(v||0)+'</b>'+k+'</span>'; }
+function devCardHTML(dev){
+  var batt=dev.battery==null?'<span class="dv-batt ac">AC</span>'
+    :'<span class="dv-batt'+(dev.battery<=15?' low':'')+'">'+dev.battery+'%</span>';
+  var sig=dev.signal_quality||0, sigCol=sig>=0.6?C.ok:sig>=0.4?C.watch:C.crit;
+  return '<div class="dev-card h-'+dev.health+'" data-id="'+dev.id+'">'+
+    '<div class="dv-top"><span class="dv-ic">'+devIcon(dev.type)+'</span>'+
+      '<span class="dv-id">'+dev.id+'</span><span class="dv-st st-'+dev.status+'">'+dev.status+'</span></div>'+
+    '<div class="dv-model">'+dev.model+' · '+dev.type+'</div>'+
+    '<div class="dv-meta"><span class="dv-fw'+(dev.fw_outdated?" old":"")+'">fw '+dev.firmware+(dev.fw_outdated?" ⬆":"")+'</span>'+
+      batt+'<span class="dv-rssi">'+(dev.status==="offline"?"— dBm":dev.rssi+" dBm")+'</span></div>'+
+    '<div class="dv-sig"><span>signal</span><div class="dv-bar"><i style="width:'+Math.round(sig*100)+'%;background:'+sigCol+'"></i></div>'+
+      (dev.streams?'<span class="dv-live">● LIVE</span>':(dev.assigned_bed&&!dev.calibrated?'<span class="dv-warn">calibrate</span>':''))+'</div>'+
+    '<div class="dv-assign">'+(dev.assigned_label?('▸ '+dev.assigned_label):'<i>unassigned</i>')+'</div></div>';
+}
+function openDevice(id,dev){
+  dev=dev||(devFleet&&devFleet.devices||[]).filter(function(d){return d.id===id;})[0];
+  if(!dev){ fetch(window.AEGIS.http("/aegis/devices/"+id)).then(function(r){return r.json();})
+    .then(function(d){ if(d&&d.id) openDevice(id,d); }); return; }
+  selectedDevice=id; renderDeviceDrawer(dev);
+  $("dev-drawer").classList.add("open"); $("dev-drawer").setAttribute("aria-hidden","false");
+}
+function closeDevice(){ selectedDevice=null; $("dev-drawer").classList.remove("open"); $("dev-drawer").setAttribute("aria-hidden","true"); }
+function reopenDevice(id){ fetch(window.AEGIS.http("/aegis/devices/"+id)).then(function(r){return r.json();})
+  .then(function(d){ if(d&&d.id&&selectedDevice===id) renderDeviceDrawer(d); }); }
+function statRow(k,v){ return '<div class="dd-stat"><span>'+k+'</span><b>'+v+'</b></div>'; }
+function renderDeviceDrawer(dev){
+  var sig=dev.signal_quality||0;
+  var beds=devBeds().sort(function(a,b){return a.bed_id<b.bed_id?-1:1;});
+  var opts=beds.map(function(b){return '<option value="'+b.bed_id+'" data-label="'+b.name+'">'+bedTag(b.bed_id)+' · '+b.name+'</option>';}).join("");
+  var assign=dev.assigned_bed
+    ? '<div class="dd-assigned">Streaming to <b>'+dev.assigned_label+'</b><button class="dd-btn" data-act="unassign">Unassign</button></div>'
+    : (beds.length?'<div class="dd-assign"><select id="dd-bed">'+opts+'</select><button class="dd-btn primary" data-act="assign">Assign to bed</button></div>':'<div class="dd-note">No beds available to assign.</div>');
+  var acts='';
+  if(!dev.calibrated) acts+='<button class="dd-btn" data-act="calibrate">Calibrate</button>';
+  if(dev.fw_outdated) acts+='<button class="dd-btn" data-act="ota">Update → '+dev.fw_latest+'</button>';
+  if(dev.status==="offline") acts+='<button class="dd-btn" data-act="wake">Wake</button>';
+  acts+='<button class="dd-btn" data-act="reboot">Reboot</button>';
+  acts+='<button class="dd-btn danger" data-act="decommission">Decommission</button>';
+  $("dev-drawer-inner").innerHTML=
+    '<div class="dd-head"><span class="dv-ic big">'+devIcon(dev.type)+'</span>'+
+      '<div class="dd-id"><div class="dd-idn">'+dev.id+'</div><div class="dd-idm">'+dev.model+' · '+dev.type+'</div></div>'+
+      '<span class="dv-st st-'+dev.status+'">'+dev.status+'</span>'+
+      '<button class="dd-x" data-act="close">✕</button></div>'+
+    '<div class="dd-sim">◉ simulated device · serial '+dev.serial+'</div>'+
+    assign+
+    '<div class="dd-stats">'+
+      statRow("Battery", dev.battery==null?"mains (AC)":dev.battery+"%")+
+      statRow("Signal", Math.round(sig*100)+"% · "+(dev.status==="offline"?"—":dev.rssi+" dBm"))+
+      statRow("Calibration", dev.calibrated?("✓ "+Math.round((dev.calibration_quality||0)*100)+"%"):"✗ required")+
+      statRow("Firmware", dev.firmware+(dev.fw_outdated?" (update available)":" (current)"))+
+      statRow("Channels", dev.channels.join(", "))+
+      statRow("Drives detection", dev.streams?"✓ yes":"✗ gated (needs pair+assign+calibration+signal)")+
+    '</div>'+
+    '<div class="dd-acts">'+acts+'</div>';
+}
+function devCallAction(act){
+  if(!selectedDevice) return; var id=selectedDevice;
+  if(act==="close") return closeDevice();
+  var url, body=null;
+  if(act==="assign"){ var sel=$("dd-bed"); if(!sel) return;
+    var opt=sel.options[sel.selectedIndex];
+    url="/aegis/devices/"+id+"/assign"; body={bed_id:sel.value,label:opt?opt.getAttribute("data-label"):sel.value}; }
+  else if(act==="unassign"){ url="/aegis/devices/"+id+"/unassign"; }
+  else { url="/aegis/devices/"+id+"/action"; body={action:act}; }
+  fetch(window.AEGIS.http(url),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:body?JSON.stringify(body):undefined}).then(function(r){return r.json();})
+    .then(function(){ refreshFleet(); if(act==="decommission") closeDevice(); else reopenDevice(id); }).catch(function(){});
+}
+/* ---- pairing wizard ---- */
+function openWizard(){ $("dev-modal").classList.add("open"); $("dev-modal").setAttribute("aria-hidden","false"); wizScan(); }
+function closeWizard(){ $("dev-modal").classList.remove("open"); $("dev-modal").setAttribute("aria-hidden","true"); }
+function wizScan(){
+  $("dev-wiz-body").innerHTML='<div class="wiz-scan"><div class="wiz-radar"></div><p>Scanning for nearby devices… <em>(simulated BLE)</em></p></div>';
+  fetch(window.AEGIS.http("/aegis/devices/discover")).then(function(r){return r.json();})
+    .then(function(d){ renderWizList(d.devices||[]); }).catch(function(){});
+}
+function renderWizList(list){
+  var body=$("dev-wiz-body");
+  if(!list.length){ body.innerHTML='<div class="wiz-empty">No devices in range.<button class="dd-btn" id="wiz-rescan">↻ Rescan</button></div>'; return; }
+  body.innerHTML='<div class="wiz-hint">SIMULATED scan · '+list.length+' device(s) in range — select one to pair</div>'+
+    list.map(function(d){ return '<div class="wiz-dev"><span class="dv-ic">'+devIcon(d.type)+'</span>'+
+      '<div class="wiz-info"><b>'+d.id+'</b><span>'+d.model+' · '+d.type+' · '+d.rssi+' dBm</span></div>'+
+      '<button class="dd-btn primary" data-pair="'+d.id+'">Pair</button></div>'; }).join("")+
+    '<button class="dd-btn wiz-rescan" id="wiz-rescan">↻ Rescan</button>';
+}
+function wizPair(id){
+  fetch(window.AEGIS.http("/aegis/devices/"+id+"/pair"),{method:"POST"}).then(function(r){return r.json();})
+    .then(function(res){ if(res.status==="ok"){ closeWizard(); refreshFleet(); openDevice(id,res.device); } }).catch(function(){});
 }
 
 /* ============================================================
@@ -1075,6 +1187,15 @@ function setup(){
   $("roster-filters").addEventListener("click",function(e){ var b=e.target.closest(".rf"); if(!b) return;
     rosterFilter=b.dataset.f; [].forEach.call(this.children,function(x){x.classList.toggle("active",x===b);}); renderRoster(); });
   window.addEventListener("resize",ambientFit);
+  // devices hub
+  $("dev-pair-btn").addEventListener("click",openWizard);
+  $("dev-grid").addEventListener("click",function(e){ var c=e.target.closest(".dev-card"); if(c) openDevice(c.dataset.id); });
+  $("dev-drawer-inner").addEventListener("click",function(e){ var b=e.target.closest("[data-act]"); if(b) devCallAction(b.dataset.act); });
+  $("dev-drawer").addEventListener("click",function(e){ if(e.target===this) closeDevice(); });
+  $("dev-wiz-close").addEventListener("click",closeWizard);
+  $("dev-modal").addEventListener("click",function(e){ if(e.target===this) closeWizard();
+    var p=e.target.closest("[data-pair]"); if(p) wizPair(p.dataset.pair);
+    if(e.target.id==="wiz-rescan") wizScan(); });
   connect(); requestAnimationFrame(loop);
 }
 function loop(){ frame++;

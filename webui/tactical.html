@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=14" />
+<link rel="stylesheet" href="tactical.css?v=15" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -48,6 +48,7 @@
     <button class="tab active" data-view="ops">Operations</button>
     <button class="tab" data-view="val">Validation</button>
     <button class="tab" data-view="roster">Roster</button>
+    <button class="tab" data-view="devices">Devices</button>
   </nav>
 
   <div class="metrics" id="metrics">
@@ -154,6 +155,33 @@
     <div class="roster-list" id="roster-list"></div>
   </section>
 
+  <!-- ===== DEVICES (pairing & management hub) ===== -->
+  <section class="view view-devices" id="view-devices">
+    <div class="dev-head">
+      <h1>Device Fleet</h1>
+      <span class="dev-sim" title="No physical hardware is connected — every device shown is simulated.">◉ SIMULATED · no hardware connected</span>
+      <div class="dev-counts" id="dev-counts"></div>
+      <button class="dev-pair-btn" id="dev-pair-btn">+ Pair Device</button>
+    </div>
+    <div class="dev-grid" id="dev-grid"></div>
+  </section>
+
+</div>
+
+<!-- ============ DEVICE DETAIL DRAWER ============ -->
+<aside class="dev-drawer" id="dev-drawer" aria-hidden="true">
+  <div class="dev-drawer-inner" id="dev-drawer-inner"></div>
+</aside>
+
+<!-- ============ PAIRING WIZARD ============ -->
+<div class="dev-modal" id="dev-modal" aria-hidden="true">
+  <div class="dev-modal-card">
+    <div class="dev-modal-hd">
+      <h2 id="dev-wiz-title">Pair a Device</h2>
+      <button class="dev-modal-x" id="dev-wiz-close">✕</button>
+    </div>
+    <div class="dev-modal-body" id="dev-wiz-body"></div>
+  </div>
 </div>
 
 <!-- ============ PER-PATIENT CLINICAL VIEW ============ -->
@@ -228,6 +256,6 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=6"></script>
-<script src="tactical.js?v=13"></script>
+<script src="tactical.js?v=14"></script>
 </body>
 </html>

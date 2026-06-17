@@ -33,6 +33,7 @@ from pydantic import BaseModel
 from backend.aegis.stream import AegisSession
 from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
 from backend.aegis.cohort import CohortCluster
+from backend.aegis.devices import DeviceRegistry
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -79,6 +80,7 @@ except Exception as exc:  # pragma: no cover
     DATA_MODE = "synthetic"
 cluster_safety = NeuroSymbolicRuntime()
 bundle_engine = SepsisBundleEngine()
+device_registry = DeviceRegistry()                # simulated sensor fleet (Phase A)
 _bundle = {"bed": None, "ts": 0.0, "data": None}
 CLUSTER_TICK_SECONDS = 0.6
 _cluster_clients: List[WebSocket] = []
@@ -405,6 +407,59 @@ def cohort_chart(bed_id: str) -> Dict[str, Any]:
     if ch is None:
         return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
     return ch
+
+
+class DeviceAssignIn(BaseModel):
+    bed_id: str
+    label: str = ""
+
+
+class DeviceActionIn(BaseModel):
+    action: str                           # calibrate | reboot | ota | wake | decommission
+
+
+@app.get("/aegis/devices")
+def devices_fleet() -> Dict[str, Any]:
+    """The simulated sensor fleet — every device, health-rolled-up for the hub."""
+    return device_registry.fleet()
+
+
+@app.get("/aegis/devices/discover")
+def devices_discover() -> Dict[str, Any]:
+    """Nearby unpaired devices (simulated BLE scan) available to pair."""
+    return device_registry.discover()
+
+
+@app.get("/aegis/devices/audit")
+def devices_audit() -> Dict[str, Any]:
+    """Pairing / assignment audit trail (device↔patient binding is PHI)."""
+    return {"events": device_registry.audit_log()}
+
+
+@app.get("/aegis/devices/{device_id}")
+def device_detail(device_id: str) -> Dict[str, Any]:
+    d = device_registry.get(device_id)
+    return d.to_dict() if d else {"status": "error", "detail": "unknown device"}
+
+
+@app.post("/aegis/devices/{device_id}/pair")
+def device_pair(device_id: str) -> Dict[str, Any]:
+    return device_registry.pair(device_id)
+
+
+@app.post("/aegis/devices/{device_id}/assign")
+def device_assign(device_id: str, payload: DeviceAssignIn) -> Dict[str, Any]:
+    return device_registry.assign(device_id, payload.bed_id, payload.label)
+
+
+@app.post("/aegis/devices/{device_id}/unassign")
+def device_unassign(device_id: str) -> Dict[str, Any]:
+    return device_registry.unassign(device_id)
+
+
+@app.post("/aegis/devices/{device_id}/action")
+def device_action(device_id: str, payload: DeviceActionIn) -> Dict[str, Any]:
+    return device_registry.action(device_id, payload.action)
 
 
 @app.post("/aegis/cluster/chaos")
