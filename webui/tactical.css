@@ -336,6 +336,12 @@ b{font-weight:700}
 .hub-fuse-row .hf-track i{display:block;height:100%;background:var(--cyan);transition:width .5s,background .3s}
 .hub-fuse-row .hf-v{font-variant-numeric:tabular-nums;color:var(--ink);width:34px;text-align:right;flex:0 0 auto}
 .hub-fuse-row.final .hf-k{color:var(--muted)}.hub-fuse-row.final .hf-v{font-size:13px}
+.hub-focus{margin-top:8px;display:flex;align-items:flex-start;gap:9px;padding:9px 11px;border-radius:var(--r-sm);
+  border:1px solid rgba(255,122,59,.4);background:linear-gradient(180deg,rgba(255,122,59,.12),rgba(255,122,59,.03))}
+.hub-focus .hf-ic{color:#ff9a4d;font-size:13px;line-height:1.1;flex:0 0 auto}
+.hub-focus .hf-tx{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#ffb37a;line-height:1.5}
+.hub-focus .hf-tx b{color:#ffd8b0;font-weight:700}
+.hub-focus .hf-sub{display:block;text-transform:none;letter-spacing:0;color:var(--dim);margin-top:2px}
 
 /* ---- LEARNED BEHAVIOUR ---- */
 .dos-learned{display:flex;flex-direction:column;gap:9px}

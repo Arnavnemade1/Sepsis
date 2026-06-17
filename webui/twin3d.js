@@ -46,7 +46,7 @@ const ORGAN_FILES = [
 ];
 // placement of the assembled organ atlas inside the body (tuned to the Xbot mesh)
 let ORGAN_SPAN = 0.44;       // vertical extent of the organ stack in body units
-let TORSO_Y = 1.13;          // world Y of the atlas centre (mid-torso)
+let TORSO_Y = 1.19;          // world Y of the atlas centre (mid-torso)
 let TORSO_Z = 0.0;           // forward offset
 let ORGAN_FLIP = 1;          // liver→screen-left (patient's right), spleen→screen-right
 
@@ -60,6 +60,11 @@ let renderer, scene, camera, controls, container, ro, clock;
 let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub;
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
+let infectFX, infLabel, lastInfection = null;     // suspected infection focus
+const INFECT_COL = 0xff7a3b;                       // distinct "infection" orange
+// suspected-focus region -> organ to light up (null = no single organ / systemic)
+const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver" };
+const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
 let shellU = null;                                // shell shader uniforms
 let started = false, pendingData = null;
 let hr = 72, resp = 15, overall = 0, tNow = 0;
@@ -338,14 +343,38 @@ function makeLabel() {
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
   sp.scale.set(0.42, 0.105, 1); sp.userData = { ctx: c.getContext("2d") }; return sp;
 }
-function setLabel(sprite, text) {
+function setLabel(sprite, text, stroke, fill) {
   const x = sprite.userData.ctx; x.clearRect(0, 0, 256, 64);
   x.fillStyle = "rgba(10,14,24,.85)"; rr(x, 6, 16, 244, 34, 8); x.fill();
-  x.strokeStyle = "#ff4d5e"; x.lineWidth = 2; rr(x, 6, 16, 244, 34, 8); x.stroke();
-  x.fillStyle = "#ffd2d6"; x.font = "600 18px ui-monospace,monospace"; x.textAlign = "center"; x.textBaseline = "middle";
+  x.strokeStyle = stroke || "#ff4d5e"; x.lineWidth = 2; rr(x, 6, 16, 244, 34, 8); x.stroke();
+  x.fillStyle = fill || "#ffd2d6"; x.font = "600 17px ui-monospace,monospace"; x.textAlign = "center"; x.textBaseline = "middle";
   x.fillText(text, 128, 34); sprite.material.map.needsUpdate = true;
 }
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+/* ---------------- suspected infection focus ----------------
+   A distinct orange "hot zone" (pulsing bloom + expanding rings + label) placed
+   at the inferred source of infection, with the organ at that site lit up. The
+   site is INFERRED from the physiology upstream (clearly labelled "suspected"),
+   not a microbiology result. */
+function buildInfection() {
+  infectFX = new THREE.Group(); infectFX.visible = false; scene.add(infectFX);
+  const bloom = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: INFECT_COL,
+    transparent: true, opacity: 0.8, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+  bloom.scale.set(0.2, 0.2, 1); bloom.name = "bloom"; infectFX.add(bloom);
+  for (let i = 0; i < 2; i++) {
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(1, 0.022, 8, 48),
+      new THREE.MeshBasicMaterial({ color: INFECT_COL, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending }));
+    ring.name = "ring" + i; ring.userData.ph = i * 0.5; infectFX.add(ring);
+  }
+  infLabel = makeLabel(); infLabel.position.y = 0.17; infLabel.scale.set(0.52, 0.105, 1); infectFX.add(infLabel);
+}
+function focusPos(region) {
+  const k = FOCUS_AT[region];
+  if (k && organs[k] && organs[k].pivot) { organs[k].pivot.getWorldPosition(_v); return _v.clone(); }
+  if (region === "skin") return new THREE.Vector3(0.05, TORSO_Y - 0.02, 0.13);
+  return new THREE.Vector3(0, TORSO_Y, 0.06);
+}
 
 /* ---------------- lifecycle ---------------- */
 function start(el) {
@@ -371,7 +400,7 @@ function start(el) {
 
   glowTex = glowTexture();
   buildGround(); buildParticles(); buildReticle();
-  loadBody(); loadOrgans(); buildBeacon();
+  loadBody(); loadOrgans(); buildBeacon(); buildInfection();
   clock = new THREE.Clock(); started = true;
   ro = new ResizeObserver(resize); ro.observe(el); animate();
 }
@@ -397,6 +426,7 @@ function update(data) {
   if (data) {
     hr = readVital(data, "heart_rate", hr) || 72;
     resp = readVital(data, "respiratory_rate", resp) || 15;
+    if ("infection" in data) lastInfection = data.infection;
   }
   if (!started) { pendingData = data; return; }
   applyRegions();
@@ -428,13 +458,28 @@ function applyRegions() {
   const bc = BASE.clone(); if (tierHex) bc.lerp(new THREE.Color(tierHex), 0.4);
   ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
 
-  // worst-system label beacon (at that organ, in world space)
-  if (worstKey && beacon && organs[worstKey].pivot) {
-    organs[worstKey].pivot.getWorldPosition(_v);
-    beacon.position.set(_v.x, _v.y + 0.14, _v.z + 0.16); beacon.visible = true;
-    const lbl = (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase();
-    setLabel(beaconLabel, lbl + (worstRegion && worstRegion.optical ? " ◉" : ""));
-  } else if (beacon) beacon.visible = false;
+  // suspected infection focus — light up the source organ + an orange hot zone
+  for (const k in organs) organs[k].infected = false;
+  if (lastInfection && lastInfection.site) {
+    infectFX.position.copy(focusPos(lastInfection.region)); infectFX.visible = true;
+    setLabel(infLabel, "⚠ FOCUS · " + lastInfection.site.toUpperCase(), "#ff7a3b", "#ffd8b0");
+    // (systemic sites stay central; localised sites sit on the organ)
+    const fk = FOCUS_ORGAN[lastInfection.region];
+    [fk, lastInfection.region === "kidneys" ? "kidneyR" : null].forEach((key) => {
+      const o = key && organs[key]; if (!o) return;
+      o.infected = true; o.mat.emissive.lerp(new THREE.Color(INFECT_COL), 0.55);
+      o.mat.opacity = Math.max(o.mat.opacity, 0.7);
+    });
+    if (beacon) beacon.visible = false;
+  } else {
+    if (infectFX) infectFX.visible = false;
+    // fallback: worst-system label beacon
+    if (worstKey && beacon && organs[worstKey].pivot) {
+      organs[worstKey].pivot.getWorldPosition(_v);
+      beacon.position.set(_v.x, _v.y + 0.14, _v.z + 0.16); beacon.visible = true;
+      setLabel(beaconLabel, (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase() + (worstRegion && worstRegion.optical ? " ◉" : ""));
+    } else if (beacon) beacon.visible = false;
+  }
 
   // particle tint by overall load
   if (particles) particles.material.color.copy(overall > 0.18 ? tierColor({ monitored: true, severity: overall, status: overall >= 0.75 ? "CRITICAL" : overall >= 0.45 ? "DYSFUNCTION" : "STRESS" }) : BASE);
@@ -480,6 +525,23 @@ function animate() {
     if (o.mon) {
       const env = o.cfg.beat ? (0.6 + 0.7 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
       o.mat.emissiveIntensity = (0.65 + 0.95 * o.sev) * env;
+    }
+    if (o.infected) {                              // suspected source — throb brighter
+      const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
+      o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.7) * (1.15 + 0.7 * ip);
+      if (!o.cfg.beat && !o.cfg.breathe) o.pivot.scale.setScalar(1 + 0.05 * ip);
+    }
+  }
+
+  // suspected infection "hot zone": pulsing bloom + expanding rings (billboarded)
+  if (infectFX && infectFX.visible) {
+    const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
+    const bloom = infectFX.getObjectByName("bloom");
+    if (bloom) { bloom.material.opacity = 0.45 + 0.4 * ip; bloom.scale.setScalar(0.17 + 0.05 * ip); }
+    for (let i = 0; i < 2; i++) {
+      const r = infectFX.getObjectByName("ring" + i); if (!r) continue;
+      const ph = (t * 0.55 + r.userData.ph) % 1;
+      r.scale.setScalar(0.05 + ph * 0.17); r.material.opacity = 0.6 * (1 - ph); r.lookAt(camera.position);
     }
   }
 

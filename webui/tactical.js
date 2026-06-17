@@ -327,6 +327,10 @@ function renderHub(b){
     fuseRow("Baseline Δ",clamp(dev/3,0,1),C.violet,false)+
     fuseRow("Fused",b.fused_risk||0,tierOf(b.fused_risk)==="critical"?C.crit:tierOf(b.fused_risk)==="watch"?C.watch:C.cyan,true)+
     '</div>';
+  var inf=inferInfection(b);
+  if(inf){ html+='<div class="hub-focus"><span class="hf-ic">⚠</span><div class="hf-tx">'+
+    'SUSPECTED FOCUS · <b>'+inf.site+'</b>'+
+    '<span class="hf-sub">inferred from vitals'+(inf.why?' · '+inf.why:'')+' · '+inf.conf+' confidence</span></div></div>'; }
   host.innerHTML=html;
   var sync=$("dos-sync"); if(sync) sync.innerHTML=(b.icu_hour!=null?"ICU h"+b.icu_hour+" · ":"")+"<em>3 tiers in sync</em>";
 }
@@ -399,12 +403,35 @@ function regionsFromBed(b){
     skin:R(true,st.skin.sev), blood:R(true,st.immune.sev)
   };
 }
+/* Suspected infection FOCUS — inferred from the physiologic pattern (declared as
+   a hypothesis, NOT a microbiology result). Surfaces the most likely source site
+   so the twin can light it up. Returns null below an actionable risk. */
+function inferInfection(b){
+  if((b.fused_risk||0)<0.4) return null;
+  var en=b.enterprise||{}, e=b.edge||{};
+  var resp=Math.max(en.spo2!=null?(94-en.spo2)/10:0, en.resp_rate!=null?(en.resp_rate-22)/10:0);
+  var skin=Math.max(e.perfusion!=null?(0.55-e.perfusion):0, en.temp_c>=39?0.35:0);
+  var systemic=Math.max(en.wbc!=null?Math.max((en.wbc-12)/8,(4-en.wbc)/4):0,
+                        en.lactate!=null?(en.lactate-2)/4:0, (en.temp_c>38.3||en.temp_c<36)?0.35:0);
+  var cands=[
+    {region:"lungs", site:"Respiratory", score:resp,
+     why:[en.spo2<94?"SpO₂ "+Math.round(en.spo2):"", en.resp_rate>22?"RR "+Math.round(en.resp_rate):""].filter(Boolean).join(" · ")},
+    {region:"skin", site:"Soft-tissue", score:skin*0.8,
+     why:en.temp_c>=39?"temp "+en.temp_c.toFixed(1)+"°C":""},
+    {region:"systemic", site:"Systemic", score:systemic*0.7+0.2,
+     why:["WBC "+(en.wbc||0).toFixed(0), "lactate "+(en.lactate||0).toFixed(1)].join(" · ")}
+  ].sort(function(a,b){return b.score-a.score;});
+  var top=cands[0];
+  return {region:top.region, site:top.site, why:top.why,
+          conf: top.score>=0.6?"moderate":"low"};
+}
 function feedTwin(b){
   if(!window.AegisTwin||!b) return;
   var e=b.edge||{}, en=b.enterprise||{};
   try{ window.AegisTwin.update({source:"simulator",
     body_state:{regions:regionsFromBed(b)},
     vitals:{heart_rate:e.hr, respiratory_rate:en.resp_rate},
+    infection:inferInfection(b),
     risk:{signal_quality:1}}); }catch(e){}
 }
 function renderOrgans(b){
