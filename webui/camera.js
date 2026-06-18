@@ -322,20 +322,61 @@ function updateBlend(cats, ts) {
 }
 
 /* ---------------- rPPG vitals (unchanged core) ---------------- */
+/* ---- rPPG core: validated POS + CHROM extraction, SNR-fused ----
+   POS (Wang et al., IEEE TBME 2017) and CHROM (de Haan & Jeanne, IEEE 2013),
+   ported from backend/vision/signal_processing.py (self-validated against
+   synthetic ground truth). Using all three colour channels in the
+   plane-orthogonal-to-skin / chrominance projections is far more robust to skin
+   tone, lighting and motion than the single green channel this replaces. */
+function _mean(a) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return a.length ? s / a.length : 0; }
+function detrendHP(x, fs) { const k = Math.max(3, Math.round(fs * 0.7)); return x.map((v, i) => v - avg(x, i - k, i + k)); }
+function posPulse(R, G, B, fs) {                  // POS, overlap-added 1.6 s windows
+  const n = R.length; let win = Math.max(Math.round(1.6 * fs), 8); if (n < win) win = n;
+  const H = new Array(n).fill(0);
+  for (let s0 = 0; s0 + win <= n; s0++) {
+    let mr = 0, mg = 0, mb = 0; for (let i = s0; i < s0 + win; i++) { mr += R[i]; mg += G[i]; mb += B[i]; }
+    mr = (mr / win) || 1; mg = (mg / win) || 1; mb = (mb / win) || 1;
+    const s1 = new Array(win), s2 = new Array(win);
+    for (let i = 0; i < win; i++) { const rn = R[s0 + i] / mr, gn = G[s0 + i] / mg, bn = B[s0 + i] / mb; s1[i] = gn - bn; s2[i] = -2 * rn + gn + bn; }
+    const sd2 = std(s2), a = sd2 > 1e-9 ? std(s1) / sd2 : 0;
+    let hm = 0; const h = new Array(win); for (let i = 0; i < win; i++) { h[i] = s1[i] + a * s2[i]; hm += h[i]; } hm /= win;
+    for (let i = 0; i < win; i++) H[s0 + i] += h[i] - hm;
+  }
+  return H;
+}
+function chromPulse(R, G, B, fs) {                // CHROM — band-pass before the alpha weight
+  const n = R.length, mr = _mean(R) || 1, mg = _mean(G) || 1, mb = _mean(B) || 1;
+  let X = new Array(n), Y = new Array(n);
+  for (let i = 0; i < n; i++) { const rn = R[i] / mr, gn = G[i] / mg, bn = B[i] / mb; X[i] = 3 * rn - 2 * gn; Y[i] = 1.5 * rn + gn - 1.5 * bn; }
+  X = detrendHP(X, fs); Y = detrendHP(Y, fs);
+  const sy = std(Y), a = sy > 1e-9 ? std(X) / sy : 0;
+  return X.map((x, i) => x - a * Y[i]);
+}
+function spectralHR(sig, t) {                     // timestamp-aware DFT + parabolic refine
+  let bestP = 0, bestK = 0, total = 0; const P = new Array(139);
+  for (let bpm = 42; bpm <= 180; bpm++) { const f = bpm / 60; let re = 0, im = 0;
+    for (let i = 0; i < sig.length; i++) { const a = 2 * Math.PI * f * (t[i] - t[0]) / 1000; re += sig[i] * Math.cos(a); im += sig[i] * Math.sin(a); }
+    const p = re * re + im * im; P[bpm - 42] = p; total += p; if (p > bestP) { bestP = p; bestK = bpm - 42; } }
+  let hr = 42 + bestK;                            // sub-bpm peak via quadratic interpolation
+  if (bestK > 0 && bestK < P.length - 1) { const a = P[bestK - 1], b = P[bestK], c = P[bestK + 1], d = a - 2 * b + c; if (d !== 0) hr = 42 + bestK + 0.5 * (a - c) / d; }
+  return { hr, snr: 10 * Math.log10(bestP / Math.max(total - bestP, 1e-9)) };
+}
 function computeVitals() {
   const n = bufG.length; if (n < 64) return;
   const dt = (gT[n - 1] - gT[0]) / (n - 1) / 1000, fs = 1 / dt;
-  const k = Math.max(3, Math.round(fs * 0.7));
-  const detr = bufG.map((v, i) => v - avg(bufG, i - k, i + k));
-  let bestP = 0, bestF = 0, total = 0;
-  for (let bpm = 42; bpm <= 180; bpm++) { const f = bpm / 60; let re = 0, im = 0; for (let i = 0; i < detr.length; i++) { const a = 2 * Math.PI * f * (gT[i] - gT[0]) / 1000; re += detr[i] * Math.cos(a); im += detr[i] * Math.sin(a); } const p = re * re + im * im; total += p; if (p > bestP) { bestP = p; bestF = f; } }
-  S.snr = 10 * Math.log10(bestP / Math.max(total - bestP, 1e-9));
+  // extract pulse two ways, keep whichever window is cleaner (SNR-fused)
+  const pos = detrendHP(posPulse(bufR, bufG, bufB, fs), fs);
+  const chrom = detrendHP(chromPulse(bufR, bufG, bufB, fs), fs);
+  const ep = spectralHR(pos, gT), ec = spectralHR(chrom, gT);
+  const best = ep.snr >= ec.snr ? { pulse: pos, hr: ep.hr, snr: ep.snr } : { pulse: chrom, hr: ec.hr, snr: ec.snr };
+  S.snr = best.snr;
   S.quality = Math.max(0.05, Math.min(1, (S.snr + 4) / 12));
-  // LAYER 1: stabilize the raw spectral HR estimate through the adaptive Kalman
+  // LAYER 1: stabilize the spectral HR estimate through the adaptive Kalman
   // filter (measurement noise scales with signal quality) — deterministic output.
-  S.hr = SHAL.stabilizeHR(bestF * 60, S.quality);
-  const wave = bp(detr, fs, bestF); S.wave = wave; S.hrv = coarseHRV(wave, fs); S.rr = estimateRR(bufG, fs);
-  const dc = avg(bufG, 0, n) || 1; S.perfusion = Math.min(1, std(detr) / dc * 80);
+  S.hr = SHAL.stabilizeHR(best.hr, S.quality);
+  const wave = bp(best.pulse, fs, best.hr / 60); S.wave = wave; S.hrv = coarseHRV(wave, fs); S.rr = estimateRR(bufG, fs);
+  const detrG = detrendHP(bufG, fs);
+  const dc = avg(bufG, 0, n) || 1; S.perfusion = Math.min(1, std(detrG) / dc * 80);
   const mr = avg(bufR, 0, n), mg = avg(bufG, 0, n), mb = avg(bufB, 0, n);
   S.redness = mr / (mr + mg + mb + 1e-6); S.faceBlue = mb / (mr + mg + mb + 1e-6);
 }
