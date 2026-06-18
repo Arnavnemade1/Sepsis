@@ -815,15 +815,16 @@ function chaos(node, action){
 /* ============================================================
    WEBSOCKET
    ============================================================ */
-var ws=null, connected=false, lastMsg=0;
+var ws=null, connected=false, lastMsg=0, connTries=0;
 function clusterWS(){ return window.AEGIS.base().replace(/^http/,"ws")+"/aegis/cluster/stream"; }
 function connect(){ try{ ws=new WebSocket(clusterWS()); }catch(e){ setTimeout(connect,1500); return; }
-  ws.onopen=function(){ connected=true; setConn(true); };
+  ws.onopen=function(){ connected=true; connTries=0; setConn(true); };
   ws.onmessage=function(e){ lastMsg=performance.now(); try{ ingest(JSON.parse(e.data)); }catch(err){ console.error(err); } };
-  ws.onclose=function(){ connected=false; setConn(false); setTimeout(connect,1500); };
+  ws.onclose=function(){ connected=false; connTries++; setConn(false); setTimeout(connect, Math.min(4000, 1200+connTries*400)); };
   ws.onerror=function(){ try{ws.close();}catch(e){} };
 }
-function setConn(live){ $("conn").classList.toggle("live",live); $("conn-txt").textContent=live?"Live":"Reconnecting"; }
+function setConn(live){ $("conn").classList.toggle("live",live);
+  $("conn-txt").textContent = live ? "Live" : (connTries>=2 ? "Waking backend…" : "Connecting"); }
 setInterval(function(){ if(connected && performance.now()-lastMsg<4000) return;
   fetch(window.AEGIS.http("/aegis/cluster/snapshot")).then(function(r){return r.json();}).then(ingest).catch(function(){}); },2500);
 

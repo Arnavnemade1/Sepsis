@@ -1,0 +1,35 @@
+name: keep-warm
+
+# Render's free tier sleeps the backend after ~15 min of inactivity; the first
+# request after that returns a 502 for ~30-60 s while it cold-boots. This pings
+# the health endpoint frequently enough to keep the service awake so users never
+# hit that 502. (GitHub's scheduled cron can lag a few minutes, so we target a
+# short interval; for rock-solid uptime also add an external monitor such as
+# UptimeRobot at a 5-minute interval against /aegis/health.)
+
+on:
+  schedule:
+    - cron: "*/8 * * * *"      # roughly every 8 minutes
+  workflow_dispatch: {}          # allow manual "Run workflow"
+
+# don't pile up runs if one is slow / the service is waking
+concurrency:
+  group: keep-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping backend health (wake + keep warm)
+        run: |
+          URL="https://sepsis-backend-omd1.onrender.com/aegis/health"
+          # up to 5 tries with backoff so a cold-boot (502) still ends warm
+          for i in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 70 "$URL" || echo 000)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "backend did not return 200 after retries (it may be mid-deploy)"

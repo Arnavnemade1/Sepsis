@@ -47,7 +47,7 @@ function connect() {
 }
 function setConn(live) {
   const c = $("#sb-conn"); c.classList.toggle("live", live);
-  c.lastChild.textContent = live ? "linked" : "offline";
+  c.lastChild.textContent = live ? "linked" : (retry >= 2 ? "waking backend…" : "connecting");
 }
 
 /* ---------------- MASTER RENDER ---------------- */
