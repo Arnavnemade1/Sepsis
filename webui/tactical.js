@@ -331,6 +331,14 @@ function renderHub(b){
   if(inf){ html+='<div class="hub-focus"><span class="hf-ic">⚠</span><div class="hf-tx">'+
     'SUSPECTED FOCUS · <b>'+inf.site+'</b>'+
     '<span class="hf-sub">inferred from vitals'+(inf.why?' · '+inf.why:'')+' · '+inf.conf+' confidence</span></div></div>'; }
+  var hd=b.hdc;
+  if(hd&&hd.k){ var resem=hd.resemblance||0, rc=resem>=0.5?C.crit:resem>=0.25?C.watch:C.cyan;
+    var lead=hd.lead_h!=null?(' · median lead '+Math.round(hd.lead_h)+'h'):'';
+    html+='<div class="hub-hdc"><div class="hh-top"><span class="hh-ic">⬡</span>'+
+      '<span class="hh-t">HDC CASE MEMORY</span><span class="hh-sim">sim '+(hd.top_sim||0).toFixed(2)+'</span></div>'+
+      '<div class="hh-bar"><i style="width:'+clamp(resem*100,2,100)+'%;background:'+rc+'"></i></div>'+
+      '<div class="hh-sub"><b style="color:'+rc+'">'+(hd.n_septic||0)+'/'+hd.k+'</b> nearest real ICU bio-states became septic'+lead+
+      ' · <span class="hh-resem">'+Math.round(resem*100)+'% resemblance</span></div></div>'; }
   host.innerHTML=html;
   var sync=$("dos-sync"); if(sync) sync.innerHTML=(b.icu_hour!=null?"ICU h"+b.icu_hour+" · ":"")+"<em>3 tiers in sync</em>";
 }

@@ -364,6 +364,17 @@ b{font-weight:700}
 .hub-focus .hf-tx{font-family:var(--mono);font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#ffb37a;line-height:1.5}
 .hub-focus .hf-tx b{color:#ffd8b0;font-weight:700}
 .hub-focus .hf-sub{display:block;text-transform:none;letter-spacing:0;color:var(--dim);margin-top:2px}
+.hub-hdc{margin-top:8px;padding:9px 11px;border-radius:var(--r-sm);border:1px solid rgba(125,140,255,.32);
+  background:linear-gradient(180deg,rgba(125,140,255,.1),rgba(125,140,255,.02))}
+.hub-hdc .hh-top{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--indigo)}
+.hub-hdc .hh-ic{font-size:11px}
+.hub-hdc .hh-t{color:#aeb6ff;font-weight:700}
+.hub-hdc .hh-sim{margin-left:auto;color:var(--dim)}
+.hub-hdc .hh-bar{height:5px;margin:7px 0 6px;background:rgba(190,205,255,.07);overflow:hidden;border-radius:1px}
+.hub-hdc .hh-bar i{display:block;height:100%;transition:width .5s,background .3s}
+.hub-hdc .hh-sub{font-family:var(--mono);font-size:9.5px;color:var(--dim);line-height:1.5}
+.hub-hdc .hh-sub b{font-weight:700}
+.hub-hdc .hh-resem{color:var(--muted)}
 
 /* ---- LEARNED BEHAVIOUR ---- */
 .dos-learned{display:flex;flex-direction:column;gap:9px}

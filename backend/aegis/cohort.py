@@ -354,6 +354,18 @@ class CohortCluster:
             self._fds[p.bed_id] = fds
         self.pump = FabricPump(self.bus, self.fabric,
                                [fd for fds in self._fds.values() for fd in fds.values()])
+        self.hdc_state: Dict[str, Dict[str, Any]] = {}
+        self._build_hdc_memory()
+
+    def _build_hdc_memory(self) -> None:
+        """Encode every hour of every cohort patient into the HDC associative
+        bio-memory — a hyperdimensional library of real ICU precedent that the
+        live system queries for case-based, interpretable second opinions."""
+        from backend.aegis.hdc_memory import HDCBioMemory
+        rows: List[Any] = []
+        for p in self.patients:
+            rows.extend(HDCBioMemory.rows_from_patient(p))
+        self.hdc = HDCBioMemory().build(rows)
 
     # -- chaos / scrub controls ----------------------------------------- #
     def inject_crisis(self, bed_id: str, intensity: float = 1.0) -> None:
@@ -402,7 +414,18 @@ class CohortCluster:
             self.personalized[nid] = {"risk": risk, **snap}
             # the system acts on the PERSONALIZED risk
             self.sched.observe(nid, risk, vit)
+            # HDC associative retrieval — how does this bio-state resemble real precedent?
+            self._hdc_query(nid)
         return self.sched.schedule()
+
+    def _hdc_query(self, nid: str) -> None:
+        from backend.aegis.hdc_memory import enrich_series, TREND_WIN
+        p = self._by[nid]
+        hr = min(p.icu_hour, p.los_total - 1)
+        lo = max(0, hr - TREND_WIN)
+        win = [{ch: float(p._ff[t, k]) for k, ch in enumerate(CHANNELS)} for t in range(lo, hr + 1)]
+        st = enrich_series(win)[-1] if win else {}
+        self.hdc_state[nid] = self.hdc.query(st, k=16, exclude_pid=nid)
 
     def run(self, ticks: int):
         d = None
@@ -429,6 +452,7 @@ class CohortCluster:
             "deviation": pz.get("deviation", 0.0),
             "baseline_maturity": pz.get("maturity", 0.0),
             "personal_top": pz.get("top", []),
+            "hdc": self.hdc_state.get(nid, {}),     # HDC associative-memory resemblance
         })
         return d
 
