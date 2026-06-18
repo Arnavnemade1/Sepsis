@@ -49,6 +49,14 @@ const HAND_BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 
   [5, 9], [9, 10], [10, 11], [11, 12], [9, 13], [13, 14], [14, 15], [15, 16],
   [13, 17], [17, 18], [18, 19], [19, 20], [0, 17]];
 
+/* MediaPipe FaceMesh contour loops for the premium AR scan overlay */
+const FACE_OVAL = [10, 338, 297, 332, 284, 251, 389, 356, 454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152, 148, 176, 149, 150, 136, 172, 58, 132, 93, 234, 127, 162, 21, 54, 103, 67, 109];
+const L_EYE = [33, 246, 161, 160, 159, 158, 157, 173, 133, 155, 154, 153, 145, 144, 163, 7];
+const R_EYE = [263, 466, 388, 387, 386, 385, 384, 398, 362, 382, 381, 380, 374, 373, 390, 249];
+const LIPS = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291, 409, 270, 269, 267, 0, 37, 39, 40, 185];
+const L_BROW = [70, 63, 105, 66, 107], R_BROW = [336, 296, 334, 293, 300];
+const NOSE_BRIDGE = [168, 6, 197, 195, 5, 4];
+
 const POSE_INTERVAL = 120, HAND_INTERVAL = 180;   // ms — throttle vs face to protect rPPG fps
 
 let faceLm = null, poseLm = null, handLm = null, proc;
@@ -221,24 +229,113 @@ function drawTo(t, lm) {
   const x = t.ctx; x.clearRect(0, 0, cw, ch);
   const big = cw > 400;
   if (big) drawScan(x, cw, ch);
-  // body skeleton + hands only on the large app view (cheap to skip on the mini)
   if (big && lastPoseLm) drawSkeleton(x, lastPoseLm, cw, ch);
   if (big && lastHandLms.length) drawHands(x, lastHandLms, cw, ch);
   if (!lm) return;
+  if (big) drawFaceMesh(x, lm, cw, ch);          // glowing AR face-scan mesh
+  drawPulseGlow(x, lm, cw, ch, big);             // HR-synced perfusion bloom on the rPPG site
   for (const name in G) {
     const b = bboxOf(lm, G[name], cw, ch), col = BOX_COL[name];
     cornerBox(x, b, col, big);
-    if (big) { x.save(); x.translate(b.x + b.w, b.y - 6); x.scale(-1, 1); x.font = "600 13px ui-monospace,monospace"; x.fillStyle = col; x.shadowColor = col; x.shadowBlur = 6; x.fillText(name.toUpperCase(), 0, 0); x.restore(); }
+    if (big && (name === "forehead")) {          // tag the live rPPG sampling window
+      mirrorText(x, "rPPG", b.x + b.w, b.y - 7, "600 11px ui-monospace,monospace", col, 6);
+    }
   }
+  if (big) { drawVitalTags(x, lm, cw, ch); drawWaveMonitor(x, cw, ch); }
+}
+/* draw left-to-right readable text on the CSS-mirrored overlay */
+function mirrorText(x, str, px, py, font, col, blur, align) {
+  x.save(); x.translate(px, py); x.scale(-1, 1);
+  x.font = font; x.fillStyle = col; x.textAlign = align || "left"; x.textBaseline = "alphabetic";
+  if (blur) { x.shadowColor = col; x.shadowBlur = blur; }
+  x.fillText(str, 0, 0); x.restore();
 }
 function drawScan(x, w, h) {
-  const y = ((performance.now() % 2600) / 2600) * h;
-  const g = x.createLinearGradient(0, y - 46, 0, y + 4);
-  g.addColorStop(0, "rgba(52,225,255,0)"); g.addColorStop(1, "rgba(52,225,255,.18)");
-  x.fillStyle = g; x.fillRect(0, y - 46, w, 50);
-  x.strokeStyle = "rgba(52,225,255,.45)"; x.lineWidth = 1; x.shadowColor = "#34e1ff"; x.shadowBlur = 6;
-  x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke(); x.shadowBlur = 0;
+  const t = performance.now();
+  // faint engineering grid revealed near the scan band
+  const y = ((t % 3000) / 3000) * h;
+  x.save();
+  x.strokeStyle = "rgba(52,225,255,.05)"; x.lineWidth = 1;
+  for (let gx = 0; gx < w; gx += 46) { x.beginPath(); x.moveTo(gx, 0); x.lineTo(gx, h); x.stroke(); }
+  for (let gy = 0; gy < h; gy += 46) { x.beginPath(); x.moveTo(0, gy); x.lineTo(w, gy); x.stroke(); }
+  // sweep band
+  const g = x.createLinearGradient(0, y - 70, 0, y + 6);
+  g.addColorStop(0, "rgba(52,225,255,0)"); g.addColorStop(.7, "rgba(52,225,255,.06)"); g.addColorStop(1, "rgba(52,225,255,.22)");
+  x.fillStyle = g; x.fillRect(0, y - 70, w, 76);
+  x.strokeStyle = "rgba(120,235,255,.6)"; x.lineWidth = 1.4; x.shadowColor = "#34e1ff"; x.shadowBlur = 9;
+  x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke();
+  x.restore();
 }
+/* glowing face-scan: a sparse point cloud + key facial contours */
+function drawFaceMesh(x, lm, w, h) {
+  x.save();
+  // point cloud (single batched fill — cheap)
+  x.fillStyle = "rgba(96,216,255,.26)"; x.beginPath();
+  for (let i = 0; i < lm.length; i += 1) { const p = lm[i]; if (!p) continue; x.moveTo(p.x * w + 0.9, p.y * h); x.arc(p.x * w, p.y * h, 0.9, 0, 6.283); }
+  x.fill();
+  // contours
+  const loop = (idx, col, wd, close) => {
+    x.strokeStyle = col; x.lineWidth = wd; x.shadowColor = col; x.shadowBlur = 6;
+    x.beginPath();
+    for (let i = 0; i < idx.length; i++) { const p = lm[idx[i]]; if (!p) continue; i ? x.lineTo(p.x * w, p.y * h) : x.moveTo(p.x * w, p.y * h); }
+    if (close) x.closePath(); x.stroke();
+  };
+  loop(FACE_OVAL, "rgba(52,225,255,.5)", 1.4, true);
+  loop(L_EYE, "rgba(120,235,255,.75)", 1.2, true); loop(R_EYE, "rgba(120,235,255,.75)", 1.2, true);
+  loop(LIPS, "rgba(122,168,255,.6)", 1.2, true);
+  loop(L_BROW, "rgba(52,225,255,.5)", 1.1, false); loop(R_BROW, "rgba(52,225,255,.5)", 1.1, false);
+  loop(NOSE_BRIDGE, "rgba(52,225,255,.35)", 1.0, false);
+  x.shadowBlur = 0; x.restore();
+}
+/* heartbeat-synced perfusion bloom at the forehead rPPG window (colour by HR) */
+function drawPulseGlow(x, lm, w, h, big) {
+  if (!(S.hr > 0) || S.quality < 0.15) return;
+  let cx = 0, cy = 0; for (const i of G.forehead) { cx += lm[i].x; cy += lm[i].y; }
+  cx = cx / G.forehead.length * w; cy = cy / G.forehead.length * h;
+  const ph = performance.now() / 1000 * (S.hr / 60) * 6.2832;
+  const pulse = Math.pow(0.5 + 0.5 * Math.sin(ph), 3);          // sharp systolic upstroke
+  const rad = Math.max(w, h) * (big ? 0.06 : 0.12) * (1 + 0.45 * pulse);
+  const a = (0.1 + 0.5 * pulse) * clip01(S.quality * 1.5);
+  const col = S.hr > 110 ? "255,93,122" : S.hr < 55 ? "255,194,77" : "63,227,160";
+  const g = x.createRadialGradient(cx, cy, 0, cx, cy, rad);
+  g.addColorStop(0, `rgba(${col},${a})`); g.addColorStop(.6, `rgba(${col},${a * 0.35})`); g.addColorStop(1, `rgba(${col},0)`);
+  x.save(); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, rad, 0, 6.2832); x.fill(); x.restore();
+}
+/* floating vital tags anchored to the anatomy, with leader lines */
+function drawVitalTags(x, lm, w, h) {
+  if (S.quality < 0.2 || !(S.hr > 0)) return;
+  const tcol = S.hr > 110 ? "#ff5d7a" : S.hr < 55 ? "#ffc24d" : "#3fe3a0";
+  const tp = lm[54] || lm[10];                 // right temple → forehead fallback
+  if (!tp) return;
+  const ax = tp.x * w, ay = tp.y * h, tx = Math.min(w - 110, ax + w * 0.13), ty = ay - h * 0.03;
+  x.save();
+  x.strokeStyle = "rgba(120,235,255,.5)"; x.lineWidth = 1; x.beginPath();
+  x.moveTo(ax, ay); x.lineTo(tx, ty + 4); x.stroke();
+  x.fillStyle = "rgba(120,235,255,.85)"; x.beginPath(); x.arc(ax, ay, 2.2, 0, 6.28); x.fill();
+  mirrorText(x, "HEART " + Math.round(S.hr) + " bpm", tx, ty, "700 13px ui-monospace,monospace", tcol, 7);
+  mirrorText(x, "SQI " + Math.round(S.quality * 100) + "%", tx, ty + 15, "600 9px ui-monospace,monospace", "rgba(150,170,210,.85)", 0);
+  x.restore();
+}
+/* live rPPG plethysmograph trace — a glowing monitor strip */
+function drawWaveMonitor(x, w, h) {
+  const wave = S.wave; if (!wave || wave.length < 8) return;
+  const stripH = 44, ww = Math.min(w - 28, 340), x0 = 16, y0 = h - stripH - 16;
+  const col = S.quality >= 0.5 ? "#48e2ff" : S.quality >= 0.3 ? "#ffc24d" : "#7a86aa";
+  x.save();
+  x.fillStyle = "rgba(6,10,18,.5)"; roundRC(x, x0 - 7, y0 - 16, ww + 14, stripH + 24, 9); x.fill();
+  x.strokeStyle = "rgba(120,235,255,.15)"; x.lineWidth = 1;
+  x.strokeRect(x0 - 7, y0 - 16, ww + 14, stripH + 24);
+  const N = Math.min(wave.length, 170), seg = wave.slice(-N);
+  let mn = Infinity, mx = -Infinity; for (const v of seg) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const rng = (mx - mn) || 1;
+  x.strokeStyle = col; x.lineWidth = 1.9; x.lineJoin = "round"; x.shadowColor = col; x.shadowBlur = 8;
+  x.beginPath();
+  for (let i = 0; i < N; i++) { const px = x0 + (i / (N - 1)) * ww, py = y0 + stripH - ((seg[i] - mn) / rng) * stripH; i ? x.lineTo(px, py) : x.moveTo(px, py); }
+  x.stroke(); x.shadowBlur = 0;
+  mirrorText(x, "rPPG · PLETH", x0, y0 - 5, "600 9px ui-monospace,monospace", "rgba(120,235,255,.8)", 0);
+  x.restore();
+}
+function roundRC(x, X, Y, W, H, r) { x.beginPath(); x.moveTo(X + r, Y); x.arcTo(X + W, Y, X + W, Y + H, r); x.arcTo(X + W, Y + H, X, Y + H, r); x.arcTo(X, Y + H, X, Y, r); x.arcTo(X, Y, X + W, Y, r); x.closePath(); }
 function drawSkeleton(x, lm, w, h) {
   x.save(); x.strokeStyle = "rgba(31,221,138,.55)"; x.lineWidth = 2; x.shadowColor = "#1fdd8a"; x.shadowBlur = 4;
   x.beginPath();
@@ -695,7 +792,37 @@ function init() {
   const av = $("#cam-video"), ao = $("#cam-overlay"); if (av && ao) register(av, ao, "app");
   const mv = $("#mini-video"), mo = $("#mini-overlay"); if (mv && mo) register(mv, mo, "mini");
 }
-window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m), _detector: Detector, _paintSHAL: paintSHAL };
+/* ---- dev-only: render the AR overlay with a synthetic face (no webcam) ---- */
+function _syntheticFace() {
+  const lm = new Array(478);
+  const cx = 0.5, cy = 0.46, rx = 0.19, ry = 0.26;
+  for (let i = 0; i < 478; i++) {                         // base cloud inside the face oval
+    const a = Math.random() * 6.2832, r = Math.sqrt(Math.random());
+    lm[i] = { x: cx + Math.cos(a) * rx * r * 0.92, y: cy + Math.sin(a) * ry * r * 0.95, visibility: 1 };
+  }
+  const place = (idx, fx) => idx.forEach((id, k) => { lm[id] = Object.assign(lm[id] || {}, fx(k, idx.length)); });
+  place(FACE_OVAL, (k, n) => { const a = -1.5708 + k / n * 6.2832; return { x: cx + Math.cos(a) * rx, y: cy + Math.sin(a) * ry }; });
+  const eye = (idx, ex) => place(idx, (k, n) => { const a = k / n * 6.2832; return { x: ex + Math.cos(a) * 0.045, y: cy - 0.02 + Math.sin(a) * 0.022 }; });
+  eye(L_EYE, cx - 0.075); eye(R_EYE, cx + 0.075);
+  place(LIPS, (k, n) => { const a = k / n * 6.2832; return { x: cx + Math.cos(a) * 0.06, y: cy + 0.17 + Math.sin(a) * 0.028 }; });
+  place(L_BROW, (k, n) => ({ x: cx - 0.11 + k / (n - 1) * 0.08, y: cy - 0.07 }));
+  place(R_BROW, (k, n) => ({ x: cx + 0.03 + k / (n - 1) * 0.08, y: cy - 0.07 }));
+  place(NOSE_BRIDGE, (k, n) => ({ x: cx, y: cy - 0.04 + k / (n - 1) * 0.12 }));
+  place(G.forehead, (k, n) => ({ x: cx - 0.06 + (k / n) * 0.12, y: cy - 0.18 }));
+  place(G["left cheek"], () => ({ x: cx - 0.1, y: cy + 0.07 })); place(G["right cheek"], () => ({ x: cx + 0.1, y: cy + 0.07 }));
+  lm[54] = { x: cx - 0.16, y: cy - 0.13 }; lm[10] = { x: cx, y: cy - ry };
+  return lm;
+}
+let _demoRaf = 0;
+function _demoOverlay(on) {
+  cancelAnimationFrame(_demoRaf);
+  if (on === false) return;
+  S.hr = 88; S.quality = 0.82; S.snr = 6;
+  S.wave = Array.from({ length: 200 }, (_, i) => Math.sin(i * 0.45) * Math.exp(-(((i % 14) - 2) ** 2) / 8));
+  const lm = _syntheticFace();
+  (function spin() { targets.forEach((t) => drawTo(t, lm)); _demoRaf = requestAnimationFrame(spin); })();
+}
+window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m), _detector: Detector, _paintSHAL: paintSHAL, _demoOverlay };
 document.addEventListener("DOMContentLoaded", init);
 init();
 document.addEventListener("click", (e) => {
