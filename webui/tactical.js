@@ -1341,7 +1341,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1349,6 +1349,10 @@ var CMD={
      ['who <bed>','patient summary — vitals, drivers, ground truth'],
      ['open <bed>','open the full clinical dossier'],
      ['alloc / sched','live compute allocation across the cohort'],
+     ['ps','bio-process table (beds as scheduled processes)'],
+     ['top','live kernel stats + process table'],
+     ['kstat','kernel scheduler summary'],
+     ['dmesg','kernel interrupt / preemption log'],
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
@@ -1409,9 +1413,30 @@ var CMD={
     chaos(b.bed_id,"clear"); cmdPrint("recovering "+esc(b.name)+" → baseline","ok"); },
   noise:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     chaos(b.bed_id,"noise"); cmdPrint("injecting sensor noise surge · "+esc(b.name),"warn"); },
+  kstat:function(){ var k=lastSnap&&lastSnap.kstat; if(!k) return cmdPrint("kernel not connected…","dim");
+    cmdPrint('<b>AEGIS KERNEL</b> <span class="cl-d">· cognitive lane governor (tick '+k.tick+')</span>','sys');
+    cmdPrint('mode '+(k.mode==="PREEMPT"?'<span class="cl-crit">PREEMPT'+(k.owner?' → '+esc(cleanName(k.owner)):'')+'</span>':'<span class="cl-ok">NORMAL</span>')+' · Σcost '+fmt(k.global_cost,2),"row");
+    cmdPrint('procs '+k.procs+' <span class="cl-d">('+(k.tiers&&k.tiers.CRITICAL||0)+' critical · '+(k.tiers&&k.tiers.WATCH||0)+' watch · '+(k.tiers&&k.tiers.STABLE||0)+' stable)</span>',"row");
+    cmdPrint('compute '+k.lanes_used+'/'+k.lane_budget+' lanes ('+Math.round((k.utilization||0)*100)+'% util) · interrupts '+k.interrupts,"mono");
+    cmdPrint('<span class="cl-cmd">⟳ anticipating '+(k.anticipating||0)+'</span> pre-critical proc(s) receiving predictive (foresight) compute',"row"); },
+  ps:function(){ var t=(lastSnap&&lastSnap.topology)||[]; if(!t.length) return cmdPrint("kernel not connected…","dim");
+    cmdPrint('<b>BIO-PROCESS TABLE</b> <span class="cl-d">· each monitored bed is a scheduled process</span>','sys');
+    cmdPrint(pad("PID",5)+pad("PROCESS",15)+pad("STATE",10)+pad("RISK",7)+pad("FORE",7)+"CPU","dim");
+    t.slice().sort(function(a,b){return (b.p+(b.foresight||0))-(a.p+(a.foresight||0));}).forEach(function(n){
+      var nm=cleanName(n.name||n.node_id).split(",")[0], fs=n.foresight||0,
+          cls=n.tier==="CRITICAL"?"err":n.tier==="WATCH"?"warn":"ok";
+      cmdPrint(pad(pidOf(n.node_id),5)+pad(nm,15)+pad(n.tier.toLowerCase(),10)+pad(fmt(n.p,2),7)+
+        pad(fs.toFixed(2)+(fs>=0.25?"▲":""),7)+Math.round((n.cpu||0)*100)+"%", cls); }); },
+  top:function(){ CMD.kstat(); cmdPrint("",""); CMD.ps(); },
+  dmesg:function(){ var ev=(lastSnap&&lastSnap.events)||[]; if(!ev.length) return cmdPrint("dmesg: no kernel interrupts logged","dim");
+    cmdPrint('<b>KERNEL EVENT LOG</b> <span class="cl-d">· dmesg</span>','sys');
+    ev.slice(-12).forEach(function(e){ cmdPrint('<span class="cl-cmd">[t'+e.tick+']</span> <span class="cl-crit">⚡ '+esc(e.type||"EVENT")+'</span>'+
+      (e.owner?' · '+esc(cleanName(e.owner)):'')+(e.reason?' · '+esc(e.reason):'')+(e.p!=null?' · p='+fmt(e.p,2):''),"mono"); }); },
   clr:function(){ $("cmd-out").innerHTML=""; cmdBanner(); }
 };
 function cleanName(s){ return String(s||"").replace(/^bed_/,"BED "); }
+function pad(s,n){ s=String(s); return s.length>=n?s.slice(0,n):s+" ".repeat(n-s.length); }
+function pidOf(id){ var m=String(id).match(/(\d+)/); return m?("0"+(+m[1]+1)).slice(-2):String(id).slice(-2); }
 function printBundle(d,b){
   if(!d||!d.checklist){ cmdPrint("no protocol indicated — patient within range","ok"); return; }
   cmdPrint('<b>CERTIFIED HOUR-1 BUNDLE · '+esc(b.name)+'</b> '+(d.all_verified?'<span class="cl-ok">✓ Z3-verified · safe to dispatch</span>':'<span class="cl-crit">✗ quarantined</span>'),"sys");

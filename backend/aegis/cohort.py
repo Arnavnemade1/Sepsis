@@ -424,8 +424,16 @@ class CohortCluster:
             snap = lz.snapshot(scored)
             risk = personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"])
             self.personalized[nid] = {"risk": risk, **snap}
-            # the system acts on the PERSONALIZED risk
-            self.sched.observe(nid, risk, vit)
+            # PREDICTIVE foresight: the Critical-Slowing-Down resilience radar +
+            # personal deviation, so the kernel pours compute into a destabilising
+            # patient BEFORE risk crosses the alarm (anticipatory scheduling).
+            pp = self._by[nid]
+            ef = getattr(self, "ews_full", {}).get(nid)
+            # foresight = the INDEPENDENT resilience-loss signal only (deviation is
+            # already inside `risk`, so we don't double-count it here).
+            foresight = float(ef["ews"][min(pp.icu_hour, pp.los_total - 1)]) if ef is not None else 0.0
+            # the system acts on the PERSONALIZED risk; foresight reprioritises compute
+            self.sched.observe(nid, risk, vit, foresight)
             # HDC associative retrieval — how does this bio-state resemble real precedent?
             self._hdc_query(nid)
         return self.sched.schedule()
@@ -487,6 +495,7 @@ class CohortCluster:
             "topology": self.sched.topology(),
             "lane_map": self.sched.lane_map(),
             "scheduler": self.sched.status(),
+            "kstat": self.sched.kstat(),
             "memfabric": self.fabric.address_matrix(),
             "beds": [self._bed_dict(nid) for nid in self.node_ids if nid in self.profiles],
             "events": self.sched.events[-16:],

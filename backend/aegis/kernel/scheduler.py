@@ -64,6 +64,7 @@ P_CRIT = 0.70                    # absolute risk level
 SLOPE_CRIT = 0.04               # risk rise per tick (rapid deterioration)
 SLOPE_ALPHA = 6.0               # how much slope inflates priority
 SLOPE_WINDOW = 8                # ticks used to estimate dP/dt
+FORESIGHT_BETA = 0.45           # how much the predictive foresight signal inflates priority
 
 
 def risk_proxy(vitals: Dict[str, float]) -> float:
@@ -99,13 +100,15 @@ class NodeState:
     node_id: str
     weight: float = 1.0                                # acuity weight w_i
     p: float = 0.0                                     # current P_i(sepsis)
+    foresight: float = 0.0                             # anticipatory deterioration signal 0..1
     p_hist: Deque[float] = field(default_factory=lambda: deque(maxlen=SLOPE_WINDOW))
     vitals: Dict[str, float] = field(default_factory=dict)
 
-    def observe(self, p: float, vitals: Dict[str, float]) -> None:
+    def observe(self, p: float, vitals: Dict[str, float], foresight: float = 0.0) -> None:
         self.p = float(p)
         self.vitals = dict(vitals)
         self.p_hist.append(self.p)
+        self.foresight = float(max(0.0, min(1.0, foresight)))
 
     def slope(self) -> float:
         """dP/dt estimated as (newest - oldest) / span over the slope window."""
@@ -114,7 +117,12 @@ class NodeState:
         return (self.p_hist[-1] - self.p_hist[0]) / (len(self.p_hist) - 1)
 
     def priority(self) -> float:
-        return self.weight * (self.p + SLOPE_ALPHA * max(0.0, self.slope()))
+        """PREDICTIVE priority: current risk + its slope + a forward-looking
+        FORESIGHT term (loss-of-resilience / personal deviation). The foresight
+        term lets the kernel pour compute into a patient who is destabilising
+        BEFORE P crosses the alarm — anticipatory, not purely reactive, scheduling."""
+        return self.weight * (self.p + SLOPE_ALPHA * max(0.0, self.slope())
+                              + FORESIGHT_BETA * self.foresight)
 
     def tier(self) -> str:
         if self.p >= P_CRIT or self.slope() >= SLOPE_CRIT:
@@ -168,8 +176,9 @@ def _largest_remainder(weights: Dict[str, float], total: int) -> Dict[str, int]:
 class CognitiveScheduler:
     """The multi-tenant lane governor. One per cluster orchestrator."""
 
-    def __init__(self, lane_budget: int = 64):
+    def __init__(self, lane_budget: int = 64, predictive: bool = True):
         self.lane_budget = int(lane_budget)
+        self.predictive = bool(predictive)              # fold foresight into priority
         self.nodes: Dict[str, NodeState] = {}
         self.tick_no = 0
         self.events: List[Dict[str, Any]] = []         # hard-interrupt log
@@ -181,8 +190,9 @@ class CognitiveScheduler:
         self.nodes[node_id] = ns
         return ns
 
-    def observe(self, node_id: str, p: float, vitals: Dict[str, float]) -> None:
-        self.nodes[node_id].observe(p, vitals)
+    def observe(self, node_id: str, p: float, vitals: Dict[str, float],
+                foresight: float = 0.0) -> None:
+        self.nodes[node_id].observe(p, vitals, foresight if self.predictive else 0.0)
 
     # -- the scheduling tick --------------------------------------------- #
     def schedule(self) -> ScheduleDecision:
@@ -279,6 +289,8 @@ class CognitiveScheduler:
             out.append({
                 "node_id": n.node_id, "weight": n.weight,
                 "p": round(n.p, 4), "slope": round(n.slope(), 5),
+                "foresight": round(n.foresight, 3),
+                "cpu": round(lanes / max(1, self.lane_budget), 3),
                 "tier": n.tier(), "ring": color[n.tier()], "lanes": lanes,
             })
         return out
@@ -302,6 +314,27 @@ class CognitiveScheduler:
             "mode": d.mode if d else "NORMAL", "owner": d.owner if d else None,
             "global_cost": round(d.global_cost, 4) if d else 0.0,
             "interrupts": len(self.events),
+        }
+
+    def kstat(self) -> Dict[str, Any]:
+        """Kernel-stat summary — the OS control surface for the process table /
+        scheduler. Each node is a scheduled 'bio-process'."""
+        ns = list(self.nodes.values())
+        tiers = {"CRITICAL": 0, "WATCH": 0, "STABLE": 0}
+        for n in ns:
+            tiers[n.tier()] += 1
+        used = sum(self.last.node_total(n.node_id) for n in ns) if self.last else 0
+        foresighted = sum(1 for n in ns if n.foresight >= 0.25 and n.tier() != "CRITICAL")
+        return {
+            "tick": self.tick_no,
+            "mode": self.last.mode if self.last else "NORMAL",
+            "owner": self.last.owner if self.last else None,
+            "procs": len(ns), "tiers": tiers,
+            "lane_budget": self.lane_budget, "lanes_used": used,
+            "utilization": round(used / max(1, self.lane_budget), 3),
+            "global_cost": round(self.last.global_cost, 4) if self.last else 0.0,
+            "interrupts": len(self.events),
+            "anticipating": foresighted,            # pre-critical procs getting foresight compute
         }
 
 
