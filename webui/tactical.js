@@ -64,7 +64,7 @@ var events=[], frame=0;
 var selectedBed=null, latestBeds={}, dosBuilt=false;
 
 function ingest(snap){
-  target=snap;
+  target=snap; lastSnap=snap;
   if(!nodeOrder.length) nodeOrder=snap.topology.map(function(n){return n.node_id;});
   V.mode=snap.scheduler.mode; V.owner=snap.scheduler.owner; V.budget=snap.lane_map.budget;
   snap.topology.forEach(function(n){
@@ -1293,10 +1293,126 @@ function animateCounts(){ [].forEach.call(document.querySelectorAll("[data-count
     el.innerHTML=(tgt%1?v.toFixed(1):Math.round(v))+us; if(p<1) requestAnimationFrame(tick); })(t0); }); }
 
 /* ============================================================
+   COMMAND CONSOLE — direct conversational line to the bio-kernel
+   ============================================================ */
+var lastSnap=null, cmdHist=[], cmdHi=0, cmdOpen=false;
+function cmdShow(){ cmdOpen=true; $("cmd").classList.add("open"); $("cmd").setAttribute("aria-hidden","false");
+  setTimeout(function(){ var i=$("cmd-in"); if(i) i.focus(); },30);
+  if(!$("cmd-out").childNodes.length) cmdBanner(); }
+function cmdHide(){ cmdOpen=false; $("cmd").classList.remove("open"); $("cmd").setAttribute("aria-hidden","true"); }
+function cmdToggle(){ cmdOpen?cmdHide():cmdShow(); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+function cmdPrint(html,cls){ var o=$("cmd-out"); var d=document.createElement("div");
+  d.className="cl"+(cls?" "+cls:""); d.innerHTML=html; o.appendChild(d); o.scrollTop=o.scrollHeight; }
+function cmdEcho(line){ cmdPrint('<span class="cl-pr">aegis❯</span> '+esc(line),"echo"); }
+function cmdBanner(){ cmdPrint('<b>AEGIS·OS</b> command console — direct line to the distributed bio-kernel.','sys');
+  cmdPrint('type <b>help</b> for commands · <b>esc</b> or <b>/</b> to toggle.','dim'); }
+var TIER_TXT={critical:'<span class="cl-crit">CRITICAL</span>',watch:'<span class="cl-warn">WATCH</span>',stable:'<span class="cl-ok">stable</span>'};
+function beds(){ return Object.keys(latestBeds).map(function(k){return latestBeds[k];}); }
+function resolveBed(q){ if(!q) return null; q=q.toLowerCase().trim();
+  var bs=beds();
+  var hit=bs.filter(function(b){return b.bed_id.toLowerCase()===q;})[0]; if(hit) return hit;
+  var m=q.match(/^(?:bed[ _-]?)?0*(\d+)$/);          // "7", "bed 7", "07"
+  if(m){ var idx=+m[1]-1; hit=bs.filter(function(b){var mm=b.bed_id.match(/(\d+)/);return mm&&+mm[1]===idx;})[0]; if(hit) return hit; }
+  hit=bs.filter(function(b){return (b.name||"").toLowerCase().indexOf(q)>=0;}); return hit.length?hit[0]:null;
+}
+function cmdRun(raw){
+  var line=raw.trim(); if(!line) return; cmdEcho(line);
+  cmdHist.push(line); cmdHi=cmdHist.length;
+  var parts=line.split(/\s+/), c=parts[0].toLowerCase(), arg=parts.slice(1).join(" ");
+  var H=CMD[c]||CMD[CMD_ALIAS[c]];
+  if(!H){ cmdPrint('unknown command <b>'+esc(c)+'</b> — try <b>help</b>',"err"); return; }
+  try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
+}
+function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol"};
+var CMD={
+  help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
+    [['roster / ls','list every monitored bed + risk'],
+     ['top','beds ranked by risk (critical first)'],
+     ['who <bed>','patient summary — vitals, drivers, ground truth'],
+     ['open <bed>','open the full clinical dossier'],
+     ['alloc / sched','live compute allocation across the cohort'],
+     ['explain <bed>','why the system thinks what it thinks'],
+     ['protocol <bed>','certified Hour-1 sepsis bundle'],
+     ['crisis <bed>','⚠ inject a sepsis crisis (watch the grid react)'],
+     ['clear <bed>','recover a bed · noise <bed> · resets'],
+     ['clr','clear the console']
+    ].forEach(function(r){ cmdPrint('<span class="cl-cmd">'+r[0]+'</span><span class="cl-d">'+r[1]+'</span>',"row"); }); },
+  roster:function(){ var bs=beds().sort(function(a,b){return b.fused_risk-a.fused_risk;});
+    if(!bs.length) return cmdPrint("cohort not yet connected…","dim");
+    cmdPrint('<b>'+bs.length+' MONITORED BEDS</b>','sys');
+    bs.forEach(function(b){ cmdPrint('<span class="cl-tag">'+bedTag(b.bed_id)+'</span> '+
+      '<span class="cl-nm">'+esc(b.name)+'</span> '+fmtRisk(b)+' '+TIER_TXT[tierOf(b.fused_risk)]+
+      (b.will_be_septic?' <span class="cl-d">· sepsis h'+b.onset_hour+'</span>':''),"row"); }); },
+  top:function(){ var bs=beds().sort(function(a,b){return b.fused_risk-a.fused_risk;}).slice(0,6);
+    cmdPrint('<b>HIGHEST RISK</b>','sys');
+    bs.forEach(function(b){ cmdPrint('<span class="cl-tag">'+bedTag(b.bed_id)+'</span> '+esc(b.name)+'  '+fmtRisk(b)+'  '+TIER_TXT[tierOf(b.fused_risk)],"row"); }); },
+  who:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    var e=b.edge||{}, en=b.enterprise||{};
+    cmdPrint('<b>'+esc(b.name)+'</b> · '+bedTag(b.bed_id)+' · '+(b.age?Math.round(b.age)+'y '+(b.gender||''):'')+' · ICU h'+b.icu_hour,"sys");
+    cmdPrint('fused risk '+fmtRisk(b)+' '+TIER_TXT[tierOf(b.fused_risk)]+' · population '+fmt(b.population_risk,2)+' · Δbaseline '+fmt(b.deviation,1)+'σ',"row");
+    cmdPrint('HR '+fmt(e.hr,0)+' · MAP '+fmt(en.map,0)+' · T '+fmt(en.temp_c,1)+' · SpO₂ '+fmt(en.spo2,0)+' · RR '+fmt(en.resp_rate,0)+' · Lac '+fmt(en.lactate,1)+' · WBC '+fmt(en.wbc,1),"mono");
+    if(b.drivers&&b.drivers.length) cmdPrint('drivers: '+b.drivers.map(esc).join(' · '),"row");
+    cmdPrint(b.will_be_septic?('<span class="cl-crit">ground truth: develops sepsis at ICU h'+b.onset_hour+'</span>'):'<span class="cl-ok">ground truth: no sepsis this admission</span>',"row"); },
+  open:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    cmdHide(); openDossier(b.bed_id); cmdPrint("opening dossier · "+esc(b.name),"ok"); },
+  alloc:function(){ var ns=(lastSnap&&lastSnap.topology)||[];
+    cmdPrint('<b>COGNITIVE SCHEDULER</b> · mode '+((lastSnap&&lastSnap.scheduler&&lastSnap.scheduler.mode)||"—")+' · lane budget '+(V.budget||"—"),"sys");
+    if(lastSnap&&lastSnap.scheduler) cmdPrint('Σ cost '+fmt(lastSnap.scheduler.cost,2)+(lastSnap.scheduler.owner?' · preempt owner '+esc(cleanName(lastSnap.scheduler.owner)):''),"row");
+    ns.slice().sort(function(a,b){return b.lanes-a.lanes;}).forEach(function(n){
+      var pct=V.budget?Math.round(n.lanes/V.budget*100):0, bar='█'.repeat(Math.max(0,Math.round(pct/6)));
+      cmdPrint('<span class="cl-tag">'+esc(cleanName(n.name)||n.node_id)+'</span> <span class="cl-cmd">'+String(n.lanes).padStart(3)+'</span> lanes <span class="cl-d">'+bar+' '+pct+'% · p='+fmt(n.p,2)+' · '+esc(n.tier).toLowerCase()+'</span>',"mono"); }); },
+  explain:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    cmdPrint('<b>REASONING · '+esc(b.name)+'</b>','sys');
+    cmdPrint('1. fusion of 3 tiers (optical + bedside + labs) → population risk '+fmt(b.population_risk,2),"row");
+    cmdPrint('2. per-patient learning: '+fmt(b.deviation,1)+'σ from own baseline (maturity '+Math.round((b.baseline_maturity||0)*100)+'%) → personalized '+fmtRisk(b),"row");
+    if(b.hdc&&b.hdc.k) cmdPrint('3. HDC case memory: '+(b.hdc.n_septic||0)+'/'+b.hdc.k+' nearest real ICU bio-states became septic'+(b.hdc.lead_h!=null?(' (median lead '+Math.round(b.hdc.lead_h)+'h)'):'')+' · '+Math.round((b.hdc.resemblance||0)*100)+'% resemblance',"row");
+    var inf=inferInfection(b); if(inf) cmdPrint('4. suspected focus: '+inf.site+' (inferred from vitals · '+inf.conf+' confidence)',"row");
+    if(b.drivers&&b.drivers.length) cmdPrint('top derangements: '+b.drivers.slice(0,3).map(esc).join(' · '),"dim"); },
+  protocol:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    cmdPrint("fetching certified Hour-1 bundle · "+esc(b.name)+" …","dim");
+    fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){ cmdPrint("bundle unavailable (backend waking?)","err"); }); },
+  crisis:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    chaos(b.bed_id,"crisis");
+    cmdPrint('<span class="cl-crit">⚠ CRISIS INJECTED → '+bedTag(b.bed_id)+' · '+esc(b.name)+'</span>',"sys");
+    cmdPrint('fast-forwarding to sepsis onset — watch the grid re-prioritise…',"row");
+    setTimeout(function(){ fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){}); }, 1400); },
+  clear:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    chaos(b.bed_id,"clear"); cmdPrint("recovering "+esc(b.name)+" → baseline","ok"); },
+  noise:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    chaos(b.bed_id,"noise"); cmdPrint("injecting sensor noise surge · "+esc(b.name),"warn"); },
+  clr:function(){ $("cmd-out").innerHTML=""; cmdBanner(); }
+};
+function cleanName(s){ return String(s||"").replace(/^bed_/,"BED "); }
+function printBundle(d,b){
+  if(!d||!d.checklist){ cmdPrint("no protocol indicated — patient within range","ok"); return; }
+  cmdPrint('<b>CERTIFIED HOUR-1 BUNDLE · '+esc(b.name)+'</b> '+(d.all_verified?'<span class="cl-ok">✓ Z3-verified · safe to dispatch</span>':'<span class="cl-crit">✗ quarantined</span>'),"sys");
+  d.checklist.forEach(function(it){ cmdPrint('<span class="cl-cmd">'+it.n+'.</span> '+esc(it.title)+' <span class="cl-d">'+esc(it.detail)+'</span>',"row"); });
+  if(d.protocol) cmdPrint('rx: '+esc(d.protocol.antibiotic)+' · fluid '+d.protocol.fluid_rate+' mL/kg/h · vaso '+d.protocol.vasopressor_dose+' mcg/kg/min','mono'); }
+function cmdInit(){
+  $("cmd-open").addEventListener("click",cmdToggle);
+  $("cmd-x").addEventListener("click",cmdHide);
+  $("cmd").addEventListener("mousedown",function(e){ if(e.target===this) cmdHide(); });
+  document.addEventListener("keydown",function(e){
+    var typing=/^(input|textarea)$/i.test((e.target.tagName||""));
+    if(e.key==="/"&&!cmdOpen&&!typing){ e.preventDefault(); cmdShow(); return; }
+    if(e.key==="Escape"&&cmdOpen){ cmdHide(); }
+  });
+  var inp=$("cmd-in"); if(!inp) return;
+  inp.addEventListener("keydown",function(e){
+    if(e.key==="Enter"){ cmdRun(inp.value); inp.value=""; }
+    else if(e.key==="ArrowUp"){ if(cmdHi>0){ cmdHi--; inp.value=cmdHist[cmdHi]||""; e.preventDefault(); } }
+    else if(e.key==="ArrowDown"){ if(cmdHi<cmdHist.length){ cmdHi++; inp.value=cmdHist[cmdHi]||""; } }
+  });
+}
+
+/* ============================================================
    MAIN LOOP
    ============================================================ */
 var surf={}, spineTick=0;
 function setup(){
+  cmdInit();
   ambientInit(); runBoot();
   surf.learn=new Surface("cv-learn"); surf.blind=new Surface("cv-blind");
   surf.dosRisk=new Surface("cv-dos-risk");

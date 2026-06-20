@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=19" />
+<link rel="stylesheet" href="tactical.css?v=20" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -60,6 +60,7 @@
   </div>
 
   <div class="topbar-right">
+    <button class="cmd-open" id="cmd-open" title="Command console — press /">❯_ CONSOLE</button>
     <span class="conn" id="conn"><i></i><span id="conn-txt">Connecting</span></span>
     <span class="clock" id="s-clock">--:--:--</span>
     <a class="to-clinical" href="index.html" title="Camera &amp; detection live in the Clinical Console">Clinical →</a>
@@ -256,6 +257,20 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=6"></script>
-<script src="tactical.js?v=17"></script>
+<!-- ============ COMMAND CONSOLE ============ -->
+<div class="cmd" id="cmd" aria-hidden="true">
+  <div class="cmd-frame">
+    <div class="cmd-bar">
+      <span class="cmd-dot"></span><span class="cmd-title">AEGIS COMMAND CONSOLE</span>
+      <span class="cmd-hint" id="cmd-hint">direct line to the bio-kernel · type <b>help</b></span>
+      <button class="cmd-x" id="cmd-x">esc</button>
+    </div>
+    <div class="cmd-out" id="cmd-out"></div>
+    <div class="cmd-inbar"><span class="cmd-prompt">aegis<b>❯</b></span>
+      <input id="cmd-in" class="cmd-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="command…" /></div>
+  </div>
+</div>
+
+<script src="tactical.js?v=18"></script>
 </body>
 </html>
