@@ -356,6 +356,18 @@ class CohortCluster:
                                [fd for fds in self._fds.values() for fd in fds.values()])
         self.hdc_state: Dict[str, Dict[str, Any]] = {}
         self._build_hdc_memory()
+        self._build_ews()
+
+    def _build_ews(self) -> None:
+        """Precompute each patient's causal Critical-Slowing-Down resilience series
+        from their real trajectory; the live radar indexes it at the current ICU
+        hour (so a crisis jump-to-onset makes the early-warning score spike)."""
+        from backend.aegis.resilience import ews_series, CSD_CHANNELS
+        self.ews_full: Dict[str, Any] = {}
+        for p in self.patients:
+            chans = {ch: [float(p._ff[t, k]) for t in range(p.los_total)]
+                     for k, ch in enumerate(CHANNELS) if ch in CSD_CHANNELS}
+            self.ews_full[p.bed_id] = ews_series(chans, p.los_total)
 
     def _build_hdc_memory(self) -> None:
         """Encode every hour of every cohort patient into the HDC associative
@@ -453,8 +465,22 @@ class CohortCluster:
             "baseline_maturity": pz.get("maturity", 0.0),
             "personal_top": pz.get("top", []),
             "hdc": self.hdc_state.get(nid, {}),     # HDC associative-memory resemblance
+            "ews": self._ews_at(nid, lab_i),        # Critical-Slowing-Down radar
         })
         return d
+
+    def _ews_at(self, nid: str, h: int) -> Dict[str, Any]:
+        from backend.aegis.resilience import WIN, BASE_W
+        ef = getattr(self, "ews_full", {}).get(nid)
+        if ef is None:
+            return {}
+        arr = ef["ews"]; h = min(h, len(arr) - 1)
+        trace = [round(float(x), 3) for x in arr[max(0, h - 47):h + 1]]
+        tail = trace[-5:]
+        slope = float(np.polyfit(range(len(tail)), tail, 1)[0]) if len(tail) >= 3 else 0.0
+        return {"ews": round(float(arr[h]), 3), "trace": trace,
+                "ar1": round(float(ef["ar1"][h]), 3), "var": round(float(ef["var"][h]), 3),
+                "slope": round(slope, 4), "rising": slope > 0.008, "warming": h < WIN + BASE_W}
 
     def snapshot(self) -> Dict[str, Any]:
         return {

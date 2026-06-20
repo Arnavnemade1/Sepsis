@@ -339,9 +339,25 @@ function renderHub(b){
       '<div class="hh-bar"><i style="width:'+clamp(resem*100,2,100)+'%;background:'+rc+'"></i></div>'+
       '<div class="hh-sub"><b style="color:'+rc+'">'+(hd.n_septic||0)+'/'+hd.k+'</b> nearest real ICU bio-states became septic'+lead+
       ' · <span class="hh-resem">'+Math.round(resem*100)+'% resemblance</span></div></div>'; }
+  var ew=b.ews;
+  if(ew&&ew.trace&&ew.trace.length>3){ var ec=ew.ews>=0.5?C.crit:ew.ews>=0.25?C.watch:C.indigo;
+    html+='<div class="hub-ews"><div class="he-top"><span class="he-ic">⌁</span>'+
+      '<span class="he-t">EARLY-WARNING RADAR</span><span class="he-sub">critical slowing down</span>'+
+      (ew.rising&&!ew.warming?'<span class="he-rise">▲ rising</span>':'')+'</div>'+
+      ewsSpark(ew.trace,ec)+
+      '<div class="he-foot">resilience-loss <b style="color:'+ec+'">'+Math.round(ew.ews*100)+'%</b>'+
+      (ew.warming?' · calibrating':'')+' <span class="he-d">· research signal · watches signal <em>dynamics</em>, not levels</span></div></div>'; }
   host.innerHTML=html;
   var sync=$("dos-sync"); if(sync) sync.innerHTML=(b.icu_hour!=null?"ICU h"+b.icu_hour+" · ":"")+"<em>3 tiers in sync</em>";
 }
+/* SVG sparkline of the resilience (CSD) trace */
+function ewsSpark(tr,col){ var w=240,h=30,n=tr.length; if(n<2) return "";
+  var mx=Math.max(0.35,Math.max.apply(null,tr));
+  var pts=tr.map(function(v,i){ return (i/(n-1)*w).toFixed(1)+","+(h-3-(v/mx)*(h-5)).toFixed(1); }).join(" ");
+  var area="0,"+h+" "+pts+" "+w+","+h;
+  return '<svg class="he-spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'+
+    '<polygon points="'+area+'" fill="'+col+'" fill-opacity=".10"/>'+
+    '<polyline points="'+pts+'" fill="none" stroke="'+col+'" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>'; }
 
 /* ============================================================
    CLINICAL — Learned Behaviour (per-patient baseline)
@@ -1325,7 +1341,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1334,6 +1350,7 @@ var CMD={
      ['open <bed>','open the full clinical dossier'],
      ['alloc / sched','live compute allocation across the cohort'],
      ['explain <bed>','why the system thinks what it thinks'],
+     ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['crisis <bed>','⚠ inject a sepsis crisis (watch the grid react)'],
      ['clear <bed>','recover a bed · noise <bed> · resets'],
@@ -1369,7 +1386,17 @@ var CMD={
     cmdPrint('2. per-patient learning: '+fmt(b.deviation,1)+'σ from own baseline (maturity '+Math.round((b.baseline_maturity||0)*100)+'%) → personalized '+fmtRisk(b),"row");
     if(b.hdc&&b.hdc.k) cmdPrint('3. HDC case memory: '+(b.hdc.n_septic||0)+'/'+b.hdc.k+' nearest real ICU bio-states became septic'+(b.hdc.lead_h!=null?(' (median lead '+Math.round(b.hdc.lead_h)+'h)'):'')+' · '+Math.round((b.hdc.resemblance||0)*100)+'% resemblance',"row");
     var inf=inferInfection(b); if(inf) cmdPrint('4. suspected focus: '+inf.site+' (inferred from vitals · '+inf.conf+' confidence)',"row");
+    if(b.ews&&b.ews.trace) cmdPrint('5. early-warning radar (CSD): resilience-loss '+Math.round((b.ews.ews||0)*100)+'%'+(b.ews.rising&&!b.ews.warming?' <span class="cl-warn">▲ rising</span>':'')+' <span class="cl-d">· research signal</span>',"row");
     if(b.drivers&&b.drivers.length) cmdPrint('top derangements: '+b.drivers.slice(0,3).map(esc).join(' · '),"dim"); },
+  radar:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    var ew=b.ews||{};
+    cmdPrint('<b>EARLY-WARNING RADAR · '+esc(b.name)+'</b> <span class="cl-d">— Critical Slowing Down</span>','sys');
+    if(!ew.trace) return cmdPrint("radar not available for this bed","dim");
+    cmdPrint('resilience-loss <b>'+Math.round((ew.ews||0)*100)+'%</b> '+(ew.rising&&!ew.warming?'<span class="cl-warn">▲ rising</span>':'')+(ew.warming?'<span class="cl-d"> (calibrating)</span>':''),"row");
+    cmdPrint('rising autocorrelation '+fmt(ew.ar1,2)+' · widening variance '+fmt(ew.var,2)+' (vs own baseline)',"mono");
+    var sp="▁▂▃▄▅▆▇█", mx=Math.max(0.3,Math.max.apply(null,ew.trace));
+    cmdPrint('<span class="cl-cmd">'+ew.trace.map(function(v){return sp[Math.min(7,Math.max(0,Math.floor(v/mx*7)))];}).join("")+'</span>',"mono");
+    cmdPrint('watches signal <b>dynamics</b>, not levels — a complementary research signal','dim'); },
   protocol:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     cmdPrint("fetching certified Hour-1 bundle · "+esc(b.name)+" …","dim");
     fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){ cmdPrint("bundle unavailable (backend waking?)","err"); }); },
