@@ -300,11 +300,52 @@ def build_cohort(n: int = 12, seed: int = 7, scan: int = 1500) -> List[RealPatie
 # -> L4 cage. Same snapshot contract as BioCluster so the cockpit is unchanged,
 # but every bed is a real patient and beds[] carries the real chart + label.
 # --------------------------------------------------------------------------- #
-from backend.aegis.kernel.devbio import DRIVER_REGISTRY, DevBio
+from backend.aegis.kernel.devbio import ChannelSpec, DRIVER_REGISTRY, DevBio
 from backend.aegis.kernel.fusion import BedProfile, FusionEngine
 from backend.aegis.kernel.memfabric import FabricPump, MemFabric
 from backend.aegis.kernel.scheduler import CognitiveScheduler
+from backend.aegis.kernel.ebpfdrv import EbpfDevice, scatter_program
+from backend.aegis.kernel.supervisor import DriverSupervisor
 from backend.aegis.learner import CohortLearner, PatientBaselineLearner, personalized_risk
+
+# The verified optical driver uses the SAME channel specs as the trusted optical
+# driver, so the ring fields + inline-Kalman behaviour are identical — only the
+# data plane (verified bytecode vs. trusted Python) differs.
+_OPTICAL_SPECS = [ChannelSpec("hr", "bpm", q=1e-2, r0=4.0),
+                  ChannelSpec("perfusion", "au", q=1e-3, r0=1.0)]
+
+
+class _AdapterFeed:
+    """Bridges a cohort dict-feed (``{ch: val}, q``) to the list-feed an
+    :class:`EbpfDevice` consumes (one value per channel, in slot order), and adds
+    an injectable hardware kill-switch so a REAL bed's sensor can be failed on
+    demand for the supervisor demo. The values still come from the patient's real
+    CinC replay — the verified driver only transports them."""
+
+    def __init__(self, dict_feed, channel_keys):
+        self.dict_feed = dict_feed
+        self.keys = list(channel_keys)
+        self.tripped = False
+        self.reason = ""
+
+    def trip(self, reason: str) -> None:
+        self.tripped, self.reason = True, reason
+
+    def reset(self) -> None:
+        self.tripped = False
+
+    def __call__(self):
+        if self.tripped:
+            raise RuntimeError(self.reason)
+        raw, q = self.dict_feed()
+        return [raw[k] for k in self.keys], q
+
+
+def _safe_optical_feed():
+    """A redundant, always-available fallback source at low confidence."""
+    def f():
+        return [80.0, 1.2], 0.3
+    return f
 
 
 def _clinical_history(rec: cinc2019.PatientRecord) -> Dict[str, Any]:
@@ -325,7 +366,8 @@ class CohortCluster:
     ENTERPRISE_KEYS = ("temp_c", "resp_rate", "spo2", "map", "wbc", "lactate")
     HOURS_PER_TICK = 0.12        # ~1 ICU hour per ~5 s at 0.6 s ticks
 
-    def __init__(self, n: int = 12, lane_budget: int = 160, seed: int = 7):
+    def __init__(self, n: int = 12, lane_budget: int = 160, seed: int = 7,
+                 ebpf_optical: int = 0):
         self.patients = build_cohort(n, seed=seed)
         self.bus = DevBio()
         self.fabric = MemFabric()
@@ -339,10 +381,18 @@ class CohortCluster:
         self.histories: Dict[str, Dict[str, Any]] = {}
         self._by: Dict[str, RealPatient] = {}
         self._fds: Dict[str, Dict[str, int]] = {}
-        for p in self.patients:
+        # The first ``ebpf_optical`` beds have their optical sensor driven by a
+        # supervised, statically-verified eBPF driver — the verified-driver stack
+        # IS their live data path, not a parallel demo.
+        self.driver_sup = DriverSupervisor()
+        self.ebpf_beds: Dict[str, Dict[str, Any]] = {}
+        for idx, p in enumerate(self.patients):
             fds: Dict[str, int] = {}
             for kind in self.FEEDS:
-                drv = DRIVER_REGISTRY[kind](feed=p.feed_for(kind))
+                if kind == "optical" and idx < ebpf_optical:
+                    drv = self._mount_ebpf_optical(p)
+                else:
+                    drv = DRIVER_REGISTRY[kind](feed=p.feed_for(kind))
                 path = self.bus.mount(p.bed_id, f"{kind}_feed", drv)
                 fds[kind] = self.bus.open(path)
             self.fabric.map_bus(self.bus, fds, capacity=512)
@@ -379,6 +429,62 @@ class CohortCluster:
             rows.extend(HDCBioMemory.rows_from_patient(p))
         self.hdc = HDCBioMemory().build(rows)
 
+    # -- verified-driver data plane ------------------------------------- #
+    def _mount_ebpf_optical(self, p: "RealPatient") -> "EbpfDevice":
+        """Build a supervised, verified eBPF optical driver fed by ``p``'s real
+        CinC replay. Returns the SupervisedDevice to mount on the bus."""
+        keys = [c.key for c in _OPTICAL_SPECS]
+        adapter = _AdapterFeed(p.feed_for("optical"), keys)
+        prog = scatter_program(len(_OPTICAL_SPECS))
+        pf = (lambda adapter=adapter, prog=prog:
+              EbpfDevice(_OPTICAL_SPECS, prog, adapter, kind="optical"))
+        ff = (lambda prog=prog:
+              EbpfDevice(_OPTICAL_SPECS, prog, _safe_optical_feed(), kind="optical-bkp"))
+        sd = self.driver_sup.supervise(f"{p.bed_id}/optical", pf(),
+                                       fallback_factory=ff, primary_factory=pf)
+        self.ebpf_beds[p.bed_id] = {"feed": adapter, "sd": sd, "kind": "optical"}
+        return sd
+
+    def driver_plane_status(self) -> List[Dict[str, Any]]:
+        """Per-bed verification + supervisor state for the real eBPF-driven beds."""
+        out: List[Dict[str, Any]] = []
+        for bid, e in self.ebpf_beds.items():
+            sd = e["sd"]
+            ring = self.fabric.rings[self._fds[bid][e["kind"]]]
+            rep = getattr(sd.active, "report", None)
+            out.append({
+                "key": bid, "label": self.names.get(bid, bid),
+                "path": f"/dev/bio/{bid}/{e['kind']}_feed",
+                "state": sd.state, "active": sd.active.kind,
+                "faults": sd.faults, "failovers": sd.failovers,
+                "restores": sd.restores, "blocks": ring.write_index,
+                "verified": bool(rep.ok) if rep else None,
+                "max_steps": rep.max_steps if rep else None,
+                "last_steps": getattr(sd.active, "last_steps", None),
+            })
+        return out
+
+    def inject_driver_fault(self, bed_id: str,
+                            reason: str = "optical sensor disconnected (injected)"
+                            ) -> Optional[Dict[str, Any]]:
+        e = self.ebpf_beds.get(bed_id)
+        if not e:
+            return None
+        e["feed"].trip(reason)
+        try:                                   # surface the fault + failover now
+            self.bus.read(self._fds[bed_id][e["kind"]])
+        except Exception:
+            pass
+        return {"slot": e["sd"].name, **e["sd"].status()}
+
+    def recover_driver(self, bed_id: str) -> Optional[Dict[str, Any]]:
+        e = self.ebpf_beds.get(bed_id)
+        if not e:
+            return None
+        e["feed"].reset()
+        e["sd"].restore()
+        return {"slot": e["sd"].name, **e["sd"].status()}
+
     # -- chaos / scrub controls ----------------------------------------- #
     def inject_crisis(self, bed_id: str, intensity: float = 1.0) -> None:
         """Fast-forward a real patient to just before its true sepsis onset."""
@@ -393,7 +499,8 @@ class CohortCluster:
 
     def inject_noise_surge(self, bed_id: str) -> None:
         drv = self.bus.device_at(f"/dev/bio/{bed_id}/optical_feed")
-        drv._noise["hr"] = drv._noise.get("hr", 3.0) * 4.0
+        if hasattr(drv, "_noise"):             # trusted driver; eBPF beds have no _noise
+            drv._noise["hr"] = drv._noise.get("hr", 3.0) * 4.0
 
     # -- tick ----------------------------------------------------------- #
     def _sample_vitals(self, bed_id: str) -> Dict[str, float]:

@@ -99,6 +99,7 @@ def risk_proxy(vitals: Dict[str, float]) -> float:
 class NodeState:
     node_id: str
     weight: float = 1.0                                # acuity weight w_i
+    pin: float = 1.0                                   # clinician escalation multiplier (syscall write)
     p: float = 0.0                                     # current P_i(sepsis)
     foresight: float = 0.0                             # anticipatory deterioration signal 0..1
     p_hist: Deque[float] = field(default_factory=lambda: deque(maxlen=SLOPE_WINDOW))
@@ -120,9 +121,14 @@ class NodeState:
         """PREDICTIVE priority: current risk + its slope + a forward-looking
         FORESIGHT term (loss-of-resilience / personal deviation). The foresight
         term lets the kernel pour compute into a patient who is destabilising
-        BEFORE P crosses the alarm — anticipatory, not purely reactive, scheduling."""
-        return self.weight * (self.p + SLOPE_ALPHA * max(0.0, self.slope())
-                              + FORESIGHT_BETA * self.foresight)
+        BEFORE P crosses the alarm — anticipatory, not purely reactive, scheduling.
+
+        ``pin`` is a clinician-driven escalation multiplier written through the
+        audited, Z3-gated syscall interface (sys_escalate): a certified escalation
+        genuinely pours more compute into the bed, so the write *drives the kernel*
+        rather than merely annotating the UI."""
+        return self.weight * self.pin * (self.p + SLOPE_ALPHA * max(0.0, self.slope())
+                                         + FORESIGHT_BETA * self.foresight)
 
     def tier(self) -> str:
         if self.p >= P_CRIT or self.slope() >= SLOPE_CRIT:
@@ -193,6 +199,16 @@ class CognitiveScheduler:
     def observe(self, node_id: str, p: float, vitals: Dict[str, float],
                 foresight: float = 0.0) -> None:
         self.nodes[node_id].observe(p, vitals, foresight if self.predictive else 0.0)
+
+    def set_pin(self, node_id: str, pin: float) -> float:
+        """Write a clinician escalation multiplier onto a node's scheduling
+        priority. The ONLY supported writer is the audited, Z3-gated syscall
+        interface (sys_escalate / sys_clear); the value is clamped to a sane
+        envelope so a bad write can never starve the rest of the cohort."""
+        if node_id not in self.nodes:
+            raise KeyError(node_id)
+        self.nodes[node_id].pin = float(max(1.0, min(4.0, pin)))
+        return self.nodes[node_id].pin
 
     # -- the scheduling tick --------------------------------------------- #
     def schedule(self) -> ScheduleDecision:
@@ -287,7 +303,7 @@ class CognitiveScheduler:
         for n in self.nodes.values():
             lanes = self.last.node_total(n.node_id) if self.last else 0
             out.append({
-                "node_id": n.node_id, "weight": n.weight,
+                "node_id": n.node_id, "weight": n.weight, "pin": round(n.pin, 2),
                 "p": round(n.p, 4), "slope": round(n.slope(), 5),
                 "foresight": round(n.foresight, 3),
                 "cpu": round(lanes / max(1, self.lane_budget), 3),

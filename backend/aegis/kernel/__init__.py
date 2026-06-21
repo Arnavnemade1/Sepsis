@@ -50,6 +50,27 @@ from backend.aegis.kernel.neurosym import (
     NeuroSymbolicRuntime,
     SafetyCertificate,
 )
+from backend.aegis.kernel.ebpf import (
+    Instr,
+    Interval,
+    VerdictReport,
+    Verifier,
+    Violation,
+    VM,
+    assemble,
+)
+from backend.aegis.kernel.ebpfdrv import (
+    DriverFault,
+    DriverRejected,
+    EbpfDevice,
+    load_ebpf_driver,
+    scatter_program,
+)
+from backend.aegis.kernel.supervisor import (
+    DriverSupervisor,
+    FaultRecord,
+    SupervisedDevice,
+)
 
 __all__ = [
     # Layer 1
@@ -67,4 +88,9 @@ __all__ = [
     # Layer 4
     "NeuroSymbolicRuntime", "SafetyCertificate", "ALERT", "PROTOCOL",
     "ACTUATOR", "NOTE",
+    # Aegis-eBPF: untrusted-driver static verifier + sandbox (input safety)
+    "Verifier", "VerdictReport", "Violation", "Interval", "Instr", "VM", "assemble",
+    "EbpfDevice", "load_ebpf_driver", "scatter_program",
+    "DriverRejected", "DriverFault",
+    "DriverSupervisor", "SupervisedDevice", "FaultRecord",
 ]

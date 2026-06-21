@@ -213,6 +213,35 @@ b{font-weight:700}
 .tl-note{color:var(--muted);margin-top:7px}.tl-notetext{color:var(--ink);opacity:.82}
 .tl-stamp{color:var(--ok);font-weight:600;margin-top:9px;letter-spacing:.05em}.tl-stamp.bad{color:var(--crit)}
 
+/* ---------------- AEGIS-eBPF DEVICE PLANE ---------------- */
+.devplane{flex:0 0 auto;margin:0 20px 4px;border:1px solid var(--hair);border-radius:var(--r);overflow:hidden;
+  background:linear-gradient(180deg,rgba(9,12,19,.82),rgba(6,8,13,.92));box-shadow:var(--shadow)}
+.dp-bar{display:flex;align-items:center;gap:11px;padding:10px 16px;border-bottom:1px solid var(--hair-soft)}
+.dp-dot{width:7px;height:7px;border-radius:1px;background:var(--ok);box-shadow:0 0 9px var(--ok);flex:0 0 auto;transition:.3s}
+.devplane.degraded .dp-dot{background:var(--watch);box-shadow:0 0 10px var(--watch);animation:pulse 1.1s infinite}
+.dp-title{font-size:12px;font-weight:600;color:var(--ink);text-transform:uppercase;letter-spacing:.03em}
+.dp-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.devplane.degraded .dp-sub{color:var(--watch)}
+.dp-meta{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.dp-meta b{color:var(--ok)}
+.dp-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:9px;padding:11px 16px 13px}
+.dp-bay{border:1px solid var(--hair-soft);border-left:2px solid var(--ok);border-radius:var(--r-sm);
+  padding:8px 10px;background:rgba(120,150,230,.03)}
+.dp-bay.warn{border-left-color:var(--watch);background:rgba(255,194,77,.05)}
+.dp-bay.crit{border-left-color:var(--crit);background:rgba(255,93,122,.06)}
+.dp-bay-hd{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9.5px;letter-spacing:.04em}
+.dp-state{font-weight:600;color:var(--ok)}.dp-bay.warn .dp-state{color:var(--watch)}.dp-bay.crit .dp-state{color:var(--crit)}
+.dp-blocks{color:var(--dim)}
+.dp-bay-nm{font-size:12px;color:var(--ink);font-weight:600;margin:5px 0 6px}
+.dp-bay-ft{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9.5px}
+.dp-drv{color:var(--muted)}
+.dp-vok{color:var(--ok)}.dp-fo{color:var(--watch)}
+/* dossier per-patient verified-driver badge */
+.dos-ebpf{margin-left:auto;font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;
+  padding:2px 8px;border-radius:999px;border:1px solid var(--hair);white-space:nowrap}
+.dos-ebpf.ok{color:var(--ok);border-color:rgba(63,227,160,.3);background:rgba(63,227,160,.06)}
+.dos-ebpf.warn{color:var(--watch);border-color:rgba(255,194,77,.32);background:rgba(255,194,77,.07)}
+
 /* ---------------- CONTROL RAIL ---------------- */
 .control{flex:0 0 auto;padding:10px 20px;border-top:1px solid var(--hair-soft);
   display:flex;align-items:center;gap:18px;background:rgba(8,11,18,.5)}

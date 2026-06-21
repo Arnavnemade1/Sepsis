@@ -92,6 +92,7 @@ function ingest(snap){
   renderSpine();          // refresh metrics + ticker the instant data arrives
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
+  renderDevicePlane(snap.kernel_devices);   // Aegis-eBPF verified device plane (input safety)
   if(currentView==="roster") renderRoster();
 }
 
@@ -251,6 +252,15 @@ function updateDossier(b){
   $("dos-risk").textContent=fmt(b.fused_risk,2);
   var tEl=$("dos-tier"); tEl.textContent=tier; tEl.className="dos-tier"+(tier==="stable"?"":" "+tier);
   $("dossier").classList.toggle("critical",tier==="critical");
+  // verified-driver badge — is this patient's optical sensor on a verified eBPF driver?
+  var kd=(lastSnap&&lastSnap.kernel_devices&&lastSnap.kernel_devices.devices)||[];
+  var dev=kd.filter(function(d){return d.key===b.bed_id;})[0], eb=$("dos-ebpf");
+  if(eb){ if(dev){ var deg=dev.state!=="RUNNING"; eb.hidden=false; eb.className="dos-ebpf "+(deg?"warn":"ok");
+      eb.innerHTML = deg ? ('⚠ optical driver degraded → '+esc(dev.active))
+                         : '✓ optical sensor · verified eBPF driver';
+      eb.title = deg ? ('Verified driver quarantined by the supervisor; running on fallback ('+esc(dev.active)+'). Use `recover` in the console to re-arm.')
+                     : ('This patient’s optical data path runs statically-verified bytecode — proven to halt (≤'+(dev.max_steps||'?')+' steps) and to write only within its own ring.');
+    } else { eb.hidden=true; } }
   // patient record — real demographics + ground-truth validation
   if(b.mrn){
     $("dos-demo").innerHTML=
@@ -827,6 +837,64 @@ function chaos(node, action){
   fetch(window.AEGIS.http("/aegis/cluster/chaos"),{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({node:node,action:action,intensity:1.0})}).catch(function(){});
 }
+// The write-side trap gate: console mutations go through the audited, Z3-gated
+// syscall interface. A denied write returns an errno + violated invariant — the
+// console renders the prover's verdict instead of silently swallowing it.
+function syscall(name, bed, args, cb){
+  cmdPrint('<span class="cl-d">trap → sys_'+esc(name)+' · '+bedTag(bed)+' · awaiting Z3 certificate…</span>','dim');
+  fetch(window.AEGIS.http("/aegis/syscall"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({syscall:name,bed:bed,args:args||{}})})
+    .then(function(r){return r.json();})
+    .then(function(d){ renderSyscall(d); if(cb) cb(d); })
+    .catch(function(){ cmdPrint("syscall failed — backend unreachable","err"); });
+}
+function renderSyscall(d){
+  var ok=d.allowed, badge=ok?'<span class="cl-ok">✓ '+esc(d.errno_name)+'</span>'
+                            :'<span class="cl-crit">✗ '+esc(d.errno_name)+'</span>';
+  cmdPrint('<b>sys_'+esc(d.syscall)+'</b> <span class="cl-d">#'+d.sid+' · '+esc(d.egress||"—")+
+    ' egress · Z3 '+esc(d.z3_status)+'</span> '+badge,"sys");
+  cmdPrint(esc(d.message), ok?"ok":"err");
+  if(d.violations&&d.violations.length) d.violations.forEach(function(v){ cmdPrint('· '+esc(v),"dim"); });
+  if(d.result&&d.result.proof) cmdPrint('<span class="cl-d">⊢ '+esc(d.result.proof)+'</span>',"mono");
+}
+function splitBedArgs(a){ var t=String(a||"").trim().split(/\s+/).filter(Boolean); return {bedq:t[0]||"", rest:t.slice(1)}; }
+function renderDevicePlane(k){
+  if(!k||!$("dp-bays")) return;
+  var v=k.verifier||{}, devs=k.devices||[];
+  var deg=devs.filter(function(d){return d.state!=="RUNNING";}).length;
+  $("devplane").classList.toggle("degraded", deg>0);
+  $("dp-vrf").innerHTML='verifier <b>'+(v.accepted||0)+'</b> admitted · <b>'+(v.rejected||0)+'</b> rejected';
+  $("dp-sub").textContent = deg ? (deg+" device(s) degraded — supervisor isolating the fault")
+                                : "all drivers statically verified · halt-safe · in-window";
+  $("dp-bays").innerHTML = devs.map(function(d){
+    var cls=d.state==="RUNNING"?"":d.state==="DEGRADED"?"warn":"crit";
+    return '<div class="dp-bay '+cls+'">'+
+      '<div class="dp-bay-hd"><span class="dp-state">'+esc(d.state)+'</span>'+
+        '<span class="dp-blocks">'+d.blocks+' blk</span></div>'+
+      '<div class="dp-bay-nm">'+esc(d.label)+'</div>'+
+      '<div class="dp-bay-ft"><span class="dp-drv">'+esc(d.active)+'</span>'+
+      (d.state!=="RUNNING" ? ('<span class="dp-fo">⚠ '+(d.failovers||1)+' failover</span>')
+                           : '<span class="dp-vok">✓ verified</span>')+'</div></div>';
+  }).join("");
+}
+function renderVerify(d){
+  var title='driver'+(d.name?' <b>'+esc(d.name)+'</b>':'')+(d.description?' <span class="cl-d">— '+esc(d.description)+'</span>':'');
+  if(d.stage==="assemble"||d.stage==="lookup"||d.stage==="input"){ cmdPrint('verifier: '+esc(d.error||"bad input"),"err"); return; }
+  if(d.ok){
+    cmdPrint('<span class="cl-ok">✓ ACCEPTED</span> '+title,"sys");
+    cmdPrint('<span class="cl-d">⊢ '+esc(d.proof||(d.report&&d.report.proof)||"")+'</span>',"mono");
+    cmdPrint('admitted to the kernel — provably halts, stays in-window, calls only whitelisted helpers',"row");
+  } else {
+    cmdPrint('<span class="cl-crit">✗ REJECTED</span> '+title,"sys");
+    var v=d.violation||{};
+    cmdPrint('<span class="cl-crit">'+esc(v.rule)+'</span> at instr <span class="cl-cmd">#'+v.index+'</span>  <span class="cl-d">'+esc(v.instr)+'</span>',"row");
+    cmdPrint(esc(v.detail),"dim");
+    cmdPrint('refused at load — the kernel will not bind this bytecode to a ring',"row");
+  }
+  // show the listing with the offending line marked
+  var list=d.listing||[]; if(list.length&&list.length<=14){ var bad=d.violation?d.violation.index:-1;
+    list.forEach(function(ln,i){ cmdPrint('<span class="cl-d">'+pad(String(i),3)+'</span>'+(i===bad?'<span class="cl-crit">▶ ':'  ')+esc(ln)+(i===bad?'</span>':''),"mono"); }); }
+}
 
 /* ============================================================
    WEBSOCKET
@@ -1341,7 +1409,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",recover:"clear",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1356,8 +1424,17 @@ var CMD={
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
-     ['crisis <bed>','⚠ inject a sepsis crisis (watch the grid react)'],
-     ['clear <bed>','recover a bed · noise <bed> · resets'],
+     ['— write syscalls —','audited · Z3-gated · default-deny'],
+     ['treat <bed> [k=v]','order the certified bundle (fluid=/vaso=/abx= override)'],
+     ['escalate <bed> [lvl]','raise priority — pins kernel compute if justified'],
+     ['crisis <bed> [int]','⚠ privileged crisis drill (envelope-gated)'],
+     ['clear <bed>','recover a bed · release the pin'],
+     ['audit / syslog','append-only syscall log + prover verdicts'],
+     ['— aegis-eBPF device plane —','input safety · real beds on verified drivers'],
+     ['verify <driver>','run the static verifier on driver bytecode (try: loop, escape, ecg)'],
+     ['drivers / lsdrv','beds whose optical sensor runs verified bytecode + supervisor state'],
+     ['fault <bed>','⚠ kill a verified bed sensor — watch the supervisor fail over'],
+     ['recover <bed>','re-verify + re-arm a quarantined optical driver'],
      ['clr','clear the console']
     ].forEach(function(r){ cmdPrint('<span class="cl-cmd">'+r[0]+'</span><span class="cl-d">'+r[1]+'</span>',"row"); }); },
   roster:function(){ var bs=beds().sort(function(a,b){return b.fused_risk-a.fused_risk;});
@@ -1404,15 +1481,81 @@ var CMD={
   protocol:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     cmdPrint("fetching certified Hour-1 bundle · "+esc(b.name)+" …","dim");
     fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){ cmdPrint("bundle unavailable (backend waking?)","err"); }); },
-  crisis:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
-    chaos(b.bed_id,"crisis");
-    cmdPrint('<span class="cl-crit">⚠ CRISIS INJECTED → '+bedTag(b.bed_id)+' · '+esc(b.name)+'</span>',"sys");
-    cmdPrint('fast-forwarding to sepsis onset — watch the grid re-prioritise…',"row");
-    setTimeout(function(){ fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){}); }, 1400); },
-  clear:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
-    chaos(b.bed_id,"clear"); cmdPrint("recovering "+esc(b.name)+" → baseline","ok"); },
+  treat:function(a){ var s=splitBedArgs(a), b=resolveBed(s.bedq);
+    if(!b) return cmdPrint("usage: treat <bed> [fluid=N] [vaso=N] [abx=N]","err");
+    var args={}; s.rest.forEach(function(tok){ var kv=tok.split("="); if(kv.length!==2) return;
+      var k=kv[0].toLowerCase(), v=parseFloat(kv[1]);
+      if(k==="fluid"||k==="fluid_rate") args.fluid_rate=v;
+      else if(k==="vaso"||k==="vasopressor_dose") args.vasopressor_dose=v;
+      else if(k==="abx"||k==="antibiotic"||k==="antibiotic_code") args.antibiotic_code=v; });
+    syscall("treat", b.bed_id, args, function(d){
+      if(d.allowed&&d.result&&d.result.bundle) printBundle(d.result.bundle,b); }); },
+  escalate:function(a){ var s=splitBedArgs(a), b=resolveBed(s.bedq);
+    if(!b) return cmdPrint("usage: escalate <bed> [low|medium|high|0-3]","err");
+    var args={}, lv=s.rest[0];
+    if(lv){ var M={none:0,low:1,medium:2,watch:2,high:3,critical:3,severe:3}, n=M[lv.toLowerCase()];
+      if(n==null) n=parseInt(lv,10); if(!isNaN(n)) args.level=n; }
+    syscall("escalate", b.bed_id, args); },
+  crisis:function(a){ var s=splitBedArgs(a), b=resolveBed(s.bedq);
+    if(!b) return cmdPrint("no bed matches '"+esc(s.bedq)+"'","err");
+    var intensity=parseFloat(s.rest[0]); if(isNaN(intensity)) intensity=1.0;
+    syscall("crisis", b.bed_id, {intensity:intensity}, function(d){
+      if(!d.allowed) return;
+      cmdPrint('fast-forwarding to sepsis onset — watch the grid re-prioritise…',"row");
+      setTimeout(function(){ fetch(window.AEGIS.http("/aegis/cohort/"+b.bed_id+"/bundle")).then(function(r){return r.json();}).then(function(d){ printBundle(d,b); }).catch(function(){}); }, 1400); }); },
+  clear:function(a){ var s=splitBedArgs(a), b=resolveBed(s.bedq);
+    if(!b) return cmdPrint("no bed matches '"+esc(s.bedq)+"'","err");
+    syscall("clear", b.bed_id, {}); },
+  audit:function(){ fetch(window.AEGIS.http("/aegis/syscall/audit?limit=20")).then(function(r){return r.json();}).then(function(d){
+    var log=(d&&d.log)||[]; if(!log.length) return cmdPrint("syscall audit log empty — no writes issued yet","dim");
+    cmdPrint('<b>SYSCALL AUDIT LOG</b> <span class="cl-d">· '+d.status.allowed+' allowed · '+d.status.denied+' denied · Z3-gated</span>',"sys");
+    log.forEach(function(e){ cmdPrint('<span class="cl-cmd">#'+("00"+e.sid).slice(-3)+'</span> '+
+      pad("sys_"+e.syscall,13)+(e.bed?pad(bedTag(e.bed),8):pad("",8))+
+      (e.allowed?'<span class="cl-ok">'+esc(e.errno_name)+'</span>':'<span class="cl-crit">'+esc(e.errno_name)+'</span>')+
+      ' <span class="cl-d">'+esc(e.egress||"—")+' · Z3 '+esc(e.z3_status)+'</span>',"mono"); });
+    }).catch(function(){ cmdPrint("audit log unavailable (backend waking?)","err"); }); },
   noise:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     chaos(b.bed_id,"noise"); cmdPrint("injecting sensor noise surge · "+esc(b.name),"warn"); },
+  // ---- Aegis-eBPF verified device plane (input-side safety) ----
+  verify:function(a){ var name=(a||"").trim().toLowerCase();
+    if(!name){ fetch(window.AEGIS.http("/aegis/kernel/devices")).then(function(r){return r.json();}).then(function(d){
+      cmdPrint('<b>AEGIS-eBPF VERIFIER</b> <span class="cl-d">— submit a driver to the static analyzer</span>',"sys");
+      cmdPrint('usage: <span class="cl-cmd">verify &lt;driver&gt;</span> · drivers in the catalogue:',"dim");
+      (d.programs||[]).forEach(function(p){ cmdPrint('<span class="cl-cmd">'+pad(p.name,12)+'</span><span class="cl-d">'+esc(p.description)+'</span>',"row"); });
+      }).catch(function(){ cmdPrint("verifier unavailable (backend waking?)","err"); }); return; }
+    cmdPrint('<span class="cl-d">aegis-eBPF · static analysis of driver <b>'+esc(name)+'</b>…</span>',"dim");
+    fetch(window.AEGIS.http("/aegis/kernel/verify"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({name:name})}).then(function(r){return r.json();}).then(renderVerify)
+      .catch(function(){ cmdPrint("verify failed — backend unreachable","err"); }); },
+  drivers:function(){ var k=lastSnap&&lastSnap.kernel_devices;
+    if(!k) return cmdPrint("device plane not connected…","dim");
+    var v=k.verifier||{};
+    cmdPrint('<b>VERIFIED eBPF DEVICE PLANE</b> <span class="cl-d">· verifier '+(v.accepted||0)+' admitted / '+(v.rejected||0)+' rejected · helpers {'+(v.helpers||[]).join(", ")+'}</span>',"sys");
+    cmdPrint(pad("DEVICE",18)+pad("STATE",10)+pad("DRIVER",14)+pad("BLOCKS",8)+"FAILOVER","dim");
+    (k.devices||[]).forEach(function(d){ var cls=d.state==="RUNNING"?"ok":d.state==="DEGRADED"?"warn":"err";
+      cmdPrint(pad(d.label,18)+'<span class="cl-'+cls+'">'+pad(d.state,10)+'</span>'+pad(d.active,14)+pad(String(d.blocks),8)+
+        (d.failovers?'<span class="cl-warn">'+d.failovers+'×</span>':"0"), "mono"); });
+    var ev=((k.supervisor||{}).events)||[]; if(ev.length){ cmdPrint('<span class="cl-d">— supervisor dmesg —</span>',"dim");
+      ev.slice(-6).forEach(function(e){ var cls=e.kind==="FAULT"?"err":e.kind==="FAILOVER"?"warn":e.kind==="RESTORE"?"ok":"dim";
+        cmdPrint('<span class="cl-'+cls+'">['+pad(e.kind,8)+']</span> '+pad(e.slot,16)+'<span class="cl-d">'+esc(e.detail)+'</span>',"mono"); }); } },
+  fault:function(a){ var q=(a||"").trim(); if(!q) return cmdPrint("usage: fault &lt;bed&gt; — kill a verified bed's optical sensor (try a bed shown in `drivers`)","err");
+    var b=resolveBed(q); var slot=b?b.bed_id:q;
+    cmdPrint('<span class="cl-d">injecting optical sensor fault → '+esc(b?b.name:q)+'…</span>',"dim");
+    fetch(window.AEGIS.http("/aegis/kernel/fault"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({slot:slot})}).then(function(r){return r.json();}).then(function(d){
+        if(d.status==="error") return cmdPrint(esc(d.detail),"err");
+        cmdPrint('<span class="cl-warn">⚠ SENSOR FAULT · '+bedTag(d.bed)+' · '+esc(d.name)+'</span> → supervisor '+
+          (d.state==="DEGRADED"?'<span class="cl-warn">quarantined the verified driver, hot-swapped backup ('+esc(d.active)+')</span>':esc(d.state)),"sys");
+        cmdPrint('patient stays monitored — every other bed kept ticking · <span class="cl-cmd">drivers</span> to inspect · <span class="cl-cmd">recover '+esc(q)+'</span> to re-arm',"row");
+      }).catch(function(){ cmdPrint("fault injection failed — backend unreachable","err"); }); },
+  recover:function(a){ var q=(a||"").trim();   // re-arm a verified driver; clinical recovery is `clear <bed>`
+    if(!q) return cmdPrint("usage: recover &lt;bed&gt; — re-verify + re-arm a quarantined optical driver","err");
+    var b=resolveBed(q); var slot=b?b.bed_id:q;
+    fetch(window.AEGIS.http("/aegis/kernel/recover"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({slot:slot})}).then(function(r){return r.json();}).then(function(d){
+        if(d.status==="error") return cmdPrint(esc(d.detail),"err");
+        cmdPrint('<span class="cl-ok">✓ RE-ARMED · '+bedTag(d.bed)+' · '+esc(d.name)+'</span> → primary driver re-verified and restored ('+esc(d.state)+')',"ok");
+      }).catch(function(){ cmdPrint("recover failed — backend unreachable","err"); }); },
   kstat:function(){ var k=lastSnap&&lastSnap.kstat; if(!k) return cmdPrint("kernel not connected…","dim");
     cmdPrint('<b>AEGIS KERNEL</b> <span class="cl-d">· cognitive lane governor (tick '+k.tick+')</span>','sys');
     cmdPrint('mode '+(k.mode==="PREEMPT"?'<span class="cl-crit">PREEMPT'+(k.owner?' → '+esc(cleanName(k.owner)):'')+'</span>':'<span class="cl-ok">NORMAL</span>')+' · Σcost '+fmt(k.global_cost,2),"row");

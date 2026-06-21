@@ -34,6 +34,8 @@ from backend.aegis.stream import AegisSession
 from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
 from backend.aegis.cohort import CohortCluster
 from backend.aegis.devices import DeviceRegistry
+from backend.aegis.syscalls import SyscallTable
+from backend.aegis.kernel.runtime import KernelDeviceRuntime
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -66,7 +68,7 @@ _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.
 #     redistribution terms), so when it is absent — e.g. on a fresh deploy — we
 #     fall back to the synthetic wing, which exercises the identical kernel. ---- #
 try:
-    cluster = CohortCluster(n=12, lane_budget=160, seed=7)
+    cluster = CohortCluster(n=12, lane_budget=160, seed=7, ebpf_optical=3)
     if not cluster.node_ids:
         raise RuntimeError("CinC-2019 corpus not found under data/cinc2019")
     DATA_MODE = "real-cinc2019"
@@ -81,6 +83,42 @@ except Exception as exc:  # pragma: no cover
 cluster_safety = NeuroSymbolicRuntime()
 bundle_engine = SepsisBundleEngine()
 device_registry = DeviceRegistry()                # simulated sensor fleet (Phase A)
+# The write-side trap gate: every treat/escalate/crisis/clear from the console is
+# routed through this audited, Z3-gated interface before it touches the kernel.
+syscalls = SyscallTable(cluster, bundle_engine, cluster_safety)
+# The input-safety verifier service: holds the live Aegis-eBPF static verifier +
+# the driver catalogue used by `verify`. The verified-driver DATA PLANE itself is
+# the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose
+# optical sensor is driven by proven-safe bytecode, supervised for fault isolation.
+kernel_devices = KernelDeviceRuntime()
+
+
+def _kernel_plane(full: bool = False) -> Dict[str, Any]:
+    """Unify the verified device plane for the UI/console: the real eBPF-driven
+    cohort beds (data plane) + the live verifier counters + the supervisor log."""
+    devices = cluster.driver_plane_status() if hasattr(cluster, "driver_plane_status") else []
+    supv = cluster.driver_sup.status() if hasattr(cluster, "driver_sup") else {"events": [], "slots": {}}
+    base = kernel_devices.status(full=full)
+    out: Dict[str, Any] = {"devices": devices, "verifier": base["verifier"], "supervisor": supv}
+    if full:
+        out["programs"] = base.get("programs", [])
+    return out
+
+
+def _resolve_ebpf_bed(q: str) -> Optional[str]:
+    """Map a console token (bed id, 1-based tag, or name) to an eBPF-driven bed."""
+    beds = getattr(cluster, "ebpf_beds", {})
+    q = (q or "").strip().lower()
+    if q in beds:
+        return q
+    import re
+    m = re.match(r"^(?:bed[ _-]?)?0*(\d+)$", q)
+    if m and f"bed_{int(m.group(1)) - 1}" in beds:
+        return f"bed_{int(m.group(1)) - 1}"
+    for bid in beds:
+        if q and q in cluster.names.get(bid, "").lower():
+            return bid
+    return None
 _bundle = {"bed": None, "ts": 0.0, "data": None}
 CLUSTER_TICK_SECONDS = 0.6
 _cluster_clients: List[WebSocket] = []
@@ -328,6 +366,8 @@ def _cluster_payload() -> Dict[str, Any]:
         node["name"] = cluster.names.get(node["node_id"], node["node_id"])
     snap["devbio"] = cluster.bus.status()         # Panel D — µs conditioning latency
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
+    snap["syscalls"] = syscalls.status()          # write-side trap gate: audit + live interventions
+    snap["kernel_devices"] = _kernel_plane(full=False)  # verified eBPF device plane (real beds)
     snap["bundle"] = _focus_bundle()              # Module C — certified Hour-1 bundle
     snap["data_mode"] = DATA_MODE
     snap["ts"] = time.time()
@@ -350,7 +390,7 @@ async def _cluster_loop() -> None:
     print("[aegis] ICU-wing cluster loop started (Tactical Sphere telemetry).")
     while True:
         try:
-            decision = cluster.tick()
+            decision = cluster.tick()              # ticks the cohort incl. its eBPF beds
             _certify_cluster_headline(decision)
             await _broadcast_cluster(_cluster_payload())
         except Exception as exc:  # pragma: no cover
@@ -460,6 +500,92 @@ def device_unassign(device_id: str) -> Dict[str, Any]:
 @app.post("/aegis/devices/{device_id}/action")
 def device_action(device_id: str, payload: DeviceActionIn) -> Dict[str, Any]:
     return device_registry.action(device_id, payload.action)
+
+
+class SyscallIn(BaseModel):
+    syscall: str                                  # treat | escalate | crisis | clear
+    bed: str
+    args: Dict[str, Any] = {}
+    caller: str = "console"
+
+
+@app.post("/aegis/syscall")
+async def aegis_syscall(payload: SyscallIn) -> Dict[str, Any]:
+    """The write-side trap gate. The console invokes treat/escalate/crisis/clear
+    here; the mutation is applied to the running kernel ONLY if the Z3 egress cage
+    certifies it. Every call — allowed or denied — is appended to the audit log.
+    A denied write returns EPERM and changes nothing; the certificate explains why."""
+    res = syscalls.invoke(payload.syscall, payload.bed, payload.args, caller=payload.caller)
+    # push the post-write state to all cockpits immediately so the grid reacts.
+    if res.allowed:
+        await _broadcast_cluster(_cluster_payload())
+    return res.to_dict()
+
+
+@app.get("/aegis/syscall/audit")
+def aegis_syscall_audit(limit: int = 64) -> Dict[str, Any]:
+    """The append-only syscall audit log — the system of record for every
+    operator write and the prover's verdict on it."""
+    return {"status": syscalls.status(), "log": syscalls.audit_log(limit)}
+
+
+# --- Aegis-eBPF verified device plane (input-side safety) ------------------- #
+class VerifyIn(BaseModel):
+    name: Optional[str] = None             # a driver from the catalogue, or…
+    source: Optional[str] = None           # …raw eBPF assembly to verify
+    win_len: int = 2
+
+
+class KernelFaultIn(BaseModel):
+    slot: str                              # device key ("dev_0"), bay index, or label
+    reason: str = "sensor disconnected (injected)"
+
+
+@app.get("/aegis/kernel/devices")
+def kernel_device_status() -> Dict[str, Any]:
+    """The verified device plane: the real eBPF-driven cohort beds + their
+    supervisor state, the live verifier counters, and the driver catalogue."""
+    return _kernel_plane(full=True)
+
+
+@app.post("/aegis/kernel/verify")
+def kernel_verify(payload: VerifyIn) -> Dict[str, Any]:
+    """Submit a driver to the LIVE static verifier. A catalogue ``name`` or raw
+    ``source`` is statically analyzed; the verdict (ACCEPT + proof, or REJECT +
+    the exact offending instruction and violated invariant) is computed now."""
+    if payload.name:
+        return kernel_devices.verify_named(payload.name)
+    if payload.source:
+        return kernel_devices.verify_source(payload.source, payload.win_len)
+    return {"ok": False, "stage": "input", "error": "provide 'name' or 'source'"}
+
+
+@app.post("/aegis/kernel/fault")
+async def kernel_fault(payload: KernelFaultIn) -> Dict[str, Any]:
+    """Kill a REAL patient bed's optical sensor → watch the supervisor quarantine
+    the verified driver, fail over to its backup, and keep the patient monitored
+    while every other bed keeps ticking."""
+    bid = _resolve_ebpf_bed(payload.slot)
+    if bid is None:
+        return {"status": "error",
+                "detail": f"{payload.slot!r} is not an eBPF-driven bed "
+                          f"(verified beds: {', '.join(getattr(cluster, 'ebpf_beds', {}))})"}
+    res = cluster.inject_driver_fault(bid, payload.reason)
+    res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
+    await _broadcast_cluster(_cluster_payload())
+    return res
+
+
+@app.post("/aegis/kernel/recover")
+async def kernel_recover(payload: KernelFaultIn) -> Dict[str, Any]:
+    """Recover a quarantined bed: re-verify and re-arm its primary optical driver."""
+    bid = _resolve_ebpf_bed(payload.slot)
+    if bid is None:
+        return {"status": "error", "detail": f"{payload.slot!r} is not an eBPF-driven bed"}
+    res = cluster.recover_driver(bid)
+    res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
+    await _broadcast_cluster(_cluster_payload())
+    return res
 
 
 @app.post("/aegis/cluster/chaos")
