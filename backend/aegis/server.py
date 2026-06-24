@@ -105,15 +105,38 @@ except Exception as _exc:                          # pragma: no cover
 # The scattered diagnostics now run as managed, supervised SERVICES on the kernel:
 # registered with capability manifests, started in dependency order, ticked each
 # cycle inside the app sandbox, fault-isolated, and introspectable via /proc.
+import inspect as _inspect
+from backend.aegis.apps.examples import tachy_app as _tachy_mod
+from backend.aegis.apps.examples.tachy_app import TachyApp
+from backend.aegis.apps.sdk import AppManifest as _AppManifest
 from backend.aegis.apps.radar_app import RadarApp
 from backend.aegis.apps.resonance_app import ResonanceApp
 from backend.aegis.apps.triage_app import TriageApp
 from backend.aegis.initd import ServiceManager
+from backend.aegis.kernel.ebpf import Verifier as _EbpfVerifier
+from backend.aegis.kernel.ebpfdrv import DEFAULT_HELPERS as _HELPERS
+from backend.aegis.pkg import AppPackage, PackageRegistry
 from backend.aegis.procfs import ProcFS
 
 apps_cage = NeuroSymbolicRuntime()                 # egress cage for app outputs
 procfs = ProcFS()
 aegisd = ServiceManager(apps_cage, procfs)
+# the package registry: every install is gated (manifest → policy → code
+# verification → integrity) before aegisd ever schedules it.
+pkg_registry = PackageRegistry(aegisd, verifier=_EbpfVerifier(_HELPERS))
+# the installable catalogue (an example third-party app); factory rebuilds a fresh,
+# signed package on demand.
+AVAILABLE_PKGS = {
+    "tachy": lambda: AppPackage(TachyApp.manifest, _inspect.getsource(_tachy_mod),
+                                kind="python", app=TachyApp()).sign(),
+    # a deliberately-hostile package so the install gate's refusal is demonstrable
+    # live: its source imports a network module → the static audit rejects it.
+    "rogue": lambda: AppPackage(
+        _AppManifest(name="rogue", reads=("hr",), emits=(ALERT,),
+                     summary="(demo) tries to open a socket — the registry must refuse"),
+        "import socket\nclass Rogue:\n    def on_tick(self, ctx):\n        return {}\n",
+        kind="python", app=TachyApp()).sign(),
+}
 # kernel state, exposed read-only through the one introspection namespace
 procfs.register("/proc/sched", lambda: cluster.sched.kstat() if hasattr(cluster, "sched") else {})
 procfs.register("/proc/mem", lambda: cluster.fabric.address_matrix()["arena"] if hasattr(cluster, "fabric") else {})
@@ -415,6 +438,8 @@ def _cluster_payload() -> Dict[str, Any]:
         s["bed"] = SERVICE_BED
         s["bed_name"] = cluster.names.get(SERVICE_BED, SERVICE_BED) if hasattr(cluster, "names") else SERVICE_BED
         snap["services"] = s
+        snap["packages"] = {"installed": list(pkg_registry.installed.keys()),
+                            "available": [p["name"] for p in _pkg_catalogue()]}
     if ppg_monitor is not None:                   # compact live vascular-tone summary
         st = ppg_monitor.state()
         snap["ppg"] = {k: st.get(k) for k in
@@ -654,6 +679,51 @@ async def service_control(name: str, action: str) -> Dict[str, Any]:
     await _broadcast_cluster(_cluster_payload())
     return {"status": "ok", "service": name, "action": act,
             "state": aegisd.services[name].state}
+
+
+class PkgIn(BaseModel):
+    name: str
+
+
+def _pkg_catalogue() -> List[Dict[str, Any]]:
+    out = []
+    for n, factory in AVAILABLE_PKGS.items():
+        if n in pkg_registry.installed:
+            continue
+        try:
+            out.append({"name": n, "manifest": factory().manifest.to_dict()})
+        except Exception:
+            pass
+    return out
+
+
+@app.get("/aegis/pkg")
+def pkg_list() -> Dict[str, Any]:
+    """Installed packages + the installable catalogue + the install audit log."""
+    lst = pkg_registry.list()
+    lst["available"] = _pkg_catalogue()
+    return lst
+
+
+@app.post("/aegis/pkg/install")
+async def pkg_install(payload: PkgIn) -> Dict[str, Any]:
+    """Install a catalogue package through the verify-then-register gate. On
+    success it becomes a live, supervised service."""
+    factory = AVAILABLE_PKGS.get(payload.name)
+    if factory is None:
+        return {"ok": False, "stage": "lookup",
+                "reason": f"no such package {payload.name!r}",
+                "available": list(AVAILABLE_PKGS)}
+    res = pkg_registry.install(factory()).to_dict()
+    await _broadcast_cluster(_cluster_payload())
+    return res
+
+
+@app.post("/aegis/pkg/uninstall")
+async def pkg_uninstall(payload: PkgIn) -> Dict[str, Any]:
+    ok = pkg_registry.uninstall(payload.name)
+    await _broadcast_cluster(_cluster_payload())
+    return {"ok": ok, "name": payload.name}
 
 
 @app.get("/aegis/proc")

@@ -1453,6 +1453,7 @@ var CMD={
      ['vasodilate <0..1>','dial the vasodilation model — watch the notch erode'],
      ['— aegisd app/service plane —','managed, supervised, capability-confined apps'],
      ['service','list managed services + health (service <name> stop|restart)'],
+     ['pkg','package registry — pkg install <name> (try: tachy, rogue)'],
      ['proc <path>','read the /proc introspection namespace (proc triage, proc sched)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['— write syscalls —','audited · Z3-gated · default-deny'],
@@ -1598,6 +1599,25 @@ var CMD={
       cmdPrint('<span class="cl-cmd">'+esc(d.path)+'</span>',"sys");
       cmdPrint('<span class="cl-d">'+esc(JSON.stringify(d.value,null,1)).slice(0,1400)+'</span>',"mono");
     }).catch(function(){ cmdPrint("proc read failed","err"); }); },
+  pkg:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean), sub=(t[0]||"list").toLowerCase();
+    if(sub==="install"||sub==="uninstall"){ var name=t[1]; if(!name) return cmdPrint("usage: pkg "+sub+" &lt;name&gt;","err");
+      cmdPrint('<span class="cl-d">'+(sub==="install"?"verify-then-install":"uninstall")+' · '+esc(name)+'…</span>',"dim");
+      fetch(window.AEGIS.http("/aegis/pkg/"+sub),{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({name:name})}).then(function(r){return r.json();}).then(function(d){
+          if(sub==="uninstall") return cmdPrint(d.ok?('<span class="cl-ok">✓ uninstalled '+esc(name)+'</span>'):("not installed: "+esc(name)),d.ok?"ok":"err");
+          if(d.ok) cmdPrint('<span class="cl-ok">✓ INSTALLED '+esc(d.name)+'</span> — gates passed (manifest · policy · code · integrity) → now a live service',"sys");
+          else { cmdPrint('<span class="cl-crit">✗ REFUSED at '+esc(d.stage)+' gate</span> — '+esc(d.reason),"err");
+                 (d.detail||[]).forEach(function(x){ cmdPrint('· '+esc(x),"dim"); }); }
+        }).catch(function(){ cmdPrint("pkg "+sub+" failed — backend unreachable","err"); }); return; }
+    fetch(window.AEGIS.http("/aegis/pkg")).then(function(r){return r.json();}).then(function(d){
+      cmdPrint('<b>aegis-pkg · PACKAGE REGISTRY</b> <span class="cl-d">— verify-then-install · policy: ≤'+d.policy.max_lane_budget+' lanes</span>',"sys");
+      cmdPrint('<span class="cl-d">installed:</span>',"dim");
+      (d.packages||[]).forEach(function(p){ cmdPrint('<span class="cl-ok">●</span> '+pad(p.name,12)+'<span class="cl-d">v'+esc((p.manifest&&p.manifest.version)||"?")+' · '+esc(p.kind)+' · '+esc(p.hash||"")+'</span>',"mono"); });
+      if(!(d.packages||[]).length) cmdPrint('  (none)',"dim");
+      cmdPrint('<span class="cl-d">available to install:</span>',"dim");
+      (d.available||[]).forEach(function(p){ cmdPrint('<span class="cl-cmd">○</span> '+pad(p.name,12)+'<span class="cl-d">'+esc((p.manifest&&p.manifest.summary)||"")+'</span>',"mono"); });
+      cmdPrint('try: <span class="cl-cmd">pkg install tachy</span> · <span class="cl-cmd">pkg install rogue</span> (watch the gate refuse it)',"dim");
+    }).catch(function(){ cmdPrint("package registry unreachable","err"); }); },
   vasodilate:function(a){ var v=parseFloat(a); if(isNaN(v)) return cmdPrint("usage: vasodilate &lt;0..1&gt;","err");
     fetch(window.AEGIS.http("/aegis/ppg/vasodilation"),{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({alpha:v})}).then(function(r){return r.json();}).then(function(d){
