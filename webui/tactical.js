@@ -1434,7 +1434,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1451,6 +1451,9 @@ var CMD={
      ['resonance <bed>','cross-modal agreement gate (artifact-robust evidence)'],
      ['vascular','live PPG morphology — dicrotic-notch vascular tone'],
      ['vasodilate <0..1>','dial the vasodilation model — watch the notch erode'],
+     ['— aegisd app/service plane —','managed, supervised, capability-confined apps'],
+     ['service','list managed services + health (service <name> stop|restart)'],
+     ['proc <path>','read the /proc introspection namespace (proc triage, proc sched)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['— write syscalls —','audited · Z3-gated · default-deny'],
      ['treat <bed> [k=v]','order the certified bundle (fluid=/vaso=/abx= override)'],
@@ -1565,6 +1568,36 @@ var CMD={
     if(d.alpha>0) cmdPrint('<span class="cl-warn">⚠ vasodilation model active ('+Math.round(d.alpha*100)+'%)</span> · <span class="cl-cmd">vasodilate 0</span> to restore',"row");
     cmdPrint('dial <span class="cl-cmd">vasodilate 0..1</span> — watch the notch flatten and tone collapse (the distributive-shock signature)','dim');
     }).catch(function(){ cmdPrint("vascular monitor unreachable","err"); }); },
+  service:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean);
+    if(t.length>=2){ var name=t[0], action=t[1].toLowerCase();
+      fetch(window.AEGIS.http("/aegis/services/"+name+"/"+action),{method:"POST"}).then(function(r){return r.json();}).then(function(d){
+        if(d.status!=="ok") return cmdPrint(esc(d.detail||"service error"),"err");
+        cmdPrint('<span class="cl-ok">✓ '+esc(name)+' → '+esc(action)+'</span> · state '+esc(d.state),"sys");
+      }).catch(function(){ cmdPrint("service control failed","err"); }); return; }
+    fetch(window.AEGIS.http("/aegis/services")).then(function(r){return r.json();}).then(function(d){
+      cmdPrint('<b>aegisd · SERVICE PLANE</b> <span class="cl-d">— '+(d.running||0)+'/'+(d.n||0)+' running'+(d.bed?' · monitoring '+bedTag(d.bed):'')+'</span>',"sys");
+      cmdPrint(pad("SERVICE",12)+pad("STATE",11)+pad("HEALTH",8)+pad("EMITS",10)+"f/r","dim");
+      (d.services||[]).forEach(function(s){ var c=s.state==="RUNNING"?"ok":s.state==="QUARANTINED"?"err":"dim";
+        cmdPrint(pad(s.name,12)+'<span class="cl-'+c+'">'+pad(s.state,11)+'</span>'+
+          (s.healthy?'<span class="cl-ok">'+pad("ok",8)+'</span>':'<span class="cl-warn">'+pad("degraded",8)+'</span>')+
+          pad((s.caps.emits.join(",")||"—"),10)+s.faults+"/"+s.restarts,"mono");
+        if(s.depends&&s.depends.length) cmdPrint('<span class="cl-d">  └ depends: '+s.depends.join(", ")+'</span>',"dim"); });
+      var ev=(d.events||[]); if(ev.length){ cmdPrint('<span class="cl-d">— supervisor —</span>',"dim");
+        ev.slice(-5).forEach(function(e){ var c=e.kind==="FAULT"?"err":e.kind==="RESTART"?"warn":e.kind==="QUARANTINE"?"err":"ok";
+          cmdPrint('<span class="cl-'+c+'">['+pad(e.kind,9)+']</span> '+pad(e.svc,10)+'<span class="cl-d">'+esc(e.detail)+'</span>',"mono"); }); }
+      cmdPrint('control: <span class="cl-cmd">service &lt;name&gt; stop|restart</span> · introspect: <span class="cl-cmd">proc &lt;path&gt;</span>',"dim");
+    }).catch(function(){ cmdPrint("service plane unreachable","err"); }); },
+  proc:function(a){ var path=(a||"").trim();
+    if(!path){ fetch(window.AEGIS.http("/aegis/proc")).then(function(r){return r.json();}).then(function(d){
+      cmdPrint('<b>/proc</b> <span class="cl-d">— AegisOS introspection namespace</span>',"sys");
+      (d.paths||[]).forEach(function(p){ cmdPrint('<span class="cl-cmd">'+esc(p)+'</span>',"mono"); });
+      cmdPrint('read one: <span class="cl-cmd">proc &lt;path&gt;</span> (e.g. proc triage, proc sched)',"dim");
+    }).catch(function(){ cmdPrint("/proc unreachable","err"); }); return; }
+    fetch(window.AEGIS.http("/aegis/proc/"+path.replace(/^\/?proc\/?/,""))).then(function(r){return r.json();}).then(function(d){
+      if(d.error) return cmdPrint(esc(d.path)+": "+esc(d.error),"err");
+      cmdPrint('<span class="cl-cmd">'+esc(d.path)+'</span>',"sys");
+      cmdPrint('<span class="cl-d">'+esc(JSON.stringify(d.value,null,1)).slice(0,1400)+'</span>',"mono");
+    }).catch(function(){ cmdPrint("proc read failed","err"); }); },
   vasodilate:function(a){ var v=parseFloat(a); if(isNaN(v)) return cmdPrint("usage: vasodilate &lt;0..1&gt;","err");
     fetch(window.AEGIS.http("/aegis/ppg/vasodilation"),{method:"POST",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({alpha:v})}).then(function(r){return r.json();}).then(function(d){

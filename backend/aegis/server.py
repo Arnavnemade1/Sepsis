@@ -101,6 +101,39 @@ except Exception as _exc:                          # pragma: no cover
     print(f"[aegis] PPG morphology monitor unavailable: {_exc}")
     ppg_monitor = None
 
+# --- aegisd: the live application/service plane ----------------------------- #
+# The scattered diagnostics now run as managed, supervised SERVICES on the kernel:
+# registered with capability manifests, started in dependency order, ticked each
+# cycle inside the app sandbox, fault-isolated, and introspectable via /proc.
+from backend.aegis.apps.radar_app import RadarApp
+from backend.aegis.apps.resonance_app import ResonanceApp
+from backend.aegis.apps.triage_app import TriageApp
+from backend.aegis.initd import ServiceManager
+from backend.aegis.procfs import ProcFS
+
+apps_cage = NeuroSymbolicRuntime()                 # egress cage for app outputs
+procfs = ProcFS()
+aegisd = ServiceManager(apps_cage, procfs)
+# kernel state, exposed read-only through the one introspection namespace
+procfs.register("/proc/sched", lambda: cluster.sched.kstat() if hasattr(cluster, "sched") else {})
+procfs.register("/proc/mem", lambda: cluster.fabric.address_matrix()["arena"] if hasattr(cluster, "fabric") else {})
+procfs.register("/proc/audit", lambda: syscalls.status())
+procfs.register("/proc/cage", lambda: apps_cage.status())
+try:
+    if hasattr(cluster, "resonance"):              # real cohort only (fitted gate)
+        aegisd.register(ResonanceApp(cluster.resonance))
+        aegisd.register(RadarApp())
+        aegisd.register(TriageApp())
+        aegisd.start_all()
+    # the service plane runs on one monitored patient (a septic bed → coherent
+    # stateful radar window); the per-bed resonance still drives the cohort UI.
+    SERVICE_BED = next((nid for nid in getattr(cluster, "node_ids", [])
+                        if getattr(cluster._by.get(nid), "is_septic", False)),
+                       (cluster.node_ids[0] if getattr(cluster, "node_ids", None) else None))
+except Exception as _exc:                          # pragma: no cover
+    print(f"[aegis] aegisd service plane unavailable: {_exc}")
+    SERVICE_BED = None
+
 
 def _kernel_plane(full: bool = False) -> Dict[str, Any]:
     """Unify the verified device plane for the UI/console: the real eBPF-driven
@@ -377,6 +410,11 @@ def _cluster_payload() -> Dict[str, Any]:
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
     snap["syscalls"] = syscalls.status()          # write-side trap gate: audit + live interventions
     snap["kernel_devices"] = _kernel_plane(full=False)  # verified eBPF device plane (real beds)
+    if SERVICE_BED is not None:                    # managed app/service plane (aegisd)
+        s = aegisd.status()
+        s["bed"] = SERVICE_BED
+        s["bed_name"] = cluster.names.get(SERVICE_BED, SERVICE_BED) if hasattr(cluster, "names") else SERVICE_BED
+        snap["services"] = s
     if ppg_monitor is not None:                   # compact live vascular-tone summary
         st = ppg_monitor.state()
         snap["ppg"] = {k: st.get(k) for k in
@@ -405,6 +443,8 @@ async def _cluster_loop() -> None:
     while True:
         try:
             decision = cluster.tick()              # ticks the cohort incl. its eBPF beds
+            if SERVICE_BED is not None:            # tick the managed app/service plane
+                aegisd.tick(cluster.frame_for(SERVICE_BED))
             if ppg_monitor is not None:
                 ppg_monitor.tick(CLUSTER_TICK_SECONDS)   # advance the live PPG waveform
             _certify_cluster_headline(decision)
@@ -590,6 +630,47 @@ async def kernel_fault(payload: KernelFaultIn) -> Dict[str, Any]:
     res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
     await _broadcast_cluster(_cluster_payload())
     return res
+
+
+@app.get("/aegis/services")
+def services_status() -> Dict[str, Any]:
+    """The managed app/service plane: every service's capabilities, health, and
+    the supervisor's event log."""
+    s = aegisd.status()
+    s["bed"] = SERVICE_BED
+    return s
+
+
+@app.post("/aegis/services/{name}/{action}")
+async def service_control(name: str, action: str) -> Dict[str, Any]:
+    """systemctl-style control: start | stop | restart a service."""
+    act = action.lower()
+    ok = (aegisd.stop(name) if act == "stop" else
+          aegisd.restart(name) if act in ("restart", "start") else None)
+    if ok is None:
+        return {"status": "error", "detail": f"unknown action {action!r}"}
+    if not ok:
+        return {"status": "error", "detail": f"unknown service {name!r}"}
+    await _broadcast_cluster(_cluster_payload())
+    return {"status": "ok", "service": name, "action": act,
+            "state": aegisd.services[name].state}
+
+
+@app.get("/aegis/proc")
+def proc_list() -> Dict[str, Any]:
+    """The /proc introspection namespace (every live path + value)."""
+    return {"paths": procfs.list(), "tree": procfs.tree()}
+
+
+@app.get("/aegis/proc/{path:path}")
+def proc_read(path: str) -> Dict[str, Any]:
+    """Read one /proc path (e.g. services, triage, sched, mem, audit, cage)."""
+    full = "/proc/" + path.lstrip("/")
+    try:
+        return {"path": full, "value": procfs.read(full)}
+    except KeyError:
+        return {"path": full, "error": "no such proc path",
+                "available": procfs.list()}
 
 
 class VasodilationIn(BaseModel):

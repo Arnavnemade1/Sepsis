@@ -558,14 +558,21 @@ class CohortCluster:
             self._resonance_query(nid)
         return self.sched.schedule()
 
-    def _resonance_query(self, nid: str) -> None:
+    def frame_for(self, nid: str) -> Dict[str, float]:
+        """The enriched bio-state (levels + trends + composites) of one bed — the
+        sensor 'frame' the managed app/service plane (aegisd) ticks on."""
         from backend.aegis.hdc_memory import enrich_series, TREND_WIN
-        p = self._by[nid]
+        p = self._by.get(nid)
+        if p is None:
+            return {}
         hr = min(p.icu_hour, p.los_total - 1)
         lo = max(0, hr - TREND_WIN)
         win = [{ch: float(p._ff[t, k]) for k, ch in enumerate(CHANNELS)}
                for t in range(lo, hr + 1)]
-        est = enrich_series(win)[-1] if win else {}
+        return enrich_series(win)[-1] if win else {}
+
+    def _resonance_query(self, nid: str) -> None:
+        est = self.frame_for(nid)
         if not est:
             return
         n = self._artifact.get(nid, 0)
