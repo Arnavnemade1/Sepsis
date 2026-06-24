@@ -241,6 +241,21 @@ b{font-weight:700}
   padding:2px 8px;border-radius:999px;border:1px solid var(--hair);white-space:nowrap}
 .dos-ebpf.ok{color:var(--ok);border-color:rgba(63,227,160,.3);background:rgba(63,227,160,.06)}
 .dos-ebpf.warn{color:var(--watch);border-color:rgba(255,194,77,.32);background:rgba(255,194,77,.07)}
+/* cross-modal resonance — per-pathway σ projection onto the sepsis axis */
+.xmr-row{display:grid;grid-template-columns:104px 1fr 44px;align-items:center;gap:8px;margin:5px 0;
+  font-family:var(--mono);font-size:10px}
+.xmr-nm{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.xmr-track{position:relative;height:7px;background:rgba(150,170,222,.08);border-radius:3px}
+.xmr-zero{position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--hair)}
+.xmr-fill{position:absolute;top:0;bottom:0;background:var(--cyan);border-radius:3px;opacity:.85;transition:left .3s,width .3s}
+.xmr-row.rej .xmr-fill{background:var(--watch)}
+.xmr-z{text-align:right;color:var(--ink)}
+.xmr-row.rej .xmr-z{color:var(--watch)}
+.xmr-status{margin-top:9px;font-family:var(--mono);font-size:10.5px}
+.xmr-warn{color:var(--watch)}.xmr-ok{color:var(--ok)}.xmr-dim{color:var(--dim)}
+.xmr-risk{margin-top:5px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.xmr-risk b{color:var(--ok)} .xmr-risk s{color:var(--dim);text-decoration:none;opacity:.7}
+.xmr-empty{color:var(--dim);font-family:var(--mono);font-size:10.5px}
 
 /* ---------------- CONTROL RAIL ---------------- */
 .control{flex:0 0 auto;padding:10px 20px;border-top:1px solid var(--hair-soft);

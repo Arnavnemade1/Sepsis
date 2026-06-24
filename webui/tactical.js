@@ -261,6 +261,7 @@ function updateDossier(b){
       eb.title = deg ? ('Verified driver quarantined by the supervisor; running on fallback ('+esc(dev.active)+'). Use `recover` in the console to re-arm.')
                      : ('This patient’s optical data path runs statically-verified bytecode — proven to halt (≤'+(dev.max_steps||'?')+' steps) and to write only within its own ring.');
     } else { eb.hidden=true; } }
+  renderResonance(b);
   // patient record — real demographics + ground-truth validation
   if(b.mrn){
     $("dos-demo").innerHTML=
@@ -858,6 +859,30 @@ function renderSyscall(d){
   if(d.result&&d.result.proof) cmdPrint('<span class="cl-d">⊢ '+esc(d.result.proof)+'</span>',"mono");
 }
 function splitBedArgs(a){ var t=String(a||"").trim().split(/\s+/).filter(Boolean); return {bedq:t[0]||"", rest:t.slice(1)}; }
+var XMR_NAMES={camera:"Camera · rPPG", wearable:"Wearable · PPG", ehr:"EHR · Labs"};
+function renderResonance(b){
+  var el=$("dos-xmr"); if(!el) return;
+  var r=b&&b.resonance;
+  if(!r||!r.per_modality){ el.innerHTML='<div class="xmr-empty">calibrating cross-modal axis…</div>';
+    if($("dos-xmr-meta")) $("dos-xmr-meta").textContent="agreement gate"; return; }
+  var pm=r.per_modality;
+  var rows=Object.keys(pm).map(function(k){
+    var z=pm[k], pct=Math.max(0,Math.min(100,(z+3)/6*100)), rej=(r.uncorroborated_pathway===k);
+    return '<div class="xmr-row'+(rej?" rej":"")+'"><span class="xmr-nm">'+(XMR_NAMES[k]||k)+'</span>'+
+      '<div class="xmr-track"><div class="xmr-zero"></div>'+
+      '<div class="xmr-fill" style="left:'+Math.min(50,pct)+'%;width:'+Math.abs(pct-50)+'%"></div></div>'+
+      '<span class="xmr-z">'+(z>=0?"+":"")+z.toFixed(1)+'σ</span></div>';
+  }).join("");
+  var status = r.isolated
+    ? '<span class="xmr-warn">⚠ '+esc((XMR_NAMES[r.uncorroborated_pathway]||r.uncorroborated_pathway||""))+' elevated alone — held pending confirmation</span>'
+    : (r.corroborated?'<span class="xmr-ok">✓ corroborated across pathways</span>'
+                     :'<span class="xmr-dim">within range · no pathway elevated</span>');
+  var nv=Math.round((r.naive_risk||0)*100), gv=Math.round((r.gated_risk||0)*100);
+  el.innerHTML=rows+'<div class="xmr-status">'+status+'</div>'+
+    '<div class="xmr-risk">ungated '+(r.isolated?'<s>'+nv+'%</s>':nv+'%')+' → gated <b>'+gv+'%</b>'+
+    ' · resonance '+Math.round((r.resonance||0)*100)+'%</div>';
+  if($("dos-xmr-meta")) $("dos-xmr-meta").textContent = r.isolated?"artifact rejected":("agreement "+Math.round((r.resonance||0)*100)+"%");
+}
 function renderDevicePlane(k){
   if(!k||!$("dp-bays")) return;
   var v=k.verifier||{}, devs=k.devices||[];
@@ -1409,7 +1434,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1423,6 +1448,7 @@ var CMD={
      ['dmesg','kernel interrupt / preemption log'],
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
+     ['resonance <bed>','cross-modal agreement gate (artifact-robust evidence)'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['— write syscalls —','audited · Z3-gated · default-deny'],
      ['treat <bed> [k=v]','order the certified bundle (fluid=/vaso=/abx= override)'],
@@ -1515,7 +1541,17 @@ var CMD={
       ' <span class="cl-d">'+esc(e.egress||"—")+' · Z3 '+esc(e.z3_status)+'</span>',"mono"); });
     }).catch(function(){ cmdPrint("audit log unavailable (backend waking?)","err"); }); },
   noise:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
-    chaos(b.bed_id,"noise"); cmdPrint("injecting sensor noise surge · "+esc(b.name),"warn"); },
+    chaos(b.bed_id,"noise"); cmdPrint("injecting sensor noise surge · "+esc(b.name)+" — watch the resonance gate reject the camera pathway","warn"); },
+  resonance:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
+    var r=b.resonance; if(!r||!r.per_modality) return cmdPrint("resonance calibrating…","dim");
+    cmdPrint('<b>CROSS-MODAL RESONANCE · '+esc(b.name)+'</b> <span class="cl-d">— each pathway projected onto the sepsis axis</span>',"sys");
+    var nm={camera:"camera·rPPG",wearable:"wearable·PPG",ehr:"EHR·labs"};
+    Object.keys(r.per_modality).forEach(function(k){ var z=r.per_modality[k], rej=(r.uncorroborated_pathway===k);
+      var n=Math.max(0,Math.min(12,Math.round((z+3)/6*12)));
+      cmdPrint(pad(nm[k]||k,14)+'<span class="cl-'+(rej?"warn":"cmd")+'">'+"█".repeat(n)+"·".repeat(12-n)+'</span> '+
+        (z>=0?"+":"")+z.toFixed(1)+'σ'+(rej?' <span class="cl-warn">⚠ uncorroborated</span>':''),"mono"); });
+    cmdPrint('ungated '+Math.round((r.naive_risk||0)*100)+'% → gated <b>'+Math.round((r.gated_risk||0)*100)+'%</b> · resonance '+Math.round((r.resonance||0)*100)+'%',"row");
+    cmdPrint(esc(r.explain||""), r.isolated?"warn":"dim"); },
   // ---- Aegis-eBPF verified device plane (input-side safety) ----
   verify:function(a){ var name=(a||"").trim().toLowerCase();
     if(!name){ fetch(window.AEGIS.http("/aegis/kernel/devices")).then(function(r){return r.json();}).then(function(d){

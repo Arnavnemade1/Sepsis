@@ -407,6 +407,12 @@ class CohortCluster:
         self.hdc_state: Dict[str, Dict[str, Any]] = {}
         self._build_hdc_memory()
         self._build_ews()
+        # Cross-modal resonance gate: fit the sepsis axis + per-modality calibration
+        # on the real precedent, then assess each bed live (artifact-robust evidence).
+        from backend.aegis.resonance import CrossModalResonance
+        self.resonance = CrossModalResonance.from_patients(self.hdc, self.patients)
+        self.resonance_state: Dict[str, Dict[str, Any]] = {}
+        self._artifact: Dict[str, int] = {}     # bed -> ticks of injected camera artifact
 
     def _build_ews(self) -> None:
         """Precompute each patient's causal Critical-Slowing-Down resilience series
@@ -501,6 +507,9 @@ class CohortCluster:
         drv = self.bus.device_at(f"/dev/bio/{bed_id}/optical_feed")
         if hasattr(drv, "_noise"):             # trusted driver; eBPF beds have no _noise
             drv._noise["hr"] = drv._noise.get("hr", 3.0) * 4.0
+        # Corrupt the camera pathway (an rPPG lock-failure) for a few ticks so the
+        # cross-modal resonance gate can be seen rejecting it as uncorroborated.
+        self._artifact[bed_id] = 14
 
     # -- tick ----------------------------------------------------------- #
     def _sample_vitals(self, bed_id: str) -> Dict[str, float]:
@@ -543,7 +552,28 @@ class CohortCluster:
             self.sched.observe(nid, risk, vit, foresight)
             # HDC associative retrieval — how does this bio-state resemble real precedent?
             self._hdc_query(nid)
+            # Cross-modal resonance — assessed on the same enriched state as the HDC
+            # query (so it matches the gate's calibration), with an optional injected
+            # camera artifact so the gate can be seen rejecting an uncorroborated spike.
+            self._resonance_query(nid)
         return self.sched.schedule()
+
+    def _resonance_query(self, nid: str) -> None:
+        from backend.aegis.hdc_memory import enrich_series, TREND_WIN
+        p = self._by[nid]
+        hr = min(p.icu_hour, p.los_total - 1)
+        lo = max(0, hr - TREND_WIN)
+        win = [{ch: float(p._ff[t, k]) for k, ch in enumerate(CHANNELS)}
+               for t in range(lo, hr + 1)]
+        est = enrich_series(win)[-1] if win else {}
+        if not est:
+            return
+        n = self._artifact.get(nid, 0)
+        if n > 0:                                # injected rPPG lock-failure on the camera
+            self._artifact[nid] = n - 1
+            est = dict(est); bad = 185.0
+            est["hr__tr"] = bad - float(est.get("hr", 80.0)); est["hr"] = bad
+        self.resonance_state[nid] = self.resonance.assess(est)
 
     def _hdc_query(self, nid: str) -> None:
         from backend.aegis.hdc_memory import enrich_series, TREND_WIN
@@ -581,6 +611,7 @@ class CohortCluster:
             "personal_top": pz.get("top", []),
             "hdc": self.hdc_state.get(nid, {}),     # HDC associative-memory resemblance
             "ews": self._ews_at(nid, lab_i),        # Critical-Slowing-Down radar
+            "resonance": self.resonance_state.get(nid, {}),  # cross-modal agreement gate
         })
         return d
 
