@@ -1434,7 +1434,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1449,6 +1449,8 @@ var CMD={
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['resonance <bed>','cross-modal agreement gate (artifact-robust evidence)'],
+     ['vascular','live PPG morphology — dicrotic-notch vascular tone'],
+     ['vasodilate <0..1>','dial the vasodilation model — watch the notch erode'],
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['— write syscalls —','audited · Z3-gated · default-deny'],
      ['treat <bed> [k=v]','order the certified bundle (fluid=/vaso=/abx= override)'],
@@ -1552,6 +1554,24 @@ var CMD={
         (z>=0?"+":"")+z.toFixed(1)+'σ'+(rej?' <span class="cl-warn">⚠ uncorroborated</span>':''),"mono"); });
     cmdPrint('ungated '+Math.round((r.naive_risk||0)*100)+'% → gated <b>'+Math.round((r.gated_risk||0)*100)+'%</b> · resonance '+Math.round((r.resonance||0)*100)+'%',"row");
     cmdPrint(esc(r.explain||""), r.isolated?"warn":"dim"); },
+  vascular:function(){ fetch(window.AEGIS.http("/aegis/ppg/morphology")).then(function(r){return r.json();}).then(function(d){
+    if(!d.available) return cmdPrint("PPG monitor unavailable — BIDMC waveform not present","dim");
+    cmdPrint('<b>VASCULAR TONE · PPG MORPHOLOGY</b> <span class="cl-d">— real BIDMC waveform '+esc(d.record)+' (replay)'+(d.hr?' · '+Math.round(d.hr)+' bpm':'')+'</span>',"sys");
+    var w=d.wave||[], cols=72, sp="▁▂▃▄▅▆▇█", line="";
+    for(var i=0;i<cols;i++){ var v=w.length?w[Math.floor(i/cols*(w.length-1))]:0; line+=sp[Math.min(7,Math.max(0,Math.floor((v||0)*7)))]; }
+    cmdPrint('<span class="cl-cmd">'+line+'</span>',"mono");
+    var tc=d.tone==="preserved"?"ok":d.tone==="reduced"?"warn":"crit";
+    cmdPrint('tone <span class="cl-'+tc+'">'+esc((d.tone||"?").toUpperCase())+'</span> · dicrotic-notch <b>'+Math.round((d.notch_rate||0)*100)+'%</b> · reflection '+(d.reflection_index||0).toFixed(3)+' · b/a '+(d.ba_ratio||0).toFixed(2),"row");
+    if(d.alpha>0) cmdPrint('<span class="cl-warn">⚠ vasodilation model active ('+Math.round(d.alpha*100)+'%)</span> · <span class="cl-cmd">vasodilate 0</span> to restore',"row");
+    cmdPrint('dial <span class="cl-cmd">vasodilate 0..1</span> — watch the notch flatten and tone collapse (the distributive-shock signature)','dim');
+    }).catch(function(){ cmdPrint("vascular monitor unreachable","err"); }); },
+  vasodilate:function(a){ var v=parseFloat(a); if(isNaN(v)) return cmdPrint("usage: vasodilate &lt;0..1&gt;","err");
+    fetch(window.AEGIS.http("/aegis/ppg/vasodilation"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({alpha:v})}).then(function(r){return r.json();}).then(function(d){
+        if(!d.available) return cmdPrint("PPG monitor unavailable","dim");
+        cmdPrint('<span class="cl-sys">vasodilation → '+Math.round((d.alpha||0)*100)+'%</span>',"sys");
+        CMD.vascular();
+      }).catch(function(){ cmdPrint("vasodilate failed — backend unreachable","err"); }); },
   // ---- Aegis-eBPF verified device plane (input-side safety) ----
   verify:function(a){ var name=(a||"").trim().toLowerCase();
     if(!name){ fetch(window.AEGIS.http("/aegis/kernel/devices")).then(function(r){return r.json();}).then(function(d){

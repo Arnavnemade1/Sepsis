@@ -91,6 +91,15 @@ syscalls = SyscallTable(cluster, bundle_engine, cluster_safety)
 # the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose
 # optical sensor is driven by proven-safe bytecode, supervised for fault isolation.
 kernel_devices = KernelDeviceRuntime()
+# Live PPG-morphology vascular-tone monitor (real BIDMC waveform replay). Standalone
+# pathway — NOT fused into the cohort resonance gate (different patients / no
+# synchronized vitals); see backend/physio/ppg_monitor.py.
+try:
+    from backend.physio.ppg_monitor import PPGMorphologyMonitor
+    ppg_monitor = PPGMorphologyMonitor()
+except Exception as _exc:                          # pragma: no cover
+    print(f"[aegis] PPG morphology monitor unavailable: {_exc}")
+    ppg_monitor = None
 
 
 def _kernel_plane(full: bool = False) -> Dict[str, Any]:
@@ -368,6 +377,11 @@ def _cluster_payload() -> Dict[str, Any]:
     snap["safety"] = cluster_safety.status()      # L4 egress-cage counters
     snap["syscalls"] = syscalls.status()          # write-side trap gate: audit + live interventions
     snap["kernel_devices"] = _kernel_plane(full=False)  # verified eBPF device plane (real beds)
+    if ppg_monitor is not None:                   # compact live vascular-tone summary
+        st = ppg_monitor.state()
+        snap["ppg"] = {k: st.get(k) for k in
+                       ("available", "record", "tone", "notch_rate", "ba_ratio",
+                        "reflection_index", "hr", "alpha")}
     snap["bundle"] = _focus_bundle()              # Module C — certified Hour-1 bundle
     snap["data_mode"] = DATA_MODE
     snap["ts"] = time.time()
@@ -391,6 +405,8 @@ async def _cluster_loop() -> None:
     while True:
         try:
             decision = cluster.tick()              # ticks the cohort incl. its eBPF beds
+            if ppg_monitor is not None:
+                ppg_monitor.tick(CLUSTER_TICK_SECONDS)   # advance the live PPG waveform
             _certify_cluster_headline(decision)
             await _broadcast_cluster(_cluster_payload())
         except Exception as exc:  # pragma: no cover
@@ -574,6 +590,29 @@ async def kernel_fault(payload: KernelFaultIn) -> Dict[str, Any]:
     res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
     await _broadcast_cluster(_cluster_payload())
     return res
+
+
+class VasodilationIn(BaseModel):
+    alpha: float                           # 0 = native PPG, 1 = dicrotic notch fully eroded
+
+
+@app.get("/aegis/ppg/morphology")
+def ppg_morphology() -> Dict[str, Any]:
+    """The live PPG-morphology vascular-tone monitor: current waveform window +
+    dicrotic-notch / b-a features extracted in real time from a real BIDMC PPG."""
+    if ppg_monitor is None:
+        return {"available": False}
+    return ppg_monitor.state()
+
+
+@app.post("/aegis/ppg/vasodilation")
+async def ppg_vasodilation(payload: VasodilationIn) -> Dict[str, Any]:
+    """Dial the vasodilation model and watch the dicrotic notch flatten + the
+    vascular-tone metrics collapse in real time (the distributive-shock signature)."""
+    if ppg_monitor is None:
+        return {"available": False}
+    ppg_monitor.set_vasodilation(payload.alpha)
+    return ppg_monitor.state()
 
 
 @app.post("/aegis/kernel/recover")
