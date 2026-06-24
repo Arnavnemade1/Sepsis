@@ -257,6 +257,32 @@ b{font-weight:700}
 .xmr-risk b{color:var(--ok)} .xmr-risk s{color:var(--dim);text-decoration:none;opacity:.7}
 .xmr-empty{color:var(--dim);font-family:var(--mono);font-size:10.5px}
 
+/* ---------------- aegisd APPLICATION PLANE ---------------- */
+.svcplane{flex:0 0 auto;margin:0 20px 4px;border:1px solid var(--hair);border-radius:var(--r);overflow:hidden;
+  background:linear-gradient(180deg,rgba(9,12,19,.82),rgba(6,8,13,.92));box-shadow:var(--shadow)}
+.sp-bar{display:flex;align-items:center;gap:11px;padding:10px 16px;border-bottom:1px solid var(--hair-soft)}
+.sp-dot{width:7px;height:7px;border-radius:1px;background:var(--indigo);box-shadow:0 0 9px var(--indigo);flex:0 0 auto;transition:.3s}
+.svcplane.degraded .sp-dot{background:var(--watch);box-shadow:0 0 10px var(--watch);animation:pulse 1.1s infinite}
+.sp-title{font-size:12px;font-weight:600;color:var(--ink);text-transform:uppercase;letter-spacing:.03em}
+.sp-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim)}
+.sp-meta{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.sp-body{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:9px;padding:11px 16px 8px}
+.sp-svc{border:1px solid var(--hair-soft);border-left:2px solid var(--indigo);border-radius:var(--r-sm);
+  padding:7px 10px;background:rgba(120,150,230,.03)}
+.sp-svc.warn{border-left-color:var(--watch)}.sp-svc.crit{border-left-color:var(--crit);background:rgba(255,93,122,.06)}
+.sp-svc-hd{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9px;letter-spacing:.04em}
+.sp-state{font-weight:600;color:var(--indigo)}.sp-svc.warn .sp-state{color:var(--watch)}.sp-svc.crit .sp-state{color:var(--crit)}
+.sp-dep{color:var(--dim)}
+.sp-svc-nm{font-size:12px;color:var(--ink);font-weight:600;margin:4px 0 5px}
+.sp-svc-ft{display:flex;align-items:center;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--muted)}
+.sp-fr{color:var(--dim)}
+.sp-pkgs{display:flex;align-items:center;flex-wrap:wrap;gap:6px;padding:2px 16px 12px}
+.sp-pl{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-right:2px}
+.sp-pill{font-family:var(--mono);font-size:10px;padding:2px 9px;border-radius:999px;border:1px solid var(--hair);color:var(--muted)}
+.sp-pill.on{color:var(--ok);border-color:rgba(63,227,160,.3);background:rgba(63,227,160,.06)}
+.sp-pill[data-install]{color:var(--cyan);border-color:rgba(72,196,242,.3);cursor:pointer;transition:.2s}
+.sp-pill[data-install]:hover{background:rgba(72,196,242,.1)}
+
 /* ---------------- CONTROL RAIL ---------------- */
 .control{flex:0 0 auto;padding:10px 20px;border-top:1px solid var(--hair-soft);
   display:flex;align-items:center;gap:18px;background:rgba(8,11,18,.5)}

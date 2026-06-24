@@ -93,6 +93,7 @@ function ingest(snap){
   if(selectedBed && latestBeds[selectedBed]) updateDossier(latestBeds[selectedBed]);
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
   renderDevicePlane(snap.kernel_devices);   // Aegis-eBPF verified device plane (input safety)
+  renderServicePlane(snap.services, snap.packages);   // aegisd managed app/service plane
   if(currentView==="roster") renderRoster();
 }
 
@@ -901,6 +902,32 @@ function renderDevicePlane(k){
       (d.state!=="RUNNING" ? ('<span class="dp-fo">⚠ '+(d.failovers||1)+' failover</span>')
                            : '<span class="dp-vok">✓ verified</span>')+'</div></div>';
   }).join("");
+}
+function renderServicePlane(s, pkgs){
+  if(!s||!$("sp-svcs")) return;
+  var deg=(s.services||[]).filter(function(x){return x.state!=="RUNNING";}).length;
+  $("svcplane").classList.toggle("degraded", deg>0);
+  $("sp-meta").textContent=(s.running||0)+'/'+(s.n||0)+' running'+(s.bed?' · '+bedTag(s.bed):'');
+  $("sp-svcs").innerHTML=(s.services||[]).map(function(x){
+    var cls=x.state==="RUNNING"?(x.healthy?"":"warn"):"crit";
+    return '<div class="sp-svc '+cls+'"><div class="sp-svc-hd"><span class="sp-state">'+esc(x.state)+'</span>'+
+      (x.depends&&x.depends.length?'<span class="sp-dep">⇠'+x.depends.length+'</span>':'')+'</div>'+
+      '<div class="sp-svc-nm">'+esc(x.name)+'</div>'+
+      '<div class="sp-svc-ft"><span>'+esc((x.caps&&x.caps.emits.join(","))||"—")+'</span>'+
+      '<span class="sp-fr">'+(x.faults||0)+'/'+(x.restarts||0)+'</span></div></div>';
+  }).join("");
+  if($("sp-pkgs")){ var ins=(pkgs&&pkgs.installed)||[], av=(pkgs&&pkgs.available)||[];
+    $("sp-pkgs").innerHTML='<span class="sp-pl">pkg</span>'+
+      ins.map(function(n){return '<span class="sp-pill on">'+esc(n)+'</span>';}).join("")+
+      av.map(function(n){return '<span class="sp-pill" data-install="'+esc(n)+'" title="verify-then-install">+ '+esc(n)+'</span>';}).join(""); }
+}
+function installPkg(name){
+  fetch(window.AEGIS.http("/aegis/pkg/install"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({name:name})}).then(function(r){return r.json();}).then(function(d){
+      if(cmdOpen||true){ cmdShow(); if(d.ok) cmdPrint('<span class="cl-ok">✓ installed '+esc(d.name)+'</span> via verify-then-install','sys');
+        else { cmdPrint('<span class="cl-crit">✗ '+esc(name)+' REFUSED at '+esc(d.stage)+' gate</span> — '+esc(d.reason),"err");
+               (d.detail||[]).forEach(function(x){ cmdPrint('· '+esc(x),"dim"); }); } }
+    }).catch(function(){});
 }
 function renderVerify(d){
   var title='driver'+(d.name?' <b>'+esc(d.name)+'</b>':'')+(d.description?' <span class="cl-d">— '+esc(d.description)+'</span>':'');
@@ -1722,6 +1749,7 @@ function setup(){
   surf.dosRisk=new Surface("cv-dos-risk");
   surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
+  var spp=$("sp-pkgs"); if(spp) spp.addEventListener("click",function(e){ var p=e.target.closest("[data-install]"); if(p) installPkg(p.dataset.install); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
     if(!b||!selectedBed) return; chaos(selectedBed,b.dataset.act); b.animate([{opacity:.45},{opacity:1}],{duration:280}); });
   $("dos-close").addEventListener("click",closeDossier);
