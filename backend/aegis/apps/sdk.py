@@ -51,6 +51,7 @@ class AppManifest:
     summary: str = ""
     reads: Tuple[str, ...] = ()            # sensor channels the app may read
     emits: Tuple[str, ...] = ()            # egress classes the app may emit
+    proc_reads: Tuple[str, ...] = ()       # /proc paths the app may read (IPC)
     lane_class: str = "ml_tracking"        # scheduler class it runs in
     lane_budget: int = 1                   # compute lanes it may request
     depends: Tuple[str, ...] = ()          # other services it needs running first
@@ -71,8 +72,9 @@ class AppManifest:
     def to_dict(self) -> Dict[str, Any]:
         return {"name": self.name, "version": self.version, "author": self.author,
                 "summary": self.summary, "reads": list(self.reads),
-                "emits": list(self.emits), "lane_class": self.lane_class,
-                "lane_budget": self.lane_budget, "depends": list(self.depends)}
+                "emits": list(self.emits), "proc_reads": list(self.proc_reads),
+                "lane_class": self.lane_class, "lane_budget": self.lane_budget,
+                "depends": list(self.depends)}
 
     def integrity_hash(self) -> str:
         """Stable content hash over the declared capabilities — the registry pins
@@ -87,12 +89,14 @@ class AppContext:
     is checked against the manifest before it touches a real service."""
 
     def __init__(self, manifest: AppManifest, cage: NeuroSymbolicRuntime,
-                 frame: Dict[str, float]):
+                 frame: Dict[str, float], procfs: Any = None):
         self._m = manifest
         self._cage = cage
         self._frame = frame                # this tick's sensor frame (kept private)
+        self._procfs = procfs
         self._reads = set(manifest.reads)
         self._emits = set(manifest.emits)
+        self._proc_reads = set(manifest.proc_reads)
         self.emitted: List[Dict[str, Any]] = []
         self.violations: List[str] = []
         self.logs: List[str] = []
@@ -118,6 +122,15 @@ class AppContext:
         self.emitted.append({"egress": egress_class, "ok": ok,
                              "z3": cert.z3_status, "msg": cert.message})
         return cert
+
+    # -- capability-checked introspection / inter-service reads --------- #
+    def read_proc(self, path: str) -> Any:
+        if path not in self._proc_reads:
+            self._deny(f"read_proc {path!r} not in capabilities "
+                       f"{sorted(self._proc_reads)}")
+        if self._procfs is None:
+            return None
+        return self._procfs.read(path)
 
     def log(self, msg: str) -> None:
         self.logs.append(str(msg))
@@ -166,11 +179,11 @@ class TickResult:
 
 
 def tick_app(app: AegisApp, cage: NeuroSymbolicRuntime,
-             frame: Dict[str, float]) -> TickResult:
+             frame: Dict[str, float], procfs: Any = None) -> TickResult:
     """Run one app tick inside the sandbox. A capability violation or any other
     exception is CONTAINED here (reported, never propagated) — the seed of the
     service supervisor: a misbehaving app cannot take down the kernel."""
-    ctx = AppContext(app.manifest, cage, frame)
+    ctx = AppContext(app.manifest, cage, frame, procfs=procfs)
     t0 = time.perf_counter()
     try:
         out = app.on_tick(ctx)
