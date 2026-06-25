@@ -616,6 +616,8 @@ class CohortCluster:
             "deviation": pz.get("deviation", 0.0),
             "baseline_maturity": pz.get("maturity", 0.0),
             "personal_top": pz.get("top", []),
+            "learned": pz.get("learned", {}),       # what the model learned about THIS patient
+
             "hdc": self.hdc_state.get(nid, {}),     # HDC associative-memory resemblance
             "ews": self._ews_at(nid, lab_i),        # Critical-Slowing-Down radar
             "resonance": self.resonance_state.get(nid, {}),  # cross-modal agreement gate

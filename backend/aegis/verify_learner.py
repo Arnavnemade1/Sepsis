@@ -115,6 +115,28 @@ def test_real_no_harm() -> None:
         f"(sustained-2h alarms; honest — see learner-validation)")
 
 
+def test_narrative_describes_learned() -> None:
+    print("[6] narrative reports what was ACTUALLY learned (no invented tendencies)")
+    from backend.aegis.learner import PatientBaselineLearner
+    # a patient who genuinely runs tachycardic + hypotensive, then desaturates
+    lz = PatientBaselineLearner()
+    base = {"hr": 104, "temp_c": 37.0, "resp_rate": 16, "spo2": 98, "map": 66,
+            "wbc": 8.0, "lactate": 1.0}
+    _settle(lz, base, n=20)
+    nar = lz.narrative(base)
+    txt = " ".join(nar["learned"]).lower()
+    assert nar["status"] == "mature"
+    assert "tachycardic" in txt and "hypotensive" in txt, txt
+    assert "bradycardic" not in txt and "low spo₂" not in txt, "invented a tendency"
+    assert not nar["drifting"], "at baseline there should be no drift"
+    _ok(f"learned: {nar['summary']}")
+    # now desaturate + drop MAP and confirm drift is reported in the RIGHT direction
+    nar2 = lz.narrative({**base, "spo2": 90, "map": 54})
+    d = " ".join(nar2["drifting"]).lower()
+    assert "spo₂" in d and "below" in d and "map" in d, d
+    _ok(f"drift: {nar2['drifting'][0]}")
+
+
 def main() -> None:
     print("=" * 64)
     print("AegisOS — per-patient behavioural learner verification")
@@ -124,6 +146,7 @@ def main() -> None:
     test_smoothing_and_direction()
     test_two_sided_risk()
     test_real_no_harm()
+    test_narrative_describes_learned()
     print("-" * 64)
     print("ALL LEARNER CHECKS PASSED")
 

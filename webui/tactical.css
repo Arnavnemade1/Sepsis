@@ -476,6 +476,16 @@ b{font-weight:700}
 .lb-ch .lc-v{font-family:var(--mono);font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right;min-width:96px}
 .lb-ch .lc-v b{color:var(--ink)}
 .lb-none{font-family:var(--mono);font-size:10.5px;color:var(--dim);padding:6px 2px}
+/* ---- learned-profile narrative (what the model learned about the patient) ---- */
+.lb-narr{margin:9px 0 4px;padding:9px 11px;border:1px solid var(--hair-soft);border-radius:var(--r-sm);
+  background:rgba(125,140,255,.04);border-left:2px solid var(--indigo)}
+.lb-nh{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--indigo);
+  display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px}
+.lb-hrs{color:var(--dim);letter-spacing:.04em}
+.lb-learn{font-size:12px;color:var(--ink);line-height:1.5;margin:2px 0;opacity:.92}
+.lb-dh{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--watch);
+  margin:7px 0 3px}
+.lb-drift{font-size:11.5px;color:var(--watch);line-height:1.5;margin:1px 0;font-variant-numeric:tabular-nums}
 
 /* ---- bio-twin legend ---- */
 .cl-twin .card-body{overflow:hidden}

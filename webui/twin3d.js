@@ -65,6 +65,25 @@ const INFECT_COL = 0xff7a3b;                       // distinct "infection" orang
 // suspected-focus region -> organ to light up (null = no single organ / systemic)
 const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver" };
 const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
+
+/* ---------------- click-to-inspect ---------------- */
+const ORGAN_NAME = { heart: "HEART", lung: "LUNGS", liver: "LIVER", spleen: "SPLEEN", kidneyL: "KIDNEY", kidneyR: "KIDNEY" };
+const STATUS_TXT = { NORMAL: "nominal", STRESS: "stress", DYSFUNCTION: "dysfunction", CRITICAL: "critical" };
+// the live vital(s) that describe each organ in the inspect readout
+const ORGAN_READ = {
+  heart:  (d) => "HR " + iv(d, "heart_rate") + " · MAP " + iv(d, "map"),
+  lung:   (d) => "RR " + iv(d, "respiratory_rate") + " · SpO₂ " + iv(d, "spo2"),
+  liver:  (d) => "lactate " + iv(d, "lactate", 1),
+  spleen: (d) => "WBC " + iv(d, "wbc", 1),
+  kidneyL:(d) => "MAP " + iv(d, "map"),
+  kidneyR:(d) => "MAP " + iv(d, "map"),
+};
+let raycaster = null, pointer = null, inspectKey = null, inspectLabel = null, downXY = null;
+function iv(d, key, dec) {
+  const v = readVital(d, key, null);
+  if (v == null || isNaN(v)) return "—";
+  return dec ? (+v).toFixed(dec) : String(Math.round(v));
+}
 let shellU = null;                                // shell shader uniforms
 let started = false, pendingData = null;
 let hr = 72, resp = 15, overall = 0, tNow = 0;
@@ -352,6 +371,64 @@ function setLabel(sprite, text, stroke, fill) {
 }
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
+/* ---------------- inspect readout (click an organ) ---------------- */
+function buildInspect() {
+  const c = document.createElement("canvas"); c.width = 300; c.height = 96;
+  inspectLabel = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
+  inspectLabel.scale.set(0.5, 0.16, 1); inspectLabel.visible = false;
+  inspectLabel.userData = { ctx: c.getContext("2d"), key: null }; scene.add(inspectLabel);
+  raycaster = new THREE.Raycaster(); pointer = new THREE.Vector2();
+}
+function drawInspect(l1, l2, col) {
+  const x = inspectLabel.userData.ctx; x.clearRect(0, 0, 300, 96);
+  x.fillStyle = "rgba(8,12,22,.9)"; rr(x, 8, 12, 284, 72, 10); x.fill();
+  x.strokeStyle = col; x.lineWidth = 2; rr(x, 8, 12, 284, 72, 10); x.stroke();
+  x.fillStyle = col; x.fillRect(8, 12, 4, 72);                  // accent bar
+  x.textAlign = "left"; x.textBaseline = "middle";
+  x.fillStyle = "#eaf0ff"; x.font = "700 22px ui-monospace,monospace"; x.fillText(l1, 26, 38);
+  x.fillStyle = "#9fb0d6"; x.font = "500 15px ui-monospace,monospace"; x.fillText(l2, 26, 66);
+  inspectLabel.material.map.needsUpdate = true;
+}
+function inspectText(key) {
+  const o = organs[key]; if (!o) return null;
+  const reg = mergedRegions()[o.region];
+  const mon = !!(reg && reg.monitored);
+  const sys = REGION_LABEL[o.region] || o.region;
+  let l2;
+  if (mon) {
+    const st = STATUS_TXT[reg.status] || String(reg.status || "").toLowerCase();
+    const vit = ORGAN_READ[key] ? ORGAN_READ[key](lastServerData || {}) : "";
+    l2 = sys + " · " + st + (vit ? " · " + vit : "");
+  } else { l2 = sys + " · no data"; }
+  return { l1: ORGAN_NAME[key] || key.toUpperCase(), l2: l2,
+           col: mon ? "#" + tierColor(reg).getHexString() : "#7c89ad" };
+}
+function refreshInspect() {
+  if (!inspectKey || !inspectLabel) return;
+  const t = inspectText(inspectKey); if (!t) return;
+  drawInspect(t.l1, t.l2, t.col);
+}
+function setInspect(key) {
+  inspectKey = key;
+  if (controls) controls.autoRotate = !key;        // pause the spin while inspecting an organ
+  if (!key) { if (inspectLabel) inspectLabel.visible = false; return; }
+  inspectLabel.userData.key = key; refreshInspect(); inspectLabel.visible = true;
+}
+function onDown(e) { downXY = [e.clientX, e.clientY]; }
+function onUp(e) {
+  if (!downXY) return;
+  const moved = Math.hypot(e.clientX - downXY[0], e.clientY - downXY[1]); downXY = null;
+  if (moved > 6) return;                                        // a drag, not a click
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const meshes = [];
+  for (const k in organs) organs[k].pivot && organs[k].pivot.traverse((o) => { if (o.isMesh) { o.userData._ok = k; meshes.push(o); } });
+  const hit = raycaster.intersectObjects(meshes, false)[0];
+  setInspect(hit ? hit.object.userData._ok : null);
+}
+
 /* ---------------- suspected infection focus ----------------
    A distinct orange "hot zone" (pulsing bloom + expanding rings + label) placed
    at the inferred source of infection, with the organ at that site lit up. The
@@ -394,13 +471,17 @@ function start(el) {
   controls.target.set(0, H * 0.50, 0);
   controls.autoRotate = true; controls.autoRotateSpeed = 0.28;
   controls.minPolarAngle = Math.PI * 0.38; controls.maxPolarAngle = Math.PI * 0.56;
-  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
   const key = new THREE.DirectionalLight(0xcfe4ff, 1.5); key.position.set(0.6, 1.4, 1.2); scene.add(key);
-  const fill = new THREE.DirectionalLight(0x6080c0, 0.6); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
+  const fill = new THREE.DirectionalLight(0x6080c0, 0.55); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0x8fd0ff, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // cool back-rim → separates the body from the dark
+  scene.add(new THREE.HemisphereLight(0x6f86c8, 0x0a1020, 0.45));                                          // soft sky/ground gradient over the tissue
 
   glowTex = glowTexture();
   buildGround(); buildParticles(); buildReticle();
-  loadBody(); loadOrgans(); buildBeacon(); buildInfection();
+  loadBody(); loadOrgans(); buildBeacon(); buildInfection(); buildInspect();
+  renderer.domElement.addEventListener("pointerdown", onDown);
+  renderer.domElement.addEventListener("pointerup", onUp);
   clock = new THREE.Clock(); started = true;
   ro = new ResizeObserver(resize); ro.observe(el); animate();
 }
@@ -488,6 +569,8 @@ function applyRegions() {
   const d = lastServerData || {};
   const live = ["wearable", "simulator", "camera"].includes(d.source) && (d.risk && d.risk.signal_quality != null ? d.risk.signal_quality : 1) > 0.15;
   if (wrist) { wrist.visible = !!wristBone; setWrist(live); }
+
+  refreshInspect();                                 // keep the open organ readout current
 }
 
 function resize() {
@@ -566,6 +649,12 @@ function animate() {
     reticle.children.forEach((c) => { c.material.opacity = (c.geometry.parameters.arc ? 0.6 : 0.55) * edge; });
   }
   if (wrist && wristBone && wrist.visible) { wristBone.getWorldPosition(_v); wrist.position.copy(_v).add(new THREE.Vector3(0, 0.02, 0.04)); }
+
+  // inspect readout tracks the clicked organ
+  if (inspectKey && inspectLabel && inspectLabel.visible && organs[inspectKey] && organs[inspectKey].pivot) {
+    organs[inspectKey].pivot.getWorldPosition(_v);
+    inspectLabel.position.set(_v.x, _v.y + 0.13, _v.z + 0.14);
+  }
 
   renderer.render(scene, camera);
 }

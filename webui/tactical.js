@@ -379,11 +379,23 @@ function chVal(b,ch){ var e=b.edge||{}, en=b.enterprise||{};
 function renderLearned(b){
   var host=$("dos-learned"); if(!host) return;
   var mat=b.baseline_maturity||0, dev=b.deviation||0, top=b.personal_top||[];
+  var lr=b.learned||{};
   var devCls=dev>=2?"alert":dev>=1?"warn":"";
   var html='<div class="lb-mat"><span class="lb-k">Baseline learned</span>'+
     '<span class="lb-track"><i style="width:'+Math.round(mat*100)+'%"></i></span>'+
     '<span class="lb-v">'+Math.round(mat*100)+'%</span></div>'+
     '<div class="lb-dev '+devCls+'"><b>'+dev.toFixed(1)+'σ</b> from own baseline</div>';
+  // what the model has LEARNED about this individual (in words)
+  if(lr.status==="learning"){
+    html+='<div class="lb-narr"><div class="lb-nh">Learned profile</div>'+
+      '<div class="lb-none">'+esc(lr.summary||"Still learning this patient’s baseline.")+'</div></div>';
+  } else if((lr.learned&&lr.learned.length)||(lr.drifting&&lr.drifting.length)){
+    html+='<div class="lb-narr"><div class="lb-nh">Learned profile <span class="lb-hrs">'+(lr.n_hours||0)+'h observed</span></div>';
+    (lr.learned||[]).forEach(function(L){ html+='<div class="lb-learn">› '+esc(L)+'</div>'; });
+    if(lr.drifting&&lr.drifting.length){ html+='<div class="lb-dh">Currently drifting from own norm</div>';
+      lr.drifting.forEach(function(D){ html+='<div class="lb-drift">▲ '+esc(D)+'</div>'; }); }
+    html+='</div>';
+  }
   if(top.length){
     html+=top.map(function(t){ var now=chVal(b,t.ch), z=t.z||0;
       var col=z>=2?C.crit:z>=1?C.watch:C.cyan, wpct=clamp(z/3*50,2,50);
@@ -466,7 +478,8 @@ function feedTwin(b){
   var e=b.edge||{}, en=b.enterprise||{};
   try{ window.AegisTwin.update({source:"simulator",
     body_state:{regions:regionsFromBed(b)},
-    vitals:{heart_rate:e.hr, respiratory_rate:en.resp_rate},
+    vitals:{heart_rate:e.hr, respiratory_rate:en.resp_rate, map:en.map, spo2:en.spo2,
+            temp_c:en.temp_c, wbc:en.wbc, lactate:en.lactate, perfusion:e.perfusion},
     infection:inferInfection(b),
     risk:{signal_quality:1}}); }catch(e){}
 }

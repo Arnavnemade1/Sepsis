@@ -36,8 +36,38 @@ _FLOOR = {"hr": 3.0, "temp_c": 0.2, "resp_rate": 1.5, "spo2": 1.0,
 WARMUP = 6
 MATURE_AT = 12
 
+# Population reference points used ONLY to put what the model learned into words —
+# whether this patient's *own* learned baseline runs high/low/normal vs people, and
+# how tightly each channel is regulated. (The risk model itself never uses these;
+# they are for the human-readable description of learned tendencies.)
+_CENTER = {"hr": 75, "temp_c": 37.0, "resp_rate": 16, "spo2": 97, "map": 85,
+           "wbc": 8.0, "lactate": 1.0}
+_HI = {"hr": 90, "temp_c": 37.5, "resp_rate": 21, "spo2": 101, "map": 102,
+       "wbc": 11.5, "lactate": 2.2}
+_LO = {"hr": 58, "temp_c": 36.3, "resp_rate": 9, "spo2": 94, "map": 72,
+       "wbc": 3.8, "lactate": -1.0}
+_LABILE = {"hr": 11, "temp_c": 0.55, "resp_rate": 4.0, "spo2": 2.5, "map": 9.0,
+           "wbc": 2.5, "lactate": 0.8}
+_UNIT = {"hr": "", "temp_c": "°C", "resp_rate": "/min", "spo2": "%", "map": "",
+         "wbc": "", "lactate": ""}
+_NAME = {"hr": "heart rate", "temp_c": "temperature", "resp_rate": "respiratory rate",
+         "spo2": "SpO₂", "map": "MAP", "wbc": "WBC", "lactate": "lactate"}
+_PHRASE = {
+    ("hr", "hi"): "runs tachycardic", ("hr", "lo"): "runs bradycardic",
+    ("map", "lo"): "runs hypotensive", ("map", "hi"): "runs hypertensive",
+    ("spo2", "lo"): "chronically low SpO₂ (possible chronic lung disease)",
+    ("resp_rate", "hi"): "baseline tachypnea",
+    ("temp_c", "lo"): "runs cool", ("temp_c", "hi"): "runs warm",
+    ("wbc", "hi"): "chronic leukocytosis", ("wbc", "lo"): "baseline leukopenia",
+    ("lactate", "hi"): "elevated baseline lactate",
+}
+
 
 def _clamp(v, lo, hi): return lo if v < lo else hi if v > hi else v
+
+
+def _fmt(v: float) -> str:
+    return str(int(round(v))) if abs(v) >= 10 else f"{v:.1f}"
 
 
 class PatientBaselineLearner:
@@ -96,6 +126,64 @@ class PatientBaselineLearner:
             self.mean[ch] += a * d
             self.var[ch] = (1.0 - a) * (self.var[ch] + a * d * d)
 
+    def profile(self) -> List[Dict[str, Any]]:
+        """What the model has LEARNED about this patient — each channel's personal
+        baseline, its variability, and whether that baseline runs high/low/normal
+        and tightly- or loosely-regulated *for this individual* vs the population."""
+        out: List[Dict[str, Any]] = []
+        if self.n <= WARMUP:
+            return out
+        for ch in SCORED:
+            if ch not in self.mean:
+                continue
+            base, std = self.mean[ch], self._std(ch)
+            level = "high" if base >= _HI[ch] else "low" if base <= _LO[ch] else "normal"
+            labile = std >= _LABILE[ch]
+            tight = std <= _FLOOR[ch] * 1.4
+            note = (_PHRASE.get((ch, "hi"), "") if level == "high"
+                    else _PHRASE.get((ch, "lo"), "") if level == "low" else "")
+            out.append({
+                "ch": ch, "name": _NAME[ch], "baseline": round(base, 2),
+                "std": round(std, 2), "unit": _UNIT[ch], "level": level,
+                "labile": labile, "tight": tight, "note": note,
+            })
+        return out
+
+    def narrative(self, vals: Dict[str, float]) -> Dict[str, Any]:
+        """A plain-English account of the learned baseline + the patient's current
+        departures from it — the dossier reads this verbatim."""
+        if self.n <= WARMUP + 2:
+            return {"status": "learning", "n_hours": self.n, "learned": [],
+                    "drifting": [], "summary": f"Still learning this patient's "
+                    f"baseline ({self.n}h observed)."}
+        prof = self.profile()
+        learned: List[str] = []
+        for p in prof:                                  # notable tendencies first
+            if not p["note"]:
+                continue
+            phr = p["note"] + (f" with a labile {p['name']}" if p["labile"] else "")
+            learned.append(f"{phr[:1].upper()}{phr[1:]} — baseline "
+                           f"{_fmt(p['baseline'])}{p['unit']}.")
+        for p in prof:                                  # one "tightly regulated" note
+            if p["tight"] and p["level"] == "normal" and p["ch"] in ("map", "hr"):
+                learned.append(f"Tightly-regulated {p['name']} "
+                               f"(baseline {_fmt(p['baseline'])}{p['unit']}, ±{_fmt(p['std'])}).")
+                break
+        if not learned:
+            learned.append("Baseline within population norms — a physiologically "
+                           "unremarkable patient so far.")
+        drifting: List[str] = []
+        for ch, z in sorted(self.per_channel(vals).items(), key=lambda kv: -kv[1]):
+            if z >= 0.8 and ch in self.mean:
+                dirn = ("below" if _WORSE.get(ch, 1) == -1
+                        else "off" if ch == "temp_c" else "above")
+                drifting.append(f"{_NAME[ch]} {z:.1f}σ {dirn} own baseline "
+                                f"(now {_fmt(float(vals[ch]))} vs "
+                                f"{_fmt(self.mean[ch])}{_UNIT[ch]})")
+        summary = "; ".join(learned[:2])
+        return {"status": "mature", "n_hours": self.n,
+                "learned": learned[:3], "drifting": drifting[:3], "summary": summary}
+
     def snapshot(self, vals: Dict[str, float]) -> Dict[str, Any]:
         pc = self.per_channel(vals)
         top = sorted(pc.items(), key=lambda kv: kv[1], reverse=True)
@@ -105,6 +193,7 @@ class PatientBaselineLearner:
             "per_channel": pc,
             "top": [{"ch": k, "z": v, "baseline": round(self.mean.get(k, 0.0), 1)}
                     for k, v in top[:3] if v > 0.4],
+            "learned": self.narrative(vals),
         }
 
 
