@@ -184,7 +184,12 @@ function loadOrgans() {
       const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group(); pivot.position.copy(c); root.position.sub(c); pivot.add(root);
       atlasGroup.add(pivot);
-      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false };
+      // a soft additive glow halo (scene-level, billboarded) so a stressed organ
+      // reads as "hot" through the translucent body — the hologram bloom feel.
+      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: BASE.clone(),
+        transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+      halo.scale.set(0.16, 0.16, 1); halo.visible = false; scene.add(halo);
+      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false, halo };
       if (++organLoadCount === ORGAN_FILES.length) calibrateAtlas();
     }, undefined, (e) => console.error("[twin] organ load failed", cfg.file, e));
   });
@@ -527,6 +532,7 @@ function applyRegions() {
     o.mat.emissive.copy(tierColor(reg));
     o.mat.emissiveIntensity = mon ? (0.65 + 0.95 * sev) : 0.32;
     o.mat.opacity = mon ? (0.62 + 0.26 * sev) : 0.34;
+    if (o.halo) o.halo.material.color.copy(tierColor(reg));   // glow halo tracks the tier colour
     if (mon) overall = Math.max(overall, sev);
     if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
   }
@@ -613,6 +619,18 @@ function animate() {
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
       o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.7) * (1.15 + 0.7 * ip);
       if (!o.cfg.beat && !o.cfg.breathe) o.pivot.scale.setScalar(1 + 0.05 * ip);
+    }
+    // glow halo: a hot organ blooms through the body, beating with the pulse
+    if (o.halo) {
+      if (o.mon && o.sev > 0.04) {
+        o.halo.visible = true;
+        o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
+        const pul = o.cfg.beat ? (0.5 + 0.6 * beat) : (0.8 + 0.2 * Math.sin(t * 1.6 + (o.ph || 0)));
+        const sc = (0.13 + 0.24 * o.sev) * (o.worst ? 1.3 : 1) * (0.9 + 0.2 * pul);
+        o.halo.scale.set(sc, sc, 1);
+        o.halo.material.opacity = (0.12 + 0.55 * o.sev) * pul * (o.worst ? 1.25 : 1);
+        if (o.infected) o.halo.material.color.lerp(new THREE.Color(INFECT_COL), 0.5);
+      } else o.halo.visible = false;
     }
   }
 
