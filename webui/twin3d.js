@@ -57,7 +57,7 @@ const ZONE = {
 };
 
 let renderer, scene, camera, controls, container, ro, clock;
-let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub;
+let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub, bodyMetrics = null;
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
 let infectFX, infLabel, lastInfection = null;     // suspected infection focus
@@ -141,11 +141,12 @@ function bodyMaterial() {
         float sl = 0.86 + 0.14*sin(vWY*150.0 - uTime*2.2);
         // rising diagnostic sweep band
         float sweep = exp(-pow((h - uScan)*8.0, 2.0));
-        vec3 outc = col*(0.30 + 0.6*fres) + uRim*fres*0.75;
+        vec3 outc = col*(0.42 + 0.55*fres) + uRim*fres*0.9;
         outc *= sl;
+        outc += col*0.10;                          // faint volumetric luminescence
         outc += col*sweep*0.9 + vec3(0.55,0.85,1.0)*sweep*0.5;
         outc *= (1.0 + 0.08*uPulse);
-        float a = clamp(0.17 + fres*0.6 + sweep*0.35, 0.0, 0.95);
+        float a = clamp(0.20 + fres*0.6 + sweep*0.34, 0.0, 0.95);
         gl_FragColor = vec4(outc, a);`);
     shellU = sh.uniforms;
   };
@@ -199,14 +200,42 @@ function loadOrgans() {
     color: NODATA, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
   brainStub.position.set(0, 1.555, 0.01); brainStub.scale.set(1, 1.05, 1.12); scene.add(brainStub);
 }
-/* Assemble + fit the co-registered organ atlas inside the body shell. */
+/* Measure the loaded body's torso from its skeleton + mesh box, so the organ
+   atlas can be seated INSIDE the real thorax/abdomen rather than at a guessed
+   height. Returns torso Y span, lateral/depth centre and front-back thickness. */
+function computeBodyMetrics(root) {
+  const B = {}; root.traverse((o) => { if (o.isBone) B[o.name.toLowerCase()] = o; });
+  const v = new THREE.Vector3();
+  const yOf = (re) => { const k = Object.keys(B).find((k) => re.test(k)); if (!k) return null; B[k].getWorldPosition(v); return v.y; };
+  const hips = yOf(/hips|pelvis/), neck = yOf(/neck/);
+  const box = new THREE.Box3().setFromObject(root);
+  const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+  return {
+    lo: hips != null ? hips : H * 0.50,            // pelvis floor of the torso
+    hi: neck != null ? neck : H * 0.82,            // shoulders / base of neck
+    cx: c.x, cz: c.z, depth: sz.z,                 // lateral + front-back centring
+  };
+}
+
+/* Assemble + seat the co-registered organ atlas inside the body. When the body is
+   loaded we anchor to its real torso (skeleton-derived); otherwise we fall back to
+   the hand-tuned constants. */
 function calibrateAtlas() {
+  if (!atlasGroup || organLoadCount < ORGAN_FILES.length) return;
   atlasGroup.scale.set(1, 1, 1); atlasGroup.position.set(0, 0, 0); atlasGroup.updateWorldMatrix(true, true);
   const box = new THREE.Box3().setFromObject(atlasGroup);
   const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
-  const s = ORGAN_SPAN / (size.y || 1);
+  let span = ORGAN_SPAN, ty = TORSO_Y, tz = TORSO_Z, cx = 0;
+  if (bodyMetrics) {
+    const torsoH = Math.max(0.1, bodyMetrics.hi - bodyMetrics.lo);
+    span = torsoH * 0.78;                          // organs fill most of the torso height
+    ty = bodyMetrics.lo + torsoH * 0.56;           // chest-biased (heart/lungs sit high)
+    tz = bodyMetrics.cz + bodyMetrics.depth * 0.06; // a touch forward of the spine, well inside
+    cx = bodyMetrics.cx;
+  }
+  const s = span / (size.y || 1);
   atlasGroup.scale.set(ORGAN_FLIP * s, s, s);
-  atlasGroup.position.set(-ORGAN_FLIP * s * c.x, TORSO_Y - s * c.y, TORSO_Z - s * c.z);
+  atlasGroup.position.set(cx - ORGAN_FLIP * s * c.x, ty - s * c.y, tz - s * c.z);
   if (lastServerData || pendingData) applyRegions();
 }
 
@@ -292,6 +321,8 @@ function loadBody() {
     scene.add(modelGroup);
     poseArms(modelGroup);
     normalizeBySkeleton(modelGroup);
+    bodyMetrics = computeBodyMetrics(modelGroup);   // seat the organs in the REAL torso
+    calibrateAtlas();                               // (re-runs once organs are loaded)
     fitCamera(); buildWrist();
     if (pendingData) { update(pendingData); pendingData = null; }
   }, undefined, (e) => console.error("[twin] model load failed", e));
@@ -530,8 +561,8 @@ function applyRegions() {
     const sev = mon ? (reg.severity || 0) : 0;
     o.mon = mon; o.sev = sev; o.worst = false;
     o.mat.emissive.copy(tierColor(reg));
-    o.mat.emissiveIntensity = mon ? (0.65 + 0.95 * sev) : 0.32;
-    o.mat.opacity = mon ? (0.62 + 0.26 * sev) : 0.34;
+    o.mat.emissiveIntensity = mon ? (0.7 + 1.0 * sev) : 0.5;
+    o.mat.opacity = mon ? (0.64 + 0.26 * sev) : 0.46;  // unmonitored = faint grey anatomy
     if (o.halo) o.halo.material.color.copy(tierColor(reg));   // glow halo tracks the tier colour
     if (mon) overall = Math.max(overall, sev);
     if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
@@ -613,7 +644,7 @@ function animate() {
     else o.pivot.scale.setScalar(1);
     if (o.mon) {
       const env = o.cfg.beat ? (0.6 + 0.7 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
-      o.mat.emissiveIntensity = (0.65 + 0.95 * o.sev) * env;
+      o.mat.emissiveIntensity = (0.7 + 1.0 * o.sev) * env;
     }
     if (o.infected) {                              // suspected source — throb brighter
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
