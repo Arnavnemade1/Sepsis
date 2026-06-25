@@ -535,6 +535,31 @@ b{font-weight:700}
    DEVICES — pairing & management hub  (premium)
    ============================================================ */
 .view-devices{padding:20px 26px;overflow:hidden}
+
+/* ---------------- KERNEL view — verified device plane + app/service plane ---------------- */
+.view-kernel{padding:20px 26px;overflow-y:auto}
+.kn-head{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;padding-bottom:16px;
+  border-bottom:1px solid var(--hair-soft);margin-bottom:18px}
+.kn-head h1{font-size:21px;font-weight:800;letter-spacing:-.01em;text-transform:uppercase}
+.kn-sub{font-family:var(--mono);font-size:10.5px;color:var(--dim);letter-spacing:.02em}
+.kn-grid{display:flex;flex-direction:column;gap:16px;padding-bottom:24px}
+/* in their own view the planes breathe as full cards, not the cramped ops-strip */
+.view-kernel .devplane,.view-kernel .svcplane{margin:0}
+.view-kernel .dp-bar,.view-kernel .sp-bar{padding:14px 18px}
+.view-kernel .dp-body{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;padding:16px 18px}
+.view-kernel .sp-body{grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;padding:14px 18px 10px}
+.view-kernel .dp-bay,.view-kernel .sp-svc{padding:12px 14px}
+.view-kernel .sp-pkgs{padding:4px 18px 16px}
+/* kernel telemetry tiles */
+.kn-tele{border:1px solid var(--hair);border-radius:var(--r);overflow:hidden;
+  background:linear-gradient(180deg,rgba(9,12,19,.82),rgba(6,8,13,.92));box-shadow:var(--shadow)}
+.kn-tele-bar{display:flex;align-items:center;gap:11px;padding:14px 18px;border-bottom:1px solid var(--hair-soft)}
+.kn-tele-dot{width:7px;height:7px;border-radius:1px;background:var(--cyan);box-shadow:0 0 9px var(--cyan);flex:0 0 auto}
+.kn-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--hair-soft)}
+.kn-stat{padding:14px 16px;background:var(--panel)}
+.kn-st-k{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+.kn-st-v{font-size:20px;font-weight:700;color:var(--ink);margin:5px 0 4px;font-variant-numeric:tabular-nums}
+.kn-st-s{font-family:var(--mono);font-size:10px;color:var(--muted)}
 .dev-head{display:flex;align-items:center;gap:18px;flex:0 0 auto;flex-wrap:wrap;
   padding-bottom:16px;border-bottom:1px solid var(--hair-soft)}
 .dev-head h1{font-size:21px;font-weight:800;letter-spacing:-.01em;text-transform:uppercase;flex:0 0 auto}

@@ -49,6 +49,7 @@
     <button class="tab" data-view="val">Validation</button>
     <button class="tab" data-view="roster">Roster</button>
     <button class="tab" data-view="devices">Devices</button>
+    <button class="tab" data-view="kernel">Kernel</button>
   </nav>
 
   <div class="metrics" id="metrics">
@@ -102,27 +103,6 @@
       <div class="term-body" id="term-body">
         <div class="term-idle">// no active sepsis vectors — all beds within range</div>
       </div>
-    </section>
-
-    <section class="devplane" id="devplane">
-      <div class="dp-bar">
-        <span class="dp-dot"></span>
-        <span class="dp-title">Aegis-eBPF · Verified Device Plane</span>
-        <span class="dp-sub" id="dp-sub">static driver verification · input safety</span>
-        <span class="dp-meta" id="dp-vrf"></span>
-      </div>
-      <div class="dp-body" id="dp-bays"></div>
-    </section>
-
-    <section class="svcplane" id="svcplane">
-      <div class="sp-bar">
-        <span class="sp-dot"></span>
-        <span class="sp-title">aegisd · Application Plane</span>
-        <span class="sp-sub" id="sp-sub">managed · supervised · capability-confined</span>
-        <span class="sp-meta" id="sp-meta"></span>
-      </div>
-      <div class="sp-body" id="sp-svcs"></div>
-      <div class="sp-pkgs" id="sp-pkgs"></div>
     </section>
 
     <footer class="control">
@@ -186,6 +166,45 @@
       <button class="dev-pair-btn" id="dev-pair-btn">+ Pair Device</button>
     </div>
     <div class="dev-grid" id="dev-grid"></div>
+  </section>
+
+  <!-- ===== KERNEL (verified device plane + app/service plane) ===== -->
+  <section class="view view-kernel" id="view-kernel">
+    <div class="kn-head">
+      <h1>AegisOS Kernel</h1>
+      <span class="kn-sub">statically-verified drivers · supervised application services · capability-confined</span>
+    </div>
+    <div class="kn-grid">
+      <section class="devplane" id="devplane">
+        <div class="dp-bar">
+          <span class="dp-dot"></span>
+          <span class="dp-title">Aegis-eBPF · Verified Device Plane</span>
+          <span class="dp-sub" id="dp-sub">static driver verification · input safety</span>
+          <span class="dp-meta" id="dp-vrf"></span>
+        </div>
+        <div class="dp-body" id="dp-bays"></div>
+      </section>
+
+      <section class="svcplane" id="svcplane">
+        <div class="sp-bar">
+          <span class="sp-dot"></span>
+          <span class="sp-title">aegisd · Application Plane</span>
+          <span class="sp-sub" id="sp-sub">managed · supervised · capability-confined</span>
+          <span class="sp-meta" id="sp-meta"></span>
+        </div>
+        <div class="sp-body" id="sp-svcs"></div>
+        <div class="sp-pkgs" id="sp-pkgs"></div>
+      </section>
+
+      <section class="kn-tele">
+        <div class="kn-tele-bar">
+          <span class="kn-tele-dot"></span>
+          <span class="dp-title">Kernel Telemetry</span>
+          <span class="dp-sub">live OS internals · /proc</span>
+        </div>
+        <div class="kn-stats" id="kn-stats"></div>
+      </section>
+    </div>
   </section>
 
 </div>

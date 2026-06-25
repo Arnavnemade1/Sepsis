@@ -94,6 +94,7 @@ function ingest(snap){
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
   renderDevicePlane(snap.kernel_devices);   // Aegis-eBPF verified device plane (input safety)
   renderServicePlane(snap.services, snap.packages);   // aegisd managed app/service plane
+  renderKernelTelemetry(snap);                        // live OS internals in the Kernel view
   if(currentView==="roster") renderRoster();
 }
 
@@ -934,6 +935,25 @@ function renderServicePlane(s, pkgs){
       ins.map(function(n){return '<span class="sp-pill on">'+esc(n)+'</span>';}).join("")+
       av.map(function(n){return '<span class="sp-pill" data-install="'+esc(n)+'" title="verify-then-install">+ '+esc(n)+'</span>';}).join(""); }
 }
+function renderKernelTelemetry(snap){
+  var host=$("kn-stats"); if(!host||!snap) return;
+  var k=snap.kstat||{}, mem=(snap.memfabric&&snap.memfabric.arena)||{}, sf=snap.safety||{},
+      vr=(snap.kernel_devices&&snap.kernel_devices.verifier)||{}, sv=snap.services||{};
+  function tile(label,big,sub){ return '<div class="kn-stat"><div class="kn-st-k">'+label+'</div>'+
+    '<div class="kn-st-v">'+big+'</div><div class="kn-st-s">'+sub+'</div></div>'; }
+  var num=function(n){ return (n||0).toLocaleString(); };
+  host.innerHTML=
+    tile('Scheduler', (k.mode==="PREEMPT"?'<span class="cl-crit">PREEMPT</span>':'<span class="cl-ok">NORMAL</span>'),
+      'Σcost '+fmt(k.global_cost||0,2)+' · '+Math.round((k.utilization||0)*100)+'% util')+
+    tile('Compute lanes', (k.lanes_used||0)+'/'+(k.lane_budget||0),
+      (k.procs||0)+' procs · '+(k.anticipating||0)+' anticipating')+
+    tile('Memory fabric', (Math.round((mem.utilization||0)*1000)/10)+'%',
+      num(mem.used_cells)+' / '+num(mem.capacity_cells)+' cells')+
+    tile('Z3 egress cage', Math.round((sf.pass_rate!=null?sf.pass_rate:1)*100)+'%',
+      (sf.certified||0)+' certified · '+(sf.blocked||0)+' blocked')+
+    tile('eBPF verifier', (vr.accepted||0)+' / '+(vr.rejected||0), 'admitted / rejected')+
+    tile('Services', (sv.running||0)+'/'+(sv.n||0), 'running · supervised');
+}
 function installPkg(name){
   fetch(window.AEGIS.http("/aegis/pkg/install"),{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({name:name})}).then(function(r){return r.json();}).then(function(d){
@@ -1017,7 +1037,7 @@ function runBoot(){ var log=$("boot-log"), fill=$("boot-fill"); if(!log) return;
    ============================================================ */
 var currentView="ops";
 function setView(name){ currentView=name;
-  ["ops","val","roster","devices"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
+  ["ops","val","roster","devices","kernel"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
   [].forEach.call(document.querySelectorAll(".tab"),function(t){ t.classList.toggle("active",t.dataset.view===name); });
   if(name==="val") loadValidation();
   if(name==="roster") renderRoster();
