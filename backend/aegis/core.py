@@ -45,6 +45,7 @@ class AegisAssessment:
     body_state: Optional[Dict[str, Any]] = None   # organ/region/channel model for visualization
     whatif: Optional[Dict[str, Any]] = None        # predictive treatment projections (scheduler)
     reasoning: Optional[Dict[str, Any]] = None     # multi-agent debate + consensus
+    consensus: Optional[Dict[str, Any]] = None     # BFT specialist consensus (auto on HIGH)
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -88,6 +89,13 @@ class AegisCore:
         self._verifier = None
         self._explainer = None
         self.use_llm = use_llm
+
+        # Portable proof export: the cage ENFORCES the protocol; this emits the
+        # third-party-checkable, Ed25519-signed evidence. Full cert kept here and
+        # fetched on demand (REST); only a compact summary rides the live stream.
+        self.enable_proof_export = enable_protocols
+        self._proof_ca = None
+        self.last_proof: Optional[Dict[str, Any]] = None
 
     # ------------------------------------------------------------------ #
     def ingest(
@@ -224,6 +232,50 @@ class AegisCore:
         a.verification = {"safe": bool(is_safe), "message": msg,
                           "z3_status": proof.get("z3_status"),
                           "violated_rules": proof.get("violated_rules", [])}
+
+        # Portable, third-party-checkable proof for THIS decision (the core cage path).
+        if self.enable_proof_export:
+            cert = self._export_core_proof(protocol, vitals, a.risk_level)
+            if cert is not None:
+                self.last_proof = cert.to_dict()
+                sig = self.last_proof.get("signature", {})
+                v = self.last_proof.get("verdict", {})
+                a.verification["portable_proof"] = {     # compact summary for the stream
+                    "available": True,
+                    "n_obligations": v.get("n_obligations"),
+                    "n_satisfied": v.get("n_satisfied"),
+                    "all_satisfied": v.get("all_satisfied"),
+                    "key_id": sig.get("key_id"),
+                    "content_sha256": self.last_proof.get("content_sha256", "")[:16],
+                    "policy_id": "aegis-core-cage",
+                }
+
+    def _get_proof_ca(self):
+        """Lazy Ed25519 authority; disables export (never breaks monitoring) on error."""
+        if not self.enable_proof_export:
+            return None
+        if self._proof_ca is None:
+            try:
+                from backend.aegis.proofexport import CertificateAuthority
+                self._proof_ca = CertificateAuthority()
+            except Exception as exc:  # pragma: no cover
+                print(f"[aegis] proof-export disabled ({exc})")
+                self.enable_proof_export = False
+                return None
+        return self._proof_ca
+
+    def _export_core_proof(self, protocol, vitals, risk_level):
+        ca = self._get_proof_ca()
+        if ca is None:
+            return None
+        try:
+            from backend.aegis.proofexport import certify_core_protocol
+            return certify_core_protocol(
+                self.clinical_history, vitals, risk_level, protocol,
+                ca=ca, context_salt=self.patient_id)
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] core proof export failed ({exc})")
+            return None
 
     def _attach_narrative(self, a: AegisAssessment) -> None:
         if self._explainer is None:

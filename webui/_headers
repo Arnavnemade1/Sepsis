@@ -1,0 +1,14 @@
+# Cloudflare Pages cache policy (https://developers.cloudflare.com/pages/configuration/headers/)
+# Heavy immutable assets (3D organ GLBs, three.js, any leftover models) cache for
+# a year — a repeat visitor downloads them once, never again.
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# App source must stay fresh so deploys take effect immediately (revalidates,
+# cheap 304s — not a bandwidth cost).
+/*.js
+  Cache-Control: no-cache
+/*.css
+  Cache-Control: no-cache
+/*.html
+  Cache-Control: no-cache

@@ -18,8 +18,9 @@ import time
 
 from backend.aegis.core import AegisAssessment
 from backend.aegis.os import AegisOS
+from backend.aegis.causal_ingest import CausalGraphIngestor
 
-SNAPSHOT_SCHEMA_VERSION = "1.2"   # + multi-agent reasoning (agents debate/consensus)
+SNAPSHOT_SCHEMA_VERSION = "1.4"   # + auto BFT specialist consensus on HIGH risk
 
 
 class SignalHistory:
@@ -69,9 +70,11 @@ class AegisSession:
     model_path: Optional[str] = None
     use_llm: bool = False
     history_len: int = 600
+    persist_causal: bool = True       # durably store the causal graph (Supabase/SQLite)
 
     os: AegisOS = field(init=False)
     history: SignalHistory = field(init=False)
+    causal: CausalGraphIngestor = field(init=False)
     latest: Optional[AegisAssessment] = field(init=False, default=None)
     source: str = field(init=False, default="idle")
 
@@ -84,6 +87,17 @@ class AegisSession:
         )
         self.os.boot()
         self.history = SignalHistory(maxlen=self.history_len)
+        # The patient's clinical story as a tamper-evident causal graph, grown
+        # live from the assessment stream (distilled to meaningful events) and
+        # durably persisted so it survives restarts and rehydrates on boot.
+        store = None
+        if self.persist_causal:
+            try:
+                from backend.aegis.causal_store import CausalGraphStore
+                store = CausalGraphStore()
+            except Exception as exc:
+                print(f"[aegis-session] causal persistence unavailable: {exc}")
+        self.causal = CausalGraphIngestor(bed=self.patient_id, store=store)
 
     @property
     def core(self):
@@ -108,6 +122,11 @@ class AegisSession:
         self.source = source
         if a.body_state:
             self.history.record(ts, a.body_state)
+        # Grow the causal graph from this tick (distilled to clinical events).
+        try:
+            self.causal.ingest(a, self.core.twin.latest_vitals, ts)
+        except Exception:
+            pass   # graph growth must never break the live monitoring path
         return self.snapshot()
 
     # ------------------------------------------------------------------ #
@@ -137,10 +156,12 @@ class AegisSession:
             "body_state": a.body_state if a else None,
             "reasoning": a.reasoning if a else None,
             "whatif": a.whatif if a else None,
+            "consensus": a.consensus if a else None,
             "history": self.history.snapshot(history_points),
             "protocol": a.protocol if a else None,
             "verification": a.verification if a else None,
             "narrative": a.narrative if a else None,
             "narrative_source": a.narrative_source if a else None,
+            "causal_graph": self.causal.summary(),
             "system": self.os.status(),
         }

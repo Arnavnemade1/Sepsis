@@ -186,6 +186,14 @@ class AegisOS:
         a = self.core.ingest(telemetry, source=source, **kwargs)
         if whatif == "always" or (whatif == "auto" and a.risk_level == "HIGH"):
             a.whatif = self.whatif(a)
+            # On HIGH risk the specialist panel auto-convenes: a treatment that
+            # touches the patient should carry a multi-signed, Z3-gated quorum (or
+            # the pre-certified emergency order if the patient is crashing faster
+            # than the panel can converge). Best-effort: never break the tick.
+            try:
+                a.consensus = self.consensus(a)
+            except Exception as exc:   # pragma: no cover
+                print(f"[aegis-os] consensus skipped: {exc}")
         return a
 
     def whatif(self, assessment: Optional[AegisAssessment] = None) -> Dict[str, Any]:
@@ -194,3 +202,19 @@ class AegisOS:
         risk = assessment.risk_level if assessment else "MEDIUM"
         return self.scheduler.project(
             self.core.twin.latest_vitals, det, risk, self.core.clinical_history)
+
+    def consensus(self, assessment: Optional[AegisAssessment] = None) -> Dict[str, Any]:
+        """Convene the BFT specialist panel on the current state. Deterioration is
+        derived from the risk band + perfusion so a crashing patient gets a tighter
+        debate deadline (and, if it can't converge, the pre-certified emergency order)."""
+        from backend.aegis.consensus import ClinicalBFT, default_panel
+        vit = self.core.twin.latest_vitals or {}
+        risk = assessment.risk_level if assessment else "MEDIUM"
+        det = {"HIGH": 0.7, "MEDIUM": 0.35, "LOW": 0.1}.get(risk, 0.3)
+        if float(vit.get("map", 90)) < 60:
+            det = max(det, 0.85)
+        state = {"map": float(vit.get("map", 75.0)), "risk_level": risk,
+                 "clinical_history": self.core.clinical_history or {},
+                 "infection_suspected": risk in ("HIGH", "MEDIUM")}
+        out = ClinicalBFT(default_panel()).run_round(state, deterioration=det)
+        return out.to_dict()

@@ -425,35 +425,81 @@ class VM:
         pc, steps = 0, 0
         win = mem.shape[0]
         while 0 <= pc < len(prog):
-            if steps >= budget:                          # belt-and-suspenders halt
+            if steps >= budget:                          # belt-and-suspenders watchdog halt
                 return ExecResult(int(regs[0]), steps, writes,
-                                  trapped=f"step budget {budget} exceeded")
+                                  trapped=f"WatchdogTripped: execution steps ({steps}) exceeded budget limit ({budget})")
             steps += 1
             ins = prog[pc]
             op, a = ins.op, ins.args
             try:
-                if op == "LDI":   regs[a[0]] = float(a[1])
-                elif op == "MOV": regs[a[0]] = regs[a[1]]
-                elif op == "ADD": regs[a[0]] += regs[a[1]]
-                elif op == "ADDI":regs[a[0]] += a[1]
-                elif op == "SUB": regs[a[0]] -= regs[a[1]]
-                elif op == "SUBI":regs[a[0]] -= a[1]
+                if op == "LDI":
+                    regs[a[0]] = float(a[1])
+                elif op == "MOV":
+                    regs[a[0]] = regs[a[1]]
+                elif op == "ADD":
+                    val = regs[a[0]] + regs[a[1]]
+                    if not math.isfinite(val) or abs(val) > 1e12:
+                        return ExecResult(0, steps, writes, trapped=f"ArithmeticFault: registers overflowed to {val}")
+                    regs[a[0]] = val
+                elif op == "ADDI":
+                    val = regs[a[0]] + a[1]
+                    if not math.isfinite(val) or abs(val) > 1e12:
+                        return ExecResult(0, steps, writes, trapped=f"ArithmeticFault: register overflowed to {val}")
+                    regs[a[0]] = val
+                elif op == "SUB":
+                    val = regs[a[0]] - regs[a[1]]
+                    if not math.isfinite(val) or abs(val) > 1e12:
+                        return ExecResult(0, steps, writes, trapped=f"ArithmeticFault: registers overflowed to {val}")
+                    regs[a[0]] = val
+                elif op == "SUBI":
+                    val = regs[a[0]] - a[1]
+                    if not math.isfinite(val) or abs(val) > 1e12:
+                        return ExecResult(0, steps, writes, trapped=f"ArithmeticFault: register overflowed to {val}")
+                    regs[a[0]] = val
                 elif op == "LDX":
-                    i = int(regs[a[1]]) + a[2]
+                    idx_val = regs[a[1]]
+                    if not math.isfinite(idx_val):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: non-finite address base index {idx_val}")
+                    i = int(idx_val) + a[2]
                     if not (0 <= i < win):
-                        return ExecResult(0, steps, writes, trapped=f"OOB load @ {i}")
+                        return ExecResult(0, steps, writes, trapped=f"OOB load @ {i} (window size {win})")
                     regs[a[0]] = float(mem[i])
                 elif op == "STX":
-                    i = int(regs[a[0]]) + a[1]
+                    idx_val = regs[a[0]]
+                    if not math.isfinite(idx_val):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: non-finite address base index {idx_val}")
+                    i = int(idx_val) + a[1]
                     if not (0 <= i < win):
-                        return ExecResult(0, steps, writes, trapped=f"OOB store @ {i}")
-                    mem[i] = regs[a[2]]; writes.append((i, float(regs[a[2]])))
-                elif op == "JGTI": pc = a[2] if regs[a[0]] > a[1] else pc + 1; continue
-                elif op == "JLTI": pc = a[2] if regs[a[0]] < a[1] else pc + 1; continue
-                elif op == "JMP":  pc = a[0]; continue
-                elif op == "CALL": regs[0] = float(self.helpers[a[0]]())
-                elif op == "EXIT": return ExecResult(int(regs[0]), steps, writes)
+                        return ExecResult(0, steps, writes, trapped=f"OOB store @ {i} (window size {win})")
+                    val_to_write = regs[a[2]]
+                    if not math.isfinite(val_to_write):
+                        return ExecResult(0, steps, writes, trapped=f"ArithmeticFault: attempting to write non-finite value {val_to_write}")
+                    mem[i] = val_to_write
+                    writes.append((i, float(val_to_write)))
+                elif op == "JGTI":
+                    if not math.isfinite(regs[a[0]]):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: branching on non-finite register value")
+                    pc = a[2] if regs[a[0]] > a[1] else pc + 1
+                    continue
+                elif op == "JLTI":
+                    if not math.isfinite(regs[a[0]]):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: branching on non-finite register value")
+                    pc = a[2] if regs[a[0]] < a[1] else pc + 1
+                    continue
+                elif op == "JMP":
+                    pc = a[0]
+                    continue
+                elif op == "CALL":
+                    res_val = float(self.helpers[a[0]]())
+                    if not math.isfinite(res_val):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: helper call returned non-finite value {res_val}")
+                    regs[0] = res_val
+                elif op == "EXIT":
+                    if not math.isfinite(regs[0]):
+                        return ExecResult(0, steps, writes, trapped=f"SFI_Fault: exit return register r0 contains non-finite value {regs[0]}")
+                    return ExecResult(int(regs[0]), steps, writes)
             except Exception as exc:                     # any driver fault is trapped
                 return ExecResult(0, steps, writes, trapped=f"{type(exc).__name__}: {exc}")
             pc += 1
         return ExecResult(int(regs[0]), steps, writes, trapped="fell off program end")
+

@@ -984,17 +984,23 @@ function renderVerify(d){
 /* ============================================================
    WEBSOCKET
    ============================================================ */
-var ws=null, connected=false, lastMsg=0, connTries=0;
+var ws=null, connected=false, lastMsg=0, connTries=0, paused=false;
 function clusterWS(){ return window.AEGIS.base().replace(/^http/,"ws")+"/aegis/cluster/stream"; }
-function connect(){ try{ ws=new WebSocket(clusterWS()); }catch(e){ setTimeout(connect,1500); return; }
+function connect(){ if(paused||document.hidden) return;   // don't stream to a backgrounded tab
+  try{ ws=new WebSocket(clusterWS()); }catch(e){ setTimeout(connect,1500); return; }
   ws.onopen=function(){ connected=true; connTries=0; setConn(true); };
   ws.onmessage=function(e){ lastMsg=performance.now(); try{ ingest(JSON.parse(e.data)); }catch(err){ console.error(err); } };
-  ws.onclose=function(){ connected=false; connTries++; setConn(false); setTimeout(connect, Math.min(4000, 1200+connTries*400)); };
+  ws.onclose=function(){ connected=false; connTries++; setConn(false); if(paused||document.hidden) return; setTimeout(connect, Math.min(4000, 1200+connTries*400)); };
   ws.onerror=function(){ try{ws.close();}catch(e){} };
 }
+// Pause the cluster feed (and the poll below) on hidden tabs to save backend egress.
+document.addEventListener("visibilitychange",function(){
+  if(document.hidden){ paused=true; try{ws&&ws.close();}catch(e){} }
+  else { paused=false; if(!ws||ws.readyState>1) connect(); } });
 function setConn(live){ $("conn").classList.toggle("live",live);
   $("conn-txt").textContent = live ? "Live" : (connTries>=2 ? "Waking backend…" : "Connecting"); }
-setInterval(function(){ if(connected && performance.now()-lastMsg<4000) return;
+setInterval(function(){ if(document.hidden) return;   // no background polling
+  if(connected && performance.now()-lastMsg<4000) return;
   fetch(window.AEGIS.http("/aegis/cluster/snapshot")).then(function(r){return r.json();}).then(ingest).catch(function(){}); },2500);
 
 /* ============================================================

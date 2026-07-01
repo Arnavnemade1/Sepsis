@@ -66,6 +66,32 @@ const INFECT_COL = 0xff7a3b;                       // distinct "infection" orang
 const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver" };
 const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
 
+/* ---------------- Holographic Treatment Infusion ---------------- */
+let infusionParticles = null;
+let infusionActive = false;
+let infusionProgress = 0.0;
+const infusionColor = new THREE.Color(0x00ffff);
+// The venous route (wrist → elbow → shoulder → SVC → heart) and the organ
+// destinations are REBUILT from live world positions on each triggerInfusion()
+// call — the organ atlas is skeleton-calibrated at runtime, so any hardcoded
+// coords drift off the body. These literals are only a pre-load fallback.
+let infusionPath = [
+  new THREE.Vector3(0.20, 1.10, -0.05), // Arm entry (wrist)
+  new THREE.Vector3(0.14, 1.18, -0.04), // Elbow
+  new THREE.Vector3(0.10, 1.31, -0.02), // Shoulder
+  new THREE.Vector3(0.04, 1.26, -0.02), // Superior Vena Cava
+  new THREE.Vector3(0.011, 1.212, -0.02) // Heart
+];
+let organDestinations = {
+  lung: new THREE.Vector3(0.002, 1.256, -0.043),
+  liver: new THREE.Vector3(-0.026, 1.141, -0.038),
+  kidneyL: new THREE.Vector3(0.046, 1.099, -0.063),
+  kidneyR: new THREE.Vector3(-0.043, 1.087, -0.054),
+  spleen: new THREE.Vector3(0.052, 1.142, -0.069)
+};
+const organTargetKeys = ["lung", "liver", "kidneyL", "kidneyR", "spleen"];
+
+
 /* ---------------- click-to-inspect ---------------- */
 const ORGAN_NAME = { heart: "HEART", lung: "LUNGS", liver: "LIVER", spleen: "SPLEEN", kidneyL: "KIDNEY", kidneyR: "KIDNEY" };
 const STATUS_TXT = { NORMAL: "nominal", STRESS: "stress", DYSFUNCTION: "dysfunction", CRITICAL: "critical" };
@@ -190,7 +216,7 @@ function loadOrgans() {
       const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: BASE.clone(),
         transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
       halo.scale.set(0.16, 0.16, 1); halo.visible = false; scene.add(halo);
-      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false, halo };
+      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false, halo, flash: 0 };
       if (++organLoadCount === ORGAN_FILES.length) calibrateAtlas();
     }, undefined, (e) => console.error("[twin] organ load failed", cfg.file, e));
   });
@@ -290,6 +316,61 @@ function buildParticles() {
     depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
   pData = { spd, N }; scene.add(particles);
 }
+
+function buildInfusionParticles() {
+  const N = 40;
+  const pos = new Float32Array(N * 3);
+  for (let i = 0; i < N * 3; i++) pos[i] = 999.0;
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  infusionParticles = new THREE.Points(geo, new THREE.PointsMaterial({
+    size: 0.025,
+    map: glowTex,
+    color: 0x00ffff,
+    transparent: true,
+    opacity: 0.0,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    sizeAttenuation: true
+  }));
+  scene.add(infusionParticles);
+}
+
+function triggerInfusion(drugType) {
+  infusionActive = true;
+  infusionProgress = 0.0;
+  if (drugType === "fluids") {
+    infusionColor.setHex(0x00d8ff); // bright cyan
+  } else if (drugType === "antibiotic") {
+    infusionColor.setHex(0x3cfc3c); // bright neon green
+  } else if (drugType === "vasopressor") {
+    infusionColor.setHex(0xe03cff); // bright magenta/purple
+  }
+  if (infusionParticles) {
+    infusionParticles.material.color.copy(infusionColor);
+    infusionParticles.material.opacity = 0.9;
+  }
+  // Rebuild the route from the ACTUAL rendered anatomy so the stream lands on the
+  // organs, not 6–8 cm off them. Heart + organ destinations come from each
+  // pivot's live world position; the path starts at the wearable wrist anchor.
+  const heart = new THREE.Vector3();
+  if (organs.heart && organs.heart.pivot) organs.heart.pivot.getWorldPosition(heart);
+  else heart.set(0.011, 1.212, -0.02);
+  const wristW = new THREE.Vector3();
+  if (wristBone) wristBone.getWorldPosition(wristW);
+  else wristW.set(heart.x + 0.22, heart.y - 0.12, heart.z);
+  const shoulder = new THREE.Vector3(heart.x + 0.11, heart.y + 0.10, heart.z); // out to the side, at clavicle height
+  const elbow = new THREE.Vector3().lerpVectors(wristW, shoulder, 0.5);
+  const svc = new THREE.Vector3().lerpVectors(shoulder, heart, 0.55);          // superior vena cava, into the heart
+  infusionPath = [wristW, elbow, shoulder, svc, heart.clone()];
+  organDestinations = {};
+  organTargetKeys.forEach((k) => {
+    const o = organs[k];
+    if (o && o.pivot) { const p = new THREE.Vector3(); o.pivot.getWorldPosition(p); organDestinations[k] = p; }
+    else organDestinations[k] = heart.clone();
+  });
+}
+
 
 /* Diagnostic scan ring — a thin disc that RISES up the body in lockstep with the
    shader's scan-sweep, like a CT scanner passing through the patient. */
@@ -514,7 +595,7 @@ function start(el) {
   scene.add(new THREE.HemisphereLight(0x6f86c8, 0x0a1020, 0.45));                                          // soft sky/ground gradient over the tissue
 
   glowTex = glowTexture();
-  buildGround(); buildParticles(); buildReticle();
+  buildGround(); buildParticles(); buildReticle(); buildInfusionParticles();
   loadBody(); loadOrgans(); buildBeacon(); buildInfection(); buildInspect();
   renderer.domElement.addEventListener("pointerdown", onDown);
   renderer.domElement.addEventListener("pointerup", onUp);
@@ -663,6 +744,21 @@ function animate() {
         if (o.infected) o.halo.material.color.lerp(new THREE.Color(INFECT_COL), 0.5);
       } else o.halo.visible = false;
     }
+    // therapeutic-response flash: an infusion pulse decays back to baseline (~0.5s),
+    // so unmonitored organs no longer get stuck bright. Blooms the halo in the
+    // infusion colour for the drug-arrival "lights up" effect.
+    if (o.flash > 0) {
+      o.flash = Math.max(0, o.flash - dt * 1.8);
+      o.mat.emissiveIntensity += o.flash * 2.2;
+      if (o.halo) {
+        o.halo.visible = true;
+        o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
+        o.halo.material.color.lerp(infusionColor, 0.6);
+        const sc = 0.16 + 0.22 * o.flash;
+        o.halo.scale.set(sc, sc, 1);
+        o.halo.material.opacity = Math.max(o.halo.material.opacity, 0.5 * o.flash);
+      }
+    }
   }
 
   // suspected infection "hot zone": pulsing bloom + expanding rings (billboarded)
@@ -687,6 +783,61 @@ function animate() {
     }
     pos.needsUpdate = true;
     particles.material.opacity = 0.32 + 0.22 * beat;
+  }
+
+  // Treatment infusion flow animation
+  if (infusionActive && infusionParticles) {
+    infusionProgress += dt * 0.7; // Speed of the flow
+    if (infusionProgress > 1.6) {
+      infusionActive = false;
+      infusionParticles.material.opacity = 0;
+      const pos = infusionParticles.geometry.attributes.position;
+      for (let i = 0; i < 40; i++) { pos.setXYZ(i, 999, 999, 999); }
+      pos.needsUpdate = true;
+    } else {
+      const pos = infusionParticles.geometry.attributes.position;
+      const N = 40;
+      for (let i = 0; i < N; i++) {
+        const offset = i / N * 0.4;
+        const p = infusionProgress - offset;
+        if (p < 0) {
+          pos.setXYZ(i, 999, 999, 999);
+        } else if (p < 1.0) {
+          // Arm to heart path
+          const segments = infusionPath.length - 1;
+          const idx = Math.min(segments - 1, Math.floor(p * segments));
+          const localT = (p * segments) - idx;
+          const p0 = infusionPath[idx];
+          const p1 = infusionPath[idx + 1];
+          const inter = new THREE.Vector3().lerpVectors(p0, p1, localT);
+          const noise = 0.008;
+          pos.setXYZ(i, 
+            inter.x + (Math.random() - 0.5) * noise, 
+            inter.y + (Math.random() - 0.5) * noise, 
+            inter.z + (Math.random() - 0.5) * noise
+          );
+        } else if (p < 1.5) {
+          // Heart to organs branch
+          const target = organTargetKeys[i % organTargetKeys.length];
+          const dest = organDestinations[target];
+          const heart = infusionPath[infusionPath.length - 1];
+          const localT = (p - 1.0) / 0.5;
+          const inter = new THREE.Vector3().lerpVectors(heart, dest, localT);
+          
+          if (localT > 0.8 && organs[target]) organs[target].flash = 1.0;  // therapeutic-response flash (decays in animate)
+          
+          const noise = 0.015;
+          pos.setXYZ(i, 
+            inter.x + (Math.random() - 0.5) * noise, 
+            inter.y + (Math.random() - 0.5) * noise, 
+            inter.z + (Math.random() - 0.5) * noise
+          );
+        } else {
+          pos.setXYZ(i, 999, 999, 999);
+        }
+      }
+      pos.needsUpdate = true;
+    }
   }
 
   if (ground) { const sw = ground.getObjectByName("sweep"); if (sw) sw.rotation.y -= dt * 0.7; ground.rotation.y += dt * 0.02; }
@@ -722,7 +873,7 @@ function _measure() {
   for (const k in organs) { const o = organs[k]; if (o.pivot) { o.pivot.getWorldPosition(_v); out[k] = { p: _v.toArray().map(n => +n.toFixed(3)), col: "#" + o.mat.emissive.getHexString(), mon: o.mon, sev: +(o.sev || 0).toFixed(2), op: +o.mat.opacity.toFixed(2) }; } }
   return out;
 }
-window.AegisTwin = { start, update, resize, setOptical, _setAtlas, _measure };
+window.AegisTwin = { start, update, resize, setOptical, _setAtlas, _measure, triggerInfusion };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
   if (el && el.clientWidth > 40 && el.clientHeight > 40) { clearInterval(probe); start(el); }

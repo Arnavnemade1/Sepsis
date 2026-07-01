@@ -18,6 +18,17 @@ import { FaceLandmarker, PoseLandmarker, HandLandmarker, FilesetResolver }
   from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18";
 import { SHAL } from "./shal.js?v=9";   // Layer 1 — Stochastic Hardware Abstraction Layer
 
+/* MediaPipe landmark models — loaded from Google's CDN, not self-hosted, so the
+   ~16.6 MB of .task files never touch our Render bandwidth. (The local copies in
+   vendor/models/ remain as an offline fallback only.) Override with
+   window.AEGIS_MODEL_BASE if you need to pin a mirror. */
+const _MB = (window.AEGIS_MODEL_BASE || "https://storage.googleapis.com/mediapipe-models").replace(/\/+$/, "");
+const MODEL_URL = {
+  face: _MB + "/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+  pose: _MB + "/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+  hand: _MB + "/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+};
+
 const $ = (s) => document.querySelector(s);
 const clip01 = (x) => x < 0 ? 0 : x > 1 ? 1 : x;
 /* linear ramp: value at/below lo -> 0, at/above hi -> 1 */
@@ -102,20 +113,20 @@ async function enable() {
   try {
     fileset = await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm");
     faceLm = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "vendor/models/face_landmarker.task" },
+      baseOptions: { modelAssetPath: MODEL_URL.face },
       runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true });
   } catch (e) { starting = false; setState("error", "face model failed to load"); return; }
   // pose + hands are enhancements — never let a load failure block the core rPPG feed
   setState("idle", "loading body model…");
   try {
     poseLm = await PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "vendor/models/pose_landmarker_lite.task" },
+      baseOptions: { modelAssetPath: MODEL_URL.pose },
       runningMode: "VIDEO", numPoses: 1, minPoseDetectionConfidence: 0.5 });
   } catch (e) { poseLm = null; }
   setState("idle", "loading hand model…");
   try {
     handLm = await HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: "vendor/models/hand_landmarker.task" },
+      baseOptions: { modelAssetPath: MODEL_URL.hand },
       runningMode: "VIDEO", numHands: 2, minHandDetectionConfidence: 0.5 });
   } catch (e) { handLm = null; }
   S.enabled = true; starting = false; running = true;

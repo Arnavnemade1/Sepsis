@@ -140,6 +140,52 @@ class LocklessRing:
         self.seq = np.full(self.capacity, -1, dtype=np.int64)
         self.write_index = 0          # monotonic total writes == write pointer
         self.overwrites = 0           # slots recycled (ring wrapped)
+        
+        # Physiologic-Aware Access Control (PAAC)
+        self.emergency_mode = False
+        self.access_logs: List[Dict[str, Any]] = []
+
+    def _check_access(self, operation: str, role: str) -> None:
+        if role in ("KERNEL", "SAFETY", "SYSTEM"):
+            return
+        if self.emergency_mode:
+            self.access_logs.append({
+                "t_us": _now_us(),
+                "role": role,
+                "op": operation,
+                "status": "GRANTED_BYPASS"
+            })
+            return
+        if role == "CLINICIAN":
+            return
+        self.access_logs.append({
+            "t_us": _now_us(),
+            "role": role,
+            "op": operation,
+            "status": "DENIED"
+        })
+        raise PermissionError(
+            f"Access Denied: Role {role!r} does not have access to ring {self.name!r} "
+            f"under normal operating conditions. Trigger 'Break-Glass' mode in an emergency."
+        )
+
+    def break_glass(self, reason: str) -> None:
+        self.emergency_mode = True
+        self.access_logs.append({
+            "t_us": _now_us(),
+            "role": "SYSTEM",
+            "op": "BREAK_GLASS",
+            "status": f"BYPASS_ACTIVE: {reason}"
+        })
+
+    def reset_security(self) -> None:
+        self.emergency_mode = False
+        self.access_logs.append({
+            "t_us": _now_us(),
+            "role": "SYSTEM",
+            "op": "SECURITY_RESET",
+            "status": "NORMAL_MODE"
+        })
 
     # -- writer (single) ------------------------------------------------- #
     def push(self, t_us: float, row: Dict[str, float]) -> int:
@@ -156,11 +202,13 @@ class LocklessRing:
         return slot
 
     # -- zero-copy reads ------------------------------------------------- #
-    def view(self, slot: int) -> np.ndarray:
+    def view(self, slot: int, role: str = "KERNEL") -> np.ndarray:
         """Zero-copy view of one slot's values (shares the arena's base buffer)."""
+        self._check_access("view", role)
         return self.values[slot]
 
-    def field(self, slot: int, name: str) -> float:
+    def field(self, slot: int, name: str, role: str = "KERNEL") -> float:
+        self._check_access("field", role)
         return float(self.values[slot, self._fidx[name]])
 
     def latest_slot(self) -> Optional[int]:
@@ -177,7 +225,10 @@ class LocklessRing:
             "write_index": self.write_index, "write_ptr": self.write_pointer(),
             "overwrites": self.overwrites,
             "fill": min(self.write_index, self.capacity) / self.capacity,
+            "emergency_mode": self.emergency_mode,
+            "access_logs_count": len(self.access_logs),
         }
+
 
 
 @dataclass

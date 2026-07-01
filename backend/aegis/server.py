@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -55,7 +56,10 @@ session = AegisSession(
 )
 simulator = PatientTelemetrySimulator()
 DRIVE_FROM_SIMULATOR = True
-TICK_SECONDS = 1.5
+# Stream cadence — kept modest to bound WebSocket egress (Render free-tier
+# bandwidth). Each tick pushes a full snapshot per open client; clients also
+# pause the socket on hidden tabs (see webui/os.js, tactical.js).
+TICK_SECONDS = 3.0
 
 _clients: List[WebSocket] = []
 _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 0}
@@ -86,6 +90,13 @@ device_registry = DeviceRegistry()                # simulated sensor fleet (Phas
 # The write-side trap gate: every treat/escalate/crisis/clear from the console is
 # routed through this audited, Z3-gated interface before it touches the kernel.
 syscalls = SyscallTable(cluster, bundle_engine, cluster_safety)
+# The Autonomous ICU Orchestrator (MEGA-CONCEPT 5): composes the live wing under one
+# Non-Maleficence invariant, sharing the SAME Z3 cage + bundle engine as the syscall
+# gate so there is a single egress authority. Every governed action is appended to a
+# tamper-evident attestation ledger.
+from backend.aegis.orchestrator import Orchestrator
+orchestrator = Orchestrator(cluster, cage=cluster_safety, bundle=bundle_engine,
+                            histories=getattr(cluster, "histories", {}))
 # The input-safety verifier service: holds the live Aegis-eBPF static verifier +
 # the driver catalogue used by `verify`. The verified-driver DATA PLANE itself is
 # the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose
@@ -185,7 +196,7 @@ def _resolve_ebpf_bed(q: str) -> Optional[str]:
             return bid
     return None
 _bundle = {"bed": None, "ts": 0.0, "data": None}
-CLUSTER_TICK_SECONDS = 0.6
+CLUSTER_TICK_SECONDS = 2.0   # was 0.6 — full cluster payload per tick; throttled to bound egress
 _cluster_clients: List[WebSocket] = []
 cluster.run(12)                                   # warm the rings before serving
 
@@ -344,6 +355,638 @@ def system() -> Dict[str, Any]:
 def whatif() -> Dict[str, Any]:
     """Run the predictive what-if treatment exploration on demand."""
     return session.os.whatif(session.latest)
+
+
+# --- Temporal Causal Graph (the patient's clinical story) ------------------- #
+class ReplayIn(BaseModel):
+    outcome_id: Optional[str] = None       # replay at the earliest actionable node upstream
+    node_id: Optional[str] = None          # …or replay at a specific branch point
+    treatment: Dict[str, float] = {"fluid_rate": 5.0, "vasopressor_dose": 0.0,
+                                    "antibiotic_code": 3}
+    horizon: Optional[int] = None
+    bed: Optional[str] = None              # which patient (live session or cohort bed)
+
+
+# Per-patient causal graphs: the live session patient + any cohort bed (built on
+# demand from its real recorded history, then cached).
+_BED_CAUSAL: Dict[str, Any] = {}
+
+
+def _patient_roster() -> List[Dict[str, Any]]:
+    """Unified patient picker list: the live monitored patient + the cohort beds."""
+    out = [{"id": session.patient_id, "name": session.patient_name or "Monitored patient",
+            "kind": "live", "septic": None,
+            "history": session.core.clinical_history or {}}]
+    hist = getattr(cluster, "histories", {})
+    for r in (cluster.roster() if hasattr(cluster, "roster") else []):
+        h = hist.get(r["bed_id"], {})
+        out.append({"id": r["bed_id"], "name": r.get("name", r["bed_id"]),
+                    "kind": "cohort", "septic": r.get("will_be_septic"),
+                    "icu_hour": r.get("icu_hour"), "los": r.get("los_total"),
+                    "history": {"chf": bool(h.get("chf")), "renal_failure": bool(h.get("renal_failure")),
+                                "hepatic": bool(h.get("hepatic") or h.get("hepatic_failure"))}})
+    return out
+
+
+def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
+    """A snapshot-shaped payload for a cohort bed, built from real per-bed state so
+    the desktop panels (risk/vitals/twin/agents) reflect the selected patient. Cohort
+    beds are replayed records — there is no live waveform; HR/SpO₂ drive the trace."""
+    rp = getattr(cluster, "_by", {}).get(bed)
+    if rp is None:
+        return None
+    prof = getattr(cluster, "profiles", {}).get(bed)
+    raw = cluster._sample_vitals(bed) if hasattr(cluster, "_sample_vitals") else {}
+    hist = getattr(cluster, "histories", {}).get(bed, {})
+    mp = float(raw.get("map", 85.0))
+    v = {"heart_rate": float(raw.get("hr", 82.0)), "spo2": float(raw.get("spo2", 97.0)),
+         "skin_temp": float(raw.get("temp_c", 37.0)),
+         "respiratory_rate": float(raw.get("resp_rate", 16.0)), "map": mp,
+         "sweat_lactate": float(raw.get("lactate", 1.2)), "hrv": 55.0,
+         "systolic_bp": round(mp * 1.4, 1), "diastolic_bp": round(mp * 0.8, 1)}
+    fused = float(getattr(prof, "fused_risk", 0.0)) if prof else 0.0
+    level = "HIGH" if fused >= 0.6 else "MEDIUM" if fused >= 0.35 else "LOW"
+    wbc = float(hist.get("wbc", 7.5)); gcs = int(hist.get("gcs", 15))
+    sirs = (int(v["skin_temp"] > 38 or v["skin_temp"] < 36) + int(v["heart_rate"] > 90)
+            + int(v["respiratory_rate"] > 20) + int(wbc > 12 or wbc < 4))
+    qsofa = int(v["respiratory_rate"] >= 22) + int(v["systolic_bp"] <= 100) + int(gcs < 15)
+    det = {"ml_probability": round(fused, 4), "sepsis_probability": round(fused, 4),
+           "organ_dysfunction_score": 0, "hdc_probability": 0.0,
+           "confidence": 0.6, "sensor_quality": 1.0}
+    from backend.aegis.agents import ReasoningPlane, ReasoningContext
+    from backend.aegis.body_state import build_body_state
+    reasoning = ReasoningPlane().deliberate(
+        ReasoningContext(v, det, {}, {}, hist)).to_dict()
+    body = build_body_state(v, det, {}, level, time.time(), clinical_history=hist).to_dict()
+    ing = _causal_for(bed)
+    return {
+        "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,
+        "patient": {"id": bed, "name": rp.name, "age": rp.age, "gender": rp.gender,
+                    "clinical_history": hist},
+        "risk": {"level": level, "ml_probability": round(fused, 4), "ns_risk_level": level,
+                 "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0},
+        "vitals": v, "detection": det, "triggered_rules": [],
+        "body_state": body, "reasoning": reasoning, "whatif": None, "consensus": None,
+        "history": {"t": [], "channels": {}, "risk": [], "probability": [], "region_severity": {}},
+        "protocol": None, "verification": None, "narrative": None, "narrative_source": None,
+        "causal_graph": ing.summary() if ing else None,
+        "system": session.os.status(),
+        "recorded": True,
+    }
+
+
+@app.get("/aegis/patient/snapshot")
+def patient_snapshot(bed: Optional[str] = None) -> Dict[str, Any]:
+    """Per-patient desktop snapshot: live session, or a cohort bed's recorded state."""
+    if not bed or bed == session.patient_id:
+        return session.snapshot()
+    s = _bed_snapshot(bed)
+    return s or {"status": "error", "detail": f"no such patient '{bed}'"}
+
+
+def _causal_for(bed: Optional[str]):
+    """Resolve the causal-graph ingestor for a patient id (session or cohort bed)."""
+    if not bed or bed == session.patient_id:
+        return session.causal
+    if bed in _BED_CAUSAL:
+        return _BED_CAUSAL[bed]
+    rp = getattr(cluster, "_by", {}).get(bed)
+    if rp is None:
+        return None
+    from backend.aegis.causal_bed import build_bed_causal
+    _BED_CAUSAL[bed] = build_bed_causal(rp.record, bed)
+    return _BED_CAUSAL[bed]
+
+
+def _replay_for(bed: Optional[str]):
+    """A CounterfactualReplay over the chosen patient's graph, scored by the model."""
+    from backend.aegis.counterfactual import CounterfactualReplay
+    ing = _causal_for(bed)
+    sched = session.os.scheduler
+    hist = (session.core.clinical_history if (not bed or bed == session.patient_id)
+            else getattr(cluster, "histories", {}).get(bed, {}))
+    return CounterfactualReplay(ing.graph, risk_fn=lambda v: sched._risk_of(v, hist))
+
+
+@app.get("/aegis/patients")
+def patients() -> Dict[str, Any]:
+    """The patient picker roster (live monitored patient + real cohort beds)."""
+    return {"patients": _patient_roster(), "default": session.patient_id}
+
+
+@app.get("/aegis/causal")
+def causal_graph(bed: Optional[str] = None) -> Dict[str, Any]:
+    """The tamper-evident causal graph for a patient (live session or any cohort bed,
+    built on demand from its real recorded history). Each edge carries its
+    evidence_type (z3_proven | model_predicted | observed_association)."""
+    ing = _causal_for(bed)
+    if ing is None:
+        return {"status": "error", "detail": f"no such patient '{bed}'"}
+    return {"patient": bed or session.patient_id,
+            "summary": ing.summary(), "graph": ing.graph.to_dict()}
+
+
+@app.get("/aegis/causal/incident/{node_id}")
+def causal_incident(node_id: str, bed: Optional[str] = None) -> Dict[str, Any]:
+    """Auto-generated incident report: traverse backward from an outcome node to
+    the earliest point an intervention could have changed the trajectory."""
+    ing = _causal_for(bed)
+    if ing is None:
+        return {"status": "error", "detail": f"no such patient '{bed}'"}
+    try:
+        return ing.graph.incident_report(node_id)
+    except KeyError:
+        return {"status": "error", "detail": f"no such node '{node_id}'"}
+
+
+@app.get("/aegis/causal/patterns")
+def causal_patterns(min_support: int = 5, min_lift: float = 1.2,
+                    window_h: float = 4.0) -> Dict[str, Any]:
+    """Epidemiological pattern mining across the persisted cohort of causal graphs.
+    Returns observed associations with support, Wilson CI, baseline + lift — NOT
+    causal guidelines (confounded by indication; disclosed in the payload)."""
+    from backend.aegis.causal_mine import PatternMiner
+    store = getattr(session.causal, "store", None)
+    graphs = []
+    if store is not None:
+        try:
+            graphs = store.load_all()
+        except Exception as e:
+            print(f"[patterns] cohort load failed: {e}")
+    # Always include the live graph (it may not be persisted in this config).
+    live = session.causal.graph
+    if all(g.bed != live.bed for g in graphs):
+        graphs.append(live)
+    res = PatternMiner(graphs, outcome_window_h=window_h).mine(
+        min_support=min_support, min_lift=min_lift)
+    return res
+
+
+# --- Physiologic Identity: continuous proof-of-patient (MEGA-UPGRADE L5) --------- #
+_IDENTITY: Dict[str, Any] = {}
+
+
+def _identity_service():
+    """Lazily enroll the SAME cohort beds shown in the patient selector, keyed by bed
+    id, so identity targets line up with the chosen patient (cached). Falls back to a
+    broader CinC sample if the live wing isn't the real cohort."""
+    if "svc" not in _IDENTITY:
+        from backend.aegis.identity import IdentityService
+        recs = []
+        by = getattr(cluster, "_by", {})
+        for bed in getattr(cluster, "node_ids", []):
+            rp = by.get(bed)
+            if rp is None:
+                continue
+            rec = rp.record
+            recs.append(SimpleNamespace(patient_id=bed, frame=rec.frame,
+                                        n_hours=rec.n_hours, is_septic=rec.is_septic,
+                                        labels=rec.labels))
+        if len(recs) < 4:
+            from backend.ml.data.cinc2019 import load_patients
+            recs = load_patients(sets=["training_setA"], limit=120)
+        _IDENTITY["svc"] = IdentityService(recs)
+    return _IDENTITY["svc"]
+
+
+@app.get("/aegis/identity")
+def identity_status() -> Dict[str, Any]:
+    """Enrolled-cohort status + the measured same-vs-different separability."""
+    svc = _identity_service()
+    return {"status": svc.status(), "validation": svc.validation()}
+
+
+class IdentitySwapIn(BaseModel):
+    target: Optional[str] = None         # whose monitor
+    source: Optional[str] = None         # whose stream is (mis)connected
+
+
+@app.post("/aegis/identity/swap")
+def identity_swap(p: IdentitySwapIn) -> Dict[str, Any]:
+    """Demo: connect ``source``'s stream to ``target``'s monitor → identity fault →
+    Z3-locked dispensing. With no args, picks two enrolled patients."""
+    svc = _identity_service()
+    pids = svc.patients()
+    if not pids:
+        return {"status": "error", "detail": "no enrolled patients"}
+    target = p.target or pids[0]
+    source = p.source or next((x for x in pids if x != target), pids[0])
+    if target not in pids or source not in pids:
+        return {"status": "error", "detail": "unknown patient id"}
+    return svc.swap(target, source)
+
+
+@app.post("/aegis/identity/self_check")
+def identity_self_check(p: IdentitySwapIn) -> Dict[str, Any]:
+    """Verify a patient against their own later stream (the no-fault baseline case)."""
+    svc = _identity_service()
+    pids = svc.patients()
+    target = p.target or (pids[0] if pids else None)
+    if target not in pids:
+        return {"status": "error", "detail": "unknown patient id"}
+    return svc.self_check(target)
+
+
+# --- Living Pharmacopoeia: drug-interaction graph → dynamic Z3 (MEGA-UPGRADE L4) -- #
+from backend.aegis.pharmacopoeia import Pharmacopoeia
+pharmacopoeia = Pharmacopoeia()                   # loads the fused DDInter+curated KB
+
+
+class PharmaScreenIn(BaseModel):
+    drugs: List[str] = ["warfarin", "fluconazole", "ciprofloxacin", "ondansetron"]
+    context: Dict[str, Any] = {"renal_failure": False}
+
+
+@app.get("/aegis/pharmacopoeia")
+def pharmacopoeia_stats() -> Dict[str, Any]:
+    """The fused knowledge base: DDInter pairwise graph + curated CYP/QT/renal layer."""
+    return pharmacopoeia.stats()
+
+
+@app.post("/aegis/pharmacopoeia/screen")
+def pharmacopoeia_screen(p: PharmaScreenIn) -> Dict[str, Any]:
+    """Traverse the interaction graph for a regimen, compose a Z3 constraint per
+    discovered hazard, and return the proof tree (globally safe or the violations)."""
+    return pharmacopoeia.verify(p.drugs, p.context)
+
+
+# --- Clinical Safety DSL: hospital-authored rules compiled to Z3 (MEGA-UPGRADE L2) - #
+from backend.aegis.clinical_dsl import (compile_rules, verify_protocol as dsl_verify,
+                                        check_consistency, DEFAULT_POLICY)
+
+
+class DslVerifyIn(BaseModel):
+    policy: str = DEFAULT_POLICY
+    protocol: Dict[str, Any] = {"antibiotic_code": 1, "antibiotic_time_hr": 0.5,
+                                "fluid_rate": 4.0, "vasopressor_dose": 0.1}
+    context: Dict[str, Any] = {"risk_level": "HIGH", "chf": True,
+                               "penicillin_allergy": True, "renal_failure": False}
+
+
+@app.get("/aegis/dsl/default")
+def dsl_default() -> Dict[str, Any]:
+    """The example hospital policy + a sample protocol/context to verify against."""
+    return {"policy": DEFAULT_POLICY,
+            "example_protocol": {"antibiotic_code": 1, "antibiotic_time_hr": 0.5,
+                                 "fluid_rate": 4.0, "vasopressor_dose": 0.1},
+            "example_context": {"risk_level": "HIGH", "chf": True,
+                                "penicillin_allergy": True, "renal_failure": False}}
+
+
+@app.post("/aegis/dsl/verify")
+def dsl_verify_endpoint(p: DslVerifyIn) -> Dict[str, Any]:
+    """Compile a hospital's safety rules to Z3 and prove a protocol satisfies them.
+    Returns a per-rule proof certificate (with the compiled Z3 s-expression) plus a
+    consistency check (is the rule set jointly satisfiable for this patient?)."""
+    try:
+        rules = compile_rules(p.policy)
+    except SyntaxError as e:
+        return {"status": "error", "detail": f"parse/compile error: {e}"}
+    cert = dsl_verify(rules, p.protocol, p.context)
+    consistency = check_consistency(rules, p.context)
+    return {"status": "ok", "certificate": cert.to_dict(), "consistency": consistency,
+            "n_rules": len(rules)}
+
+
+# --- Clinical RBAC: privilege-ring access control over the OS (MEGA-UPGRADE L3) -- #
+from backend.aegis.rbac import (RBAC, RBACGate, GRANTS, RING, CAP_MIN_RING,
+                                prove_policy_sound)
+rbac = RBAC()
+rbac_gate = RBACGate(rbac, syscalls.invoke)      # gates the live write-syscall trap
+
+
+class RbacLoginIn(BaseModel):
+    user: str = "clinician"
+    role: str
+
+
+class RbacAuthIn(BaseModel):
+    token: str
+    capability: str
+
+
+@app.post("/aegis/rbac/login")
+def rbac_login(p: RbacLoginIn) -> Dict[str, Any]:
+    """Mint a signed, expiring session token for a role + return that role's shell
+    capability contract (what the role's UI may render and do)."""
+    try:
+        s = rbac.login(p.user, p.role)
+    except ValueError as e:
+        return {"status": "error", "detail": str(e)}
+    return {"session": s.to_dict(), "token": s.token, "shell": rbac.shell_capabilities(p.role)}
+
+
+@app.get("/aegis/rbac/policy")
+def rbac_policy() -> Dict[str, Any]:
+    """The full RBAC matrix + the Z3 proof that the policy is sound (no grant above
+    its capability's ring)."""
+    return {"rings": RING, "cap_min_ring": CAP_MIN_RING,
+            "grants": {r: sorted(c) for r, c in GRANTS.items()},
+            "soundness": prove_policy_sound()}
+
+
+@app.post("/aegis/rbac/authorize")
+def rbac_authorize(p: RbacAuthIn) -> Dict[str, Any]:
+    """Check whether a session may perform a capability (audited, no mutation)."""
+    ok, reason, s = rbac.authorize(p.token, p.capability)
+    return {"ok": ok, "reason": reason, "capability": p.capability,
+            "role": s.role if s else None, "audit_head": rbac.audit.head()[:12]}
+
+
+@app.get("/aegis/rbac/audit")
+def rbac_audit(limit: int = 24) -> Dict[str, Any]:
+    return {"entries": [e.to_dict() for e in rbac.audit.entries[-limit:]],
+            "count": len(rbac.audit.entries), "head": rbac.audit.head()[:12],
+            "integrity_ok": rbac.audit.verify()}
+
+
+_FED_CACHE: Dict[str, Any] = {}
+
+
+@app.get("/aegis/fedlearn")
+def fedlearn_result(limit: int = 400, refresh: bool = False) -> Dict[str, Any]:
+    """Federated-learning experiment on the real CinC two-hospital split: does
+    cross-site AUROC recover without sharing data, and does robust aggregation
+    survive a poisoned hospital? Cached (first call computes ~5-15s)."""
+    key = f"l{limit}"
+    if refresh or key not in _FED_CACHE:
+        from backend.aegis.fedlearn import run_experiment, run_poisoning
+        _FED_CACHE[key] = {
+            "experiment": run_experiment(limit=limit, n_nodes=4, rounds=10, epochs=50),
+            "poisoning": run_poisoning(limit=limit, n_nodes=5, rounds=10, epochs=50),
+            "caveats": [
+                "Federated model is logistic regression (averageable weights); the "
+                "production GBM is not FL-compatible.",
+                "Only signed weight-deltas cross the wire — no patient records. "
+                "Data-minimization, not differential privacy.",
+                "Byzantine tolerance = signed updates + robust aggregation "
+                "(Krum/median), not a proof that a gradient is benign.",
+            ],
+        }
+    return _FED_CACHE[key]
+
+
+@app.get("/aegis/orchestrator")
+def orchestrator_status() -> Dict[str, Any]:
+    """The orchestration hierarchy (sensor/bed/wing/global) under the one
+    Non-Maleficence invariant, plus the attestation-ledger head + integrity."""
+    return orchestrator.status()
+
+
+@app.get("/aegis/orchestrator/attest")
+def orchestrator_attest() -> Dict[str, Any]:
+    """Continuous attestation: prove the invariant currently holds across the wing
+    (ledger intact + no critical bed dropped below its priority floor)."""
+    return orchestrator.attest()
+
+
+class GovernIn(BaseModel):
+    layer: str = "bed"
+    action: str                                    # treat | escalate | pin | actuator
+    payload: Dict[str, Any] = {}
+    target: Optional[str] = None                   # bed id
+
+
+@app.post("/aegis/orchestrator/govern")
+def orchestrator_govern(payload: GovernIn) -> Dict[str, Any]:
+    """Route a single action through the non-maleficence invariant. Returns its
+    certificate (allowed → applied; blocked → nothing mutates). Every call is
+    appended to the attestation ledger."""
+    cert = orchestrator.govern(payload.layer, payload.action,
+                               {k: v for k, v in payload.payload.items()},
+                               target=payload.target)
+    return cert.to_dict()
+
+
+@app.post("/aegis/orchestrator/scenario")
+def orchestrator_scenario(bed: Optional[str] = None) -> Dict[str, Any]:
+    """The demo cascade: induce a sepsis crisis in a wing bed and walk the governed
+    response sensor→bed→wing→global→governance, ending in a signed, Z3-certified,
+    immutably-logged order. A deliberate drill on the live wing (clear via syscalls)."""
+    beds = getattr(cluster, "node_ids", [])
+    if not beds:
+        return {"status": "error", "detail": "no wing beds available"}
+    if bed is None:
+        # prefer a known-septic bed, else the first.
+        bed = next((b for b in beds if getattr(cluster, "_by", {}).get(b)
+                    and getattr(cluster._by[b], "is_septic", False)), beds[0])
+    if bed not in beds:
+        return {"status": "error", "detail": f"no such bed '{bed}'"}
+    # The live wing is already warm (the stream loop ticks it); keep the drill short.
+    return orchestrator.run_scenario(bed, warmup=0, crisis_ticks=40)
+
+
+# --- Portable, third-party-checkable proof certificates (proof-export layer) ----- #
+from backend.aegis.proofexport import verify_certificate as _verify_cert, export_bundle
+
+_PROOF_CA = {"ca": None, "tried": False}
+
+
+def _proof_ca():
+    """Lazy shared Ed25519 signing authority for server-issued certificates.
+    Returns None (→ unsigned but still math-checkable cert) if crypto is unavailable."""
+    if not _PROOF_CA["tried"]:
+        _PROOF_CA["tried"] = True
+        try:
+            from backend.aegis.proofexport import CertificateAuthority
+            _PROOF_CA["ca"] = CertificateAuthority()
+        except Exception as exc:
+            print(f"[aegis] server proof signing disabled ({exc})")
+    return _PROOF_CA["ca"]
+
+
+class ProofVerifyIn(BaseModel):
+    certificate: Dict[str, Any]
+    require_signature: bool = True
+
+
+@app.get("/aegis/orchestrator/proof")
+def orchestrator_proof_latest() -> Dict[str, Any]:
+    """The most recent portable proof certificate the orchestrator emitted for a
+    treatment order, plus a fresh independent re-check of it."""
+    pc = orchestrator.last_proof
+    if pc is None:
+        return {"status": "empty",
+                "detail": "no treatment order has been governed yet (run a scenario)"}
+    return {"status": "ok", "certificate": pc,
+            "audit": _verify_cert(pc).to_dict()}
+
+
+@app.get("/aegis/orchestrator/proof/{seq}")
+def orchestrator_proof_by_seq(seq: int) -> Dict[str, Any]:
+    """The portable proof certificate bound to attestation-ledger entry ``seq``."""
+    pc = orchestrator.proof_for(seq)
+    if pc is None:
+        return {"status": "not_found", "detail": f"no proof bound to ledger seq {seq}"}
+    return {"status": "ok", "certificate": pc, "audit": _verify_cert(pc).to_dict()}
+
+
+class CoreProofIn(BaseModel):
+    clinical_history: Dict[str, Any] = {"chf": True, "renal_failure": False,
+                                        "penicillin_allergy": True}
+    vitals: Dict[str, Any] = {"map": 62.0}
+    risk_level: str = "HIGH"
+    protocol: Dict[str, Any] = {"fluid_rate": 4.0, "vasopressor_dose": 0.2,
+                                "antibiotic_code": 3}
+
+
+@app.post("/aegis/proof/core")
+def proof_core_certify(p: CoreProofIn) -> Dict[str, Any]:
+    """Export a portable, signed proof certificate from the CORE Z3 cage — the exact
+    prover the live runtime uses on every HIGH-risk decision — one re-checkable
+    SMT-LIB2 obligation per clinical invariant, then independently re-audit it."""
+    from backend.aegis.proofexport import certify_core_protocol
+    cert = certify_core_protocol(p.clinical_history, p.vitals, p.risk_level,
+                                 p.protocol, ca=_proof_ca())
+    cd = cert.to_dict()
+    return {"status": "ok", "certificate": cd, "audit": _verify_cert(cd).to_dict()}
+
+
+@app.get("/aegis/proof/core/latest")
+def proof_core_latest() -> Dict[str, Any]:
+    """The portable proof certificate for the live patient's most recent HIGH-risk
+    protocol decision, plus a fresh independent re-check. Emitted by AegisCore."""
+    pc = getattr(session.core, "last_proof", None)
+    if pc is None:
+        return {"status": "empty",
+                "detail": "no HIGH-risk protocol has been certified for this patient yet"}
+    return {"status": "ok", "certificate": pc, "audit": _verify_cert(pc).to_dict()}
+
+
+@app.get("/aegis/proof/core/latest/bundle")
+def proof_core_latest_bundle():
+    """Download a self-contained .zip audit bundle for the live patient's most recent
+    certified order — verifiable by a third party with only z3 + cryptography."""
+    import io
+    import shutil
+    import tempfile
+    import zipfile
+    from fastapi import Response
+    from backend.aegis.proofexport import ProofCertificate
+
+    pc = getattr(session.core, "last_proof", None)
+    if pc is None:
+        return {"status": "empty", "detail": "no certified order yet"}
+    tmp = tempfile.mkdtemp(prefix="aegis-core-bundle-")
+    try:
+        export_bundle(ProofCertificate.from_dict(pc), tmp)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, _dirs, files in _os.walk(tmp):
+                for fn in files:
+                    full = _os.path.join(root, fn)
+                    zf.write(full, _os.path.relpath(full, tmp))
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(), media_type="application/zip",
+            headers={"Content-Disposition":
+                     'attachment; filename="aegis-core-proof-bundle.zip"'})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.post("/aegis/proof/verify")
+def proof_verify(p: ProofVerifyIn) -> Dict[str, Any]:
+    """Independently audit ANY proof certificate the caller supplies — re-runs every
+    SMT-LIB2 obligation in a fresh solver, recomputes the content digest, and checks
+    the Ed25519 signature. This is the third-party audit path: a signed-but-false
+    certificate fails here because the math is re-run, not trusted."""
+    return _verify_cert(p.certificate, require_signature=p.require_signature).to_dict()
+
+
+@app.get("/aegis/orchestrator/proof/{seq}/bundle")
+def orchestrator_proof_bundle(seq: int):
+    """Download a self-contained audit bundle (.zip): certificate.json, one .smt2 per
+    obligation, the public key, AUDIT.md, and a standalone verifier that needs only
+    z3 + cryptography. A third party verifies the order without any AegisOS code."""
+    import io
+    import shutil
+    import tempfile
+    import zipfile
+    from fastapi import Response
+    from backend.aegis.proofexport import ProofCertificate
+
+    pc = orchestrator.proof_for(seq)
+    if pc is None:
+        return {"status": "not_found", "detail": f"no proof bound to ledger seq {seq}"}
+    tmp = tempfile.mkdtemp(prefix=f"aegis-bundle-{seq}-")
+    try:
+        export_bundle(ProofCertificate.from_dict(pc), tmp)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for root, _dirs, files in _os.walk(tmp):
+                for fn in files:
+                    full = _os.path.join(root, fn)
+                    zf.write(full, _os.path.relpath(full, tmp))
+        buf.seek(0)
+        return Response(
+            content=buf.getvalue(), media_type="application/zip",
+            headers={"Content-Disposition":
+                     f'attachment; filename="aegis-proof-bundle-seq{seq}.zip"'})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+@app.get("/aegis/consensus")
+def consensus_round(deterioration: Optional[float] = None,
+                    faulty: Optional[str] = None,
+                    remote: Optional[str] = None,
+                    bed: Optional[str] = None) -> Dict[str, Any]:
+    """Run one Byzantine-fault-tolerant specialist consensus round over a patient's
+    state (live session, or a cohort bed via ``bed``). ``faulty`` marks a replica id
+    as Byzantine; ``remote`` marks a remote consultant; leave ``deterioration``
+    unset to derive it from the patient's risk band."""
+    from backend.aegis.consensus import ClinicalBFT, default_panel
+    if bed and bed != session.patient_id and getattr(cluster, "_by", {}).get(bed):
+        prof = getattr(cluster, "profiles", {}).get(bed)
+        raw = cluster._sample_vitals(bed) if hasattr(cluster, "_sample_vitals") else {}
+        fused = float(getattr(prof, "fused_risk", 0.0)) if prof else 0.0
+        vit = {"map": float(raw.get("map", 80.0))}
+        risk = "HIGH" if fused >= 0.6 else "MEDIUM" if fused >= 0.35 else "LOW"
+        hist = getattr(cluster, "histories", {}).get(bed, {})
+    else:
+        vit = session.core.twin.latest_vitals or {}
+        risk = session.latest.risk_level if session.latest else "MEDIUM"
+        hist = session.core.clinical_history or {}
+    if deterioration is None:
+        deterioration = {"HIGH": 0.7, "MEDIUM": 0.35, "LOW": 0.1}.get(risk, 0.3)
+        if float(vit.get("map", 90)) < 60:        # very low MAP ⇒ crashing faster
+            deterioration = max(deterioration, 0.85)
+    state = {"map": float(vit.get("map", 75.0)), "risk_level": risk,
+             "clinical_history": hist,
+             "infection_suspected": risk in ("HIGH", "MEDIUM")}
+    panel = default_panel(remote_id=remote)
+    if faulty:
+        for a in panel:
+            if a.agent_id == faulty:
+                a.byzantine = True
+    bft = ClinicalBFT(panel)
+    out = bft.run_round(state, deterioration=float(deterioration))
+    res = out.to_dict()
+    res["state"] = {"map": state["map"], "risk_level": risk,
+                    "clinical_history": state["clinical_history"]}
+    res["panel"] = [{"id": a.agent_id, "specialty": a.specialty,
+                     "byzantine": a.byzantine, "remote": a.remote} for a in panel]
+    return res
+
+
+@app.post("/aegis/causal/replay")
+def causal_replay(payload: ReplayIn) -> Dict[str, Any]:
+    """Counterfactual replay: 'what would have happened under an alternative action?'
+    Treatment effect is measured model-internally (alternative vs action-taken),
+    scored by the live model; recorded reality is returned for context."""
+    eng = _replay_for(payload.bed)
+    if eng is None:
+        return {"status": "error", "detail": f"no such patient '{payload.bed}'"}
+    try:
+        if payload.outcome_id:
+            return eng.replay_earliest(payload.outcome_id, payload.treatment,
+                                       horizon=payload.horizon)
+        if payload.node_id:
+            return eng.replay(payload.node_id, payload.treatment, horizon=payload.horizon)
+        return {"status": "error", "detail": "provide outcome_id or node_id"}
+    except (KeyError, ValueError) as e:
+        return {"status": "error", "detail": str(e)}
 
 
 @app.post("/aegis/ingest")
@@ -841,21 +1484,27 @@ _WEBUI = _os.path.join(
     _os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "webui")
 
 
-class _NoCacheStatic(StaticFiles):
-    """Serve the shell with no-store so live edits (incl. ES modules) always
-    load fresh — browsers otherwise cache modules across reloads/restarts."""
+class _SmartStatic(StaticFiles):
+    """Cache the heavy immutable vendor assets (GLBs, three.js — ~35 MB, the
+    bulk of egress) for a year, but keep the app source revalidating so live
+    edits load fresh. This is what stops Render re-serving 35 MB per reload.
 
-    def is_not_modified(self, *a, **k) -> bool:  # defeat 304 revalidation
-        return False
+    Note: in the split deploy the static frontend lives on Cloudflare Pages
+    (unlimited bandwidth) and this mount is only a local-dev / fallback path —
+    see webui/_headers for the Cloudflare-side cache policy."""
 
     async def get_response(self, path, scope):
         resp = await super().get_response(path, scope)
-        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        p = path.replace("\\", "/")
+        if p.startswith("vendor/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            resp.headers["Cache-Control"] = "no-cache"   # revalidate (cheap 304s), always fresh source
         return resp
 
 
 if _os.path.isdir(_WEBUI):
-    app.mount("/", _NoCacheStatic(directory=_WEBUI, html=True), name="aegisos-shell")
+    app.mount("/", _SmartStatic(directory=_WEBUI, html=True), name="aegisos-shell")
 
 
 if __name__ == "__main__":  # pragma: no cover

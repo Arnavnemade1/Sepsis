@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=9" />
+<link rel="stylesheet" href="os.css?v=20" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -36,7 +36,17 @@
       <span class="sysbar-pill" id="sb-source">— </span>
     </div>
     <div class="sysbar-c">
-      <span class="sysbar-patient" id="sb-patient">—</span>
+      <div class="patient-select" id="patient-select">
+        <button class="patient-trigger" id="patient-trigger" aria-haspopup="listbox" aria-expanded="false">
+          <span class="patient-dot" id="patient-dot"></span>
+          <span class="patient-id">
+            <span class="patient-name" id="patient-name">Select patient</span>
+            <span class="patient-meta" id="patient-meta">13 monitored</span>
+          </span>
+          <span class="patient-caret">▾</span>
+        </button>
+        <div class="patient-menu hidden" id="patient-menu" role="listbox"></div>
+      </div>
     </div>
     <div class="sysbar-r">
       <a class="sysbar-tactical" href="tactical.html" title="Open the Global ICU Tactical Sphere — multi-patient kernel cockpit">◎ TACTICAL SPHERE</a>
@@ -72,18 +82,28 @@
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
         <span class="win-title">SEPSIS RISK CORE</span></div>
       <div class="win-body risk-body">
-        <div class="risk-gauge"><svg viewBox="0 0 120 120" id="risk-arc"></svg>
-          <div class="risk-readout"><div id="risk-prob">0%</div><div class="risk-cap">calibrated P(sepsis)</div></div>
+        <div class="risk-gauge" id="risk-gauge">
+          <svg viewBox="0 0 120 120" id="risk-arc"></svg>
+          <div class="risk-readout">
+            <div class="risk-prob" id="risk-prob"><span class="rp-int">0</span><span class="rp-dec">%</span></div>
+            <div class="risk-cap">P(sepsis)</div>
+          </div>
         </div>
-        <div class="risk-tiers">
-          <div class="risk-tier" id="rt-LOW">LOW</div>
-          <div class="risk-tier" id="rt-MEDIUM">MEDIUM</div>
-          <div class="risk-tier" id="rt-HIGH">HIGH</div>
-        </div>
-        <div class="risk-scores">
-          <span>SIRS <b id="rs-sirs">0</b>/4</span>
-          <span>qSOFA <b id="rs-qsofa">0</b>/3</span>
-          <span>signal <b id="rs-sq">0%</b></span>
+        <div class="risk-side">
+          <div class="risk-tierline">
+            <span class="risk-eyebrow">calibrated risk</span>
+            <span class="risk-tier-badge" id="risk-tier-badge">LOW</span>
+          </div>
+          <div class="risk-bands" id="risk-bands">
+            <span class="rb-seg" data-t="LOW">LOW</span>
+            <span class="rb-seg" data-t="MEDIUM">MED</span>
+            <span class="rb-seg" data-t="HIGH">HIGH</span>
+          </div>
+          <div class="risk-scores">
+            <div class="rsc"><span class="rsc-v" id="rs-sirs">0</span><span class="rsc-k">SIRS /4</span></div>
+            <div class="rsc"><span class="rsc-v" id="rs-qsofa">0</span><span class="rsc-k">qSOFA /3</span></div>
+            <div class="rsc"><span class="rsc-v" id="rs-sq">0%</span><span class="rsc-k">signal</span></div>
+          </div>
         </div>
       </div>
     </section>
@@ -174,9 +194,20 @@
       <button class="dock-btn warn" data-stage="SEPSIS">Induce Sepsis</button>
       <button class="dock-btn" data-stage="RECOVERING">Recover</button>
     </div>
-    <div class="dock-grp">
-      <span class="dock-label">modules</span>
-      <button class="dock-btn accent" id="launch-camera">◉ Optical Biosensor</button>
+    <div class="dock-grp dock-grp-apps">
+      <span class="dock-label">patient</span>
+      <button class="dock-btn accent" id="launch-camera">◉ Optical</button>
+      <button class="dock-btn" id="launch-story">◔ Clinical Story <span id="story-count" class="story-pill">0</span></button>
+      <button class="dock-btn" id="launch-consensus">⚖ Consensus</button>
+      <button class="dock-btn" id="launch-pharma">⚕ Pharmacopoeia</button>
+      <button class="dock-btn" id="launch-identity">⊚ Identity</button>
+    </div>
+    <div class="dock-grp dock-grp-apps">
+      <span class="dock-label">system</span>
+      <button class="dock-btn" id="launch-orch">⬡ Orchestrator</button>
+      <button class="dock-btn" id="launch-fed">⇄ Federation</button>
+      <button class="dock-btn" id="launch-rbac">⬚ Access Control</button>
+      <button class="dock-btn" id="launch-dsl">§ Safety Policy</button>
     </div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>
@@ -284,6 +315,517 @@
   </div>
 </div>
 
+<!-- ===================== TEMPORAL CAUSAL GRAPH (clinical story) ===================== -->
+<div id="story-app" class="story-app hidden">
+  <header class="cam-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil">◔</span>
+      <span class="cam-title">CLINICAL STORY</span>
+      <span class="story-patient" id="story-patient">—</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="cam-state" id="story-integrity"><i></i><span>—</span></span>
+      <button class="cam-close" id="story-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="story-body">
+    <!-- left: the event ledger -->
+    <section class="story-ledger">
+      <div class="story-sec-h">EVENT LEDGER
+        <span class="story-sub" id="story-ledger-sub">0 events · 0 edges</span>
+        <button class="dock-btn" id="story-refresh">↻ refresh</button>
+      </div>
+      <div id="story-timeline" class="story-timeline">
+        <div class="muted">No clinical events yet. The graph grows as risk evolves.</div>
+      </div>
+    </section>
+
+    <!-- right: reasoning -->
+    <aside class="story-rail">
+      <div class="story-card">
+        <div class="story-sec-h">INCIDENT REPORT
+          <button class="dock-btn accent" id="story-incident">trace back from latest</button>
+        </div>
+        <div id="story-incident-out" class="story-report">
+          <div class="muted">Traverse backward from the latest event to the earliest
+            point an intervention could have changed the trajectory.</div>
+        </div>
+      </div>
+
+      <div class="story-card">
+        <div class="story-sec-h">COUNTERFACTUAL REPLAY
+          <button class="dock-btn" id="story-replay" disabled>what if we'd acted sooner?</button>
+        </div>
+        <div id="story-replay-out" class="story-report">
+          <div class="muted">Run an incident report first, then replay an alternative
+            action from the earliest actionable branch point.</div>
+        </div>
+      </div>
+
+      <div class="story-card">
+        <div class="story-sec-h">COHORT PATTERNS
+          <button class="dock-btn" id="story-mine">mine associations</button>
+        </div>
+        <div id="story-mine-out" class="story-report">
+          <div class="muted">Mine observed associations across the recorded cohort —
+            ranked by lift over baseline. Associations, not causal guidelines.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== DISTRIBUTED CONSENSUS BRAIN ===================== -->
+<div id="consensus-app" class="story-app hidden">
+  <header class="cam-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil">⚖</span>
+      <span class="cam-title">CONSENSUS CHAMBER</span>
+      <span class="cam-sub">an independent panel of specialist models reviews <b id="cns-patient">this patient</b></span>
+    </div>
+    <div class="cam-head-r">
+      <span class="cam-state" id="cns-cert"><i></i><span>—</span></span>
+      <button class="cam-close" id="cns-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="story-body">
+    <!-- left: the verdict + each specialist's opinion on THIS patient -->
+    <section class="story-ledger">
+      <div class="cns-verdict" id="cns-verdict">
+        <div class="muted">Reviewing the live patient…</div>
+      </div>
+      <div class="story-sec-h" style="margin-top:15px">SPECIALIST OPINIONS
+        <span class="story-sub" id="cns-quorum">N=— · quorum=—</span>
+      </div>
+      <div id="cns-specialists" class="cns-specialists">
+        <div class="muted">Convening the panel on the live patient…</div>
+      </div>
+      <div id="cns-dissent" class="cns-dissent"></div>
+    </section>
+
+    <!-- right: the trust certificate, the raw ledger, and the stress-test -->
+    <aside class="story-rail">
+      <div class="story-card">
+        <div class="story-sec-h">COMMITTED ORDER + CERTIFICATE</div>
+        <div id="cns-out" class="story-report">
+          <div class="muted">The committed plan and its multi-signed, Z3-gated quorum
+            certificate will appear here once the panel convenes.</div>
+        </div>
+      </div>
+
+      <div class="story-card">
+        <details class="cns-fold">
+          <summary class="story-sec-h cns-fold-h">VOTE LEDGER
+            <span class="story-sub" id="cns-ledger-sub">signed votes, by round</span></summary>
+          <div id="cns-ledger" class="cns-ledger"></div>
+        </details>
+      </div>
+
+      <div class="story-card cns-stress">
+        <details class="cns-fold">
+          <summary class="story-sec-h cns-fold-h">ROBUSTNESS STRESS-TEST
+            <span class="story-sub">pressure-test the panel</span></summary>
+          <p class="cns-stress-note">Re-run the review under adversarial conditions: a
+            faster physiologic crash (tighter deadline) or a compromised/faulty data
+            source for one specialist. Proves the panel still commits a safe order.</p>
+          <div class="cns-controls">
+            <label class="cns-ctl">simulated crash speed
+              <input type="range" id="cns-det" min="0" max="1" step="0.05" value="0.3"></label>
+            <div class="cns-det-read"><span id="cns-det-val">0.30</span>
+              <span class="muted" id="cns-det-note">— debate has time to converge</span></div>
+            <label class="cns-ctl">compromise a specialist
+              <select id="cns-faulty">
+                <option value="">none (all sources trusted)</option>
+                <option value="intensivist">Intensivist</option>
+                <option value="cardiology">Cardiology</option>
+                <option value="nephrology">Nephrology</option>
+                <option value="id">Infectious Disease</option>
+              </select></label>
+            <button class="dock-btn accent" id="cns-run">run stress-test</button>
+          </div>
+        </details>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== AUTONOMOUS ICU ORCHESTRATOR ===================== -->
+<div id="orch-app" class="orch-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">⬡</span>
+      <span class="cam-title">AUTONOMOUS ICU ORCHESTRATOR</span>
+      <span class="cam-sub">one invariant · every layer · every action provably gated</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="orch-attest" id="orch-attest"><i></i><span>ATTESTING…</span></span>
+      <button class="cam-close" id="orch-close">✕ close</button>
+    </div>
+  </header>
+
+  <!-- the invariant — the spine of the whole system -->
+  <div class="orch-invariant" id="orch-inv-banner">
+    <div class="orch-shield">
+      <svg viewBox="0 0 48 56" class="orch-shield-svg">
+        <path d="M24 2 L44 10 V28 C44 42 35 50 24 54 C13 50 4 42 4 28 V10 Z"
+              class="orch-shield-body"/>
+        <path d="M16 28 l6 6 l11 -13" class="orch-shield-check"/>
+      </svg>
+    </div>
+    <div class="orch-inv-text">
+      <div class="orch-inv-kicker">PRIMUM NON NOCERE · NON-MALEFICENCE INVARIANT</div>
+      <div class="orch-inv-name">No action reaches a patient without a safety certificate.</div>
+      <div class="orch-inv-sub">Uncertified egress is structurally impossible — enforced continuously across every layer.</div>
+    </div>
+    <div class="orch-inv-stats">
+      <div class="orch-stat"><b id="orch-actions">0</b><span>governed actions</span></div>
+      <div class="orch-stat"><b id="orch-head" class="mono">—</b><span>attestation head</span></div>
+    </div>
+  </div>
+
+  <div class="orch-body">
+    <!-- left: the orchestration hierarchy, threaded on the invariant spine -->
+    <section class="orch-stack">
+      <div class="orch-spine"><span class="orch-spine-pulse" id="orch-pulse"></span></div>
+      <div class="orch-strata" id="orch-strata"></div>
+    </section>
+
+    <!-- right: the demo cascade, the certificate, the immutable ledger -->
+    <aside class="orch-rail">
+      <div class="orch-card orch-cascade-card">
+        <div class="orch-card-h">DEMO CASCADE
+          <span class="orch-card-sub" id="orch-bed">live wing</span></div>
+        <button class="orch-run" id="orch-run">
+          <span class="orch-run-ico">▶</span> INDUCE SEPSIS CASCADE</button>
+        <div class="orch-log" id="orch-log">
+          <div class="orch-log-idle">Induce a crisis in a live bed and watch the governed
+            response flow through the hierarchy — ending in a signed, formally verified order.</div>
+        </div>
+      </div>
+
+      <div class="orch-card orch-cert-card">
+        <div class="orch-card-h">GOVERNED ORDER</div>
+        <div class="orch-cert-stage" id="orch-cert">
+          <div class="orch-cert-idle">awaiting governance gate</div>
+        </div>
+      </div>
+
+      <div class="orch-card orch-proof-card">
+        <div class="orch-card-h">PORTABLE PROOF
+          <span class="orch-card-sub">independently checkable · no trust in AegisOS</span></div>
+        <div class="orch-proof-stage" id="orch-proof">
+          <div class="orch-cert-idle">a signed, third-party-verifiable certificate is
+            issued with each governed order</div>
+        </div>
+      </div>
+
+      <div class="orch-card">
+        <div class="orch-card-h">ATTESTATION LEDGER
+          <span class="orch-card-sub" id="orch-ledger-sub">append-only · hash-chained</span></div>
+        <div class="orch-ledger" id="orch-ledger">
+          <div class="orch-log-idle">Every governed action — allowed or blocked — is sealed here.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== FEDERATED INTELLIGENCE NETWORK ===================== -->
+<div id="fed-app" class="orch-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">⇄</span>
+      <span class="cam-title">FEDERATED INTELLIGENCE NETWORK</span>
+      <span class="cam-sub">hospitals learn together · raw data never leaves a site</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="orch-attest ok" id="fed-status"><i></i><span>READY</span></span>
+      <button class="cam-close" id="fed-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="fed-body">
+    <!-- left: the network + the headline recovery result -->
+    <section class="fed-main">
+      <div class="fed-topo-card">
+        <div class="orch-card-h">THE NETWORK
+          <span class="orch-card-sub">setA hospitals collaborate · setB = unseen site</span></div>
+        <div class="fed-topo" id="fed-topo"></div>
+        <div class="fed-flow-note" id="fed-flow-note">
+          Each hospital trains locally and uploads only a <b>signed weight-delta</b> —
+          the server aggregates them into a global model. No record ever moves.</div>
+      </div>
+
+      <div class="fed-result-card">
+        <div class="orch-card-h">CROSS-HOSPITAL RECOVERY
+          <span class="orch-card-sub" id="fed-sub">real CinC setA → setB (unseen)</span></div>
+        <div class="fed-bars" id="fed-recovery">
+          <div class="orch-log-idle">Run the federation to measure whether collaboration
+            recovers performance on an unseen hospital.</div>
+        </div>
+        <div class="fed-headline" id="fed-headline"></div>
+      </div>
+    </section>
+
+    <!-- right: controls, robustness, honesty -->
+    <aside class="fed-rail">
+      <div class="orch-card">
+        <div class="orch-card-h">RUN</div>
+        <button class="orch-run" id="fed-run"><span class="orch-run-ico">⇄</span> RUN FEDERATION ROUNDS</button>
+        <div class="fed-run-note muted" id="fed-run-note">
+          Trains 4 hospitals over 10 rounds and evaluates on the held-out site.</div>
+      </div>
+
+      <div class="orch-card">
+        <div class="orch-card-h">BYZANTINE ROBUSTNESS
+          <span class="orch-card-sub">one poisoned hospital</span></div>
+        <div class="fed-bars compact" id="fed-poison">
+          <div class="orch-log-idle">A malicious hospital sends a poisoned update —
+            does the global model survive?</div>
+        </div>
+      </div>
+
+      <div class="orch-card">
+        <div class="orch-card-h">INTEGRITY</div>
+        <div class="fed-caveats" id="fed-caveats"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== CLINICAL RBAC — ROLE SHELLS ===================== -->
+<div id="rbac-app" class="story-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">⬚</span>
+      <span class="cam-title">CLINICAL ACCESS CONTROL</span>
+      <span class="cam-sub">privilege rings · signed sessions · Z3-verified policy</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="rbac-session" id="rbac-session"><i></i><span>no active session</span></span>
+      <button class="cam-close" id="rbac-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="rbac-body">
+    <section class="rbac-main">
+      <div class="rbac-sec-h">SELECT IDENTITY <span class="orch-card-sub">log in as a role — the shell rebuilds around what you may see &amp; do</span></div>
+      <div class="rbac-roles" id="rbac-roles"></div>
+
+      <div class="rbac-shell hidden" id="rbac-shell">
+        <div class="rbac-shell-h">
+          <span class="rbac-ring-badge" id="rbac-ring"></span>
+          <div class="rbac-shell-id">
+            <div class="rbac-shell-role" id="rbac-shell-role">—</div>
+            <div class="rbac-shell-sub" id="rbac-shell-sub">—</div>
+          </div>
+          <button class="dock-btn" id="rbac-logout">sign out</button>
+        </div>
+        <div class="rbac-grid-h">CAPABILITY SURFACE
+          <span class="orch-card-sub">click any capability to attempt it — the gate decides</span></div>
+        <div class="rbac-caps" id="rbac-caps"></div>
+      </div>
+    </section>
+
+    <aside class="rbac-rail">
+      <div class="rbac-card">
+        <div class="orch-card-h">POLICY <span class="orch-card-sub" id="rbac-policy-sub">—</span></div>
+        <div class="rbac-sound" id="rbac-sound"></div>
+        <div class="rbac-rings" id="rbac-rings"></div>
+      </div>
+      <div class="rbac-card">
+        <div class="orch-card-h">AUDIT LEDGER
+          <span class="orch-card-sub" id="rbac-audit-sub">append-only · hash-chained</span></div>
+        <div class="rbac-audit" id="rbac-audit">
+          <div class="orch-log-idle">Every authorization decision — grant or deny — is sealed here.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== CLINICAL SAFETY DSL ===================== -->
+<div id="dsl-app" class="story-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">§</span>
+      <span class="cam-title">CLINICAL SAFETY POLICY</span>
+      <span class="cam-sub">author rules in clinical language · compiled to Z3 · proven before any order</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="rbac-session" id="dsl-verdict"><i></i><span>not yet compiled</span></span>
+      <button class="cam-close" id="dsl-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="dsl-body">
+    <!-- left: the live patient, the order under review, and the active rules -->
+    <section class="dsl-left">
+      <div class="dsl-patient" id="dsl-patient">
+        <div class="muted">Loading the live patient…</div>
+      </div>
+
+      <div class="dsl-sec-h" style="margin-top:15px">SAFETY RULES FOR THIS PATIENT
+        <span class="orch-card-sub" id="dsl-active-sub">which of the hospital's rules apply</span></div>
+      <div id="dsl-active" class="dsl-active">
+        <div class="orch-log-idle">Compiling the hospital policy against this patient…</div>
+      </div>
+
+      <details class="dsl-advanced">
+        <summary class="dsl-sec-h dsl-adv-h">ADVANCED · author policy &amp; test a hypothetical order</summary>
+        <p class="dsl-adv-note">Edit the hospital's machine-checked policy, or override the
+          order/context to prove a what-if. Defaults mirror the live patient.</p>
+        <textarea id="dsl-editor" class="dsl-editor" spellcheck="false"></textarea>
+        <div class="dsl-controls">
+          <div class="dsl-ctl-col">
+            <div class="dsl-sec-h">PROPOSED ORDER</div>
+            <label class="dsl-ctl">antibiotic
+              <select id="dsl-abx">
+                <option value="0">NONE</option><option value="1" selected>Cefepime</option>
+                <option value="2">PipTazo</option><option value="3">Vancomycin</option>
+                <option value="4">Meropenem</option><option value="5">Ceftriaxone</option>
+                <option value="6">Ciprofloxacin</option>
+              </select></label>
+            <label class="dsl-ctl">antibiotic time (hr)
+              <input type="number" id="dsl-abxt" value="0.5" step="0.25" min="0"></label>
+            <label class="dsl-ctl">fluid rate (mL/kg/hr)
+              <input type="number" id="dsl-fluid" value="4" step="1" min="0"></label>
+            <label class="dsl-ctl">vasopressor dose
+              <input type="number" id="dsl-vaso" value="0.1" step="0.05" min="0"></label>
+          </div>
+          <div class="dsl-ctl-col">
+            <div class="dsl-sec-h">PATIENT CONTEXT</div>
+            <label class="dsl-ctl">risk
+              <select id="dsl-risk"><option>LOW</option><option>MEDIUM</option>
+                <option selected>HIGH</option></select></label>
+            <label class="dsl-chk"><input type="checkbox" id="dsl-chf" checked> CHF</label>
+            <label class="dsl-chk"><input type="checkbox" id="dsl-pen" checked> penicillin allergy</label>
+            <label class="dsl-chk"><input type="checkbox" id="dsl-renal"> renal failure</label>
+          </div>
+        </div>
+        <button class="orch-run" id="dsl-run"><span class="orch-run-ico">§</span> COMPILE &amp; PROVE</button>
+      </details>
+    </section>
+
+    <!-- right: the proof verdict for the order under review -->
+    <aside class="dsl-rail">
+      <div class="dsl-card">
+        <div class="orch-card-h">PROOF · ORDER vs POLICY
+          <span class="orch-card-sub" id="dsl-consistency">—</span></div>
+        <div id="dsl-results" class="dsl-results">
+          <div class="orch-log-idle">Proving the live order against every safety rule…</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== LIVING PHARMACOPOEIA ===================== -->
+<div id="pharma-app" class="story-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">⚕</span>
+      <span class="cam-title">LIVING PHARMACOPOEIA</span>
+      <span class="cam-sub">real interaction graph · mechanism-aware · every hazard a Z3 constraint</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="rbac-session" id="pharma-verdict"><i></i><span>no regimen screened</span></span>
+      <button class="cam-close" id="pharma-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="dsl-body">
+    <section class="dsl-left">
+      <div class="dsl-sec-h">REGIMEN <span class="pharma-patient" id="pharma-patient"></span>
+        <span class="orch-card-sub" id="pharma-kb">loading knowledge base…</span></div>
+      <div class="pharma-regimen" id="pharma-regimen"></div>
+      <div class="pharma-add">
+        <input id="pharma-input" class="pharma-input" list="pharma-list"
+               placeholder="add a drug (e.g. warfarin)…" autocomplete="off">
+        <datalist id="pharma-list"></datalist>
+        <button class="dock-btn" id="pharma-addbtn">+ add</button>
+      </div>
+      <div class="pharma-quick" id="pharma-quick"></div>
+
+      <div class="dsl-ctl-col" style="margin-top:4px">
+        <div class="dsl-sec-h">PATIENT CONTEXT</div>
+        <label class="dsl-chk"><input type="checkbox" id="pharma-renal"> renal failure</label>
+        <label class="dsl-chk"><input type="checkbox" id="pharma-hepatic"> hepatic impairment</label>
+      </div>
+      <button class="orch-run" id="pharma-run"><span class="orch-run-ico">⚕</span> SCREEN &amp; PROVE</button>
+    </section>
+
+    <aside class="dsl-rail">
+      <div class="dsl-card">
+        <div class="orch-card-h">SAFETY PROOF TREE
+          <span class="orch-card-sub" id="pharma-summary">—</span></div>
+        <div id="pharma-results" class="dsl-results">
+          <div class="orch-log-idle">Build a regimen and screen it. Every discovered
+            interaction — pairwise, CYP450-mediated, or additive-QT — becomes a Z3
+            constraint and is proven, with its mechanism and source.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- ===================== PHYSIOLOGIC IDENTITY GUARD ===================== -->
+<div id="identity-app" class="story-app hidden">
+  <div class="orch-aurora"></div>
+  <header class="cam-head orch-head">
+    <div class="cam-head-l">
+      <span class="cam-sigil orch-sigil">⊚</span>
+      <span class="cam-title">PHYSIOLOGIC IDENTITY GUARD</span>
+      <span class="cam-sub">continuous proof-of-patient · Mahalanobis drift · dispensing locked on fault</span>
+    </div>
+    <div class="cam-head-r">
+      <span class="rbac-session" id="idg-state"><i></i><span>monitoring</span></span>
+      <button class="cam-close" id="idg-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="dsl-body">
+    <section class="dsl-left">
+      <div class="dsl-sec-h">SENSOR-SWAP DRILL
+        <span class="orch-card-sub">connect one patient's stream to another's monitor</span></div>
+      <div class="idg-swap">
+        <label class="dsl-ctl">monitor enrolled for
+          <select id="idg-target"></select></label>
+        <div class="idg-arrow">◀ stream from</div>
+        <label class="dsl-ctl">live stream is actually
+          <select id="idg-source"></select></label>
+      </div>
+      <div class="idg-actions">
+        <button class="orch-run" id="idg-swap"><span class="orch-run-ico">⊚</span> CONNECT STREAM &amp; VERIFY</button>
+        <button class="dock-btn" id="idg-self">verify against own stream</button>
+      </div>
+      <div id="idg-gauge" class="idg-gauge"></div>
+
+      <div class="dsl-sec-h" style="margin-top:6px">SEPARABILITY (measured on real CinC)</div>
+      <div id="idg-validation" class="idg-validation">
+        <div class="orch-log-idle">loading validation…</div>
+      </div>
+    </section>
+
+    <aside class="dsl-rail">
+      <div class="dsl-card">
+        <div class="orch-card-h">DISPENSE GATE <span class="orch-card-sub">Z3-proven</span></div>
+        <div id="idg-gate" class="idg-gate">
+          <div class="orch-log-idle">Run a drill. If the stream stops matching the enrolled
+            fingerprint, a PATIENT_IDENTITY_FAULT suspends feeds and Z3 proves dispensing is locked.</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
 <!-- shared SVG defs -->
 <svg width="0" height="0" style="position:absolute">
   <defs>
@@ -300,6 +842,6 @@
 </script>
 <script type="module" src="twin3d.js?v=6"></script>
 <script type="module" src="camera.js?v=10"></script>
-<script src="os.js?v=10"></script>
+<script src="os.js?v=24"></script>
 </body>
 </html>

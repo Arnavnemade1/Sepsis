@@ -71,6 +71,15 @@ from backend.aegis.kernel.supervisor import (
     FaultRecord,
     SupervisedDevice,
 )
+from backend.aegis.kernel.causal_graph import (
+    Edge,
+    Node,
+    TemporalCausalGraph,
+    cert_hash,
+    MODEL_PREDICTED,
+    OBSERVED_ASSOCIATION,
+    Z3_PROVEN,
+)
 
 __all__ = [
     # Layer 1
@@ -93,4 +102,7 @@ __all__ = [
     "EbpfDevice", "load_ebpf_driver", "scatter_program",
     "DriverRejected", "DriverFault",
     "DriverSupervisor", "SupervisedDevice", "FaultRecord",
+    # Temporal Causal Graph: the clinical story as a tamper-evident, evidence-typed DAG
+    "TemporalCausalGraph", "Node", "Edge", "cert_hash",
+    "Z3_PROVEN", "MODEL_PREDICTED", "OBSERVED_ASSOCIATION",
 ]

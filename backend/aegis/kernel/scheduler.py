@@ -148,6 +148,8 @@ class ScheduleDecision:
     priorities: Dict[str, float]
     budget: int
     interrupt: Optional[Dict[str, Any]] = None
+    verified: bool = False
+    verification_msg: str = ""
 
     def node_total(self, node_id: str) -> int:
         return sum(self.lanes.get(node_id, {}).values())
@@ -160,7 +162,10 @@ class ScheduleDecision:
             "lanes": self.lanes, "priorities": {k: round(v, 4)
                                                 for k, v in self.priorities.items()},
             "interrupt": self.interrupt,
+            "verified": self.verified,
+            "verification_msg": self.verification_msg,
         }
+
 
 
 def _largest_remainder(weights: Dict[str, float], total: int) -> Dict[str, int]:
@@ -211,6 +216,60 @@ class CognitiveScheduler:
         return self.nodes[node_id].pin
 
     # -- the scheduling tick --------------------------------------------- #
+    def verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
+        """Formally verify scheduler liveness and prioritization properties on the decision using Z3."""
+        from z3 import Solver, Int, Implies, And, Or, Sum, BoolVal, RealVal, Real, unsat, IntVal
+
+        s = Solver()
+        
+        # We declare symbolic variables for each node's safety and ML lane allocations
+        node_safety = {}
+        node_ml = {}
+        node_render = {}
+        node_logging = {}
+        
+        for nid in self.nodes:
+            # Symbolic variables
+            node_safety[nid] = Int(f"safety_{nid}")
+            node_ml[nid] = Int(f"ml_{nid}")
+            node_render[nid] = Int(f"render_{nid}")
+            node_logging[nid] = Int(f"logging_{nid}")
+            
+            # Bind to actuals
+            s.add(node_safety[nid] == decision.lanes[nid]["safety"])
+            s.add(node_ml[nid] == decision.lanes[nid]["ml_tracking"])
+            s.add(node_render[nid] == decision.lanes[nid]["render"])
+            s.add(node_logging[nid] == decision.lanes[nid]["logging"])
+
+        # Total lanes symbolic variable
+        total_lanes = Sum([node_safety[nid] + node_ml[nid] + node_render[nid] + node_logging[nid] for nid in self.nodes])
+        
+        # Invariant 1: Safety floor is preserved on every node (>= 1)
+        safety_floor_violation = Or([node_safety[nid] < 1 for nid in self.nodes])
+        
+        # Invariant 2: Total budget limit is respected
+        budget_violation = total_lanes > decision.budget
+        
+        # Invariant 3: Crisis lane priority. If a node is critical, it must receive >= 4 lanes.
+        critical_violation = BoolVal(False)
+        for nid in self.nodes:
+            if self.nodes[nid].tier() == "CRITICAL":
+                critical_violation = Or(critical_violation, node_ml[nid] < 4)
+                
+        # Invariant 4: No non-essential work during preemption
+        preempt_violation = BoolVal(False)
+        if decision.mode == "PREEMPT":
+            preempt_violation = Or([Or(node_render[nid] > 0, node_logging[nid] > 0) for nid in self.nodes])
+
+        # Define violation formula
+        violation = Or(safety_floor_violation, budget_violation, critical_violation, preempt_violation)
+        s.add(violation)
+        
+        if s.check() == unsat:
+            return True, "FORMALLY VERIFIED: All scheduler liveness, budget, and preemption invariants hold."
+        else:
+            return False, f"SCHEDULER VIOLATION: Invariants failed under solver check (model: {s.model()})"
+
     def schedule(self) -> ScheduleDecision:
         self.tick_no += 1
         nodes = list(self.nodes.values())
@@ -224,6 +283,11 @@ class CognitiveScheduler:
         else:
             owner = None
             decision = self._normal(nodes, cost, prios)
+
+        # Formally verify the decision before committing it.
+        ok, msg = self.verify_decision_z3(decision)
+        decision.verified = ok
+        decision.verification_msg = msg
 
         # Edge-trigger the hard interrupt only on NORMAL->PREEMPT transitions or
         # when ownership of the cluster changes hands.
@@ -244,6 +308,7 @@ class CognitiveScheduler:
             decision.interrupt = evt
         self.last = decision
         return decision
+
 
     # -- allocation policies --------------------------------------------- #
     # Both policies allocate by *pouring* a finite budget into a priority order

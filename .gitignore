@@ -25,6 +25,9 @@ artifacts/*.joblib
 artifacts/*.log
 # …except the production model, which must ship so the deployed backend can load it
 !artifacts/gbm_wearable.joblib
+# Proof-signing keystore — the Ed25519 PRIVATE key must NEVER be committed.
+# (Only the public key travels, inside each exported certificate bundle.)
+artifacts/keystore/
 
 # macOS
 .DS_Store
@@ -35,3 +38,4 @@ artifacts/*.log
 
 # Bundled CC-BY real-patient sample IS committed (small, attributed)
 !data/cohort_sample/
+data/ddinter/

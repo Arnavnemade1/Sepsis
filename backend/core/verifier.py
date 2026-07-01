@@ -1,8 +1,23 @@
-from typing import Dict, Any, Tuple
+from dataclasses import dataclass
+from typing import Dict, Any, List, Tuple
 from z3 import *
 
+
+@dataclass
+class SafetyConstraint:
+    """One named clinical safety invariant the protocol must satisfy.
+
+    ``name`` is the stable identifier (also the obligation name when exported);
+    ``desc`` is the clinician-readable statement; ``formula`` is the Z3 BoolRef that
+    must hold. The protocol *satisfies* the constraint iff its negation is unsat."""
+    name: str
+    desc: str
+    formula: "BoolRef"
+
+
 class ProtocolVerifier:
-    # Map antibiotic codes to names
+    # Map antibiotic codes to names (this verifier's codebook — note it differs from
+    # the Clinical-Safety DSL's enum; callers that cross the boundary must translate).
     ANTIBIOTICS = {
         0: "None",
         1: "Piperacillin/Tazobactam (Penicillin-based, Broad Spectrum)",
@@ -14,6 +29,82 @@ class ProtocolVerifier:
 
     def __init__(self):
         pass
+
+    # ------------------------------------------------------------------ #
+    # The single source of truth for the safety model: the bound patient/protocol
+    # context plus the named invariants. Both the live verifier and the portable
+    # proof-export path consume THIS, so they can never drift apart.
+    # ------------------------------------------------------------------ #
+    def safety_model(
+        self,
+        clinical_history: Dict[str, Any],
+        vitals: Dict[str, float],
+        risk_level: str,
+        proposed_protocol: Dict[str, Any],
+    ) -> Tuple[List["BoolRef"], List[SafetyConstraint], Dict[str, Any]]:
+        """Return (bindings, constraints, vars).
+
+        Patient context is modelled as *declared, bound* Z3 variables (not baked-in
+        constants) so an exported SMT-LIB2 obligation is self-documenting: an auditor
+        sees the full context as explicit assertions."""
+        # Declared variables — protocol parameters AND patient context.
+        fluid_rate = Real('fluid_rate')          # mL/kg/hr
+        vaso_dose = Real('vaso_dose')            # mcg/kg/min (Norepinephrine)
+        ab_selection = Int('ab_selection')       # Antibiotic code [0-5]
+        has_chf = Bool('has_chf')
+        has_renal_failure = Bool('has_renal_failure')
+        has_penicillin_allergy = Bool('has_penicillin_allergy')
+        is_sepsis_high = Bool('is_sepsis_high')
+        map_val = Real('map')                    # mean arterial pressure (mmHg)
+
+        fallback_map = (vitals.get("systolic_bp", 120.0) + (2.0 * vitals.get("diastolic_bp", 80.0))) / 3.0
+        bindings: List[BoolRef] = [
+            fluid_rate == float(proposed_protocol.get("fluid_rate", 0.0)),
+            vaso_dose == float(proposed_protocol.get("vasopressor_dose", 0.0)),
+            ab_selection == int(proposed_protocol.get("antibiotic_code", 0)),
+            has_chf == bool(clinical_history.get("chf", False)),
+            has_renal_failure == bool(clinical_history.get("renal_failure", False)),
+            has_penicillin_allergy == bool(clinical_history.get("penicillin_allergy", False)),
+            is_sepsis_high == (risk_level == "HIGH"),
+            map_val == float(vitals.get("map", fallback_map)),
+        ]
+
+        constraints = [
+            SafetyConstraint("chf_fluid_cap",
+                "CHF ⇒ fluid_rate ≤ 5.0 mL/kg/hr (avoid acute pulmonary edema)",
+                Implies(has_chf, fluid_rate <= 5.0)),
+            SafetyConstraint("renal_fluid_cap",
+                "renal failure ⇒ fluid_rate ≤ 4.0 mL/kg/hr (avoid fluid overload)",
+                Implies(has_renal_failure, fluid_rate <= 4.0)),
+            SafetyConstraint("fluid_abs_cap",
+                "fluid_rate ≤ 25.0 mL/kg/hr (absolute ceiling)",
+                fluid_rate <= 25.0),
+            SafetyConstraint("fluid_nonneg",
+                "fluid_rate ≥ 0", fluid_rate >= 0.0),
+            SafetyConstraint("vaso_abs_cap",
+                "vasopressor ≤ 0.4 mcg/kg/min (toxic-dose ceiling)",
+                vaso_dose <= 0.4),
+            SafetyConstraint("vaso_nonneg",
+                "vasopressor ≥ 0", vaso_dose >= 0.0),
+            SafetyConstraint("vaso_map_justified",
+                "vasopressor > 0.1 ⇒ MAP < 65 mmHg (dose justified by hypotension)",
+                Implies(vaso_dose > 0.1, map_val < 65.0)),
+            SafetyConstraint("allergy_guard",
+                "penicillin allergy ⇒ antibiotic ≠ Pip-Tazo (code 1)",
+                Implies(has_penicillin_allergy, ab_selection != 1)),
+            SafetyConstraint("sepsis_antibiotic",
+                "HIGH-risk sepsis ⇒ an antibiotic is administered (code ≠ 0)",
+                Implies(is_sepsis_high, ab_selection != 0)),
+            SafetyConstraint("antibiotic_valid",
+                "antibiotic code within catalog [0,5]",
+                And(ab_selection >= 0, ab_selection <= 5)),
+        ]
+        vars = {"fluid_rate": fluid_rate, "vaso_dose": vaso_dose,
+                "ab_selection": ab_selection, "has_chf": has_chf,
+                "has_renal_failure": has_renal_failure,
+                "has_penicillin_allergy": has_penicillin_allergy,
+                "is_sepsis_high": is_sepsis_high, "map": map_val}
+        return bindings, constraints, vars
 
     def verify_protocol(
         self,
@@ -27,86 +118,16 @@ class ProtocolVerifier:
         Returns:
             (is_safe, status_message, proof_metadata)
         """
-        # Create Z3 Solver
+        bindings, constraints, _vars = self.safety_model(
+            clinical_history, vitals, risk_level, proposed_protocol)
+
         solver = Solver()
+        solver.add(*bindings)
 
-        # 1. Declare Z3 variables for the protocol parameters
-        fluid_rate = Real('fluid_rate')          # mL/kg/hr
-        vaso_dose = Real('vaso_dose')            # mcg/kg/min (Norepinephrine)
-        ab_selection = Int('ab_selection')        # Antibiotic code [0-5]
-
-        # 2. Add proposed protocol parameters as assertions
-        solver.add(fluid_rate == float(proposed_protocol.get("fluid_rate", 0.0)))
-        solver.add(vaso_dose == float(proposed_protocol.get("vasopressor_dose", 0.0)))
-        solver.add(ab_selection == int(proposed_protocol.get("antibiotic_code", 0)))
-
-        # 3. Extract patient clinical history flags
-        has_chf = BoolVal(bool(clinical_history.get("chf", False)))
-        has_renal_failure = BoolVal(bool(clinical_history.get("renal_failure", False)))
-        has_penicillin_allergy = BoolVal(bool(clinical_history.get("penicillin_allergy", False)))
-        
-        # Extract patient vitals
-        fallback_map = (vitals.get("systolic_bp", 120.0) + (2.0 * vitals.get("diastolic_bp", 80.0))) / 3.0
-        map_val = RealVal(float(vitals.get("map", fallback_map)))
-        is_sepsis_high = BoolVal(risk_level == "HIGH")
-
-        # 4. Formulate safety constraints (invariants)
-        
-        # Constraint A: Fluid administration limit for Congestive Heart Failure (CHF) patients
-        # Fluid rate must not exceed 5.0 mL/kg/hr to avoid acute pulmonary edema
-        fluid_chf_safe = Implies(has_chf, fluid_rate <= 5.0)
-
-        # Constraint B: Fluid administration limit for Renal Failure patients
-        # Fluid rate must not exceed 4.0 mL/kg/hr to avoid severe fluid overload
-        fluid_renal_safe = Implies(has_renal_failure, fluid_rate <= 4.0)
-
-        # Constraint C: Absolute maximum fluid rate for any patient
-        fluid_max_safe = fluid_rate <= 25.0
-
-        # Constraint D: Non-negative fluid rate
-        fluid_min_safe = fluid_rate >= 0.0
-
-        # Constraint E: Vasopressor absolute safety cap
-        # Norepinephrine dose must never exceed a toxic threshold of 0.4 mcg/kg/min
-        vaso_max_safe = vaso_dose <= 0.4
-
-        # Constraint F: Non-negative vasopressor dose
-        vaso_min_safe = vaso_dose >= 0.0
-
-        # Constraint G: Vasopressor dosing conditions
-        # Norepinephrine dosing > 0.1 mcg/kg/min is ONLY allowed if Mean Arterial Pressure (MAP) is < 65 mmHg
-        vaso_map_safe = Implies(vaso_dose > 0.1, map_val < 65.0)
-
-        # Constraint H: Drug-Allergy Safety
-        # If the patient has a penicillin allergy, they CANNOT receive Piperacillin/Tazobactam (Code 1)
-        allergy_safe = Implies(has_penicillin_allergy, ab_selection != 1)
-
-        # Constraint I: Clinical intervention timing
-        # If the patient is determined to be in HIGH risk sepsis, an antibiotic must be administered (Code != 0)
-        antibiotic_needed = Implies(is_sepsis_high, ab_selection != 0)
-
-        # Constraint J: Valid antibiotic selection range
-        antibiotic_valid = And(ab_selection >= 0, ab_selection <= 5)
-
-        # 5. Define the "VIOLATION" condition
         # A violation occurs if ANY of the safety constraints are NOT met.
-        violation = Or(
-            Not(fluid_chf_safe),
-            Not(fluid_renal_safe),
-            Not(fluid_max_safe),
-            Not(fluid_min_safe),
-            Not(vaso_max_safe),
-            Not(vaso_min_safe),
-            Not(vaso_map_safe),
-            Not(allergy_safe),
-            Not(antibiotic_needed),
-            Not(antibiotic_valid)
-        )
+        solver.add(Or(*[Not(c.formula) for c in constraints]))
 
-        # Add the violation assertion to the solver
-        solver.add(violation)
-
-        # 6. Check satisfiability of a violation
+        # Check satisfiability of a violation.
         result = solver.check()
 
         # If a violation is UNSATISFIABLE, the proposed protocol is formally certified safe.
