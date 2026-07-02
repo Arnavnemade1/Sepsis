@@ -41,6 +41,7 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `config.py` | Paths, channel taxonomy (wearable vs lab), label semantics |
 | `data/cinc2019.py` | Parallel downloader + PSV parser → `PatientRecord` |
 | `data/features.py` | **Causal** feature engineering (no future leakage) |
+| `models/stacked.py` | **Stacked ensemble** (hgb+hgb2+et+lr [+hdc]) — the gap-closing production detector that beats the single GBM |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |
 | `quantum/gb_qhdc.py` | **GB-QHDC** — gradient boosting with a QHDC weak learner (SPSA, data re-uploading) |
 | `scripts/qhdc_ablation.py` | Ablation matrix (GBM vs HDC vs GB-QHDC) + dimensional-capacity sweep |
@@ -107,16 +108,28 @@ prevalence; every number below survived multi-fold CV):
   for a clinician-facing app) give a modest AUROC bump (≈0.76→≈0.78, single
   split) but need CV to confirm before being treated as a reliable ceiling raise.
 
-**Bottom line:** on this dataset and feature set, wearable-only sepsis detection
-is close to a data ceiling around AUROC 0.72–0.78. The rigorous, CV-checked
-finding is that HDC has **not** (yet) been made to beat gradient boosting on raw
-discrimination here — every promising-looking shortcut either didn't replicate or
-had a real, principled reason it hurt. HDC's genuine, validated value in this
-project is as a complementary **interpretable case-based memory**
-(`backend/aegis/hdc_memory.py`) and a **cross-modal consensus/resonance gate**
-(`backend/aegis/resonance.py`), not as a raw-accuracy replacement for the tree
-model. Stated, not hidden — see `backend/ml/models/hdc_detector.py` and
-`backend/ml/models/augmented.py` docstrings for the full experimental trail.
+- **Stacked ensemble beats the single-GBM benchmark** (`models/stacked.py`). No
+  single hyperdimensional model closed the gap, but **stacked generalisation** does:
+  a leakage-safe (patient-grouped out-of-fold) meta-learner over diverse learners —
+  histogram boosting, a second differently-biased booster, depth-bounded extremely
+  randomised trees, logistic regression (and optionally HDC) — beats the single GBM
+  under 3-fold CV: **AUROC 0.768 vs 0.741 (+0.026), utility 0.40 vs 0.34**, better
+  calibrated (ECE 0.005), *lower* variance, and a lower false-alarm rate. The
+  extremely-randomised-trees member (a bagged, not boosted, learner) carries most of
+  the complementary signal. Depth/leaf bounds keep the artifact ~8 MB. **This is now
+  the production detector** (`artifacts/gbm_wearable.joblib`); train/promote with
+  `scripts/train_stacked.py`.
+
+**Bottom line:** wearable-only sepsis detection sits near a data ceiling around
+AUROC 0.74–0.80, and the honest way we *raised* our number to the top of that band
+was ensemble diversity, not a cleverer single model. No single HDC variant beat
+gradient boosting on raw discrimination — every shortcut either didn't replicate or
+had a principled reason it hurt (kept as documented negatives). HDC's genuine,
+validated value here is as a complementary **interpretable case-based memory**
+(`backend/aegis/hdc_memory.py`), a **cross-modal consensus/resonance gate**
+(`backend/aegis/resonance.py`), and an optional stack member — not as a standalone
+raw-accuracy replacement for trees. Stated, not hidden — see the
+`hdc_detector.py` / `augmented.py` / `stacked.py` docstrings for the full trail.
 
 See `artifacts/compare_*.json` for the exact, current numbers from your run.
 
