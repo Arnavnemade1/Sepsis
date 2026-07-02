@@ -1500,7 +1500,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1513,6 +1513,8 @@ var CMD={
      ['kstat','kernel scheduler summary'],
      ['dmesg','kernel interrupt / preemption log'],
      ['krun [wl] [pol]','run a program on the live HDKernel — wl: mixed|pipeline|fanout|stress · pol: FIFO|RR|CFS|EDF|HDSched'],
+     ['ask <question>','grounded LLM Q&A over live cohort + kernel state (read-only)'],
+     ['brief','LLM shift-handoff summary of the cohort'],
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['resonance <bed>','cross-modal agreement gate (artifact-robust evidence)'],
@@ -1684,6 +1686,24 @@ var CMD={
             pad(p.ctx,5)+pad(p.turnaround_us==null?"—":p.turnaround_us,8)+(p.deadline_us==null?"—":p.deadline_us+"µs"), cls); });
         cmdPrint('try another policy: <span class="cl-cmd">krun '+esc(wl)+' edf</span> · workloads: '+(d.workloads||[]).join(" · "),"dim");
       }).catch(function(){ cmdPrint("hdkernel unreachable","err"); }); },
+  ask:function(a){ var q=(a||"").trim();
+    if(!q) return cmdPrint('usage: <span class="cl-cmd">ask &lt;question&gt;</span> — e.g. ask which beds are critical? · ask what is the kernel doing?','dim');
+    cmdPrint('<span class="cl-d">◇ '+esc(q)+'</span>','dim');
+    cmdPrint('<span class="cl-d">grounding on live cohort + kernel state…</span>','dim');
+    fetch(window.AEGIS.http("/aegis/llm/ask"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({question:q})}).then(function(r){return r.json();}).then(function(d){
+        var src=d.source==="llm"?('<span class="cl-ok">'+esc(d.model||"llm")+'</span>'):'<span class="cl-d">template · LLM rate-limited</span>';
+        cmdPrint('<b>AEGIS ASSISTANT</b> <span class="cl-d">· grounded · read-only · '+src+'</span>','sys');
+        String(d.answer||"").split(/\n+/).forEach(function(ln){ if(ln.trim()) cmdPrint(esc(ln.trim()),"row"); });
+        cmdPrint('<span class="cl-d">budget '+(d.budget_remaining!=null?d.budget_remaining:"?")+' calls left · actions still go through the syscall gate (treat/escalate)</span>','dim');
+      }).catch(function(){ cmdPrint("assistant unreachable","err"); }); },
+  brief:function(){ cmdPrint('<span class="cl-d">composing shift handoff from live cohort…</span>','dim');
+    fetch(window.AEGIS.http("/aegis/llm/brief"),{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"})
+      .then(function(r){return r.json();}).then(function(d){
+        var src=d.source==="llm"?('<span class="cl-ok">'+esc(d.model||"llm")+'</span>'):'<span class="cl-d">template</span>';
+        cmdPrint('<b>SHIFT HANDOFF</b> <span class="cl-d">· '+src+'</span>','sys');
+        String(d.brief||"").split(/\n+/).forEach(function(ln){ if(ln.trim()) cmdPrint(esc(ln.trim()),"row"); });
+      }).catch(function(){ cmdPrint("assistant unreachable","err"); }); },
   pkg:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean), sub=(t[0]||"list").toLowerCase();
     if(sub==="install"||sub==="uninstall"){ var name=t[1]; if(!name) return cmdPrint("usage: pkg "+sub+" &lt;name&gt;","err");
       cmdPrint('<span class="cl-d">'+(sub==="install"?"verify-then-install":"uninstall")+' · '+esc(name)+'…</span>',"dim");

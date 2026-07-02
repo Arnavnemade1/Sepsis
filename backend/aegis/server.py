@@ -39,6 +39,8 @@ from backend.aegis.syscalls import SyscallTable
 from backend.aegis.kernel.runtime import KernelDeviceRuntime
 from backend.aegis.kernel.hdkernel import (
     run_workload as _run_kworkload, KWORKLOADS as _KWORKLOADS, POLICIES as _KPOLICIES)
+from backend.llm.openrouter import OpenRouterClient as _ORClient
+from backend.llm.assistant import AegisAssistant as _AegisAssistant
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -161,6 +163,30 @@ procfs.register("/proc/cage", lambda: apps_cage.status())
 _hdk_state: Dict[str, Any] = {"last": _run_kworkload("mixed", "HDSched")}
 procfs.register("/proc/kthreads", lambda: _hdk_state["last"]["ps"])           # the process table
 procfs.register("/proc/ksched", lambda: _hdk_state["last"]["top"])            # scheduler/top summary
+# The resilient LLM layer (shared, budgeted, multi-model). On-demand only — the
+# realtime loop never calls it; operators drive it via `ask`/`brief`. Telemetry
+# is read-only through /proc/llm.
+_llm_client = _ORClient()
+_llm = _AegisAssistant(_llm_client)
+procfs.register("/proc/llm", lambda: _llm_client.status())
+
+
+def _llm_state() -> Dict[str, Any]:
+    """Assemble a compact, grounded snapshot for the assistant (read-only)."""
+    st: Dict[str, Any] = {}
+    try:
+        st["topology"] = cluster.sched.topology()
+    except Exception:
+        pass
+    try:
+        st["ksched"] = cluster.sched.kstat()
+    except Exception:
+        pass
+    try:
+        st["hdkernel"] = _hdk_state["last"]["top"]
+    except Exception:
+        pass
+    return st
 try:
     if hasattr(cluster, "resonance"):              # real cohort only (fitted gate)
         aegisd.register(ResonanceApp(cluster.resonance))
@@ -1416,6 +1442,32 @@ def hdkernel_run(payload: HDKernelRunIn) -> Dict[str, Any]:
     _hdk_state["last"] = _run_kworkload(wl, pol)
     return {**_hdk_state["last"],
             "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
+
+
+class LLMAskIn(BaseModel):
+    question: str
+
+
+@app.get("/aegis/llm")
+def llm_status() -> Dict[str, Any]:
+    """Telemetry for the resilient LLM layer: chain, budget, cooldowns, cache."""
+    return _llm_client.status()
+
+
+@app.post("/aegis/llm/ask")
+def llm_ask(payload: LLMAskIn) -> Dict[str, Any]:
+    """Grounded natural-language Q&A over the LIVE system state (cohort + kernel).
+    Read-only: the assistant answers only from the current state and refuses to
+    issue orders — actions go through the certified syscall gate, not prose."""
+    return {**_llm.ask(payload.question, _llm_state()),
+            "budget_remaining": _llm_client.budget_remaining()}
+
+
+@app.post("/aegis/llm/brief")
+def llm_brief() -> Dict[str, Any]:
+    """A shift-handoff briefing of the current cohort (grounded, budgeted)."""
+    return {**_llm.brief(_llm_state()),
+            "budget_remaining": _llm_client.budget_remaining()}
 
 
 class VasodilationIn(BaseModel):
