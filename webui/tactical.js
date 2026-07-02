@@ -1500,7 +1500,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1512,6 +1512,7 @@ var CMD={
      ['top','live kernel stats + process table'],
      ['kstat','kernel scheduler summary'],
      ['dmesg','kernel interrupt / preemption log'],
+     ['krun [wl] [pol]','run a program on the live HDKernel — wl: mixed|pipeline|fanout|stress · pol: FIFO|RR|CFS|EDF|HDSched'],
      ['explain <bed>','why the system thinks what it thinks'],
      ['radar <bed>','early-warning resilience radar (critical slowing down)'],
      ['resonance <bed>','cross-modal agreement gate (artifact-robust evidence)'],
@@ -1665,6 +1666,24 @@ var CMD={
       cmdPrint('<span class="cl-cmd">'+esc(d.path)+'</span>',"sys");
       cmdPrint('<span class="cl-d">'+esc(JSON.stringify(d.value,null,1)).slice(0,1400)+'</span>',"mono");
     }).catch(function(){ cmdPrint("proc read failed","err"); }); },
+  krun:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean);
+    var wl=(t[0]||"mixed").toLowerCase(), pol=t[1]||"HDSched";
+    var POL={fifo:"FIFO",rr:"RR",cfs:"CFS",edf:"EDF",hdsched:"HDSched",hd:"HDSched"};
+    pol=POL[pol.toLowerCase()]||pol;
+    cmdPrint('<span class="cl-d">spawning workload <b>'+esc(wl)+'</b> under <b>'+esc(pol)+'</b> on the live kernel…</span>',"dim");
+    fetch(window.AEGIS.http("/aegis/hdkernel/run"),{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({workload:wl,policy:pol})}).then(function(r){return r.json();}).then(function(d){
+        var s=d.summary||{}, top=d.top||{}, ps=d.ps||[];
+        cmdPrint('<b>HDKERNEL</b> <span class="cl-d">· live cooperative kernel · '+esc(d.workload)+' @ '+esc(d.policy)+'</span>','sys');
+        cmdPrint('procs '+s.processes+' · <span class="cl-ok">'+s.completed+' done</span>'+(s.deadlocked?' · <span class="cl-crit">DEADLOCK</span>':'')+
+          ' · clock '+s.clock_us+'µs · idle '+s.idle_us+'µs · util '+Math.round((top.utilization||0)*100)+'%',"row");
+        cmdPrint('dispatches '+s.dispatches+' · context switches '+s.context_switches+' · mean turnaround '+s.mean_turnaround_us+'µs',"mono");
+        cmdPrint(pad("PID",5)+pad("PROCESS",12)+pad("STATE",7)+pad("PRIO",5)+pad("CPUµs",8)+pad("CTX",5)+pad("TURNµs",8)+"DDL","dim");
+        ps.forEach(function(p){ var cls=p.state==="DONE"?"ok":p.state==="BLOCKED"?"err":"row";
+          cmdPrint(pad(p.pid,5)+pad(esc(p.name),12)+pad(p.state.toLowerCase(),7)+pad(p.prio,5)+pad(p.cpu_us,8)+
+            pad(p.ctx,5)+pad(p.turnaround_us==null?"—":p.turnaround_us,8)+(p.deadline_us==null?"—":p.deadline_us+"µs"), cls); });
+        cmdPrint('try another policy: <span class="cl-cmd">krun '+esc(wl)+' edf</span> · workloads: '+(d.workloads||[]).join(" · "),"dim");
+      }).catch(function(){ cmdPrint("hdkernel unreachable","err"); }); },
   pkg:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean), sub=(t[0]||"list").toLowerCase();
     if(sub==="install"||sub==="uninstall"){ var name=t[1]; if(!name) return cmdPrint("usage: pkg "+sub+" &lt;name&gt;","err");
       cmdPrint('<span class="cl-d">'+(sub==="install"?"verify-then-install":"uninstall")+' · '+esc(name)+'…</span>',"dim");

@@ -37,6 +37,8 @@ from backend.aegis.cohort import CohortCluster
 from backend.aegis.devices import DeviceRegistry
 from backend.aegis.syscalls import SyscallTable
 from backend.aegis.kernel.runtime import KernelDeviceRuntime
+from backend.aegis.kernel.hdkernel import (
+    run_workload as _run_kworkload, KWORKLOADS as _KWORKLOADS, POLICIES as _KPOLICIES)
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
@@ -153,6 +155,12 @@ procfs.register("/proc/sched", lambda: cluster.sched.kstat() if hasattr(cluster,
 procfs.register("/proc/mem", lambda: cluster.fabric.address_matrix()["arena"] if hasattr(cluster, "fabric") else {})
 procfs.register("/proc/audit", lambda: syscalls.status())
 procfs.register("/proc/cage", lambda: apps_cage.status())
+# L3c live process plane (HDKernel): run a named workload to completion and expose
+# its final process table through the one /proc namespace. Seed with "mixed" so
+# `proc kthreads` / `proc ksched` return real data before any explicit run.
+_hdk_state: Dict[str, Any] = {"last": _run_kworkload("mixed", "HDSched")}
+procfs.register("/proc/kthreads", lambda: _hdk_state["last"]["ps"])           # the process table
+procfs.register("/proc/ksched", lambda: _hdk_state["last"]["top"])            # scheduler/top summary
 try:
     if hasattr(cluster, "resonance"):              # real cohort only (fitted gate)
         aegisd.register(ResonanceApp(cluster.resonance))
@@ -1384,6 +1392,30 @@ def proc_read(path: str) -> Dict[str, Any]:
     except KeyError:
         return {"path": full, "error": "no such proc path",
                 "available": procfs.list()}
+
+
+class HDKernelRunIn(BaseModel):
+    workload: str = "mixed"                 # mixed | pipeline | fanout | stress
+    policy: str = "HDSched"                 # FIFO | RR | CFS | EDF | HDSched
+
+
+@app.get("/aegis/hdkernel")
+def hdkernel_state() -> Dict[str, Any]:
+    """The live process plane (Layer 3c): last run's summary/ps/top + the menu."""
+    return {**_hdk_state["last"],
+            "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
+
+
+@app.post("/aegis/hdkernel/run")
+def hdkernel_run(payload: HDKernelRunIn) -> Dict[str, Any]:
+    """Run a named workload under a chosen scheduling policy on the live kernel and
+    return its process table — a genuine 'launch a program on the OS and inspect
+    it'. Swapping ``policy`` visibly changes turnaround / context switches."""
+    wl = payload.workload if payload.workload in _KWORKLOADS else "mixed"
+    pol = payload.policy if payload.policy in _KPOLICIES else "HDSched"
+    _hdk_state["last"] = _run_kworkload(wl, pol)
+    return {**_hdk_state["last"],
+            "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
 
 
 class VasodilationIn(BaseModel):

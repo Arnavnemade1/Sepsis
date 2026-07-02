@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional
 from backend.aegis.core import AegisCore, AegisAssessment
 from backend.aegis.scheduler import WhatIfScheduler
 from backend.aegis.kernel.devbio import BioDevice, DevBio
+from backend.aegis.kernel.hdkernel import HDKernel, TaskFn
 from backend.aegis.kernel.memfabric import FabricPump, MemFabric, ReadCursor
 from backend.aegis.kernel.neurosym import NeuroSymbolicRuntime, SafetyCertificate
 
@@ -71,6 +72,7 @@ class AegisOS:
         self._sources: List[str] = []                     # Layer 1 (legacy source tags)
         self.devbio = DevBio()                            # Layer 1 (/dev/bio bus)
         self.fabric = MemFabric()                         # Layer 2 (memory fabric)
+        self.procplane = HDKernel(policy="HDSched")       # Layer 3c (live process plane)
         self.safety = NeuroSymbolicRuntime()              # Layer 4 (egress cage)
         self._db = None
         if enable_persistence:
@@ -124,6 +126,31 @@ class AegisOS:
         reaches an external channel without a Z3 certificate (default-deny)."""
         return self.safety.dispatch(egress, payload, context or {})
 
+    # -- L3c process plane: spawn/run/introspect real kernel tasks --------- #
+    def spawn(self, fn: TaskFn, name: str = "task", priority: int = 1,
+              weight: float = 1.0, deadline_in: Optional[int] = None,
+              args: tuple = ()) -> int:
+        """Create a process on the live cooperative kernel; returns its PID.
+        The task is a coroutine that makes syscalls (Compute/Sleep/Spawn/IPC)."""
+        return self.procplane.spawn(fn, name=name, priority=priority, weight=weight,
+                                    deadline_in=deadline_in, args=args)
+
+    def run_procs(self, max_dispatches: int = 200_000) -> Dict[str, Any]:
+        """Run the process plane to completion (cooperative, CPU-time clock)."""
+        return self.procplane.run(max_dispatches=max_dispatches)
+
+    def ps(self) -> List[Dict[str, Any]]:
+        """The process table (pid/state/cpu/ctx/turnaround)."""
+        return self.procplane.ps()
+
+    def ktop(self) -> Dict[str, Any]:
+        """Kernel top: policy, utilization, context switches, CPU shares."""
+        return self.procplane.top()
+
+    def kproc(self, pid: int) -> Optional[Dict[str, Any]]:
+        """Per-process detail (waiting time, first-run, accounting)."""
+        return self.procplane.proc(pid)
+
     def layers(self) -> List[LayerStatus]:
         c = self.core
         bus = self.devbio.status()
@@ -169,6 +196,7 @@ class AegisOS:
         return {
             "devbio": self.devbio.status(),          # L1
             "memfabric": self.fabric.address_matrix(),  # L2
+            "procplane": self.procplane.top(),       # L3c live process plane
             "neurosym": self.safety.status(),        # L4 egress cage
         }
 

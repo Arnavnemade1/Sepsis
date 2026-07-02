@@ -42,6 +42,38 @@ from backend.aegis.kernel.scheduler import (
     ScheduleDecision,
     risk_proxy,
 )
+from backend.aegis.kernel.hdsched import (
+    CFS,
+    EDF,
+    FIFO,
+    HDEncoder,
+    HDSched,
+    RoundRobin,
+    RunResult,
+    Task,
+    composite_cost,
+    evaluate,
+    simulate,
+    tune_hdsched,
+    workload,
+    WORKLOADS,
+)
+from backend.aegis.kernel.hdkernel import (
+    Channel,
+    Compute,
+    Exit,
+    HDKernel,
+    KWORKLOADS,
+    PCB,
+    POLICIES,
+    Recv,
+    Send,
+    Sleep,
+    Spawn,
+    State,
+    build_workload,
+    run_workload,
+)
 from backend.aegis.kernel.neurosym import (
     ACTUATOR,
     ALERT,
@@ -94,6 +126,14 @@ __all__ = [
     # Layer 3
     "CognitiveScheduler", "NodeState", "ScheduleDecision", "BioCluster",
     "risk_proxy",
+    # Layer 3b — HDSched: benchmarkable CPU scheduler (HDC encoder + GBM tuner)
+    "HDSched", "HDEncoder", "FIFO", "RoundRobin", "CFS", "EDF", "Task",
+    "RunResult", "simulate", "evaluate", "composite_cost", "tune_hdsched",
+    "workload", "WORKLOADS",
+    # Layer 3c — HDKernel: live cooperative multitasking kernel
+    "HDKernel", "PCB", "State", "Channel", "Compute", "Sleep", "Spawn",
+    "Send", "Recv", "Exit", "POLICIES", "KWORKLOADS", "build_workload",
+    "run_workload",
     # Layer 4
     "NeuroSymbolicRuntime", "SafetyCertificate", "ALERT", "PROTOCOL",
     "ACTUATOR", "NOTE",

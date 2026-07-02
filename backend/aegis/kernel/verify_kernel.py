@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from backend.aegis.kernel import verify_devbio, verify_memfabric
 from backend.aegis.kernel import verify_neurosym, verify_scheduler, verify_fusion, verify_bundle
+from backend.aegis.kernel import verify_hdsched, verify_hdkernel
 
 
 def main() -> None:
@@ -17,6 +18,10 @@ def main() -> None:
     verify_memfabric.main()    # L2 zero-copy memory fabric
     print()
     verify_scheduler.main()    # L3 multi-tenant cognitive scheduler
+    print()
+    verify_hdsched.main()      # L3b HDSched CPU scheduler benchmark (HDC + GBM)
+    print()
+    verify_hdkernel.main()     # L3c HDKernel live cooperative kernel (runs tasks)
     print()
     verify_fusion.main()       # Core Data Fusion Engine (Sepsis Ontology)
     print()
