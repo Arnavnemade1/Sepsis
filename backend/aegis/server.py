@@ -101,6 +101,44 @@ syscalls = SyscallTable(cluster, bundle_engine, cluster_safety)
 from backend.aegis.orchestrator import Orchestrator
 orchestrator = Orchestrator(cluster, cage=cluster_safety, bundle=bundle_engine,
                             histories=getattr(cluster, "histories", {}))
+
+
+def _warm_orchestrator() -> None:
+    """Pay the one-time synthesis warmup cost OFF the request path.
+
+    The synthesis algorithm itself is <1s, but the FIRST governed scenario after a
+    cold boot pays a large one-time PROCESS-level cost (lazy Z3 native init, the
+    proof-export import + first SMT solve, Ed25519 keygen, first-touch memory
+    residency on the 512MB free tier) that then caches — measured ~30s→502 on the
+    first hit, ~0.15s after. We run one full scenario on a THROWAWAY 2-bed cluster
+    in a daemon thread right after boot: it exercises the identical fusion →
+    scheduler → BFT-consensus → Z3-cage → proof-export → independent-reverify code
+    paths, warming every process-level singleton, WITHOUT injecting a crisis or a
+    ledger entry into the live wing. First user click then synthesises fast every
+    time (including after each free-tier spin-down)."""
+    import time as _t
+    try:
+        _t.sleep(2.0)                                  # let the rest of boot settle
+        from backend.aegis.kernel.scheduler import BioCluster as _BioCluster
+        from backend.aegis.orchestrator import Orchestrator as _Orch
+        t0 = _t.perf_counter()
+        warm_cluster = _BioCluster(n_nodes=2, lane_budget=32, seed=1)
+        warm_orch = _Orch(warm_cluster, cage=NeuroSymbolicRuntime(),
+                          bundle=SepsisBundleEngine())
+        warm_cluster.run(4)
+        res = warm_orch.run_scenario(warm_cluster.node_ids[0], warmup=0, crisis_ticks=6)
+        pf = res.get("proof_certificate")              # warm the re-verify path too
+        if pf is not None:
+            from backend.aegis.proofexport import verify_certificate as _vc
+            _vc(pf)
+        print(f"[aegis] orchestrator warmup complete in {_t.perf_counter()-t0:.2f}s "
+              f"(first user synthesis will be fast; live wing untouched)")
+    except Exception as exc:  # pragma: no cover — warmup must never break boot
+        print(f"[aegis] orchestrator warmup skipped: {exc}")
+
+
+import threading as _threading
+_threading.Thread(target=_warm_orchestrator, name="orch-warmup", daemon=True).start()
 # The input-safety verifier service: holds the live Aegis-eBPF static verifier +
 # the driver catalogue used by `verify`. The verified-driver DATA PLANE itself is
 # the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose

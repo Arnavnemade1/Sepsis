@@ -1014,12 +1014,15 @@ window.AegisOrchestrator = (function () {
     catch (e) { logLine("governance", "orchestrator unavailable", "blocked"); btn.classList.remove("running"); btn.disabled = false; busy = false; return; }
 
     document.querySelector("#orch-bed").textContent = "bed · " + res.bed;
+    // The synthesis is already complete — reveal the certified result immediately
+    // instead of gating it behind the full timeline walk, then play the cascade as
+    // a quick visual flourish (was 7×620ms ≈ 4.3s of dead time before the seal).
+    stampCertificate(res); renderPortableProof(res);
     for (const t of res.timeline) {
       if (t.layer !== "governance") glowStratum(t.layer);
       const certified = t.layer === "governance" ? t.certified : null;
       logLine(t.layer, stepDetail(t), certified === false ? "blocked" : "");
-      if (t.layer === "governance") { stampCertificate(res); renderPortableProof(res); }
-      await sleep(620);
+      await sleep(150);
     }
     document.querySelectorAll(".orch-stratum.active").forEach(s => s.classList.add("done"));
     document.querySelector("#orch-pulse").style.opacity = "0";
