@@ -228,14 +228,53 @@ function openDossier(id){
   $("dossier").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);
-  fetchChart(id); refreshBundle(id);
+  fetchChart(id); refreshBundle(id); pttLoad(id);
   if(dosChartTimer) clearInterval(dosChartTimer);
-  dosChartTimer=setInterval(function(){ if(selectedBed){ fetchChart(selectedBed); refreshBundle(selectedBed); } }, 4000);
+  dosChartTimer=setInterval(function(){ if(selectedBed){ fetchChart(selectedBed); refreshBundle(selectedBed); pttPoll(selectedBed); } }, 4000);
 }
 function closeDossier(){ selectedBed=null; dosChart=null;
   if(dosChartTimer){ clearInterval(dosChartTimer); dosChartTimer=null; }
   $("dossier").classList.remove("open");
   $("dossier").setAttribute("aria-hidden","true"); }
+
+/* ---------------- per-patient terminal (dossier) ---------------- */
+var pttBed=null, pttHist=[], pttHi=0, pttFiredSeen={};
+function pttPrint(html,cls){ var o=$("ptt-out"); if(!o) return; var d=document.createElement("div");
+  d.className="l "+(cls||""); d.innerHTML=html; o.appendChild(d); o.scrollTop=o.scrollHeight;
+  while(o.children.length>60) o.removeChild(o.firstChild); }
+function pttChip(text,cls,x){ return '<span class="ptt-chip '+(cls||"")+'">'+esc(text)+
+  (x?' <span class="x" data-x="'+esc(x)+'">✕</span>':'')+'</span>'; }
+function pttRender(p){ var box=$("ptt-profile"); if(!box||!p) return; var h="";
+  (p.foci||[]).forEach(function(o){ h+=pttChip("◎ "+o,"foc","focus:"+o); });
+  (p.watches||[]).forEach(function(w){ h+=pttChip("⚑ "+w.label,"w"+(w.severity==="critical"?" crit":""),"watch:"+w.id); });
+  if(!(p.foci||[]).length && !(p.watches||[]).length) h=pttChip("whole-body · no custom tracking yet","empty");
+  box.innerHTML=h; }
+function pttLoad(bed){ pttBed=bed; pttFiredSeen={};
+  var pr=$("ptt-prompt"); if(pr) pr.innerHTML=esc(bedTag(bed))+'<b>❯</b>';
+  var o=$("ptt-out"); if(o) o.innerHTML="";
+  pttPrint('<span class="cl-d">tracking for '+esc(bedTag(bed))+' — <b>help</b> or plain English</span>',"l-sys");
+  pttPoll(bed,true); }
+function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tracking"))
+  .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
+    if(d.profile) pttRender(d.profile);
+    (d.fired||[]).forEach(function(f){ var k=f.watch_id+":"+f.value; if(pttFiredSeen[k])return; pttFiredSeen[k]=1;
+      pttPrint("⚑ WATCH FIRED · "+esc(f.label)+" — now <b>"+f.value+"</b>","l-fire"+(f.severity==="critical"?" crit":"")); });
+  }).catch(function(){ if(first) pttPrint("patient terminal unreachable","l-sys"); }); }
+function pttRun(cmd){ if(!pttBed||!cmd.trim()) return; var bed=pttBed;
+  pttPrint('<span class="cl-cmd">'+esc(bedTag(bed))+'❯</span> '+esc(cmd),"l-echo");
+  pttHist.push(cmd); pttHi=pttHist.length;
+  fetch(window.AEGIS.http("/aegis/patient/"+bed+"/track"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({command:cmd})}).then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
+      var tag=d.source==="llm"?'<span class="cl-d">⟐ llm</span> ':d.source==="parser"?'<span class="cl-d">⟐ parsed</span> ':'';
+      pttPrint(tag+esc(d.reply||"done"), d.source==="llm"||d.source==="parser"?"l-llm":"l-ok");
+      if(d.profile) pttRender(d.profile);
+    }).catch(function(){ pttPrint("terminal unreachable","l-sys"); }); }
+function pttInit(){ var inp=$("ptt-in"); if(inp){ inp.addEventListener("keydown",function(e){
+    if(e.key==="Enter"){ pttRun(inp.value); inp.value=""; }
+    else if(e.key==="ArrowUp"){ if(pttHi>0){ pttHi--; inp.value=pttHist[pttHi]||""; e.preventDefault(); } }
+    else if(e.key==="ArrowDown"){ if(pttHi<pttHist.length){ pttHi++; inp.value=pttHist[pttHi]||""; } } }); }
+  var box=$("ptt-profile"); if(box) box.addEventListener("click",function(e){ var x=e.target.closest("[data-x]"); if(!x||!pttBed) return;
+    var spec=x.dataset.x; pttRun(spec.indexOf("focus:")===0?("unfocus "+spec.slice(6)):("unwatch "+spec.slice(6))); }); }
 
 function kvHTML(label,val,unit,cls){
   return '<div class="kv'+(cls?" "+cls:"")+'"><span class="k">'+label+'</span>'+
@@ -1986,7 +2025,7 @@ function cmdInit(){
    ============================================================ */
 var surf={}, spineTick=0;
 function setup(){
-  cmdInit();
+  cmdInit(); pttInit();
   ambientInit(); runBoot();
   surf.learn=new Surface("cv-learn"); surf.blind=new Surface("cv-blind");
   surf.dosRisk=new Surface("cv-dos-risk");

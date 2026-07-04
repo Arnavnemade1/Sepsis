@@ -211,6 +211,12 @@ procfs.register("/proc/llm", lambda: _llm_client.status())
 from backend.aegis.mlctl import ModelControlPlane as _ModelControlPlane
 mlctl = _ModelControlPlane()
 procfs.register("/proc/models", lambda: mlctl.status())
+# Per-patient tracking terminals: each bed gets its own shell where the attending
+# customises what AegisOS watches (foci + doctor watch-rules), in plain English via
+# the shared resilient LLM. Observation-only; the LLM output is sanitised to a fixed
+# vocabulary and can never place an order.
+from backend.aegis.patient_terminal import PatientTerminal as _PatientTerminal
+patient_terminal = _PatientTerminal(llm_client=_llm_client)
 
 
 def _llm_state() -> Dict[str, Any]:
@@ -499,6 +505,7 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
     _bs = build_body_state(v, det, {}, level, time.time(), clinical_history=hist)
     _organ_trackers.setdefault(bed, OrganFailureTracker()).update(_bs)  # per-bed trajectory
     body = _bs.to_dict()
+    body["tracking"] = patient_terminal.profile(bed).to_dict()   # foci + watches (display)
     ing = _causal_for(bed)
     return {
         "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,
@@ -1489,6 +1496,42 @@ class MLTrainIn(BaseModel):
 
 class MLUseIn(BaseModel):
     name: str
+
+
+class TrackIn(BaseModel):
+    command: str
+
+
+def _patient_ctx(bed: str) -> Dict[str, Any]:
+    """A compact, read-only snapshot for grounding the tracking LLM ('her kidneys')."""
+    try:
+        snap = _bed_snapshot(bed) or {}
+        bs = snap.get("body_state", {})
+        return {"bed": bed, "risk": snap.get("risk", {}).get("level"),
+                "vitals": snap.get("vitals", {}),
+                "organs": [{"name": o.get("name"), "status": o.get("status")}
+                           for o in bs.get("organ_systems", []) if o.get("monitored")]}
+    except Exception:
+        return {"bed": bed}
+
+
+@app.get("/aegis/patient/{bed}/tracking")
+def patient_tracking(bed: str) -> Dict[str, Any]:
+    """This patient's tracking profile (foci + watch-rules) + any watch-rules that
+    fired against the current vitals (edge-triggered here, the single evaluator) +
+    the command vocabulary. The dossier polls this."""
+    from backend.aegis.patient_terminal import METRICS as _M, ORGANS as _O
+    snap = _bed_snapshot(bed) or {}
+    fired = patient_terminal.evaluate(bed, snap.get("vitals", {}))
+    return {"profile": patient_terminal.profile(bed).to_dict(), "fired": fired,
+            "vocab": {"metrics": {k: v["label"] for k, v in _M.items()}, "organs": _O}}
+
+
+@app.post("/aegis/patient/{bed}/track")
+def patient_track(bed: str, payload: TrackIn) -> Dict[str, Any]:
+    """Run one per-patient tracking command (structured verb OR natural language).
+    Observation-only: the result can add a focus or a watch, never an order."""
+    return patient_terminal.exec(bed, payload.command, context=_patient_ctx(bed))
 
 
 @app.get("/aegis/ml")

@@ -491,6 +491,27 @@ b{font-weight:700}
 .cl-twin .card-body{overflow:hidden}
 #twin-stage{position:absolute;inset:0;overflow:hidden}
 #twin-stage canvas{position:absolute;inset:0;display:block}
+/* ---- per-patient terminal (dossier) ---- */
+.ptt-card{flex:0 0 auto}
+.ptt-body{display:flex;flex-direction:column;gap:8px;padding:10px 12px 11px}
+.ptt-profile{display:flex;flex-wrap:wrap;gap:5px;min-height:0}
+.ptt-chip{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;padding:2px 8px;border-radius:20px;
+  border:1px solid var(--hair-soft);color:var(--muted);background:rgba(190,205,255,.05);display:inline-flex;align-items:center;gap:5px}
+.ptt-chip.foc{border-color:color-mix(in srgb,var(--cyan) 55%,transparent);color:#bfeaffe0}
+.ptt-chip.w{border-color:color-mix(in srgb,var(--watch) 55%,transparent);color:#ffe6a8}
+.ptt-chip.w.crit{border-color:color-mix(in srgb,var(--crit) 60%,transparent);color:#ffc2c9}
+.ptt-chip.empty{border-style:dashed;color:var(--dim)}
+.ptt-chip .x{cursor:pointer;color:var(--dim);pointer-events:auto}.ptt-chip .x:hover{color:var(--crit)}
+.ptt-out{font-family:var(--mono);font-size:10.5px;line-height:1.5;color:var(--muted);max-height:118px;overflow-y:auto;
+  display:flex;flex-direction:column;gap:2px;padding-right:4px}
+.ptt-out .l-echo{color:var(--ink)}.ptt-out .l-echo b{color:var(--cyan)}
+.ptt-out .l-ok{color:var(--ok)}.ptt-out .l-llm{color:#9fe4ff}.ptt-out .l-fire{color:var(--watch)}
+.ptt-out .l-fire.crit{color:var(--crit);font-weight:600}.ptt-out .l-sys{color:var(--dim)}
+.ptt-inbar{display:flex;align-items:center;gap:7px;border-top:1px solid var(--hair-soft);padding-top:8px}
+.ptt-prompt{font-family:var(--mono);font-size:11.5px;font-weight:700;color:var(--cyan);white-space:nowrap}
+.ptt-in{flex:1 1 auto;background:transparent;border:0;outline:none;color:var(--ink);
+  font-family:var(--mono);font-size:12px;caret-color:var(--cyan);min-width:0}
+.ptt-in::placeholder{color:var(--dim)}
 /* crisp focus HUD tag — DOM overlay so bloom never washes it out */
 .twin-hud{position:absolute;left:12px;top:12px;z-index:4;display:none;align-items:center;gap:9px;
   padding:8px 13px 8px 11px;border-radius:10px;pointer-events:none;
