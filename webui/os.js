@@ -86,6 +86,7 @@ function render(d) {
   HR = num(d.vitals?.heart_rate, HR); SPO2 = num(d.vitals?.spo2, SPO2);
   renderSysbar(d); renderRisk(d); renderTwin(d); renderVitals(d);
   renderAgents(d); renderWhatif(d); renderProto(d); renderLayers(d);
+  renderOrganHud(d);
   window.AegisStory?.onSnapshot(d);
   window.AegisConsensus?.onSnapshot(d);
   $("#dock-tick").textContent = `tick · ${d.source || "—"} · ${new Date((d.timestamp||0)*1000).toLocaleTimeString()}`;
@@ -120,6 +121,36 @@ function renderRisk(d) {
   $("#rs-qsofa").textContent = d.risk?.qsofa_score ?? 0;
   $("#rs-sq").textContent = pct(d.risk?.signal_quality);
   $("#twin-risk").textContent = lvl === "LOW" ? "monitoring" : lvl.toLowerCase() + " risk";
+}
+
+/* ---------------- MULTI-ORGAN DYSFUNCTION HUD (SOFA · qSOFA · MODS) ---------- */
+function renderOrganHud(d) {
+  const hud = $("#organ-hud"); if (!hud) return;
+  const bs = d.body_state; const sofa = bs?.sofa, mods = bs?.mods, qs = bs?.qsofa, s3 = bs?.sepsis3;
+  if (!bs || !sofa || sofa.organs_scored === 0) { hud.classList.add("hidden"); return; }
+  hud.classList.remove("hidden");
+  const modsTone = mods.count >= 2 ? "crit" : mods.count === 1 ? "warn" : "ok";
+  const worsening = (mods.worsening || []);
+  const eta = mods.soonest_eta_critical_min;
+  const worseLine = worsening.length
+    ? `<div class="ohud-worse"><span class="ohud-arrow">▲</span> worsening: <b>${worsening.join(", ")}</b>`
+      + (eta != null ? ` · ETA→critical <b>${eta}m</b>` : "") + `</div>`
+    : "";
+  hud.innerHTML = `
+    <div class="ohud-row">
+      <span class="ohud-k">SOFA</span>
+      <span class="ohud-sofa ${modsTone}">${sofa.total}</span>
+      <span class="ohud-band">mortality ${sofa.mortality_band}</span>
+      <span class="ohud-scored">${sofa.organs_scored}/6 organs</span>
+    </div>
+    <div class="ohud-row">
+      <span class="ohud-pill ${qs.high_risk ? "crit" : "dim"}">qSOFA ${qs.score}/3</span>
+      <span class="ohud-pill ${modsTone}">${mods.is_mods ? "MODS · " + mods.count + " organs" : mods.count === 1 ? "1 organ failing" : "no organ failure"}</span>
+      ${s3?.flag ? `<span class="ohud-pill crit">SEPSIS-3 ✚</span>` : ""}
+      ${mods.cascade_risk > 0 ? `<span class="ohud-cascade">cascade ${Math.round(mods.cascade_risk * 100)}%</span>` : ""}
+    </div>
+    ${worseLine}
+    ${mods.onset_now ? `<div class="ohud-onset">⚡ MODS ONSET — second organ system entered failure</div>` : ""}`;
 }
 // Animated, well-formatted readout: large integer + smaller ".d%" decimal.
 function countUpProb(el, to, has) {

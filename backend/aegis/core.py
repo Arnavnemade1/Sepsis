@@ -89,6 +89,8 @@ class AegisCore:
         self._verifier = None
         self._explainer = None
         self.use_llm = use_llm
+        from backend.aegis.body_state import OrganFailureTracker
+        self._organ_tracker = OrganFailureTracker()   # per-patient organ trajectory
 
         # Portable proof export: the cage ENFORCES the protocol; this emits the
         # third-party-checkable, Ed25519-signed evidence. Full cert kept here and
@@ -155,10 +157,12 @@ class AegisCore:
         # 4) Body-state model (organ systems / regions / channels) for the
         #    anatomical visualization layer — built every tick, cheap.
         from backend.aegis.body_state import build_body_state
-        assessment.body_state = build_body_state(
+        _bs = build_body_state(
             self.twin.latest_vitals, detection, twin_state["features"], risk,
             ts, camera_vitals=camera_vitals, clinical_history=self.clinical_history,
-        ).to_dict()
+        )
+        self._organ_tracker.update(_bs)          # annotate trend / ETA / MODS-onset
+        assessment.body_state = _bs.to_dict()
 
         # 5) On HIGH risk: synthesize + formally verify a treatment protocol.
         if risk == "HIGH" and self.enable_protocols:

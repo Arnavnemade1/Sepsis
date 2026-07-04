@@ -155,6 +155,31 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
   background:rgba(52,225,255,.08);box-shadow:0 0 10px rgba(52,225,255,.25);
   animation:pulse 1.6s infinite}
 .twin-optical.hidden{display:none}
+
+/* multi-organ dysfunction HUD (SOFA · qSOFA · MODS) — overlaid on the twin */
+.organ-hud{position:absolute;left:12px;bottom:40px;z-index:4;pointer-events:none;
+  display:flex;flex-direction:column;gap:5px;font-family:var(--mono);
+  padding:9px 11px;border:1px solid rgba(140,160,200,.18);border-radius:8px;
+  background:linear-gradient(180deg,rgba(10,16,28,.82),rgba(10,16,28,.62));
+  backdrop-filter:blur(6px);max-width:min(58%,340px);box-shadow:0 6px 22px -12px #000}
+.organ-hud.hidden{display:none}
+.organ-hud .ohud-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ohud-k{font-size:9.5px;letter-spacing:.14em;color:var(--dim)}
+.ohud-sofa{font-size:20px;font-weight:800;line-height:1;color:#7fe8ff}
+.ohud-sofa.warn{color:#ffcf5b}.ohud-sofa.crit{color:#ff6472}
+.ohud-band{font-size:10px;color:var(--muted)}
+.ohud-scored{font-size:9.5px;color:var(--dim);margin-left:auto}
+.ohud-pill{font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;
+  border:1px solid rgba(140,160,200,.25);color:var(--muted)}
+.ohud-pill.dim{color:var(--dim)}
+.ohud-pill.ok{color:#5ce0a8;border-color:rgba(92,224,168,.4)}
+.ohud-pill.warn{color:#ffcf5b;border-color:rgba(255,207,91,.45)}
+.ohud-pill.crit{color:#ff6472;border-color:rgba(255,100,114,.5);background:rgba(255,100,114,.08)}
+.ohud-cascade{font-size:9.5px;color:#ff9a3b;margin-left:auto}
+.ohud-worse{font-size:10px;color:#ffcf5b}.ohud-worse b{color:#ffe08a}
+.ohud-arrow{color:#ff6472;animation:pulse 1s infinite}
+.ohud-onset{font-size:10px;font-weight:700;color:#ff6472;letter-spacing:.03em;
+  padding-top:2px;border-top:1px solid rgba(255,100,114,.2);animation:pulse 1.1s infinite}
 .organ{transition:fill .5s,filter .5s;cursor:default}
 .organ.normal{fill:rgba(40,90,140,.30);stroke:rgba(90,170,230,.5)}
 .organ.stress{fill:rgba(255,210,59,.32);stroke:var(--stress);filter:drop-shadow(0 0 8px rgba(255,210,59,.5))}

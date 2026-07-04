@@ -460,6 +460,9 @@ def _patient_roster() -> List[Dict[str, Any]]:
     return out
 
 
+_organ_trackers: Dict[str, Any] = {}     # bed -> OrganFailureTracker (per-bed organ trajectory)
+
+
 def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
     """A snapshot-shaped payload for a cohort bed, built from real per-bed state so
     the desktop panels (risk/vitals/twin/agents) reflect the selected patient. Cohort
@@ -486,10 +489,12 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
            "organ_dysfunction_score": 0, "hdc_probability": 0.0,
            "confidence": 0.6, "sensor_quality": 1.0}
     from backend.aegis.agents import ReasoningPlane, ReasoningContext
-    from backend.aegis.body_state import build_body_state
+    from backend.aegis.body_state import build_body_state, OrganFailureTracker
     reasoning = ReasoningPlane().deliberate(
         ReasoningContext(v, det, {}, {}, hist)).to_dict()
-    body = build_body_state(v, det, {}, level, time.time(), clinical_history=hist).to_dict()
+    _bs = build_body_state(v, det, {}, level, time.time(), clinical_history=hist)
+    _organ_trackers.setdefault(bed, OrganFailureTracker()).update(_bs)  # per-bed trajectory
+    body = _bs.to_dict()
     ing = _causal_for(bed)
     return {
         "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,

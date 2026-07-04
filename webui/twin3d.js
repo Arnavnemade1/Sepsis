@@ -634,6 +634,19 @@ function setOptical(reg) { optical = reg || {}; if (started) applyRegions(); }
 function applyRegions() {
   const regions = mergedRegions();
 
+  // per-region trajectory: is any MONITORED system in this region trending toward
+  // failure? (fed from body_state.organ_systems[].trend / eta_critical_min) — drives
+  // the "worsening" alarm pulse so the twin shows an organ HEADING for failure.
+  const rising = {}, etaByRegion = {};
+  const systems = (lastServerData && lastServerData.body_state && lastServerData.body_state.organ_systems) || [];
+  for (const s of systems) {
+    if (s.monitored && s.trend === "RISING") {
+      rising[s.region] = true;
+      if (s.eta_critical_min != null)
+        etaByRegion[s.region] = Math.min(etaByRegion[s.region] ?? Infinity, s.eta_critical_min);
+    }
+  }
+
   // organs — recolour each real mesh by its system's severity
   overall = 0; let worstKey = null, worstSev = 0.30, worstRegion = null;
   for (const k in organs) {
@@ -641,6 +654,7 @@ function applyRegions() {
     const mon = !!(reg && reg.monitored);
     const sev = mon ? (reg.severity || 0) : 0;
     o.mon = mon; o.sev = sev; o.worst = false;
+    o.rising = !!rising[o.region]; o.eta = etaByRegion[o.region];
     o.mat.emissive.copy(tierColor(reg));
     o.mat.emissiveIntensity = mon ? (0.7 + 1.0 * sev) : 0.5;
     o.mat.opacity = mon ? (0.64 + 0.26 * sev) : 0.46;  // unmonitored = faint grey anatomy
@@ -726,6 +740,13 @@ function animate() {
     if (o.mon) {
       const env = o.cfg.beat ? (0.6 + 0.7 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
       o.mat.emissiveIntensity = (0.7 + 1.0 * o.sev) * env;
+      // worsening alarm: a fast, sharp over-pulse (sharper + faster the sooner the
+      // projected ETA to CRITICAL) so a deteriorating organ visibly throbs.
+      if (o.rising) {
+        const urg = o.eta != null ? Math.min(1, 15 / Math.max(1, o.eta)) : 0.5;
+        const ap = Math.pow(0.5 + 0.5 * Math.sin(t * (3.0 + 5.0 * urg)), 3);
+        o.mat.emissiveIntensity *= (1.0 + (0.5 + 0.9 * urg) * ap);
+      }
     }
     if (o.infected) {                              // suspected source — throb brighter
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
