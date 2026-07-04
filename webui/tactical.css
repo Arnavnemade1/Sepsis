@@ -491,6 +491,20 @@ b{font-weight:700}
 .cl-twin .card-body{overflow:hidden}
 #twin-stage{position:absolute;inset:0;overflow:hidden}
 #twin-stage canvas{position:absolute;inset:0;display:block}
+/* crisp focus HUD tag — DOM overlay so bloom never washes it out */
+.twin-hud{position:absolute;left:12px;top:12px;z-index:4;display:none;align-items:center;gap:9px;
+  padding:8px 13px 8px 11px;border-radius:10px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(16,22,38,.94),rgba(8,11,20,.9));
+  border:1px solid color-mix(in srgb,var(--tc,#ff9a3b) 60%,transparent);
+  box-shadow:0 0 20px -6px var(--tc,#ff9a3b),0 6px 22px -10px #000;
+  backdrop-filter:blur(3px);animation:hud-in .28s ease}
+@keyframes hud-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.twin-hud-pip{width:9px;height:9px;border-radius:50%;background:var(--tc,#ff9a3b);flex:0 0 auto;
+  box-shadow:0 0 10px var(--tc,#ff9a3b);animation:pulse 1.6s infinite}
+.twin-hud-body{display:flex;flex-direction:column;gap:1px;line-height:1.15}
+.twin-hud-k{font-family:var(--mono);font-size:8.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--tc,#ff9a3b) 75%,#fff 25%)}
+.twin-hud-nm{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:.05em;color:#eef4ff}
 .twin-legend{position:absolute;right:9px;top:9px;bottom:9px;width:138px;display:flex;flex-direction:column;gap:4px;
   pointer-events:none;z-index:3}
 .tl-organ{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9.5px;color:var(--muted);
@@ -796,6 +810,18 @@ b{font-weight:700}
 @media (max-width:1100px){
   .board{grid-template-columns:1fr;grid-template-rows:repeat(3,minmax(190px,1fr));grid-template-areas:"ops" "learn" "blind"}
   .metrics{display:none}.val-kpis{grid-template-columns:repeat(2,1fr)}.val-grid{grid-template-columns:1fr}
-  .dos-body.clinical{grid-template-columns:1fr;overflow-y:auto}
+  /* stacked view: flatten the 3-col grid into a single flex column so whole
+     columns stack in order (the grid otherwise interleaves cards across rows) */
+  .dos-body.clinical{display:flex;flex-direction:column;overflow-y:auto}
+  /* let every card grow to its own content instead of being squeezed into an
+     equal flex share (which clipped the Detection Hub), and scroll the page */
+  .cl-col{overflow:visible;flex:0 0 auto}
+  .cl-card,.cl-card.cl-grow{flex:0 0 auto}
+  .cl-pad{overflow-y:visible}
+  .cl-twin{flex:0 0 auto;height:62vh;min-height:430px}
+  /* the canvas-backed cards (twin, timeline) have no intrinsic height when
+     content-sized — give the risk timeline an explicit one so it isn't collapsed */
+  .cl-main .cl-card:not(.cl-twin){flex:0 0 auto;min-height:260px}
+  .cl-main .cl-card:not(.cl-twin) .card-body{flex:1 1 auto;min-height:0;position:relative}
   .twin-legend{position:static;width:auto;flex-direction:row;flex-wrap:wrap;margin-top:8px}
 }

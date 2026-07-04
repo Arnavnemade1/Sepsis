@@ -729,9 +729,16 @@ function drawRiskTimeline(s){
   var padL=32,padR=14,padT=24,padB=28,pw=w-padL-padR,labelH=11,plotBot=h-padB,plotTop=padT,ph=plotBot-plotTop-labelH;
   function xAt(hr){ return padL+(hr-h0)/span*pw; } function yAt(v){ return plotTop+ph-clamp(v,0,1)*ph; }
   ctx.textBaseline="middle"; ctx.font=FM(9,500);
-  [0,0.5,1].forEach(function(v){ var y=yAt(v); ctx.strokeStyle=C.grid; ctx.lineWidth=1;
+  // vertical time grid (every ~ nice hour step) — gives the plot real structure
+  var step=span<=12?2:span<=30?6:span<=72?12:24;
+  for(var hg=Math.ceil(h0/step)*step; hg<=xMax; hg+=step){ var gx=xAt(hg);
+    ctx.strokeStyle=withAlpha(C.grid,.5); ctx.lineWidth=1; ctx.beginPath();
+    ctx.moveTo(gx,plotTop); ctx.lineTo(gx,plotBot); ctx.stroke(); }
+  // horizontal quarter gridlines (major at 0/.5/1, minor at .25/.75)
+  [[0,1],[0.25,0],[0.5,1],[0.75,0],[1,1]].forEach(function(g){ var v=g[0],major=g[1],y=yAt(v);
+    ctx.strokeStyle=withAlpha(C.grid,major?1:.45); ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(w-padR,y); ctx.stroke();
-    ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(v.toFixed(1),padL-5,y); });
+    if(major){ ctx.fillStyle=C.dim; ctx.textAlign="right"; ctx.fillText(v.toFixed(1),padL-5,y); } });
   // forecast region shading (subtle) + "now" divider
   var nx=xAt(h1);
   if(H){ ctx.fillStyle="rgba(125,140,255,.04)"; ctx.fillRect(nx,plotTop,xAt(xMax)-nx,ph);
@@ -750,7 +757,8 @@ function drawRiskTimeline(s){
   var last=risk[n-1], col=last>=al?C.crit:last>=0.4?C.watch:C.cyan;
   ctx.beginPath(); for(i=0;i<n;i++){ var x=xAt(hours[i]),y=yAt(risk[i]); i?ctx.lineTo(x,y):ctx.moveTo(x,y); }
   ctx.lineTo(xAt(h1),plotBot-labelH); ctx.lineTo(xAt(h0),plotBot-labelH); ctx.closePath();
-  var fg=ctx.createLinearGradient(0,plotTop,0,plotBot); fg.addColorStop(0,withAlpha(col,.28)); fg.addColorStop(1,withAlpha(col,.03));
+  var fg=ctx.createLinearGradient(0,plotTop,0,plotBot);
+  fg.addColorStop(0,withAlpha(col,.34)); fg.addColorStop(.55,withAlpha(col,.12)); fg.addColorStop(1,withAlpha(col,.02));
   ctx.fillStyle=fg; ctx.fill();
   ctx.strokeStyle=col; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.shadowColor=withAlpha(col,.6); ctx.shadowBlur=8;
   ctx.beginPath(); for(i=0;i<n;i++){ var x2=xAt(hours[i]),y2=yAt(risk[i]); i?ctx.lineTo(x2,y2):ctx.moveTo(x2,y2); } ctx.stroke(); ctx.shadowBlur=0;
@@ -769,7 +777,11 @@ function drawRiskTimeline(s){
       var px=xAt(fc.projected_onset_hour); ctx.fillStyle=fcol; ctx.beginPath(); ctx.arc(px,yAt(al),3.5,0,7); ctx.fill();
       ctx.strokeStyle=withAlpha(fcol,.5); ctx.beginPath(); ctx.arc(px,yAt(al),6.5,0,7); ctx.stroke(); }
   }
-  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xAt(h1),yAt(last),3,0,7); ctx.fill();
+  // "now" marker — a glowing dot with a soft outer ring so the live edge reads clearly
+  var nX=xAt(h1), nY=yAt(last);
+  ctx.strokeStyle=withAlpha(col,.5); ctx.lineWidth=1.4; ctx.beginPath(); ctx.arc(nX,nY,7,0,7); ctx.stroke();
+  ctx.shadowColor=col; ctx.shadowBlur=12; ctx.fillStyle=col; ctx.beginPath(); ctx.arc(nX,nY,3.6,0,7); ctx.fill(); ctx.shadowBlur=0;
+  ctx.fillStyle="#0a0e18"; ctx.beginPath(); ctx.arc(nX,nY,1.5,0,7); ctx.fill();
   // ground-truth label band
   var by=plotBot-labelH+2, bw=pw/Math.max(span,1);
   for(i=0;i<n;i++){ if(c.labels[i]){ ctx.fillStyle=withAlpha(C.crit,.55); ctx.fillRect(xAt(hours[i])-bw/2,by,bw+1,labelH-3); } }

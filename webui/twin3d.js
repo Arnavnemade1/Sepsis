@@ -547,6 +547,30 @@ function setLabel(sprite, text, stroke, fill) {
 }
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
+/* ---------------- focus HUD (crisp DOM tag, immune to bloom) ---------------- */
+let hudEl = null;
+function ensureHud(el) {
+  if (hudEl && hudEl.isConnected) return;
+  const host = el || document.getElementById("twin-stage");
+  if (!host) return;
+  if (getComputedStyle(host).position === "static") host.style.position = "relative";
+  hudEl = document.createElement("div");
+  hudEl.className = "twin-hud"; hudEl.style.display = "none";
+  host.appendChild(hudEl);
+}
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+function setHud(kicker, name, hex) {
+  ensureHud();
+  if (!hudEl) return;
+  if (!name) { hudEl.style.display = "none"; return; }
+  hudEl.style.display = "flex";
+  hudEl.style.setProperty("--tc", hex || "#ff9a3b");
+  hudEl.innerHTML =
+    '<span class="twin-hud-pip"></span>' +
+    '<span class="twin-hud-body"><span class="twin-hud-k">' + esc(kicker || "FOCUS") + '</span>' +
+    '<b class="twin-hud-nm">' + esc(name) + '</b></span>';
+}
+
 /* ---------------- inspect readout (click an organ) ---------------- */
 function buildInspect() {
   const c = document.createElement("canvas"); c.width = 300; c.height = 96;
@@ -632,14 +656,14 @@ function focusPos(region) {
 /* ---------------- lifecycle ---------------- */
 function start(el) {
   if (started || !el) return;
-  container = el; const w = el.clientWidth || 480, h = el.clientHeight || 560;
+  container = el; ensureHud(el); const w = el.clientWidth || 480, h = el.clientHeight || 560;
   scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x05070d, 0.10);
   camera = new THREE.PerspectiveCamera(33, w / h, 0.1, 100);
   camera.position.set(0.2, H * 0.56, H * 1.9);
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.98;
   el.querySelectorAll("canvas").forEach((c) => c.remove()); el.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -659,7 +683,9 @@ function start(el) {
   // hot (high-emissive) organs bloom.
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.72, 0.78);
+  // strength / radius / threshold — tuned so only genuinely hot organ cores get a
+  // soft halo instead of the whole torso + head blowing out to white.
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.55, 0.9);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -753,27 +779,30 @@ function applyRegions() {
   const bc = BASE.clone(); if (tierHex) bc.lerp(new THREE.Color(tierHex), 0.4);
   ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
 
-  // suspected infection focus — light up the source organ + an orange hot zone
+  // suspected infection focus — light up the source organ + an orange hot zone.
+  // The TEXT tag is rendered as a crisp DOM HUD (see setHud) instead of a 3D sprite,
+  // so bloom can never wash it out and it sits cleanly in the corner, off the body.
   for (const k in organs) organs[k].infected = false;
+  if (infLabel) infLabel.visible = false;
+  if (beacon) beacon.visible = false;
   if (lastInfection && lastInfection.site) {
     infectFX.position.copy(focusPos(lastInfection.region)); infectFX.visible = true;
-    setLabel(infLabel, "⚠ FOCUS · " + lastInfection.site.toUpperCase(), "#ff7a3b", "#ffd8b0");
-    // (systemic sites stay central; localised sites sit on the organ)
     const fk = FOCUS_ORGAN[lastInfection.region];
     [fk, lastInfection.region === "kidneys" ? "kidneyR" : null].forEach((key) => {
       const o = key && organs[key]; if (!o) return;
       o.infected = true; o.mat.emissive.lerp(new THREE.Color(INFECT_COL), 0.55);
       o.mat.opacity = Math.max(o.mat.opacity, 0.7);
     });
-    if (beacon) beacon.visible = false;
+    setHud("SUSPECTED FOCUS", lastInfection.site.toUpperCase(), "#ff8a3b");
   } else {
     if (infectFX) infectFX.visible = false;
-    // fallback: worst-system label beacon
-    if (worstKey && beacon && organs[worstKey].pivot) {
-      organs[worstKey].pivot.getWorldPosition(_v);
-      beacon.position.set(_v.x, _v.y + 0.14, _v.z + 0.16); beacon.visible = true;
-      setLabel(beaconLabel, (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase() + (worstRegion && worstRegion.optical ? " ◉" : ""));
-    } else if (beacon) beacon.visible = false;
+    if (worstKey && worstRegion) {
+      const nm = (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase();
+      const hex = { CRITICAL: "#ff4d5e", DYSFUNCTION: "#ff9a3b", STRESS: "#ffd23b" }[worstRegion.status] || "#ff9a3b";
+      setHud((worstRegion.status || "WATCH") + (worstRegion.optical ? " · OPTICAL" : ""), nm, hex);
+    } else {
+      setHud(null);
+    }
   }
 
   // particle tint by overall load
@@ -826,21 +855,22 @@ function animate() {
     else if (o.worst) o.pivot.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(t * 3.0)));
     else o.pivot.scale.setScalar(1);
     if (o.mon) {
-      const env = o.cfg.beat ? (0.6 + 0.7 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
-      o.mat.emissiveIntensity = (0.7 + 1.0 * o.sev) * env;
+      const env = o.cfg.beat ? (0.62 + 0.5 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
+      o.mat.emissiveIntensity = (0.5 + 0.7 * o.sev) * env;
       // worsening alarm: a fast, sharp over-pulse (sharper + faster the sooner the
       // projected ETA to CRITICAL) so a deteriorating organ visibly throbs.
       if (o.rising) {
         const urg = o.eta != null ? Math.min(1, 15 / Math.max(1, o.eta)) : 0.5;
         const ap = Math.pow(0.5 + 0.5 * Math.sin(t * (3.0 + 5.0 * urg)), 3);
-        o.mat.emissiveIntensity *= (1.0 + (0.5 + 0.9 * urg) * ap);
+        o.mat.emissiveIntensity *= (1.0 + (0.3 + 0.5 * urg) * ap);
       }
     }
     if (o.infected) {                              // suspected source — throb brighter
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
-      o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.7) * (1.15 + 0.7 * ip);
+      o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.55) * (1.05 + 0.35 * ip);
       if (!o.cfg.beat && !o.cfg.breathe) o.pivot.scale.setScalar(1 + 0.05 * ip);
     }
+    o.mat.emissiveIntensity = Math.min(o.mat.emissiveIntensity, 1.45);   // never blow out
     // glow halo: a hot organ blooms through the body, beating with the pulse
     if (o.halo) {
       if (o.mon && o.sev > 0.04) {
@@ -858,7 +888,7 @@ function animate() {
     // infusion colour for the drug-arrival "lights up" effect.
     if (o.flash > 0) {
       o.flash = Math.max(0, o.flash - dt * 1.8);
-      o.mat.emissiveIntensity += o.flash * 2.2;
+      o.mat.emissiveIntensity = Math.min(1.7, o.mat.emissiveIntensity + o.flash * 1.2);
       if (o.halo) {
         o.halo.visible = true;
         o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
