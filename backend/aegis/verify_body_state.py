@@ -96,14 +96,14 @@ def check_trajectory() -> None:
         bs = build_body_state(vit, {"ml_probability": 0.5}, {}, "MEDIUM", t,
                               clinical_history=hist)
         last = tr.update(bs)
-    cardio = next(s for s in last.organ_systems if s.name == "Cardiovascular")
-    print(f"      cardio: sev={cardio.severity} trend={cardio.trend} "
-          f"slope/min={cardio.slope_per_min} eta_crit={cardio.eta_critical_min}min "
-          f"proj={cardio.projected_severity}")
-    assert cardio.trend == "RISING", cardio.trend
-    assert cardio.slope_per_min > 0
-    assert cardio.projected_severity >= cardio.severity
-    print("      [PASS] worsening cardiovascular flagged RISING with a forward projection")
+    met = next(s for s in last.organ_systems if s.name == "Metabolic")   # continuous axis
+    print(f"      metabolic(lactate): sev={met.severity} trend={met.trend} "
+          f"slope/min={met.slope_per_min} eta_crit={met.eta_critical_min}min "
+          f"proj={met.projected_severity}")
+    assert met.trend == "RISING", met.trend
+    assert met.slope_per_min > 0
+    assert met.projected_severity >= met.severity
+    print("      [PASS] worsening metabolic (rising lactate) flagged RISING with a forward projection")
 
 
 def check_mods_onset() -> None:

@@ -1,7 +1,9 @@
 # 3D Anatomical Organ Models — Attribution
 
 The organ meshes in this directory (`VH_M_Heart.glb`, `VH_M_Lung.glb`,
-`VH_M_Liver.glb`, `VH_M_Kidney_L.glb`, `VH_M_Kidney_R.glb`, `VH_M_Spleen.glb`)
+`VH_M_Liver.glb`, `VH_M_Kidney_L.glb`, `VH_M_Kidney_R.glb`, `VH_M_Spleen.glb`,
+`VH_M_Pancreas.glb`, `VH_M_Small_Intestine.glb`, `VH_M_Urinary_Bladder.glb`,
+`VH_M_Spinal_Cord.glb`, `VH_M_Thymus.glb`, `VH_M_Blood_Vasculature.glb`)
 are from the **HuBMAP Common Coordinate Framework (CCF) 3D Reference Object
 Library**, v1.2.
 

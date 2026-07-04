@@ -226,6 +226,7 @@ def build_body_state(
     creatinine = history.get("creatinine")
     bilirubin = history.get("bilirubin")
     platelets = history.get("platelets")
+    wbc = g("wbc", history.get("wbc"))
     perfusion = (camera_vitals or {}).get("perfusion_index")
 
     systems: List[OrganSystem] = []
@@ -257,17 +258,13 @@ def build_body_state(
     else:
         systems.append(OrganSystem("Respiratory", "lungs", False, "UNMONITORED", 0.0))
 
-    # --- Cardiovascular (MAP/vaso SOFA + lactate shock marker) ------------- #
+    # --- Cardiovascular (MAP / vasopressor — pure SOFA) -------------------- #
+    # (lactate is scored under its own Metabolic axis below, not double-counted.)
     cardio_sofa = sofa_cardiovascular(mapv, vaso)
-    cardio_extra, cardio_drivers = 0.0, []
-    if _present(lactate):
-        cardio_extra = _clamp((lactate - 2.0) / 4.0)
-        if lactate >= 2:
-            cardio_drivers.append(f"lactate {lactate:.1f} mmol/L")
-    if cardio_sofa is not None or _present(lactate) or _present(sbp):
-        if cardio_sofa is None and _present(sbp):     # fall back to SBP-derived MAP
-            cardio_sofa = sofa_cardiovascular(sbp * 0.7, None)
-        sofa_system("Cardiovascular", "heart", cardio_sofa, cardio_extra, cardio_drivers)
+    if cardio_sofa is None and _present(sbp):
+        cardio_sofa = sofa_cardiovascular(sbp * 0.7, None)   # SBP-derived MAP fallback
+    if cardio_sofa is not None:
+        sofa_system("Cardiovascular", "heart", cardio_sofa)
     else:
         systems.append(OrganSystem("Cardiovascular", "heart", False, "UNMONITORED", 0.0))
 
@@ -313,6 +310,33 @@ def build_body_state(
                                    _tier_from_severity(sev), round(sev, 3), drivers))
     else:
         systems.append(OrganSystem("Peripheral Perfusion", "skin", False, "UNMONITORED", 0.0))
+
+    # --- Metabolic (lactate — perfusion / acid-base axis; continuous) ------ #
+    if _present(lactate):
+        sev = _clamp((lactate - 2.0) / 4.0)
+        systems.append(OrganSystem("Metabolic", "metabolic", True,
+                                   _tier_from_severity(sev), round(sev, 3),
+                                   [f"lactate {lactate:.1f} mmol/L (hyperlactataemia)"] if lactate >= 2 else []))
+    else:
+        systems.append(OrganSystem("Metabolic", "metabolic", False, "UNMONITORED", 0.0))
+
+    # --- Immune / inflammatory (WBC + temperature — SIRS host response) ---- #
+    febrile = _present(temp) and (temp >= 38.0 or temp <= 36.0)
+    if _present(wbc) or febrile:
+        sev, drivers = 0.0, []
+        if _present(wbc):
+            sev = max(sev, _clamp((wbc - 12.0) / 12.0), _clamp((4.0 - wbc) / 3.0))
+            if wbc > 12:
+                drivers.append(f"leukocytosis (WBC {wbc:.1f}×10³)")
+            elif wbc < 4:
+                drivers.append(f"leukopenia (WBC {wbc:.1f}×10³ — worse in sepsis)")
+        if febrile:
+            sev = max(sev, 0.35)
+            drivers.append(f"{'fever' if temp >= 38 else 'hypothermia'} {temp:.1f}°C")
+        systems.append(OrganSystem("Immune", "immune", True,
+                                   _tier_from_severity(sev), round(sev, 3), drivers))
+    else:
+        systems.append(OrganSystem("Immune", "immune", False, "UNMONITORED", 0.0))
 
     # --- anatomical regions: aggregate systems by region ------------------- #
     regions: Dict[str, Dict[str, Any]] = {}

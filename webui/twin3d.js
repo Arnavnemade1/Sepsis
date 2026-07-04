@@ -20,6 +20,11 @@
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/three/OrbitControls.js";
 import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
+import { EffectComposer } from "./vendor/three/postprocessing/EffectComposer.js";
+import { RenderPass } from "./vendor/three/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "./vendor/three/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "./vendor/three/postprocessing/OutputPass.js";
+let composer, bloomPass;
 
 const H = 1.7;                                    // body height (feet ~0)
 const BASE = new THREE.Color(0x2f7fd8);           // calm / healthy
@@ -28,7 +33,8 @@ const RIM = new THREE.Color(0x9fe6ff);
 const TIER_HEX = { STRESS: 0xffd23b, DYSFUNCTION: 0xff9a3b, CRITICAL: 0xff4d5e };
 const REGION_LABEL = {
   brain: "Neurological", heart: "Cardiovascular", lungs: "Respiratory",
-  liver: "Hepatic", kidneys: "Renal", skin: "Peripheral", blood: "Immune",
+  liver: "Hepatic", kidneys: "Renal", skin: "Peripheral", blood: "Coagulation",
+  metabolic: "Metabolic", immune: "Immune", vessels: "Circulatory",
 };
 
 /* Real anatomical organ atlas — HuBMAP CCF v1.2 reference meshes (Visible Human,
@@ -37,12 +43,21 @@ const REGION_LABEL = {
    we then scale/place the whole assembly inside the body shell.
    region = which body_state region drives this organ's colour. */
 const ORGAN_FILES = [
-  { key: "lung",    file: "VH_M_Lung.glb",     region: "lungs",   breathe: true },
-  { key: "heart",   file: "VH_M_Heart.glb",    region: "heart",   beat: true },
-  { key: "liver",   file: "VH_M_Liver.glb",    region: "liver" },
-  { key: "spleen",  file: "VH_M_Spleen.glb",   region: "blood" },
-  { key: "kidneyL", file: "VH_M_Kidney_L.glb", region: "kidneys" },
-  { key: "kidneyR", file: "VH_M_Kidney_R.glb", region: "kidneys" },
+  { key: "lung",    file: "VH_M_Lung.glb",       region: "lungs",   breathe: true },
+  { key: "heart",   file: "VH_M_Heart.glb",      region: "heart",   beat: true },
+  { key: "liver",   file: "VH_M_Liver.glb",      region: "liver" },
+  { key: "spleen",  file: "VH_M_Spleen.glb",     region: "blood" },
+  { key: "kidneyL", file: "VH_M_Kidney_L.glb",   region: "kidneys" },
+  { key: "kidneyR", file: "VH_M_Kidney_R.glb",   region: "kidneys" },
+  // expanded coverage — more organ systems light up on the same co-registered atlas
+  { key: "pancreas",  file: "VH_M_Pancreas.glb",        region: "metabolic" },
+  { key: "intestine", file: "VH_M_Small_Intestine.glb", region: "metabolic", calExclude: true },
+  { key: "bladder",   file: "VH_M_Urinary_Bladder.glb", region: "kidneys",   calExclude: true },
+  { key: "cord",      file: "VH_M_Spinal_Cord.glb",     region: "brain",     calExclude: true },
+  { key: "thymus",    file: "VH_M_Thymus.glb",          region: "immune" },
+  // the vascular tree — a systemic vessel network, rendered as glowing lines and
+  // driven by the OVERALL circulatory severity (loaded last; it is the big mesh).
+  { key: "vessels",   file: "VH_M_Blood_Vasculature.glb", region: "vessels", vascular: true, defer: true },
 ];
 // placement of the assembled organ atlas inside the body (tuned to the Xbot mesh)
 let ORGAN_SPAN = 0.44;       // vertical extent of the organ stack in body units
@@ -200,25 +215,38 @@ function makeOrganMat() {
   };
   return m;
 }
+/* Vascular tree material — an additive glowing network that always reads as a
+   faint circulatory web and floods with the tier colour under circulatory stress.
+   MeshBasic so it self-illuminates (and blooms) regardless of scene lighting. */
+function makeVascularMat() {
+  return new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0x2b5f9e), transparent: true, opacity: 0.26,
+    blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
+}
 function loadOrgans() {
   atlasGroup = new THREE.Group(); scene.add(atlasGroup);
   const loader = new GLTFLoader();
+  const N_CAL = ORGAN_FILES.filter((c) => !c.defer).length;   // vessels load lazily, don't gate calibration
   ORGAN_FILES.forEach((cfg) => {
-    loader.load("./vendor/models/organs/" + cfg.file, (g) => {
-      const root = g.scene, mat = makeOrganMat();
+    const load = () => loader.load("./vendor/models/organs/" + cfg.file, (g) => {
+      const root = g.scene, vascular = !!cfg.vascular, mat = vascular ? makeVascularMat() : makeOrganMat();
       root.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; o.castShadow = o.receiveShadow = false; } });
       // wrap in a pivot at the organ's own centre so beat/breathe scale about it
       const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group(); pivot.position.copy(c); root.position.sub(c); pivot.add(root);
       atlasGroup.add(pivot);
-      // a soft additive glow halo (scene-level, billboarded) so a stressed organ
-      // reads as "hot" through the translucent body — the hologram bloom feel.
-      const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: BASE.clone(),
-        transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
-      halo.scale.set(0.16, 0.16, 1); halo.visible = false; scene.add(halo);
-      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false, halo, flash: 0 };
-      if (++organLoadCount === ORGAN_FILES.length) calibrateAtlas();
+      let halo = null;
+      if (!vascular) {   // a soft additive glow halo so a stressed organ reads as "hot"
+        halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: BASE.clone(),
+          transparent: true, opacity: 0, depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
+        halo.scale.set(0.16, 0.16, 1); halo.visible = false; scene.add(halo);
+      }
+      organs[cfg.key] = { cfg, pivot, mat, region: cfg.region, sev: 0, mon: false, halo, flash: 0, vascular };
+      if (started) applyRegions();
+      if (!cfg.defer && ++organLoadCount === N_CAL) calibrateAtlas();
     }, undefined, (e) => console.error("[twin] organ load failed", cfg.file, e));
+    // defer the heavy vascular mesh until the core organs are up (keeps first paint fast)
+    if (cfg.defer) setTimeout(load, 1400); else load();
   });
   // dim placeholder for the (unmonitored) brain so the head isn't empty
   const bg = new THREE.IcosahedronGeometry(0.072, 2);
@@ -247,9 +275,15 @@ function computeBodyMetrics(root) {
    loaded we anchor to its real torso (skeleton-derived); otherwise we fall back to
    the hand-tuned constants. */
 function calibrateAtlas() {
-  if (!atlasGroup || organLoadCount < ORGAN_FILES.length) return;
+  // Scale/seat the atlas off the CORE thoraco-abdominal cluster only (heart, lungs,
+  // liver, spleen, kidneys, pancreas, thymus). The spinal cord + pelvic organs +
+  // vascular tree are co-registered in the SAME frame, so they inherit the
+  // transform and land in their true anatomical positions — but they must NOT
+  // enter the bounds, or the long cord/pelvis would shrink the whole atlas.
+  const core = Object.values(organs).filter((o) => o.pivot && !o.vascular && !o.cfg.calExclude);
+  if (!atlasGroup || core.length < 6) return;
   atlasGroup.scale.set(1, 1, 1); atlasGroup.position.set(0, 0, 0); atlasGroup.updateWorldMatrix(true, true);
-  const box = new THREE.Box3().setFromObject(atlasGroup);
+  const box = new THREE.Box3(); core.forEach((o) => box.expandByObject(o.pivot));
   const c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
   let span = ORGAN_SPAN, ty = TORSO_Y, tz = TORSO_Z, cx = 0;
   if (bodyMetrics) {
@@ -580,7 +614,7 @@ function start(el) {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.18;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.12;
   el.querySelectorAll("canvas").forEach((c) => c.remove()); el.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -593,6 +627,16 @@ function start(el) {
   const fill = new THREE.DirectionalLight(0x6080c0, 0.55); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
   const rim = new THREE.DirectionalLight(0x8fd0ff, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // cool back-rim → separates the body from the dark
   scene.add(new THREE.HemisphereLight(0x6f86c8, 0x0a1020, 0.45));                                          // soft sky/ground gradient over the tissue
+
+  // ---- bloom post-processing: the single biggest step up from "rudimentary" —
+  // the emissive organs/vessels now bloom like a real hologram instead of reading
+  // as flat glowing blobs. Tuned subtle so healthy tissue stays crisp and only the
+  // hot (high-emissive) organs bloom.
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.7, 0.72, 0.78);
+  composer.addPass(bloomPass);
+  composer.addPass(new OutputPass());
 
   glowTex = glowTexture();
   buildGround(); buildParticles(); buildReticle(); buildInfusionParticles();
@@ -650,7 +694,8 @@ function applyRegions() {
   // organs — recolour each real mesh by its system's severity
   overall = 0; let worstKey = null, worstSev = 0.30, worstRegion = null;
   for (const k in organs) {
-    const o = organs[k]; const reg = regions[o.region];
+    const o = organs[k]; if (o.vascular) continue;       // vessels driven by overall, below
+    const reg = regions[o.region];
     const mon = !!(reg && reg.monitored);
     const sev = mon ? (reg.severity || 0) : 0;
     o.mon = mon; o.sev = sev; o.worst = false;
@@ -663,6 +708,18 @@ function applyRegions() {
     if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
   }
   for (const k in organs) organs[k].worst = (k === worstKey);
+
+  // vascular tree: a systemic web that floods with the overall tier colour and
+  // brightens as circulatory stress rises (stays a faint blue network when calm).
+  const vcol = overall >= 0.75 ? new THREE.Color(TIER_HEX.CRITICAL)
+             : overall >= 0.45 ? new THREE.Color(TIER_HEX.DYSFUNCTION)
+             : overall >= 0.2 ? new THREE.Color(TIER_HEX.STRESS) : new THREE.Color(0x2b5f9e);
+  for (const k in organs) {
+    const o = organs[k]; if (!o.vascular || !o.mat) continue;
+    o.mon = true; o.sev = overall;
+    o.mat.color.copy(vcol);
+    o.mat.opacity = 0.16 + 0.44 * overall;
+  }
 
   // body shell: a single clean translucent tint (neutral blue, washing gently
   // toward the overall tier colour in a crisis) — the diagnostic colour lives in
@@ -708,7 +765,9 @@ function applyRegions() {
 function resize() {
   if (!renderer || !container) return;
   const w = container.clientWidth, h = container.clientHeight; if (!w || !h) return;
-  camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h); fitCamera();
+  camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
+  if (composer) composer.setSize(w, h); if (bloomPass) bloomPass.setSize(w, h);
+  fitCamera();
 }
 
 const _v = new THREE.Vector3();
@@ -733,6 +792,10 @@ function animate() {
   // worst-affected organ throbs; emissive brightness tracks the pulse.
   for (const k in organs) {
     const o = organs[k]; if (!o.pivot) continue;
+    if (o.vascular) {                                 // vessels: blood-flow shimmer on the heartbeat
+      o.mat.opacity = (0.16 + 0.44 * (o.sev || 0)) * (0.82 + 0.34 * beat);
+      o.pivot.scale.setScalar(1); continue;
+    }
     if (o.cfg.beat) o.pivot.scale.setScalar(1 + 0.11 * beat);
     else if (o.cfg.breathe) o.pivot.scale.set(1 + 0.035 * breathe, 1 + 0.075 * breathe, 1 + 0.035 * breathe);
     else if (o.worst) o.pivot.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(t * 3.0)));
@@ -877,7 +940,7 @@ function animate() {
     inspectLabel.position.set(_v.x, _v.y + 0.13, _v.z + 0.14);
   }
 
-  renderer.render(scene, camera);
+  if (composer) composer.render(); else renderer.render(scene, camera);
 }
 
 /* live calibration helpers (used to tune organ placement against the Xbot mesh) */
