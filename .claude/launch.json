@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "uvicorn", "backend.aegis.server:app", "--host", "127.0.0.1", "--port", "8100"],
       "port": 8100
+    },
+    {
+      "name": "webui",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "http.server", "8200", "--directory", "webui"],
+      "port": 8200
     }
   ]
 }

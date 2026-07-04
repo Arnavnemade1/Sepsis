@@ -1472,16 +1472,17 @@ function animateCounts(){ [].forEach.call(document.querySelectorAll("[data-count
    ============================================================ */
 var lastSnap=null, cmdHist=[], cmdHi=0, cmdOpen=false;
 function cmdShow(){ cmdOpen=true; $("cmd").classList.add("open"); $("cmd").setAttribute("aria-hidden","false");
-  setTimeout(function(){ var i=$("cmd-in"); if(i) i.focus(); },30);
-  if(!$("cmd-out").childNodes.length) cmdBanner(); }
+  if(!$("cmd-out").childNodes.length) cmdBanner();
+  if(typeof termSetPrompt==="function") termSetPrompt();
+  setTimeout(function(){ var i=$("cmd-in"); if(i){ i.focus(); if(typeof termRender==="function") termRender(); } },30); }
 function cmdHide(){ cmdOpen=false; $("cmd").classList.remove("open"); $("cmd").setAttribute("aria-hidden","true"); }
 function cmdToggle(){ cmdOpen?cmdHide():cmdShow(); }
 function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
 function cmdPrint(html,cls){ var o=$("cmd-out"); var d=document.createElement("div");
   d.className="cl"+(cls?" "+cls:""); d.innerHTML=html; o.appendChild(d); o.scrollTop=o.scrollHeight; }
-function cmdEcho(line){ cmdPrint('<span class="cl-pr">aegis❯</span> '+esc(line),"echo"); }
-function cmdBanner(){ cmdPrint('<b>AEGIS·OS</b> command console — direct line to the distributed bio-kernel.','sys');
-  cmdPrint('type <b>help</b> for commands · <b>esc</b> or <b>/</b> to toggle.','dim'); }
+function cmdEcho(line){ cmdPrint('<span class="cl-pr">aegis@icu-wing:'+esc(termCwd)+'$</span> '+esc(line),"echo"); }
+function cmdBanner(){ cmdPrint('<b>AegisOS</b> tty — direct line to the distributed bio-kernel (L1–L4 · HDSched · HDKernel).','sys');
+  cmdPrint('<b>help</b> lists commands · <b>Tab</b> completes · <b>Ctrl-L</b> clears · <b>↑/↓</b> history · <b>ls /proc</b> to browse state.','dim'); }
 var TIER_TXT={critical:'<span class="cl-crit">CRITICAL</span>',watch:'<span class="cl-warn">WATCH</span>',stable:'<span class="cl-ok">stable</span>'};
 function beds(){ return Object.keys(latestBeds).map(function(k){return latestBeds[k];}); }
 function resolveBed(q){ if(!q) return null; q=q.toLowerCase().trim();
@@ -1493,7 +1494,6 @@ function resolveBed(q){ if(!q) return null; q=q.toLowerCase().trim();
 }
 function cmdRun(raw){
   var line=raw.trim(); if(!line) return; cmdEcho(line);
-  cmdHist.push(line); cmdHi=cmdHist.length;
   var parts=line.split(/\s+/), c=parts[0].toLowerCase(), arg=parts.slice(1).join(" ");
   var H=CMD[c]||CMD[CMD_ALIAS[c]];
   if(!H){ cmdPrint('unknown command <b>'+esc(c)+'</b> — try <b>help</b>',"err"); return; }
@@ -1799,6 +1799,85 @@ function printBundle(d,b){
   cmdPrint('<b>CERTIFIED HOUR-1 BUNDLE · '+esc(b.name)+'</b> '+(d.all_verified?'<span class="cl-ok">✓ Z3-verified · safe to dispatch</span>':'<span class="cl-crit">✗ quarantined</span>'),"sys");
   d.checklist.forEach(function(it){ cmdPrint('<span class="cl-cmd">'+it.n+'.</span> '+esc(it.title)+' <span class="cl-d">'+esc(it.detail)+'</span>',"row"); });
   if(d.protocol) cmdPrint('rx: '+esc(d.protocol.antibiotic)+' · fluid '+d.protocol.fluid_rate+' mL/kg/h · vaso '+d.protocol.vasopressor_dose+' mcg/kg/min','mono'); }
+/* ============================================================
+   TERMINAL — a real tty line editor over the CMD table:
+   blinking cursor · Tab completion · shell builtins · /proc VFS
+   ============================================================ */
+var termCwd="~", PROC_CACHE=null;
+var TERM_DIRS=["/","/proc","/bin","/cohort","/kernel"];
+function uniq(a){ var s={},o=[]; a.forEach(function(x){ if(!s[x]){s[x]=1;o.push(x);} }); return o; }
+function commonPrefix(a){ if(!a.length) return ""; var p=a[0]; for(var i=1;i<a.length;i++){ while(a[i].indexOf(p)!==0){ p=p.slice(0,-1); if(!p) return ""; } } return p; }
+try{ cmdHist=JSON.parse(localStorage.getItem("aegis_term_hist")||"[]")||[]; }catch(e){ cmdHist=[]; }
+cmdHi=cmdHist.length;
+function termSaveHist(){ try{ localStorage.setItem("aegis_term_hist",JSON.stringify(cmdHist.slice(-200))); }catch(e){} }
+function termSetPrompt(){ var p=$("term-prompt"); if(p) p.innerHTML='aegis@icu-wing<b>:'+esc(termCwd)+'$</b>';
+  var c=$("term-cwd"); if(c) c.textContent=":"+termCwd; }
+function termRender(){ var inp=$("cmd-in"); if(!inp) return; var v=inp.value||"", pos=inp.selectionStart==null?v.length:inp.selectionStart;
+  var pre=$("ti-pre"), cur=$("ti-cur"), post=$("ti-post"); if(!pre) return;
+  pre.textContent=v.slice(0,pos); cur.textContent=v.slice(pos,pos+1)||" "; post.textContent=v.slice(pos+1); }
+function termFocus(){ var i=$("cmd-in"); if(i){ i.focus(); termRender(); } }
+function fetchProc(cb){ fetch(window.AEGIS.http("/aegis/proc")).then(function(r){return r.json();})
+  .then(function(d){ PROC_CACHE=(d&&d.paths)||[]; if(cb) cb(d); }).catch(function(){ if(cb) cb(null); }); }
+function termResolve(t){ t=(t||"").trim(); if(t===""||t==="~") return "~"; if(t==="/") return "/";
+  if(t===".."){ return (termCwd==="~"||termCwd==="/"||termCwd.split("/").length<=2)?"/":termCwd.replace(/\/[^/]+$/,"")||"/"; }
+  if(t.charAt(0)==="/") return t.replace(/\/$/,"")||"/";
+  var base=(termCwd==="~")?"":termCwd.replace(/\/$/,""); return (base+"/"+t).replace(/\/+/g,"/"); }
+function termCandidates(v){
+  var parts=v.split(/\s+/);
+  if(parts.length<=1){ var t=(parts[0]||"").toLowerCase();
+    return uniq(Object.keys(CMD).concat(Object.keys(CMD_ALIAS))).filter(function(n){return n.indexOf(t)===0;}).sort(); }
+  var cmd=(CMD_ALIAS[parts[0].toLowerCase()]||parts[0].toLowerCase()), last=parts[parts.length-1].toLowerCase(), pool=[];
+  if(cmd==="cd"||cmd==="ls") pool=TERM_DIRS.concat(["..","~"]);
+  else if(cmd==="krun") pool=(parts.length===2)?["mixed","pipeline","fanout","stress"]:["FIFO","RR","CFS","EDF","HDSched"];
+  else if(cmd==="cat"||cmd==="proc") pool=(PROC_CACHE||[]).map(function(p){return p.replace(/^\/proc\//,"").replace(/^\//,"");});
+  else if(cmd==="man") pool=uniq(Object.keys(CMD));
+  else if(/^(who|open|treat|escalate|clear|explain|radar|resonance|protocol|crisis|inspect|verify|fault)$/.test(cmd)) pool=beds().map(function(b){return b.bed_id;});
+  return uniq(pool).filter(function(n){return String(n).toLowerCase().indexOf(last)===0;}).sort();
+}
+function termComplete(){ var inp=$("cmd-in"), v=inp.value, cands=termCandidates(v); if(!cands.length) return;
+  var parts=v.split(/\s+/), lastTok=parts[parts.length-1];
+  if(cands.length===1){ parts[parts.length-1]=cands[0]; inp.value=parts.join(" ")+(parts.length<=1?" ":""); }
+  else { var cp=commonPrefix(cands); if(cp.length>lastTok.length){ parts[parts.length-1]=cp; inp.value=parts.join(" "); }
+    cmdPrint('<span class="term-comp">'+cands.slice(0,28).map(function(c){return "<b>"+esc(c)+"</b>";}).join("   ")+(cands.length>28?"  …":"")+'</span>',"dim"); }
+  inp.selectionStart=inp.selectionEnd=inp.value.length; termRender(); }
+/* ---- shell builtins (added to the CMD dispatch table) ---- */
+var MAN={ps:"ps — process table (each monitored bed is a scheduled bio-process)",top:"top — kernel stats + process table",
+  kstat:"kstat — cognitive lane-governor summary",krun:"krun [mixed|pipeline|fanout|stress] [FIFO|RR|CFS|EDF|HDSched] — run a program on the live HDKernel and inspect its process table",
+  ask:"ask <question> — grounded natural-language query over live cohort + kernel state (read-only, no orders)",
+  brief:"brief — LLM shift-handoff summary of the cohort",dmesg:"dmesg — kernel interrupt / preemption log",
+  proc:"proc <path> — read the /proc introspection namespace",treat:"treat <bed> [fluid= vaso= abx=] — order the certified Hour-1 bundle (Z3-gated)",
+  escalate:"escalate <bed> [lvl] — raise priority; pins kernel compute if justified",ls:"ls [dir] — list a virtual directory (/proc /bin /cohort /kernel)",
+  cd:"cd <dir> — change directory",cat:"cat <proc-path> — print a live /proc value"};
+CMD.clear=function(){ $("cmd-out").innerHTML=""; };
+CMD.history=function(){ if(!cmdHist.length) return cmdPrint("(no history)","dim");
+  cmdHist.slice(-40).forEach(function(h,i){ cmdPrint('<span class="cl-d">'+pad(String(cmdHist.length-Math.min(40,cmdHist.length)+i+1),4)+'</span>'+esc(h),"mono"); }); };
+CMD.whoami=function(){ cmdPrint("clinician@aegis-os · role: attending · ring&nbsp;2 (privileged) · session verified","mono"); };
+CMD.uname=function(a){ var f=/(-a|--all)/.test(a||"");
+  cmdPrint("AegisOS bio-kernel"+(f?" L1(SHAL)·L2(MemFabric)·L3(CogSched)·L3b(HDSched)·L3c(HDKernel)·L4(NeuroSym) x_bio64":" 0.8 x_bio64"),"mono"); };
+CMD.date=function(){ cmdPrint(new Date().toString(),"mono"); };
+CMD.echo=function(a){ cmdPrint(esc(a||""),"row"); };
+CMD.pwd=function(){ cmdPrint(termCwd==="~"?"/":termCwd,"mono"); };
+CMD.motd=function(){ cmdBanner(); };
+CMD.man=function(a){ var c=(a||"").trim().toLowerCase(); c=CMD_ALIAS[c]||c;
+  if(MAN[c]) cmdPrint(esc(MAN[c]),"row"); else cmdPrint(c?("No manual entry for "+esc(c)+" — try help"):"usage: man &lt;command&gt;","dim"); };
+CMD.cd=function(a){ var t=termResolve((a||"~").trim());
+  if(t==="~"||TERM_DIRS.indexOf(t)>=0){ termCwd=t; termSetPrompt(); }
+  else cmdPrint("cd: "+esc((a||"").trim())+": no such directory","err"); };
+CMD.ls=function(a){ var d=termResolve((a||"").trim()||termCwd);
+  if(d==="~"||d==="/") return cmdPrint('<span class="cl-cmd">proc/</span>  <span class="cl-cmd">bin/</span>  <span class="cl-cmd">cohort/</span>  <span class="cl-cmd">kernel/</span>',"mono");
+  if(d==="/bin") return cmdPrint(uniq(Object.keys(CMD)).sort().map(esc).join("  "),"mono");
+  if(d==="/cohort"){ var bs=beds(); return cmdPrint(bs.length?bs.map(function(b){return esc(b.bed_id);}).join("  "):"(no beds connected)","mono"); }
+  if(d==="/kernel") return cmdPrint("sched  kthreads  ksched  dmesg  llm","mono");
+  if(d==="/proc"){ fetchProc(function(){ cmdPrint((PROC_CACHE&&PROC_CACHE.length?PROC_CACHE.map(function(p){return esc(p.replace(/^\//,""));}).join("  "):"(empty)"),"mono"); }); return; }
+  cmdPrint("ls: "+esc(d)+": no such directory","err"); };
+CMD.cat=function(a){ var p=(a||"").trim(); if(!p) return cmdPrint("usage: cat &lt;proc-path&gt;","err");
+  var path=p.replace(/^\/?proc\//,"").replace(/^\//,""); if(termCwd==="/proc"&&p.indexOf("/")<0) path=p;
+  fetch(window.AEGIS.http("/aegis/proc/"+path)).then(function(r){return r.json();}).then(function(d){
+    if(d.error) return cmdPrint("cat: "+esc(d.path||p)+": "+esc(d.error),"err");
+    cmdPrint('<span class="cl-cmd">'+esc(d.path)+'</span>',"sys");
+    cmdPrint(esc(JSON.stringify(d.value,null,1)).slice(0,2200),"mono");
+  }).catch(function(){ cmdPrint("cat: read failed — backend unreachable","err"); }); };
+
 function cmdInit(){
   $("cmd-open").addEventListener("click",cmdToggle);
   $("cmd-x").addEventListener("click",cmdHide);
@@ -1809,10 +1888,26 @@ function cmdInit(){
     if(e.key==="Escape"&&cmdOpen){ cmdHide(); }
   });
   var inp=$("cmd-in"); if(!inp) return;
+  termSetPrompt(); termRender(); fetchProc(null);
+  $("cmd-out").addEventListener("mousedown",function(e){ if(window.getSelection().isCollapsed) setTimeout(termFocus,0); });
+  $("term-line").addEventListener("mousedown",function(e){ if(e.target!==inp){ e.preventDefault(); termFocus(); } });
+  inp.addEventListener("input",termRender);
+  inp.addEventListener("click",termRender);
+  inp.addEventListener("keyup",function(e){ if(!/^(Enter|Tab|Arrow)/.test(e.key)) termRender(); });
   inp.addEventListener("keydown",function(e){
-    if(e.key==="Enter"){ cmdRun(inp.value); inp.value=""; }
-    else if(e.key==="ArrowUp"){ if(cmdHi>0){ cmdHi--; inp.value=cmdHist[cmdHi]||""; e.preventDefault(); } }
-    else if(e.key==="ArrowDown"){ if(cmdHi<cmdHist.length){ cmdHi++; inp.value=cmdHist[cmdHi]||""; } }
+    if(e.key==="Enter"){ e.preventDefault(); var v=inp.value; inp.value="";
+      if(v.trim()){ if(cmdHist[cmdHist.length-1]!==v.trim()){ cmdHist.push(v.trim()); termSaveHist(); } cmdRun(v); }
+      else cmdEcho(""); cmdHi=cmdHist.length; termRender(); return; }
+    if(e.key==="Tab"){ e.preventDefault(); termComplete(); return; }
+    if(e.key==="ArrowUp"){ e.preventDefault(); if(cmdHi>0){ cmdHi--; inp.value=cmdHist[cmdHi]||""; inp.selectionStart=inp.selectionEnd=inp.value.length; termRender(); } return; }
+    if(e.key==="ArrowDown"){ e.preventDefault(); if(cmdHi<cmdHist.length){ cmdHi++; inp.value=cmdHist[cmdHi]||""; inp.selectionStart=inp.selectionEnd=inp.value.length; termRender(); } return; }
+    if(e.ctrlKey&&/^[lL]$/.test(e.key)){ e.preventDefault(); $("cmd-out").innerHTML=""; termRender(); return; }
+    if(e.ctrlKey&&/^[cC]$/.test(e.key)){ e.preventDefault(); cmdEcho(inp.value+"^C"); inp.value=""; cmdHi=cmdHist.length; termRender(); return; }
+    if(e.ctrlKey&&/^[uU]$/.test(e.key)){ e.preventDefault(); inp.value=inp.value.slice(inp.selectionStart); inp.selectionStart=inp.selectionEnd=0; termRender(); return; }
+    if(e.ctrlKey&&/^[kK]$/.test(e.key)){ e.preventDefault(); inp.value=inp.value.slice(0,inp.selectionStart); termRender(); return; }
+    if(e.ctrlKey&&/^[aA]$/.test(e.key)){ e.preventDefault(); inp.selectionStart=inp.selectionEnd=0; termRender(); return; }
+    if(e.ctrlKey&&/^[eE]$/.test(e.key)){ e.preventDefault(); inp.selectionStart=inp.selectionEnd=inp.value.length; termRender(); return; }
+    setTimeout(termRender,0);
   });
 }
 

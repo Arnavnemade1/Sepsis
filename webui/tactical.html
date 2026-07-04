@@ -304,15 +304,20 @@
 <script type="module" src="twin3d.js?v=6"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
-  <div class="cmd-frame">
+  <div class="cmd-frame term">
     <div class="cmd-bar">
-      <span class="cmd-dot"></span><span class="cmd-title">AEGIS COMMAND CONSOLE</span>
-      <span class="cmd-hint" id="cmd-hint">direct line to the bio-kernel · type <b>help</b></span>
+      <span class="term-lights"><i class="tl tl-r"></i><i class="tl tl-y"></i><i class="tl tl-g"></i></span>
+      <span class="cmd-title">aegis@icu-wing</span>
+      <span class="term-cwd" id="term-cwd">:~</span>
+      <span class="cmd-hint" id="cmd-hint">tty · <b>help</b> · <b>Tab</b> completes · <b>Ctrl-L</b> clears</span>
       <button class="cmd-x" id="cmd-x">esc</button>
     </div>
-    <div class="cmd-out" id="cmd-out"></div>
-    <div class="cmd-inbar"><span class="cmd-prompt">aegis<b>❯</b></span>
-      <input id="cmd-in" class="cmd-in" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="command…" /></div>
+    <div class="cmd-out term-screen" id="cmd-out"></div>
+    <div class="cmd-inbar term-line" id="term-line">
+      <span class="cmd-prompt" id="term-prompt">aegis@icu-wing<b>:~$</b></span>
+      <span class="term-edit"><span class="ti-pre" id="ti-pre"></span><span class="ti-cur" id="ti-cur">&nbsp;</span><span class="ti-post" id="ti-post"></span></span>
+      <input id="cmd-in" class="term-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="terminal input" />
+    </div>
   </div>
 </div>
 
