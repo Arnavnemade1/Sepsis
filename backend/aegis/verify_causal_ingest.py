@@ -51,9 +51,13 @@ def main() -> int:
     g = ing.graph
     nodes = g.to_dict()["nodes"]
     kinds = [n["kind"] for n in nodes]
-    n_alert = kinds.count(ALERT)
+    # escalation alerts are now a TYPED subset of ALERT (the ingestor also emits
+    # sign/organ/mods/trajectory ALERTs for a far richer story) — count by type.
+    n_alert = sum(1 for n in nodes if n["kind"] == ALERT
+                  and (n.get("payload") or {}).get("type") == "escalation")
     n_om = kinds.count(OMISSION)
-    print(f"    {len(nodes)} nodes from 71 ticks  alerts={n_alert} omissions={n_om}")
+    print(f"    {len(nodes)} nodes from 71 ticks  escalations={n_alert} omissions={n_om} "
+          f"(total alerts={kinds.count(ALERT)})")
 
     checks.append(("exactly 2 escalation alerts (LOW→MED, MED→HIGH)", n_alert == 2))
     checks.append(("exactly 1 omission logged", n_om == 1))

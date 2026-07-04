@@ -27,10 +27,15 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from backend.aegis.kernel.causal_graph import (
-    ALERT, DECISION, MODEL_PREDICTED, OMISSION, OUTCOME, VITAL,
+    ALERT, DECISION, LAB, MODEL_PREDICTED, OMISSION, OUTCOME, VITAL,
     Node, TemporalCausalGraph)
 
 _BAND = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+_TIER_RANK = {"NORMAL": 0, "STRESS": 1, "DYSFUNCTION": 2, "CRITICAL": 3, "UNMONITORED": 0}
+
+
+def _tier_rank(status: Optional[str]) -> int:
+    return _TIER_RANK.get(status or "NORMAL", 0)
 
 
 def _risk_value(a: Any) -> float:
@@ -74,6 +79,9 @@ class CausalGraphIngestor:
     _high_since: Optional[float] = field(init=False, default=None)
     _omission_logged: bool = field(init=False, default=False)
     _treated: bool = field(init=False, default=False)
+    _fired_signs: set = field(init=False, default_factory=set)   # edge-triggered vital signs
+    _organ_status: Dict[str, str] = field(init=False, default_factory=dict)  # organ -> last tier
+    _mods_logged: bool = field(init=False, default=False)
     ticks: int = field(init=False, default=0)
     rehydrated: int = field(init=False, default=0)
 
@@ -109,6 +117,30 @@ class CausalGraphIngestor:
         self._last_node = node
         return node
 
+    def _vital_signs(self, v: Dict[str, float]):
+        """The discrete clinical signs a chart review turns on, as (key, active,
+        label, value). Edge-triggered by the caller so each fires once per crossing."""
+        def g(*keys):
+            for k in keys:
+                x = v.get(k)
+                if isinstance(x, (int, float)):
+                    return float(x)
+            return None
+        mp, lac, spo2 = g("map"), g("lactate", "sweat_lactate"), g("spo2")
+        hr, rr, temp = g("heart_rate", "hr"), g("respiratory_rate", "resp_rate"), g("skin_temp", "temp_c")
+        checks = [
+            ("hypotension", mp is not None and mp < 65, mp, "MAP < 65 mmHg (hypotension)"),
+            ("lactate_2", lac is not None and lac >= 2.0, lac, "lactate ≥ 2 mmol/L"),
+            ("lactate_4", lac is not None and lac >= 4.0, lac, "lactate ≥ 4 mmol/L (severe)"),
+            ("hypoxia", spo2 is not None and spo2 < 92, spo2, "SpO₂ < 92%"),
+            ("tachycardia", hr is not None and hr > 130, hr, "HR > 130 bpm"),
+            ("tachypnea", rr is not None and rr >= 22, rr, "RR ≥ 22 /min"),
+            ("fever", temp is not None and temp >= 38.3, temp, "temp ≥ 38.3 °C (fever)"),
+            ("hypothermia", temp is not None and temp <= 36.0, temp, "temp ≤ 36 °C (hypothermia)"),
+        ]
+        return [(k, bool(active), label, round(val, 2) if val is not None else None)
+                for (k, active, val, label) in checks]
+
     def ingest(self, a: Any, vitals: Dict[str, float], t: float) -> Optional[Node]:
         """Fold one assessment into the graph. Returns the node created this tick
         (the most salient one), or None if the tick produced no clinical event."""
@@ -134,6 +166,7 @@ class CausalGraphIngestor:
         # -- escalation: band stepped up ----------------------------------- #
         if band > self._last_band and self._last_band >= 0:
             salient = self._add(ALERT, t, {
+                "type": "escalation",
                 "from": self._last_band, "to": band,
                 "risk_level": getattr(a, "risk_level", "?"),
                 "triggered_rules": list(getattr(a, "triggered_rules", []) or [])[:6],
@@ -151,6 +184,61 @@ class CausalGraphIngestor:
                 }, risk=risk, confidence=conf)
         elif band < _BAND["HIGH"]:
             self._high_since = None
+
+        # -- de-escalation: risk band stepped DOWN (recovery signal) -------- #
+        if 0 <= band < self._last_band:
+            salient = self._add(ALERT, t, {
+                "type": "deescalation", "from": self._last_band, "to": band,
+                "risk_level": getattr(a, "risk_level", "?"), "note": "risk band improving",
+            }, risk=risk, confidence=conf)
+
+        # -- discrete vital-SIGN crossings (edge-triggered, once per crossing) #
+        for key, active, label, val in self._vital_signs(vitals):
+            if active and key not in self._fired_signs:
+                self._fired_signs.add(key)
+                salient = self._add(ALERT, t, {"type": "sign", "sign": key,
+                                    "label": label, "value": val}, risk=risk, confidence=conf)
+            elif not active:
+                self._fired_signs.discard(key)          # re-arm once it normalises
+
+        # -- organ dysfunction + MODS (from the multi-organ engine) --------- #
+        bs = getattr(a, "body_state", None)
+        if isinstance(bs, dict):
+            for o in bs.get("organ_systems", []) or []:
+                if not o.get("monitored"):
+                    continue
+                name, st = o.get("name"), o.get("status")
+                failing = st in ("DYSFUNCTION", "CRITICAL")
+                if failing and _tier_rank(st) > _tier_rank(self._organ_status.get(name, "NORMAL")):
+                    salient = self._add(ALERT, t, {
+                        "type": "organ", "organ": name, "region": o.get("region"),
+                        "status": st, "severity": o.get("severity"),
+                        "sofa": o.get("sofa_points"), "basis": o.get("sofa_basis"),
+                        "drivers": (o.get("drivers") or [])[:3],
+                    }, risk=max(risk, float(o.get("severity") or 0)), confidence=conf)
+                self._organ_status[name] = st or "NORMAL"
+                # early-warning: an organ RISING toward failure BEFORE it crosses
+                ew = "ew::" + str(name)
+                if o.get("trend") == "RISING" and o.get("eta_critical_min") and not failing:
+                    if ew not in self._fired_signs:
+                        self._fired_signs.add(ew)
+                        salient = self._add(ALERT, t, {
+                            "type": "trajectory", "organ": name,
+                            "eta_critical_min": o.get("eta_critical_min"),
+                            "projected_severity": o.get("projected_severity"),
+                            "note": "trending toward failure (pre-crossing early warning)",
+                        }, risk=risk, confidence=conf)
+                else:
+                    self._fired_signs.discard(ew)
+            mods = bs.get("mods") or {}
+            if mods.get("is_mods") and not self._mods_logged:
+                self._mods_logged = True
+                salient = self._add(ALERT, t, {
+                    "type": "mods", "count": mods.get("count"),
+                    "systems": mods.get("systems"), "dominant": mods.get("dominant"),
+                    "cascade_risk": mods.get("cascade_risk"),
+                    "note": "multiple organ dysfunction — ≥2 systems failing at once",
+                }, risk=max(risk, 0.7), confidence=conf)
 
         # -- sampled vital snapshot ---------------------------------------- #
         band_changed = band != self._last_band

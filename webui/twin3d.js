@@ -509,16 +509,41 @@ function buildBeacon() {
   scene.add(beacon);
 }
 function makeLabel() {
-  const c = document.createElement("canvas"); c.width = 256; c.height = 64;
-  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false }));
-  sp.scale.set(0.42, 0.105, 1); sp.userData = { ctx: c.getContext("2d") }; return sp;
+  const c = document.createElement("canvas"); c.width = 512; c.height = 172;   // retina-crisp
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c),
+    transparent: true, depthTest: false, depthWrite: false }));
+  sp.scale.set(0.47, 0.158, 1); sp.userData = { ctx: c.getContext("2d") }; return sp;
 }
+/* A sleek targeting tag: glass panel + tier-coloured accent bar, a glowing status
+   pip, letter-spaced label, and a small pointer connecting down to the organ. */
 function setLabel(sprite, text, stroke, fill) {
-  const x = sprite.userData.ctx; x.clearRect(0, 0, 256, 64);
-  x.fillStyle = "rgba(10,14,24,.85)"; rr(x, 6, 16, 244, 34, 8); x.fill();
-  x.strokeStyle = stroke || "#ff4d5e"; x.lineWidth = 2; rr(x, 6, 16, 244, 34, 8); x.stroke();
-  x.fillStyle = fill || "#ffd2d6"; x.font = "600 17px ui-monospace,monospace"; x.textAlign = "center"; x.textBaseline = "middle";
-  x.fillText(text, 128, 34); sprite.material.map.needsUpdate = true;
+  const x = sprite.userData.ctx, W = 512, H = 172; x.clearRect(0, 0, W, H);
+  const col = stroke || "#ff4d5e";
+  const bx = 34, by = 30, bw = W - 68, bh = 78, r = 16;
+  x.save();
+  const g = x.createLinearGradient(0, by, 0, by + bh);
+  g.addColorStop(0, "rgba(16,22,38,.94)"); g.addColorStop(1, "rgba(8,11,20,.9)");
+  x.shadowColor = col; x.shadowBlur = 26; x.fillStyle = g; rr(x, bx, by, bw, bh, r); x.fill();
+  x.restore();
+  x.strokeStyle = col; x.lineWidth = 2.5; rr(x, bx, by, bw, bh, r); x.stroke();
+  // left accent bar (clipped to the rounded panel)
+  x.save(); rr(x, bx, by, bw, bh, r); x.clip();
+  x.fillStyle = col; x.fillRect(bx, by, 8, bh); x.restore();
+  // glowing status pip
+  x.save(); x.shadowColor = col; x.shadowBlur = 16; x.fillStyle = col;
+  x.beginPath(); x.arc(bx + 40, by + bh / 2, 8, 0, Math.PI * 2); x.fill(); x.restore();
+  // label text, letter-spaced small-caps
+  x.fillStyle = fill || "#eef4ff";
+  x.font = "700 32px ui-monospace,'JetBrains Mono',monospace";
+  x.textAlign = "left"; x.textBaseline = "middle";
+  if ("letterSpacing" in x) x.letterSpacing = "3px";
+  x.fillText(String(text).toUpperCase(), bx + 64, by + bh / 2 + 1);
+  if ("letterSpacing" in x) x.letterSpacing = "0px";
+  // downward pointer to the organ
+  x.fillStyle = col; x.beginPath();
+  x.moveTo(W / 2 - 13, by + bh - 1); x.lineTo(W / 2 + 13, by + bh - 1); x.lineTo(W / 2, by + bh + 20);
+  x.closePath(); x.fill();
+  sprite.material.map.needsUpdate = true;
 }
 function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 

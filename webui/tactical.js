@@ -1500,7 +1500,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief",fit:"train",ml:"model",models:"model"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1513,6 +1513,9 @@ var CMD={
      ['kstat','kernel scheduler summary'],
      ['dmesg','kernel interrupt / preemption log'],
      ['krun [wl] [pol]','run a program on the live HDKernel — wl: mixed|pipeline|fanout|stress · pol: FIFO|RR|CFS|EDF|HDSched'],
+     ['train <name> [set] [n]','TRAIN a real detector on CinC-2019 (grouped CV) — set: wearable|lab'],
+     ['specialize <name> <Nh>','SPECIALIZE an early-warning model that fires within N hours of onset'],
+     ['model [use|job]','ML control plane — registered models + metrics · model use <name> · model job <id>'],
      ['ask <question>','grounded LLM Q&A over live cohort + kernel state (read-only)'],
      ['brief','LLM shift-handoff summary of the cohort'],
      ['explain <bed>','why the system thinks what it thinks'],
@@ -1704,6 +1707,33 @@ var CMD={
         cmdPrint('<b>SHIFT HANDOFF</b> <span class="cl-d">· '+src+'</span>','sys');
         String(d.brief||"").split(/\n+/).forEach(function(ln){ if(ln.trim()) cmdPrint(esc(ln.trim()),"row"); });
       }).catch(function(){ cmdPrint("assistant unreachable","err"); }); },
+  train:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean);
+    var name=t[0]; if(!name) return cmdPrint("usage: <b>train &lt;name&gt; [wearable|lab] [limit]</b> — e.g. train mynet lab 1500","err");
+    var set=/lab/i.test(t[1]||"")?"lab":"wearable"; var lim=parseInt(t[2]||t[1],10); if(isNaN(lim)) lim=1000;
+    mlLaunch({name:name,feature_set:set,limit:lim}, "training detector on real CinC-2019 ("+set+", "+lim+" rows)"); },
+  specialize:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean);
+    var name=t[0], h=parseInt((t[1]||"").replace(/h$/i,""),10);
+    if(!name||isNaN(h)) return cmdPrint("usage: <b>specialize &lt;name&gt; &lt;Nh&gt; [wearable|lab]</b> — e.g. specialize early6 6h","err");
+    var set=/lab/i.test(t[2]||"")?"lab":"wearable";
+    mlLaunch({name:name,feature_set:set,horizon:h,limit:1000}, "specializing early-warning model — fires within "+h+"h of onset"); },
+  model:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean), sub=(t[0]||"ls").toLowerCase();
+    if(sub==="use"){ var nm=t[1]; if(!nm) return cmdPrint("usage: model use &lt;name&gt;","err");
+      fetch(window.AEGIS.http("/aegis/ml/use"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:nm})})
+        .then(function(r){return r.json();}).then(function(d){ cmdPrint(d.ok?('<span class="cl-ok">✓ '+esc(nm)+' is now ACTIVE</span> <span class="cl-d">'+esc(d.note||"")+'</span>'):("model use failed: "+esc(d.error)),d.ok?"sys":"err"); })
+        .catch(function(){ cmdPrint("ml plane unreachable","err"); }); return; }
+    if(sub==="job"){ var id=t[1]; if(!id) return cmdPrint("usage: model job &lt;id&gt;","err"); mlPoll(id,true); return; }
+    fetch(window.AEGIS.http("/aegis/ml")).then(function(r){return r.json();}).then(function(d){
+      cmdPrint('<b>AEGIS·ML CONTROL PLANE</b> <span class="cl-d">· train + specialize real detectors · active: '+esc(d.active||"—")+'</span>',"sys");
+      var jr=(d.jobs||[]).filter(function(j){return j.status!=="DONE"&&j.status!=="FAILED";});
+      if(jr.length){ cmdPrint('<span class="cl-d">running jobs:</span>',"dim");
+        jr.forEach(function(j){ cmdPrint('  <span class="cl-cmd">'+esc(j.id)+'</span> '+pad(j.name,14)+esc(j.status)+' · '+Math.round(j.progress*100)+'%',"mono"); }); }
+      cmdPrint('<span class="cl-d">registered models:</span>',"dim");
+      if(!(d.models||[]).length) cmdPrint('  (none yet — try <span class="cl-cmd">train mynet</span> or <span class="cl-cmd">specialize early6 6h</span>)',"dim");
+      (d.models||[]).forEach(function(m){ var mt=m.metrics||{};
+        cmdPrint('  '+(m.active?'<span class="cl-ok">●</span>':'<span class="cl-d">○</span>')+' '+pad(m.name,14)+
+          '<span class="cl-d">'+esc(m.spec.kind)+' · '+esc(m.spec.feature_set)+'</span>  AUROC <b>'+(mt.auroc!=null?mt.auroc:"—")+'</b> · AUPRC '+(mt.auprc!=null?mt.auprc:"—")+' · '+m.n_patients+' pts',"mono"); });
+      cmdPrint('control: <span class="cl-cmd">model use &lt;name&gt;</span> · <span class="cl-cmd">model job &lt;id&gt;</span>',"dim");
+    }).catch(function(){ cmdPrint("ml plane unreachable","err"); }); },
   pkg:function(a){ var t=(a||"").trim().split(/\s+/).filter(Boolean), sub=(t[0]||"list").toLowerCase();
     if(sub==="install"||sub==="uninstall"){ var name=t[1]; if(!name) return cmdPrint("usage: pkg "+sub+" &lt;name&gt;","err");
       cmdPrint('<span class="cl-d">'+(sub==="install"?"verify-then-install":"uninstall")+' · '+esc(name)+'…</span>',"dim");
@@ -1791,6 +1821,34 @@ var CMD={
       (e.owner?' · '+esc(cleanName(e.owner)):'')+(e.reason?' · '+esc(e.reason):'')+(e.p!=null?' · p='+fmt(e.p,2):''),"mono"); }); },
   clr:function(){ $("cmd-out").innerHTML=""; cmdBanner(); }
 };
+function mlLaunch(body, label){
+  cmdPrint('<span class="cl-d">'+esc(label)+' · patient-grouped cross-validation…</span>',"dim");
+  fetch(window.AEGIS.http("/aegis/ml/train"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(function(r){return r.json();}).then(function(d){
+      if(!d.launched){ return cmdPrint("train failed to launch","err"); }
+      cmdPrint('<span class="cl-cmd">job '+esc(d.job.id)+'</span> launched — <span class="cl-d">'+esc(d.job.spec.kind)+'</span>',"sys");
+      mlPoll(d.job.id);
+    }).catch(function(){ cmdPrint("ml plane unreachable","err"); });
+}
+function mlPoll(id, once){
+  var seen=0;
+  function tick(){
+    fetch(window.AEGIS.http("/aegis/ml/job/"+id)).then(function(r){return r.json();}).then(function(j){
+      if(j.error){ cmdPrint("no such job "+esc(id),"err"); return; }
+      (j.log||[]).slice(seen).forEach(function(l){ cmdPrint('  <span class="cl-d">▸ '+esc(l)+'</span>',"mono"); });
+      seen=(j.log||[]).length;
+      if(j.status==="DONE"||j.status==="FAILED"){
+        if(j.status==="DONE"){ var m=j.metrics||{};
+          cmdPrint('<b class="cl-ok">✓ '+esc(j.name)+' trained</b> — AUROC <b>'+m.auroc+'</b> · AUPRC '+m.auprc+' · ECE '+m.ece+' · sens@85%spec '+m.sens_at_spec85+' <span class="cl-d">('+esc(m.cv)+', prev '+m.prevalence+')</span>',"sys");
+          cmdPrint('<span class="cl-d">registered · activate with</span> <span class="cl-cmd">model use '+esc(j.name)+'</span>',"dim");
+        } else cmdPrint('<span class="cl-crit">✗ job failed — '+esc(j.error)+'</span>',"err");
+        return;
+      }
+      if(!once) setTimeout(tick, 1500);
+    }).catch(function(){ cmdPrint("ml job poll lost connection","err"); });
+  }
+  tick();
+}
 function cleanName(s){ return String(s||"").replace(/^bed_/,"BED "); }
 function pad(s,n){ s=String(s); return s.length>=n?s.slice(0,n):s+" ".repeat(n-s.length); }
 function pidOf(id){ var m=String(id).match(/(\d+)/); return m?("0"+(+m[1]+1)).slice(-2):String(id).slice(-2); }

@@ -207,6 +207,10 @@ procfs.register("/proc/ksched", lambda: _hdk_state["last"]["top"])            # 
 _llm_client = _ORClient()
 _llm = _AegisAssistant(_llm_client)
 procfs.register("/proc/llm", lambda: _llm_client.status())
+# The ML control plane: train + specialize real detectors from the OS terminal.
+from backend.aegis.mlctl import ModelControlPlane as _ModelControlPlane
+mlctl = _ModelControlPlane()
+procfs.register("/proc/models", lambda: mlctl.status())
 
 
 def _llm_state() -> Dict[str, Any]:
@@ -1473,6 +1477,44 @@ def hdkernel_state() -> Dict[str, Any]:
     """The live process plane (Layer 3c): last run's summary/ps/top + the menu."""
     return {**_hdk_state["last"],
             "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
+
+
+class MLTrainIn(BaseModel):
+    name: str
+    feature_set: str = "wearable"          # wearable | lab
+    horizon: Optional[int] = None          # early-warning hours before onset (specialise)
+    limit: int = 1000
+    folds: int = 3
+
+
+class MLUseIn(BaseModel):
+    name: str
+
+
+@app.get("/aegis/ml")
+def ml_status() -> Dict[str, Any]:
+    """The ML control plane: registered models + running training jobs."""
+    return mlctl.status()
+
+
+@app.post("/aegis/ml/train")
+def ml_train(payload: MLTrainIn) -> Dict[str, Any]:
+    """Launch a REAL training/specialisation job (patient-grouped CV on CinC-2019).
+    Returns the job id immediately; poll /aegis/ml/job/{id} for progress + metrics."""
+    job = mlctl.train(payload.name, feature_set=payload.feature_set,
+                      horizon=payload.horizon, limit=payload.limit, folds=payload.folds)
+    return {"launched": True, "job": job.to_dict()}
+
+
+@app.get("/aegis/ml/job/{job_id}")
+def ml_job(job_id: str) -> Dict[str, Any]:
+    j = mlctl.job(job_id)
+    return j if j is not None else {"error": "no such job", "id": job_id}
+
+
+@app.post("/aegis/ml/use")
+def ml_use(payload: MLUseIn) -> Dict[str, Any]:
+    return mlctl.use(payload.name)
 
 
 @app.post("/aegis/hdkernel/run")
