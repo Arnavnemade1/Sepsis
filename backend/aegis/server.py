@@ -198,9 +198,19 @@ procfs.register("/proc/cage", lambda: apps_cage.status())
 # L3c live process plane (HDKernel): run a named workload to completion and expose
 # its final process table through the one /proc namespace. Seed with "mixed" so
 # `proc kthreads` / `proc ksched` return real data before any explicit run.
-_hdk_state: Dict[str, Any] = {"last": _run_kworkload("mixed", "HDSched")}
-procfs.register("/proc/kthreads", lambda: _hdk_state["last"]["ps"])           # the process table
-procfs.register("/proc/ksched", lambda: _hdk_state["last"]["top"])            # scheduler/top summary
+_hdk_state: Dict[str, Any] = {"last": None}
+
+
+def _hdk_last() -> Dict[str, Any]:
+    """Lazy-seed the process table on first read (keeps the 8192-D HDC encoder +
+    workload OUT of the import path so the app starts fast + light for the deploy)."""
+    if _hdk_state["last"] is None:
+        _hdk_state["last"] = _run_kworkload("mixed", "HDSched")
+    return _hdk_state["last"]
+
+
+procfs.register("/proc/kthreads", lambda: _hdk_last()["ps"])           # the process table
+procfs.register("/proc/ksched", lambda: _hdk_last()["top"])            # scheduler/top summary
 # The resilient LLM layer (shared, budgeted, multi-model). On-demand only — the
 # realtime loop never calls it; operators drive it via `ask`/`brief`. Telemetry
 # is read-only through /proc/llm.
@@ -231,7 +241,7 @@ def _llm_state() -> Dict[str, Any]:
     except Exception:
         pass
     try:
-        st["hdkernel"] = _hdk_state["last"]["top"]
+        st["hdkernel"] = _hdk_last()["top"]
     except Exception:
         pass
     return st
@@ -398,18 +408,28 @@ async def _drive_loop() -> None:
 
 @app.on_event("startup")
 async def _startup() -> None:
-    global _db
-    try:
-        from backend.core.database import DatabaseClient
-        _db = DatabaseClient()
-        _db.save_patient(DB_PATIENT_ID, session.patient_name, session.age or 0,
-                         session.gender or "Unknown", session.core.clinical_history or {})
-        session.os.register_source("supabase-persistence")
-        print("[aegis] real-data persistence layer ready.")
-    except Exception as exc:  # pragma: no cover
-        print(f"[aegis] persistence unavailable ({exc}); running without it.")
+    # Become ready IMMEDIATELY: start the realtime loops and return so uvicorn
+    # signals healthy and the deploy's health check passes right away.
     asyncio.create_task(_drive_loop())
     asyncio.create_task(_cluster_loop())
+
+    # The persistence init makes BLOCKING Supabase calls — never run them on the
+    # event loop during startup: a slow/cold DB would stall the startup event,
+    # uvicorn would never become ready, and the deploy's health check would time
+    # out ("failed to deploy"). Do it on a daemon thread; the app runs fine without it.
+    def _init_persistence() -> None:
+        global _db
+        try:
+            from backend.core.database import DatabaseClient
+            db = DatabaseClient()
+            db.save_patient(DB_PATIENT_ID, session.patient_name, session.age or 0,
+                            session.gender or "Unknown", session.core.clinical_history or {})
+            _db = db
+            session.os.register_source("supabase-persistence")
+            print("[aegis] real-data persistence layer ready.")
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] persistence unavailable ({exc}); running without it.")
+    _threading.Thread(target=_init_persistence, name="persist-init", daemon=True).start()
 
 
 # --- REST ------------------------------------------------------------------- #
@@ -1482,7 +1502,7 @@ class HDKernelRunIn(BaseModel):
 @app.get("/aegis/hdkernel")
 def hdkernel_state() -> Dict[str, Any]:
     """The live process plane (Layer 3c): last run's summary/ps/top + the menu."""
-    return {**_hdk_state["last"],
+    return {**_hdk_last(),
             "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
 
 
