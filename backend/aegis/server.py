@@ -148,6 +148,34 @@ def _warm_orchestrator() -> None:
 
 import threading as _threading
 _threading.Thread(target=_warm_orchestrator, name="orch-warmup", daemon=True).start()
+
+
+def _keep_alive() -> None:
+    """Free-tier keep-warm: ping our OWN public health URL every ~10 min so the
+    Render instance never hits the 15-min idle spin-down (each self-request is
+    inbound traffic that resets the timer). Only active when a public URL is known —
+    ``RENDER_EXTERNAL_URL`` (set automatically on Render) or a manual ``KEEPALIVE_URL``
+    — so it is a no-op in local dev. Best-effort; failures are swallowed."""
+    import time as _t
+    url = (_os.environ.get("RENDER_EXTERNAL_URL") or _os.environ.get("KEEPALIVE_URL") or "").strip()
+    if not url:
+        return
+    ping = url.rstrip("/") + "/aegis/health"
+    try:
+        import httpx
+    except Exception:  # pragma: no cover
+        return
+    _t.sleep(90)                                 # let boot + warmup settle first
+    print(f"[aegis] keep-alive active → {ping} every 10 min (free-tier anti-sleep)")
+    while True:
+        try:
+            httpx.get(ping, timeout=10.0)
+        except Exception:
+            pass
+        _t.sleep(600)                            # 10 min < the 15-min spin-down window
+
+
+_threading.Thread(target=_keep_alive, name="keep-alive", daemon=True).start()
 # The input-safety verifier service: holds the live Aegis-eBPF static verifier +
 # the driver catalogue used by `verify`. The verified-driver DATA PLANE itself is
 # the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose
