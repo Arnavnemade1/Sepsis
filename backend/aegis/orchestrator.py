@@ -307,6 +307,12 @@ class Orchestrator:
 
         For treatment actions, also emit a portable, signed proof certificate bound
         to the ledger entry (the cage *enforces*; the proof is *exportable* evidence)."""
+        from backend.aegis.z3lock import Z3_LOCK
+        with Z3_LOCK:                       # cage + proof export both build Z3 solvers
+            return self._govern(layer, action, payload, target)
+
+    def _govern(self, layer: str, action: str, payload: Dict[str, Any],
+                target: Optional[str] = None) -> NonMaleficenceCertificate:
         state = self._state(target) if target else {"risk_level": "MEDIUM", "vitals": {}}
         ok, z3, msg, viol = self.invariant.check(layer, action, payload, state)
         cert = self.ledger.append(ok, layer, action, target, z3, msg, viol)
@@ -402,6 +408,11 @@ class Orchestrator:
                      ) -> Dict[str, Any]:
         """Induce a sepsis cascade in ``bed`` and walk the governed response down
         the hierarchy, ending in a signed, certified, immutably-logged order."""
+        from backend.aegis.z3lock import Z3_LOCK
+        with Z3_LOCK:                       # cluster ticks + consensus + govern + proof: all Z3
+            return self._run_scenario(bed, warmup, crisis_ticks)
+
+    def _run_scenario(self, bed: str, warmup: int, crisis_ticks: int) -> Dict[str, Any]:
         timeline: List[Dict[str, Any]] = []
         self.cluster.run(warmup)
 

@@ -121,16 +121,21 @@ def _warm_orchestrator() -> None:
         _t.sleep(2.0)                                  # let the rest of boot settle
         from backend.aegis.kernel.scheduler import BioCluster as _BioCluster
         from backend.aegis.orchestrator import Orchestrator as _Orch
+        from backend.aegis.z3lock import Z3_LOCK
         t0 = _t.perf_counter()
         warm_cluster = _BioCluster(n_nodes=2, lane_budget=32, seed=1)
         warm_orch = _Orch(warm_cluster, cage=NeuroSymbolicRuntime(),
                           bundle=SepsisBundleEngine())
-        warm_cluster.run(4)
-        res = warm_orch.run_scenario(warm_cluster.node_ids[0], warmup=0, crisis_ticks=6)
-        pf = res.get("proof_certificate")              # warm the re-verify path too
-        if pf is not None:
-            from backend.aegis.proofexport import verify_certificate as _vc
-            _vc(pf)
+        # Hold the Z3 lock for the whole warmup: its scenario builds solvers on this
+        # daemon thread, which must NEVER run concurrently with the main thread's
+        # import-time cluster.run() or the live cluster loop (shared global context).
+        with Z3_LOCK:
+            warm_cluster.run(4)
+            res = warm_orch.run_scenario(warm_cluster.node_ids[0], warmup=0, crisis_ticks=6)
+            pf = res.get("proof_certificate")          # warm the re-verify path too
+            if pf is not None:
+                from backend.aegis.proofexport import verify_certificate as _vc
+                _vc(pf)
         print(f"[aegis] orchestrator warmup complete in {_t.perf_counter()-t0:.2f}s "
               f"(first user synthesis will be fast; live wing untouched)")
     except Exception as exc:  # pragma: no cover — warmup must never break boot

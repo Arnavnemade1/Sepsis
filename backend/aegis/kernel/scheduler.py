@@ -219,6 +219,14 @@ class CognitiveScheduler:
     def verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
         """Formally verify scheduler liveness and prioritization properties on the decision using Z3."""
         from z3 import Solver, Int, Implies, And, Or, Sum, BoolVal, RealVal, Real, unsat, IntVal
+        from backend.aegis.z3lock import Z3_LOCK
+
+        # Z3's global context is not thread-safe; serialise every solver usage.
+        with Z3_LOCK:
+            return self._verify_decision_z3(decision)
+
+    def _verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
+        from z3 import Solver, Int, Or, Sum, BoolVal, unsat
 
         s = Solver()
         
