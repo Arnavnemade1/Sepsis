@@ -42,6 +42,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
+
 from z3 import (And, Bool, BoolVal, If, Implies, Int, Not, Or, Real, RealVal,
                 Solver, sat, unsat)
 
@@ -99,6 +101,7 @@ class NeuroSymbolicRuntime:
     # ------------------------------------------------------------------ #
     # The single boundary: certify, then (optionally) dispatch.
     # ------------------------------------------------------------------ #
+    @_z3_guarded
     def certify(self, egress: str, payload: Dict[str, Any],
                 context: Dict[str, Any]) -> SafetyCertificate:
         if egress == ALERT:

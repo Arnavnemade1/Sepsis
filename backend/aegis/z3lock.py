@@ -15,6 +15,21 @@ an ``RLock`` so a guarded call that nests another guarded call on the same threa
 """
 from __future__ import annotations
 
+import functools
 import threading
 
 Z3_LOCK = threading.RLock()
+
+
+def z3_guarded(fn):
+    """Decorator: run ``fn`` holding the global Z3 lock (blocking). Use on any
+    function/method that builds or solves a Z3 problem. Re-entrant, so a guarded
+    call that nests another on the same thread is fine. Do NOT put this on code
+    that runs on the asyncio event loop — that would freeze the loop; those paths
+    (the scheduler's per-tick verify) use a non-blocking acquire instead, and the
+    simulator drive loop hops to a worker thread before touching Z3."""
+    @functools.wraps(fn)
+    def _wrapped(*args, **kwargs):
+        with Z3_LOCK:
+            return fn(*args, **kwargs)
+    return _wrapped

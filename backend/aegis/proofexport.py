@@ -64,6 +64,7 @@ from z3 import Not, Solver, parse_smt2_string, get_version_string, sat, unsat
 
 from backend.aegis.clinical_dsl import (DEFAULT_POLICY, CompiledRule,
                                         compile_rules, _bindings)
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
 
 SCHEMA = "aegis-proof-certificate/v1"
 ISSUER = "AegisOS"
@@ -136,6 +137,7 @@ class ProofObligation:
         """A rule is *satisfied* iff its violation is unsatisfiable."""
         return self.expected_status == "unsat"
 
+    @_z3_guarded
     def recheck(self) -> Tuple[bool, str]:
         """Independently re-run this obligation in a FRESH solver from the SMT text
         alone — exactly what a third party does. Returns (matches_expected, status)."""
@@ -326,6 +328,7 @@ def _seal(cert: ProofCertificate, ca: Optional[CertificateAuthority]) -> ProofCe
 # --------------------------------------------------------------------------- #
 # Issuance — the flagship: hospital DSL policy + protocol -> signed certificate.
 # --------------------------------------------------------------------------- #
+@_z3_guarded
 def certify_dsl_protocol(
     protocol: Dict[str, Any],
     context: Dict[str, Any],
@@ -389,6 +392,7 @@ def certify_dsl_protocol(
 # --------------------------------------------------------------------------- #
 # The core-cage path: the SAME Z3 invariants the live runtime enforces, exported.
 # --------------------------------------------------------------------------- #
+@_z3_guarded
 def certify_core_protocol(
     clinical_history: Dict[str, Any],
     vitals: Dict[str, Any],
@@ -502,6 +506,7 @@ class AuditReport:
                 "notes": self.notes}
 
 
+@_z3_guarded
 def verify_certificate(cert: Any, *, require_signature: bool = True) -> AuditReport:
     """Independently audit a certificate. Accepts a :class:`ProofCertificate`, a dict,
     or a JSON string. Recomputes everything; trusts nothing it is told.

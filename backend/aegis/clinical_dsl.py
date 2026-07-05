@@ -40,6 +40,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from z3 import (And, Bool, BoolRef, If, Implies, Int, Not, Or, Real, RealVal,
                 IntVal, BoolVal, Solver, sat, unsat)
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
 
 
 # --------------------------------------------------------------------------- #
@@ -356,6 +357,7 @@ class PolicyCertificate:
                 "rules": [r.to_dict() for r in self.rules]}
 
 
+@_z3_guarded
 def verify_protocol(rules: List[CompiledRule], protocol: Dict[str, Any],
                     context: Dict[str, Any]) -> PolicyCertificate:
     """Prove a concrete protocol satisfies every compiled rule for this patient.
@@ -379,6 +381,7 @@ def verify_protocol(rules: List[CompiledRule], protocol: Dict[str, Any],
     return PolicyCertificate(n_ok == len(certs), certs, len(certs), n_ok)
 
 
+@_z3_guarded
 def check_consistency(rules: List[CompiledRule],
                       context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Is the rule set jointly satisfiable for this patient? (Detects a

@@ -403,7 +403,10 @@ async def _drive_loop() -> None:
             # telemetry arrives it stands down so the camera owns the live feed.
             if DRIVE_FROM_SIMULATOR and not _live_mode():
                 vitals = simulator.next_tick(_active_treatment)
-                snap = session.tick(vitals, source="simulator")
+                # session.tick can run Z3 (protocol synth + consensus on HIGH). Run it
+                # OFF the event loop so a request thread holding the Z3 lock can never
+                # freeze this loop (and its Z3 serialises cleanly with the threadpool).
+                snap = await asyncio.to_thread(session.tick, vitals, source="simulator")
                 _apply_treatment_from(snap)
                 await _broadcast(snap)
         except Exception as exc:  # pragma: no cover

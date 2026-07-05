@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from z3 import And, Bool, BoolVal, Int, Not, Or, Solver, sat, unsat
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
 
 
 # --------------------------------------------------------------------------- #
@@ -223,6 +224,7 @@ class RBAC:
 # --------------------------------------------------------------------------- #
 # Z3: prove the RBAC policy is sound (no grant above its capability's ring).
 # --------------------------------------------------------------------------- #
+@_z3_guarded
 def prove_policy_sound(grants: Optional[Dict[str, frozenset]] = None) -> Dict[str, Any]:
     """Formally verify over the whole RBAC matrix that every grant respects its
     capability's minimum ring. We bind each role-ring and cap-min-ring to its real
@@ -250,6 +252,7 @@ def prove_policy_sound(grants: Optional[Dict[str, frozenset]] = None) -> Dict[st
             "grants_checked": sum(len(c) for c in grants.values()), "violations": holes}
 
 
+@_z3_guarded
 def prove_no_escalation(role: str, capability: str) -> Dict[str, Any]:
     """Prove the gate cannot let ``role`` perform ``capability``. The gate allows
     iff (capability is granted) ∧ (ring(role) ≥ min_ring(cap)); we encode that

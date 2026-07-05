@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from z3 import And, Bool, BoolVal, Implies, Not, Solver, sat, unsat
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
 
 # Vitals that form the fingerprint (present in CinC + a real bedside monitor).
 FP_CHANNELS = ["HR", "O2Sat", "Temp", "SBP", "MAP", "DBP", "Resp"]
@@ -129,6 +130,7 @@ class IdentityMonitor:
         self.events.append({"type": "FAULT_CLEARED", "reason": reason})
 
     # -- Z3: prove no drug can be dispensed during an active identity fault -- #
+    @_z3_guarded
     def prove_dispense_gate(self) -> Dict[str, Any]:
         """The safety invariant: dispense ⇒ identity_ok. We bind identity_ok to the
         live fault state and prove whether a dispense can be authorized."""

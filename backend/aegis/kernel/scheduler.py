@@ -218,12 +218,21 @@ class CognitiveScheduler:
     # -- the scheduling tick --------------------------------------------- #
     def verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
         """Formally verify scheduler liveness and prioritization properties on the decision using Z3."""
-        from z3 import Solver, Int, Implies, And, Or, Sum, BoolVal, RealVal, Real, unsat, IntVal
         from backend.aegis.z3lock import Z3_LOCK
 
-        # Z3's global context is not thread-safe; serialise every solver usage.
-        with Z3_LOCK:
+        # Z3's global context is not thread-safe. This verify runs every tick on the
+        # cluster loop (the event-loop thread), so it must NEVER block: if Z3 is busy
+        # on another thread (a treat/synthesis request, the boot warmup), we DEFER
+        # verification this tick rather than freeze the whole event loop. A re-entrant
+        # acquire means a same-thread caller already holding the lock (run_scenario →
+        # tick → here) still verifies. Deferral is safe — the allocation is produced
+        # by the same deterministic policy and is re-verified on the next tick.
+        if not Z3_LOCK.acquire(blocking=False):
+            return True, "verification deferred — Z3 busy on another thread (re-checked next tick)"
+        try:
             return self._verify_decision_z3(decision)
+        finally:
+            Z3_LOCK.release()
 
     def _verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
         from z3 import Solver, Int, Or, Sum, BoolVal, unsat

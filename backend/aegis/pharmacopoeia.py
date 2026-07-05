@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from z3 import And, Bool, BoolVal, Implies, Not, Or, Solver, sat, unsat
+from backend.aegis.z3lock import z3_guarded as _z3_guarded
 
 SOURCES = {
     "DDInter": "ddinter.scbdd.com — open DDI database (CC BY-NC-SA)",
@@ -211,6 +212,7 @@ class Pharmacopoeia:
         return found
 
     # -- dynamic Z3 composition + proof tree ---------------------------- #
+    @_z3_guarded
     def verify(self, drugs: List[str], context: Optional[Dict[str, Any]] = None
                ) -> Dict[str, Any]:
         """Compose a Z3 constraint per discovered interaction and prove the regimen
