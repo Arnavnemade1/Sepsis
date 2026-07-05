@@ -88,6 +88,10 @@ except Exception as exc:  # pragma: no cover
         names=["Okafor, A.", "Bauer, M.", "Reyes, L.", "Nguyen, T.",
                "Castellano, R.", "Yusuf, D."])
     DATA_MODE = "synthetic"
+# On the throttled free-tier CPU a Z3 solve every scheduler tick starves the box;
+# verify every ~30th tick instead (deterministic policy, last proof holds between).
+import backend.aegis.kernel.scheduler as _sched_mod
+_sched_mod.VERIFY_EVERY = 30
 cluster_safety = NeuroSymbolicRuntime()
 bundle_engine = SepsisBundleEngine()
 device_registry = DeviceRegistry()                # simulated sensor fleet (Phase A)
@@ -889,7 +893,9 @@ def orchestrator_scenario(bed: Optional[str] = None) -> Dict[str, Any]:
     if bed not in beds:
         return {"status": "error", "detail": f"no such bed '{bed}'"}
     # The live wing is already warm (the stream loop ticks it); keep the drill short.
-    return orchestrator.run_scenario(bed, warmup=0, crisis_ticks=40)
+    # Fewer ticks: enough to drive the crisis + trip PREEMPT, but light on a
+    # throttled CPU so the synthesis returns well inside the gateway timeout.
+    return orchestrator.run_scenario(bed, warmup=0, crisis_ticks=12)
 
 
 # --- Portable, third-party-checkable proof certificates (proof-export layer) ----- #

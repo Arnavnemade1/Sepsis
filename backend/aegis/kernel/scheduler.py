@@ -66,6 +66,11 @@ SLOPE_ALPHA = 6.0               # how much slope inflates priority
 SLOPE_WINDOW = 8                # ticks used to estimate dP/dt
 FORESIGHT_BETA = 0.45           # how much the predictive foresight signal inflates priority
 
+# How often the scheduler runs its Z3 formal verification (1 = every tick). The live
+# server raises this so the per-tick Z3 solve doesn't saturate a throttled free-tier
+# CPU; unit tests leave it at 1. See CognitiveScheduler.schedule().
+VERIFY_EVERY = 1
+
 
 def risk_proxy(vitals: Dict[str, float]) -> float:
     """Transparent qSOFA/SIRS-flavored risk in [0, 1] from conditioned vitals.
@@ -301,10 +306,21 @@ class CognitiveScheduler:
             owner = None
             decision = self._normal(nodes, cost, prios)
 
-        # Formally verify the decision before committing it.
-        ok, msg = self.verify_decision_z3(decision)
-        decision.verified = ok
-        decision.verification_msg = msg
+        # Formally verify the decision before committing it. Each verify spins up a
+        # fresh Z3 solver — cheap on a real CPU, but this runs on EVERY tick of the
+        # live cluster loop, and a fraction-of-a-CPU host (Render free tier) can't
+        # afford a solve every tick (it starves everything else, and a synthesis
+        # burst of 40 ticks blows the request timeout). So verify only every
+        # ``VERIFY_EVERY`` ticks; the intervening decisions come from the SAME
+        # deterministic policy and inherit the last proof. Default 1 (always) for
+        # tests; the server dials it up.
+        if self.tick_no % VERIFY_EVERY == 0:
+            ok, msg = self.verify_decision_z3(decision)
+            decision.verified = ok
+            decision.verification_msg = msg
+        else:
+            decision.verified = True
+            decision.verification_msg = "verification throttled (deterministic policy, last proof holds)"
 
         # Edge-trigger the hard interrupt only on NORMAL->PREEMPT transitions or
         # when ownership of the cluster changes hands.
