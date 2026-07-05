@@ -466,16 +466,19 @@ class Orchestrator:
         proof = self.proofs.get(cert.seq)
         proof_audit = None
         if proof is not None:
-            from backend.aegis.proofexport import verify_certificate
-            proof_audit = verify_certificate(proof).to_dict()
+            # NOTE: we deliberately do NOT auto re-verify here. The independent
+            # re-check re-solves every obligation with fresh Z3 solvers — cheap on a
+            # real CPU but seconds on the throttled free tier, and it's redundant with
+            # the cert we just produced. The frontend's "re-verify independently"
+            # button drives it on demand via /aegis/proof/verify (the honest audit
+            # path — a third party re-checking without trusting us).
             sig = proof.get("signature", {})
             timeline.append({
                 "layer": "governance",
-                "event": "portable proof certificate issued + independently re-checked",
+                "event": "portable proof certificate issued (independently re-checkable on demand)",
                 "obligations": proof.get("verdict", {}).get("n_obligations"),
                 "all_satisfied": proof.get("verdict", {}).get("all_satisfied"),
                 "signed_by": sig.get("key_id"),
-                "audit_trusted": proof_audit.get("trusted"),
             })
 
         return {
