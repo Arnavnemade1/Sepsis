@@ -252,7 +252,10 @@ class PatientTerminal:
             if toks[1].lower() in ("clear", "none"):
                 prof.foci.clear(); prof.updated = time.time()
                 return self._out(prof, "cleared all focus", "command")
-            return self._out(prof, prof.add_focus(" ".join(toks[1:])), "command")
+            org = resolve_organ(" ".join(toks[1:]))
+            if org:                                     # a single clean organ → apply directly
+                return self._out(prof, prof.add_focus(org), "command")
+            # a phrase like "her kidneys and heart" → fall through to natural language
         if verb in ("unfocus", "release") and len(toks) >= 2:
             return self._out(prof, prof.remove_focus(" ".join(toks[1:])), "command")
         if verb == "watch" and len(toks) >= 2:

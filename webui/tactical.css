@@ -512,6 +512,21 @@ b{font-weight:700}
 .ptt-in{flex:1 1 auto;background:transparent;border:0;outline:none;color:var(--ink);
   font-family:var(--mono);font-size:12px;caret-color:var(--cyan);min-width:0}
 .ptt-in::placeholder{color:var(--dim)}
+/* specialization visual — attention weights re-balancing toward the focus */
+.ptt-spec{margin:5px 0;padding:8px 10px;border-radius:8px;border:1px solid var(--hair-soft);
+  background:linear-gradient(180deg,rgba(72,196,242,.06),rgba(10,14,24,.3))}
+.pspec-hd{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.08em;color:var(--cyan);margin-bottom:6px}
+.pspec-hd b{color:#9fe4ff}.pspec-ep{color:var(--dim);letter-spacing:0}
+.pspec-grid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}
+.pspec-row{display:flex;align-items:center;gap:6px}
+.pspec-nm{font-family:var(--mono);font-size:8px;letter-spacing:.05em;color:var(--dim);width:46px;flex:0 0 auto;text-align:right}
+.pspec-track{flex:1 1 auto;height:6px;border-radius:4px;background:rgba(190,205,255,.08);overflow:hidden}
+.pspec-track i{display:block;height:100%;width:0;border-radius:4px;background:rgba(150,170,210,.5);transition:width .09s linear}
+.pspec-row.foc .pspec-nm{color:var(--cyan)}
+.pspec-row.foc .pspec-track i{background:linear-gradient(90deg,#48c4f2,#9fe4ff);box-shadow:0 0 8px -1px rgba(72,196,242,.8)}
+.pspec-done{margin-top:7px;font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.pspec-done.ok{color:var(--ok)}.pspec-done.ok b{color:#9fe4ff}
 /* crisp focus HUD tag — DOM overlay so bloom never washes it out */
 .twin-hud{position:absolute;left:12px;top:12px;z-index:4;display:none;align-items:center;gap:9px;
   padding:8px 13px 8px 11px;border-radius:10px;pointer-events:none;

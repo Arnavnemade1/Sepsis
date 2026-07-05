@@ -101,6 +101,12 @@ def check_nl_exec_offline() -> None:
     assert "Respiratory" in prof["foci"]
     assert any(w["metric"] == "spo2" and w["op"] == "<" for w in prof["watches"]), prof["watches"]
     print(f"      [PASS] plain-English line → {prof['foci']} + watch {[w['label'] for w in prof['watches']]}")
+    # a `focus <phrase>` that isn't a single organ must fall through to NL, not error
+    pt2 = PatientTerminal(llm_client=None)
+    o2 = pt2.exec("b9", "focus her kidneys and heart")
+    f2 = pt2.profile("b9").to_dict()["foci"]
+    assert "Renal" in f2 and "Cardiovascular" in f2, f2
+    print(f"      [PASS] 'focus <multi-organ phrase>' routes to NL → {f2}")
 
 
 def run() -> int:

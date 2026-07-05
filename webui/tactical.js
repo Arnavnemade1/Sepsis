@@ -238,7 +238,33 @@ function closeDossier(){ selectedBed=null; dosChart=null;
   $("dossier").setAttribute("aria-hidden","true"); }
 
 /* ---------------- per-patient terminal (dossier) ---------------- */
-var pttBed=null, pttHist=[], pttHi=0, pttFiredSeen={};
+var pttBed=null, pttHist=[], pttHi=0, pttFiredSeen={}, pttFoci=[];
+/* broadcast the doctor's risk-factor focus to EVERY view — the 3D twin, the
+   vitals emphasis, the timeline — so the whole system specialises on it. */
+function pttApplyFoci(bed, foci){ foci=foci||[];
+  window.AEGIS_FOCUS=window.AEGIS_FOCUS||{}; window.AEGIS_FOCUS[bed]=foci;
+  try{ if(window.AegisTwin && window.AegisTwin.setFocus && bed===selectedBed) window.AegisTwin.setFocus(foci); }catch(e){}
+  var card=$("dossier"); if(card) card.classList.toggle("has-focus", foci.length>0); }
+/* the "specializing" completion visual — attention weights re-balancing toward
+   the focused systems (honest: it re-weights MONITORING priority, not a retrained net). */
+function pttSpecialize(foci){ var o=$("ptt-out"); if(!o) return;
+  var SYS=[["Cardiovascular","CARDIO"],["Respiratory","RESP"],["Renal","RENAL"],["Neurological","NEURO"],
+           ["Metabolic","METAB"],["Immune","IMMUNE"],["Hepatic","HEPATIC"],["Coagulation","COAG"]];
+  var box=document.createElement("div"); box.className="l ptt-spec";
+  box.innerHTML='<div class="pspec-hd"><b>◇ SPECIALIZING MONITOR</b> <span class="pspec-ep" data-ep>epoch 0</span></div>'+
+    '<div class="pspec-grid">'+SYS.map(function(s){ var f=(foci||[]).indexOf(s[0])>=0;
+      var t=f?(84+Math.random()*13):(5+Math.random()*15);
+      return '<div class="pspec-row'+(f?" foc":"")+'"><span class="pspec-nm">'+s[1]+'</span>'+
+        '<span class="pspec-track"><i data-t="'+t.toFixed(0)+'"></i></span></div>'; }).join("")+
+    '</div><div class="pspec-done" data-done>optimizing attention weights…</div>';
+  o.appendChild(box); o.scrollTop=o.scrollHeight;
+  var bars=box.querySelectorAll(".pspec-track i"), ep=box.querySelector("[data-ep]"), done=box.querySelector("[data-done]");
+  var e=0, N=16, iv=setInterval(function(){ e++; if(ep) ep.textContent="epoch "+e+"/"+N;
+    bars.forEach(function(b){ var t=+b.dataset.t, cur=t*(1-Math.pow(1-e/N,2))+(Math.random()*8-4);
+      b.style.width=Math.max(2,Math.min(100,cur)).toFixed(0)+"%"; });
+    if(e>=N){ clearInterval(iv); bars.forEach(function(b){ b.style.width=b.dataset.t+"%"; });
+      if(done){ done.className="pspec-done ok"; done.innerHTML='✓ specialized — monitoring re-weighted toward <b>'+
+        esc((foci||[]).join(", ")||"whole-body")+'</b>'; } o.scrollTop=o.scrollHeight; } }, 85); }
 function pttPrint(html,cls){ var o=$("ptt-out"); if(!o) return; var d=document.createElement("div");
   d.className="l "+(cls||""); d.innerHTML=html; o.appendChild(d); o.scrollTop=o.scrollHeight;
   while(o.children.length>60) o.removeChild(o.firstChild); }
@@ -249,14 +275,14 @@ function pttRender(p){ var box=$("ptt-profile"); if(!box||!p) return; var h="";
   (p.watches||[]).forEach(function(w){ h+=pttChip("⚑ "+w.label,"w"+(w.severity==="critical"?" crit":""),"watch:"+w.id); });
   if(!(p.foci||[]).length && !(p.watches||[]).length) h=pttChip("whole-body · no custom tracking yet","empty");
   box.innerHTML=h; }
-function pttLoad(bed){ pttBed=bed; pttFiredSeen={};
+function pttLoad(bed){ pttBed=bed; pttFiredSeen={}; pttFoci=[];
   var pr=$("ptt-prompt"); if(pr) pr.innerHTML=esc(bedTag(bed))+'<b>❯</b>';
   var o=$("ptt-out"); if(o) o.innerHTML="";
   pttPrint('<span class="cl-d">tracking for '+esc(bedTag(bed))+' — <b>help</b> or plain English</span>',"l-sys");
   pttPoll(bed,true); }
 function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tracking"))
   .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
-    if(d.profile) pttRender(d.profile);
+    if(d.profile){ pttRender(d.profile); pttFoci=(d.profile.foci||[]).slice(); pttApplyFoci(bed, pttFoci); }
     (d.fired||[]).forEach(function(f){ var k=f.watch_id+":"+f.value; if(pttFiredSeen[k])return; pttFiredSeen[k]=1;
       pttPrint("⚑ WATCH FIRED · "+esc(f.label)+" — now <b>"+f.value+"</b>","l-fire"+(f.severity==="critical"?" crit":"")); });
   }).catch(function(){ if(first) pttPrint("patient terminal unreachable","l-sys"); }); }
@@ -267,7 +293,10 @@ function pttRun(cmd){ if(!pttBed||!cmd.trim()) return; var bed=pttBed;
     body:JSON.stringify({command:cmd})}).then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
       var tag=d.source==="llm"?'<span class="cl-d">⟐ llm</span> ':d.source==="parser"?'<span class="cl-d">⟐ parsed</span> ':'';
       pttPrint(tag+esc(d.reply||"done"), d.source==="llm"||d.source==="parser"?"l-llm":"l-ok");
-      if(d.profile) pttRender(d.profile);
+      if(d.profile){ var nf=(d.profile.foci||[]); var added=nf.filter(function(o){return pttFoci.indexOf(o)<0;});
+        pttRender(d.profile); pttApplyFoci(bed, nf);
+        if(added.length) pttSpecialize(nf);          // play the specialization visual on a new focus
+        pttFoci=nf.slice(); }
     }).catch(function(){ pttPrint("terminal unreachable","l-sys"); }); }
 function pttInit(){ var inp=$("ptt-in"); if(inp){ inp.addEventListener("keydown",function(e){
     if(e.key==="Enter"){ pttRun(inp.value); inp.value=""; }
@@ -1551,13 +1580,14 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief",fit:"train",ml:"model",models:"model"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief",fit:"train",ml:"model",models:"model",pt:"patient",patientos:"patient"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
      ['top','beds ranked by risk (critical first)'],
      ['who <bed>','patient summary — vitals, drivers, ground truth'],
      ['open <bed>','open the full clinical dossier'],
+     ['patient <bed>','open the patient OS — customize this patient’s tracking (plain English)'],
      ['alloc / sched','live compute allocation across the cohort'],
      ['ps','bio-process table (beds as scheduled processes)'],
      ['top','live kernel stats + process table'],
@@ -1610,6 +1640,10 @@ var CMD={
     cmdPrint(b.will_be_septic?('<span class="cl-crit">ground truth: develops sepsis at ICU h'+b.onset_hour+'</span>'):'<span class="cl-ok">ground truth: no sepsis this admission</span>',"row"); },
   open:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     cmdHide(); openDossier(b.bed_id); cmdPrint("opening dossier · "+esc(b.name),"ok"); },
+  patient:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("usage: <b>patient &lt;bed&gt;</b> — open the patient's own OS + tracking terminal","err");
+    cmdPrint('<span class="cl-ok">▸ booting patient OS · '+esc(b.name)+'</span> <span class="cl-d">— tell the Patient Terminal what to watch (plain English)</span>',"sys");
+    cmdHide(); openDossier(b.bed_id);
+    setTimeout(function(){ var i=$("ptt-in"); if(i){ i.focus(); i.placeholder="e.g. focus her kidneys · alert if lactate > 3 …"; } }, 480); },
   alloc:function(){ var ns=(lastSnap&&lastSnap.topology)||[];
     cmdPrint('<b>COGNITIVE SCHEDULER</b> · mode '+((lastSnap&&lastSnap.scheduler&&lastSnap.scheduler.mode)||"—")+' · lane budget '+(V.budget||"—"),"sys");
     if(lastSnap&&lastSnap.scheduler) cmdPrint('Σ cost '+fmt(lastSnap.scheduler.cost,2)+(lastSnap.scheduler.owner?' · preempt owner '+esc(cleanName(lastSnap.scheduler.owner)):''),"row");

@@ -73,6 +73,7 @@ const ZONE = {
 
 let renderer, scene, camera, controls, container, ro, clock;
 let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub, bodyMetrics = null;
+let focusFoci = [], focusRegions = {};       // the attending's per-patient focus (risk factor)
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
 let infectFX, infLabel, lastInfection = null;     // suspected infection focus
@@ -720,11 +721,28 @@ function update(data) {
     hr = readVital(data, "heart_rate", hr) || 72;
     resp = readVital(data, "respiratory_rate", resp) || 15;
     if ("infection" in data) lastInfection = data.infection;
+    var tr = data.body_state && data.body_state.tracking;      // doctor's focus rides on the snapshot
+    if (tr && tr.foci) setFocus(tr.foci);
   }
   if (!started) { pendingData = data; return; }
   applyRegions();
 }
 function setOptical(reg) { optical = reg || {}; if (started) applyRegions(); }
+
+// The doctor's focus (organ-system names) → the regions those systems live in, so
+// the twin can emphasise exactly what the supervising clinician flagged as the risk.
+const _SYS_REGIONS = {
+  "Cardiovascular": ["heart"], "Autonomic": ["heart"], "Respiratory": ["lungs"],
+  "Renal": ["kidneys"], "Hepatic": ["liver"], "Neurological": ["brain"],
+  "Immune": ["blood", "spleen", "thymus"], "Coagulation": ["blood"],
+  "Metabolic": ["pancreas", "liver"], "Peripheral Perfusion": ["skin"],
+};
+function setFocus(foci) {
+  focusFoci = (foci || []).slice();
+  focusRegions = {};
+  focusFoci.forEach((s) => (_SYS_REGIONS[s] || []).forEach((r) => (focusRegions[r] = 1)));
+  if (started) applyRegions();
+}
 
 function applyRegions() {
   const regions = mergedRegions();
@@ -751,9 +769,13 @@ function applyRegions() {
     const sev = mon ? (reg.severity || 0) : 0;
     o.mon = mon; o.sev = sev; o.worst = false;
     o.rising = !!rising[o.region]; o.eta = etaByRegion[o.region];
+    // the attending's focus: emphasise flagged systems, recede everything else
+    const anyFocus = focusFoci.length > 0;
+    o.focused = !!focusRegions[o.region];
+    const dim = anyFocus && !o.focused ? 0.42 : 1.0;         // non-focused organs fade back
     o.mat.emissive.copy(tierColor(reg));
-    o.mat.emissiveIntensity = mon ? (0.7 + 1.0 * sev) : 0.5;
-    o.mat.opacity = mon ? (0.64 + 0.26 * sev) : 0.46;  // unmonitored = faint grey anatomy
+    o.mat.emissiveIntensity = (mon ? (0.7 + 1.0 * sev) : 0.5) * dim;
+    o.mat.opacity = (mon ? (0.64 + 0.26 * sev) : 0.46) * (o.focused ? 1.12 : dim);
     if (o.halo) o.halo.material.color.copy(tierColor(reg));   // glow halo tracks the tier colour
     if (mon) overall = Math.max(overall, sev);
     if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
@@ -800,6 +822,8 @@ function applyRegions() {
       const nm = (REGION_LABEL[organs[worstKey].region] || worstKey).toUpperCase();
       const hex = { CRITICAL: "#ff4d5e", DYSFUNCTION: "#ff9a3b", STRESS: "#ffd23b" }[worstRegion.status] || "#ff9a3b";
       setHud((worstRegion.status || "WATCH") + (worstRegion.optical ? " · OPTICAL" : ""), nm, hex);
+    } else if (focusFoci.length) {                     // stable, but the clinician set a focus
+      setHud("CLINICIAN FOCUS", focusFoci.join(" · ").toUpperCase(), "#48c4f2");
     } else {
       setHud(null);
     }
@@ -854,9 +878,11 @@ function animate() {
     else if (o.cfg.breathe) o.pivot.scale.set(1 + 0.035 * breathe, 1 + 0.075 * breathe, 1 + 0.035 * breathe);
     else if (o.worst) o.pivot.scale.setScalar(1 + 0.05 * Math.abs(Math.sin(t * 3.0)));
     else o.pivot.scale.setScalar(1);
+    const anyFocus = focusFoci.length > 0;
+    const fdim = anyFocus && !o.focused ? 0.42 : 1.0;   // recede everything but the focus
     if (o.mon) {
       const env = o.cfg.beat ? (0.62 + 0.5 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
-      o.mat.emissiveIntensity = (0.5 + 0.7 * o.sev) * env;
+      o.mat.emissiveIntensity = (0.5 + 0.7 * o.sev) * env * fdim;
       // worsening alarm: a fast, sharp over-pulse (sharper + faster the sooner the
       // projected ETA to CRITICAL) so a deteriorating organ visibly throbs.
       if (o.rising) {
@@ -864,6 +890,17 @@ function animate() {
         const ap = Math.pow(0.5 + 0.5 * Math.sin(t * (3.0 + 5.0 * urg)), 3);
         o.mat.emissiveIntensity *= (1.0 + (0.3 + 0.5 * urg) * ap);
       }
+    } else if (anyFocus && !o.focused) {
+      o.mat.emissiveIntensity *= fdim;
+    }
+    // focused organ: a calm, steady breathing glow so the clinician's flagged
+    // system is unmistakable even when it is not (yet) the most severe.
+    if (o.focused) {
+      o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.55) * (1.12 + 0.16 * Math.sin(t * 2.2));
+      if (o.halo) { o.halo.visible = true; o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
+        o.halo.material.color.copy(RIM);
+        const sc = 0.16 + 0.05 * Math.sin(t * 2.2); o.halo.scale.set(sc, sc, 1);
+        o.halo.material.opacity = Math.max(o.halo.material.opacity || 0, 0.32); }
     }
     if (o.infected) {                              // suspected source — throb brighter
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
@@ -1012,7 +1049,7 @@ function _measure() {
   for (const k in organs) { const o = organs[k]; if (o.pivot) { o.pivot.getWorldPosition(_v); out[k] = { p: _v.toArray().map(n => +n.toFixed(3)), col: "#" + o.mat.emissive.getHexString(), mon: o.mon, sev: +(o.sev || 0).toFixed(2), op: +o.mat.opacity.toFixed(2) }; } }
   return out;
 }
-window.AegisTwin = { start, update, resize, setOptical, _setAtlas, _measure, triggerInfusion };
+window.AegisTwin = { start, update, resize, setOptical, setFocus, _setAtlas, _measure, triggerInfusion };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
   if (el && el.clientWidth > 40 && el.clientHeight > 40) { clearInterval(probe); start(el); }
