@@ -281,15 +281,17 @@
 
     <!-- right column — patient terminal + learned behaviour + problems + protocol -->
     <div class="cl-col cl-right">
-      <section class="card cl-card ptt-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Patient Terminal</h2>
-          <span class="hd-meta">shape this patient's tracking</span></div>
+      <section class="card cl-card ptt-card term">
+        <div class="card-hd"><span class="term-lights"><i class="tl tl-r"></i><i class="tl tl-y"></i><i class="tl tl-g"></i></span>
+          <h2>Patient Terminal</h2><span class="hd-meta">shape this patient's tracking</span></div>
         <div class="card-body ptt-body">
           <div class="ptt-profile" id="ptt-profile"></div>
-          <div class="ptt-out" id="ptt-out"></div>
-          <div class="ptt-inbar"><span class="ptt-prompt" id="ptt-prompt">bed<b>❯</b></span>
-            <input id="ptt-in" class="ptt-in" autocomplete="off" autocapitalize="off" spellcheck="false"
-              placeholder="focus kidneys · watch lactate &gt; 3 · or plain English…" /></div>
+          <div class="ptt-out term-screen" id="ptt-out"></div>
+          <div class="ptt-inbar term-line" id="ptt-line">
+            <span class="cmd-prompt" id="ptt-prompt">bed<b>❯</b></span>
+            <span class="term-edit"><span class="ti-pre" id="pti-pre"></span><span class="ti-cur" id="pti-cur">&nbsp;</span><span class="ti-post" id="pti-post"></span></span>
+            <input id="ptt-in" class="term-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="patient terminal input" />
+          </div>
         </div>
       </section>
       <section class="card cl-card cl-grow">

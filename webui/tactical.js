@@ -276,9 +276,10 @@ function pttRender(p){ var box=$("ptt-profile"); if(!box||!p) return; var h="";
   if(!(p.foci||[]).length && !(p.watches||[]).length) h=pttChip("whole-body · no custom tracking yet","empty");
   box.innerHTML=h; }
 function pttLoad(bed){ pttBed=bed; pttFiredSeen={}; pttFoci=[];
-  var pr=$("ptt-prompt"); if(pr) pr.innerHTML=esc(bedTag(bed))+'<b>❯</b>';
+  var pr=$("ptt-prompt"); if(pr) pr.innerHTML=esc(bedTag(bed).toLowerCase().replace(/\s+/g,""))+'<b>❯</b>';
   var o=$("ptt-out"); if(o) o.innerHTML="";
   pttPrint('<span class="cl-d">tracking for '+esc(bedTag(bed))+' — <b>help</b> or plain English</span>',"l-sys");
+  if(typeof pttRenderCursor==="function") pttRenderCursor();
   pttPoll(bed,true); }
 function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tracking"))
   .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
@@ -298,10 +299,27 @@ function pttRun(cmd){ if(!pttBed||!cmd.trim()) return; var bed=pttBed;
         if(added.length) pttSpecialize(nf);          // play the specialization visual on a new focus
         pttFoci=nf.slice(); }
     }).catch(function(){ pttPrint("terminal unreachable","l-sys"); }); }
-function pttInit(){ var inp=$("ptt-in"); if(inp){ inp.addEventListener("keydown",function(e){
-    if(e.key==="Enter"){ pttRun(inp.value); inp.value=""; }
-    else if(e.key==="ArrowUp"){ if(pttHi>0){ pttHi--; inp.value=pttHist[pttHi]||""; e.preventDefault(); } }
-    else if(e.key==="ArrowDown"){ if(pttHi<pttHist.length){ pttHi++; inp.value=pttHist[pttHi]||""; } } }); }
+/* blinking block-cursor line editor — the SAME as the main AegisOS terminal */
+var PTT_PH="focus kidneys · watch lactate > 3 · or plain English…";
+function pttRenderCursor(){ var inp=$("ptt-in"); if(!inp) return;
+  var v=inp.value||"", pos=inp.selectionStart==null?v.length:inp.selectionStart;
+  var pre=$("pti-pre"), cur=$("pti-cur"), post=$("pti-post"); if(!pre) return;
+  if(!v){ pre.textContent=""; cur.textContent=" "; post.textContent=PTT_PH; post.className="ti-post ph"; return; }
+  pre.textContent=v.slice(0,pos); cur.textContent=v.slice(pos,pos+1)||" "; post.textContent=v.slice(pos+1); post.className="ti-post"; }
+function pttInit(){ var inp=$("ptt-in");
+  if(inp){
+    inp.addEventListener("input",pttRenderCursor);
+    inp.addEventListener("click",pttRenderCursor);
+    inp.addEventListener("keyup",function(e){ if(!/^(Enter|Arrow)/.test(e.key)) pttRenderCursor(); });
+    inp.addEventListener("keydown",function(e){
+      if(e.key==="Enter"){ pttRun(inp.value); inp.value=""; }
+      else if(e.key==="ArrowUp"){ if(pttHi>0){ pttHi--; inp.value=pttHist[pttHi]||""; e.preventDefault(); } }
+      else if(e.key==="ArrowDown"){ if(pttHi<pttHist.length){ pttHi++; inp.value=pttHist[pttHi]||""; } }
+      setTimeout(pttRenderCursor,0); });
+    var line=$("ptt-line"); if(line) line.addEventListener("mousedown",function(e){ if(e.target!==inp){ e.preventDefault(); inp.focus(); pttRenderCursor(); } });
+    var out=$("ptt-out"); if(out) out.addEventListener("mousedown",function(){ if(window.getSelection().isCollapsed) setTimeout(function(){ inp.focus(); pttRenderCursor(); },0); });
+    pttRenderCursor();
+  }
   var box=$("ptt-profile"); if(box) box.addEventListener("click",function(e){ var x=e.target.closest("[data-x]"); if(!x||!pttBed) return;
     var spec=x.dataset.x; pttRun(spec.indexOf("focus:")===0?("unfocus "+spec.slice(6)):("unwatch "+spec.slice(6))); }); }
 
