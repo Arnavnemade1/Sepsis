@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=23" />
+<link rel="stylesheet" href="tactical.css?v=24" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -283,10 +283,13 @@
     <div class="cl-col cl-right">
       <section class="card cl-card ptt-launch-card">
         <button class="ptt-open" id="ptt-open">
-          <span class="ptt-open-ic">❯_</span>
-          <span class="ptt-open-tx"><b>Patient Terminal</b>
-            <small>tracking · import history · clinician synthesis — opens the full terminal</small></span>
-          <span class="ptt-open-badge" id="ptt-hx"></span>
+          <span class="ptt-open-top">
+            <span class="ptt-open-ic">❯_</span>
+            <span class="ptt-open-title">Patient Terminal</span>
+            <span class="ptt-paired hidden" id="ptt-paired"><i class="pd"></i>PAIRED</span>
+          </span>
+          <span class="ptt-open-sub">tracking · history · synthesis</span>
+          <span class="ptt-open-status" id="ptt-hx"><span class="pos-dim">not paired · no history imported</span></span>
         </button>
       </section>
       <section class="card cl-card cl-grow">
@@ -337,6 +340,7 @@
       <span class="cmd-title">aegis@icu-wing</span>
       <span class="term-cwd" id="ptt-cwd">:~/bed</span>
       <span class="cmd-hint"><b>help</b> · <b>history</b> · <b>synth</b> · plain English</span>
+      <span class="ptt-paired hidden" id="ptt-paired-bar"><i class="pd"></i>PAIRED</span>
       <button class="cmd-x" id="ptt-x">esc</button>
     </div>
     <div class="ptt-toolbar">
@@ -355,6 +359,7 @@
       </div>
     </div>
     <div class="ptt-profile" id="ptt-profile"></div>
+    <div class="ptt-adapt hidden" id="ptt-adapt"></div>
     <div class="cmd-out term-screen" id="ptt-out"></div>
     <div class="cmd-inbar term-line" id="ptt-line">
       <span class="cmd-prompt" id="ptt-prompt">aegis@icu-wing:~/bed<b>$</b></span>
@@ -364,6 +369,6 @@
   </div>
 </div>
 
-<script src="tactical.js?v=22"></script>
+<script src="tactical.js?v=23"></script>
 </body>
 </html>

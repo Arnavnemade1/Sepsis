@@ -494,24 +494,72 @@ b{font-weight:700}
 /* ---- per-patient terminal (big overlay, launched from the dossier) ---- */
 /* launcher button that sits in the dossier side panel */
 .ptt-launch-card{flex:0 0 auto;padding:0;overflow:hidden}
-.ptt-open{display:flex;align-items:center;gap:12px;width:100%;text-align:left;cursor:pointer;
+.ptt-open{display:flex;flex-direction:column;gap:8px;width:100%;text-align:left;cursor:pointer;
   padding:14px 16px;background:linear-gradient(180deg,rgba(72,196,242,.08),rgba(10,14,22,.4));
   border:0;color:var(--ink);transition:.18s}
-.ptt-open:hover{background:linear-gradient(180deg,rgba(72,196,242,.16),rgba(10,14,22,.5))}
-.ptt-open-ic{font-family:var(--mono);font-size:18px;font-weight:800;color:var(--cyan);
+.ptt-open:hover{background:linear-gradient(180deg,rgba(72,196,242,.15),rgba(10,14,22,.5))}
+.ptt-open-top{display:flex;align-items:center;gap:11px}
+.ptt-open-ic{font-family:var(--mono);font-size:17px;font-weight:800;color:var(--cyan);line-height:1;
   text-shadow:0 0 16px rgba(72,196,242,.6);flex:0 0 auto}
-.ptt-open-tx{display:flex;flex-direction:column;gap:2px;min-width:0}
-.ptt-open-tx b{font-size:13px;font-weight:700;color:var(--ink);letter-spacing:.01em}
-.ptt-open-tx small{font-size:10px;color:var(--dim);font-family:var(--mono)}
-.ptt-open-badge{margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--dim);white-space:nowrap;text-align:right}
-.ptt-open-badge b{color:var(--cyan)}
+.ptt-open-title{font-size:14px;font-weight:700;color:var(--ink);letter-spacing:.01em;white-space:nowrap}
+.ptt-open-sub,.ptt-open-status{font-family:var(--mono);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ptt-open-sub{color:var(--dim)}
+.ptt-open-status{color:var(--muted)}
+.ptt-open-status .pos-dim{color:var(--dim)}.ptt-open-status b{color:var(--cyan)}
 
-/* the overlay itself reuses the console .cmd / .cmd-frame chrome — the ONLY
-   difference from the main console is a taller frame (toolbar + intake + profile). */
-.ptt-modal .cmd-frame{height:min(600px,80vh)}
+/* premium PAIRED symbol — shown when a chart is imported or an EHR is linked */
+.ptt-paired{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;
+  font-family:var(--mono);font-size:8.5px;font-weight:800;letter-spacing:.16em;text-transform:uppercase;color:#8ff0db;
+  padding:3px 9px 3px 8px;border-radius:20px;
+  background:linear-gradient(180deg,rgba(79,224,192,.18),rgba(79,224,192,.05));
+  border:1px solid rgba(79,224,192,.5);
+  box-shadow:0 0 18px -5px rgba(79,224,192,.7),inset 0 1px 0 rgba(200,255,240,.18)}
+.ptt-paired .pd{width:6px;height:6px;border-radius:50%;background:#4fe0c0;flex:0 0 auto;
+  box-shadow:0 0 9px #4fe0c0,0 0 0 3px rgba(79,224,192,.16);animation:pulse 1.8s infinite}
+.ptt-open-top .ptt-paired{margin-left:auto}
+.ptt-bar .ptt-paired{margin-left:auto}
+.ptt-paired.hidden{display:none}
+
+/* the overlay reuses the console .cmd / .cmd-frame chrome — only taller (toolbar +
+   intake + adaptation + profile). */
+.ptt-modal .cmd-frame{height:min(620px,82vh)}
 .ptt-modal .cmd-out{min-height:80px}
+.ptt-modal .cmd-x{margin-left:10px}
 .ptt-profile{display:flex;flex-wrap:wrap;gap:5px;min-height:0}
 .ptt-modal .ptt-profile:not(:empty){padding:9px 15px;border-bottom:1px solid var(--hair-soft)}
+
+/* premium ADAPTATION panel — what the monitor tuned from the imported/linked chart */
+.ptt-adapt{flex:0 0 auto;max-height:196px;overflow-y:auto;padding:12px 15px;
+  border-bottom:1px solid var(--hair-soft);
+  background:linear-gradient(180deg,rgba(79,224,192,.055),rgba(10,14,22,.2))}
+.ptt-adapt.hidden{display:none}
+.ptt-adapt::-webkit-scrollbar{width:6px}.ptt-adapt::-webkit-scrollbar-thumb{background:rgba(190,205,255,.12)}
+.pa-hd{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.pa-title{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8ff0db}
+.pa-src{margin-left:auto;font-family:var(--mono);font-size:8.5px;color:var(--muted);
+  border:1px solid var(--hair);border-radius:20px;padding:2px 9px;letter-spacing:.04em}
+.pa-src.stub{border-style:dashed;color:var(--dim)}
+.pa-sum{font-size:11.5px;color:#cfe0ff;line-height:1.5;margin-bottom:9px}
+.pa-row{display:flex;gap:10px;align-items:baseline;margin:5px 0}
+.pa-k{flex:0 0 82px;font-family:var(--mono);font-size:8.5px;text-transform:uppercase;letter-spacing:.05em;
+  color:var(--muted);text-align:right;padding-top:2px}
+.pa-v{flex:1 1 auto;display:flex;flex-wrap:wrap;gap:4px;min-width:0}
+.pa-chip{font-family:var(--mono);font-size:9.5px;padding:2px 8px;border-radius:6px;
+  border:1px solid var(--hair-soft);background:rgba(190,205,255,.05);color:var(--muted)}
+.pa-chip.cmb{border-color:rgba(120,170,240,.35);color:#a8c4ff}
+.pa-chip.med{color:#b9c8ec}
+.pa-chip.alg{border-color:rgba(245,120,120,.4);color:#ffb3b3}
+.pa-chip.pri{border-color:rgba(245,185,75,.35);color:#f5cd7a}
+.pa-chip.foc{border-color:rgba(72,196,242,.5);color:#bfeaff;background:rgba(72,196,242,.09)}
+.pa-chip.wat{border-color:rgba(79,224,192,.45);color:#8ff0db;background:rgba(79,224,192,.07)}
+.pa-adjust{margin-top:11px;padding-top:10px;border-top:1px dashed var(--hair-soft)}
+.pa-adjust-h{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;
+  letter-spacing:.05em;color:#8ff0db;margin-bottom:8px}
+.pa-adjust-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}
+.pa-adjust-col{display:flex;flex-direction:column;gap:6px}
+.pa-al{font-family:var(--mono);font-size:8px;text-transform:uppercase;letter-spacing:.07em;color:var(--dim)}
+.pa-cl{display:flex;flex-wrap:wrap;gap:4px}
+.pa-none{color:var(--dim);font-family:var(--mono);font-size:9.5px}
 .ptt-chip{font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;padding:2px 8px;border-radius:20px;
   border:1px solid var(--hair-soft);color:var(--muted);background:rgba(190,205,255,.05);display:inline-flex;align-items:center;gap:5px}
 .ptt-chip.foc{border-color:color-mix(in srgb,var(--cyan) 55%,transparent);color:#bfeaffe0}

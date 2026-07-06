@@ -284,6 +284,7 @@ function pttLoad(bed){ pttBed=bed; pttFiredSeen={}; pttFoci=[];
   pttPrint('<b>help</b> · <b>history</b> paste/import a chart · <b>synth</b> record a clinical instruction · or plain English.',"dim");
   var ib=$("ptt-intake"); if(ib) ib.classList.add("hidden");
   document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.remove("on"); });
+  pttSetPaired(null); pttRenderAdapt(null);   // clear until this patient's history resolves
   if(typeof pttRenderCursor==="function") pttRenderCursor();
   pttPoll(bed,true); pttLoadHistory(bed); pttLoadSources(); }
 function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tracking"))
@@ -381,10 +382,38 @@ function pttPrintHistory(h,source){ if(!h) return;
   else pttPrint('<span class="cl-d">no new foci/watches seeded (already covered)</span>',"l-hx"); }
 function pttLoadHistory(bed){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/history"))
   .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
-    var hx=$("ptt-hx"); if(!hx) return; var h=d.history;
-    if(h){ var n=(h.comorbidities||[]).length; hx.innerHTML='◇ history · <b>'+n+'</b> comorbidit'+(n===1?'y':'ies')+
-      ' · <span style="color:var(--dim)">'+esc(h.source||"manual")+'</span>'; }
-    else hx.innerHTML='<span style="color:var(--dim)">no history imported</span>'; }).catch(function(){}); }
+    pttSetPaired(d.history); pttRenderAdapt(d.history); }).catch(function(){}); }
+/* PAIRED state — toggles the premium badge on the launcher + overlay bar + status line. */
+function pttSetPaired(h){ var paired=!!h;
+  var p1=$("ptt-paired"), p2=$("ptt-paired-bar"), hx=$("ptt-hx");
+  if(p1) p1.classList.toggle("hidden",!paired);
+  if(p2) p2.classList.toggle("hidden",!paired);
+  if(hx){ if(paired){ var n=(h.comorbidities||[]).length;
+      hx.innerHTML='◇ <b>'+n+'</b> comorbidit'+(n===1?'y':'ies')+' · linked <b>'+esc(h.source||"manual")+'</b>'; }
+    else hx.innerHTML='<span class="pos-dim">not paired · no history imported</span>'; } }
+/* the premium ADAPTATION panel — how the monitor specialised to this patient's chart. */
+function pttChipList(arr,cls){ return (arr||[]).map(function(x){ return '<span class="pa-chip '+(cls||"")+'">'+esc(x)+'</span>'; }).join(""); }
+function pttRenderAdapt(h){ var box=$("ptt-adapt"); if(!box) return;
+  if(!h){ box.classList.add("hidden"); box.innerHTML=""; return; }
+  var src=(pttSources||[]).filter(function(s){return s.id===h.source;})[0];
+  var stub=src?!src.live:(h.source&&h.source!=="manual");
+  var row=function(k,arr,cls){ return (arr&&arr.length)?('<div class="pa-row"><span class="pa-k">'+k+'</span><span class="pa-v">'+pttChipList(arr,cls)+'</span></div>'):""; };
+  var foci=pttChipList(h.seeded_foci,"foc")||'<span class="pa-none">already active</span>';
+  var wat=pttChipList(h.seeded_watches,"wat")||'<span class="pa-none">already active</span>';
+  box.classList.remove("hidden");
+  box.innerHTML=
+    '<div class="pa-hd"><span class="pa-title">◈ Specialized for this patient</span>'+
+      '<span class="pa-src'+(stub?" stub":"")+'">'+esc(h.source||"manual")+(stub?" · demo":"")+'</span></div>'+
+    (h.summary?'<div class="pa-sum">'+esc(h.summary)+'</div>':"")+
+    row("Comorbidities",h.comorbidities,"cmb")+
+    row("Medications",h.medications,"med")+
+    row("Allergies",h.allergies,"alg")+
+    row("Priorities",h.priorities,"pri")+
+    '<div class="pa-adjust"><div class="pa-adjust-h">↳ monitoring auto-tuned from this record</div>'+
+      '<div class="pa-adjust-grid">'+
+        '<div class="pa-adjust-col"><span class="pa-al">Focus systems</span><span class="pa-cl">'+foci+'</span></div>'+
+        '<div class="pa-adjust-col"><span class="pa-al">Watch rules</span><span class="pa-cl">'+wat+'</span></div>'+
+      '</div></div>'; }
 function pttSynthesis(bed,text){ pttPrint('<span class="cl-d">✎ recording synthesis…</span>',"dim");
   fetch(window.AEGIS.http("/aegis/patient/"+bed+"/synthesis"),{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({text:text})}).then(function(r){return r.json();})
