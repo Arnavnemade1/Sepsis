@@ -61,6 +61,14 @@ _OP_WORDS = {"above": ">", "over": ">", "exceeds": ">", "greater": ">", "gt": ">
              "below": "<", "under": "<", "less": "<", "lt": "<",
              "reaches": ">=", "at least": ">=", "at most": "<="}
 
+# Words that signal a TREATMENT/ORDER intent in a free-text clinician synthesis.
+# We never execute these here — we flag them so the reply can redirect to the
+# certified, Z3-gated order gate (the load-bearing safety boundary).
+_TREATMENT_RE = re.compile(
+    r"\b(order|prescrib\w*|administer|give|start|bolus|dose|dosing|titrat\w*|"
+    r"infus\w*|push|stat|mg|mcg|units?|ml/hr|antibiotic\w*|vasopressor\w*|"
+    r"norepinephrine|levophed|fluids?|abx|treat\w*|intubat\w*)\b", re.I)
+
 
 def resolve_metric(token: str) -> Optional[str]:
     t = (token or "").strip().lower()
@@ -221,6 +229,18 @@ class PatientTerminal:
     def __init__(self, llm_client: Optional[Any] = None):
         self.profiles: Dict[str, TrackingProfile] = {}
         self.client = llm_client            # OpenRouterClient (optional)
+        # medical-history intake + clinician synthesis log (lazy registry import to
+        # avoid a circular import at module load — patient_records imports us).
+        self.histories: Dict[str, Any] = {}          # bed -> MedicalHistory
+        self.annotations: Dict[str, List[Dict[str, Any]]] = {}   # bed -> [synthesis notes]
+        self._registry = None
+
+    @property
+    def registry(self):
+        if self._registry is None:
+            from backend.aegis.patient_records import RecordsRegistry
+            self._registry = RecordsRegistry()
+        return self._registry
 
     def profile(self, bed_id: str) -> TrackingProfile:
         return self.profiles.setdefault(bed_id, TrackingProfile(bed_id=bed_id))
@@ -321,6 +341,93 @@ class PatientTerminal:
         for m in d.get("unwatch", []) or []:
             applied.append(prof.remove_watch(m))
         return [a for a in applied if a]
+
+    # -- medical-history intake (specialises the monitor to the patient) -- #
+    def import_history(self, bed_id: str, text: str, source: str = "manual"
+                       ) -> Dict[str, Any]:
+        """Parse a free-text medical history and SEED this patient's monitoring from
+        it (foci + watch-rules). Observation-only: it can add foci/watches and record
+        priorities; it can never place an order. Returns the parsed record + what it
+        specialised."""
+        from backend.aegis.patient_records import parse_history
+        prof = self.profile(bed_id)
+        hist, directive = parse_history(bed_id, text, source=source, llm_client=self.client)
+        foci_before = set(prof.foci)
+        watches_before = {w.id for w in prof.watches}
+        applied = self.apply(prof, directive)
+        hist.seeded_foci = [o for o in prof.foci if o not in foci_before]
+        hist.seeded_watches = [w.label for w in prof.watches if w.id not in watches_before]
+        for p in hist.priorities:
+            note = "priority (history): " + p
+            if note not in prof.notes:
+                prof.notes.append(note)
+        prof.updated = time.time()
+        self.histories[bed_id] = hist
+        return {"ok": True, "bed_id": bed_id, "source": source,
+                "history": hist.to_dict(), "applied": applied,
+                "profile": prof.to_dict()}
+
+    def link_source(self, bed_id: str, source_id: str,
+                    patient: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Pull a history from a registered records source (MCP-shaped stub / future
+        live EHR) and import it. Honest about stubs: the returned payload carries the
+        source's ``live`` flag so the UI never implies a real chart was fetched."""
+        src = self.registry.get(source_id)
+        if src is None:
+            return {"ok": False, "reply": f"unknown records source '{source_id}'",
+                    "sources": self.registry.list_sources()}
+        text = src.fetch(bed_id, patient)
+        if not text:
+            return {"ok": False, "reply": f"{src.label}: no record returned "
+                    "(paste/upload manually)", "source": src.describe()}
+        out = self.import_history(bed_id, text, source=src.id)
+        out["source"] = src.describe()
+        return out
+
+    def get_history(self, bed_id: str) -> Optional[Dict[str, Any]]:
+        h = self.histories.get(bed_id)
+        return h.to_dict() if h else None
+
+    def sources(self) -> List[Dict[str, Any]]:
+        return self.registry.list_sources()
+
+    # -- clinician synthesis / instructions ------------------------------ #
+    def add_synthesis(self, bed_id: str, text: str,
+                      context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Record a clinician's detailed synthesis / instruction against this patient.
+        The free text is stored verbatim as a timestamped annotation (surfaced in the
+        clinical story), and any MONITORING intent in it (focus/watch, safe vocab) is
+        applied. Treatment-like requests are NOT executed — the reply points to the
+        certified, Z3-gated order gate (the honest safety boundary)."""
+        prof = self.profile(bed_id)
+        raw = (text or "").strip()
+        if not raw:
+            return {"ok": False, "reply": "empty synthesis"}
+        directive, src = self._interpret(raw, context)
+        applied = self.apply(prof, directive) if directive else []
+        treat_flag = bool(_TREATMENT_RE.search(raw))
+        note = {
+            "id": uuid.uuid4().hex[:8], "t": time.time(), "text": raw[:1200],
+            "author": "clinician", "applied": applied,
+            "monitoring_only": True,
+            "order_intent": treat_flag,
+        }
+        self.annotations.setdefault(bed_id, []).append(note)
+        self.annotations[bed_id] = self.annotations[bed_id][-40:]
+        parts = []
+        if applied:
+            parts.append("applied: " + "; ".join(applied))
+        else:
+            parts.append("logged")
+        if treat_flag:
+            parts.append("orders/doses were NOT executed — route treatment through the "
+                         "certified `treat` gate (audited · Z3-verified)")
+        return {"ok": True, "bed_id": bed_id, "reply": " · ".join(parts),
+                "note": note, "applied": applied, "order_intent": treat_flag,
+                "source": src, "profile": prof.to_dict()}
+
+    def get_annotations(self, bed_id: str) -> List[Dict[str, Any]]:
+        return list(self.annotations.get(bed_id, []))
 
     # -- helpers --------------------------------------------------------- #
     def _out(self, prof: TrackingProfile, reply: str, source: str) -> Dict[str, Any]:

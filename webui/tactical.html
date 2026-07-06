@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=21" />
+<link rel="stylesheet" href="tactical.css?v=23" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -281,18 +281,13 @@
 
     <!-- right column — patient terminal + learned behaviour + problems + protocol -->
     <div class="cl-col cl-right">
-      <section class="card cl-card ptt-card term">
-        <div class="card-hd"><span class="term-lights"><i class="tl tl-r"></i><i class="tl tl-y"></i><i class="tl tl-g"></i></span>
-          <h2>Patient Terminal</h2><span class="hd-meta">shape this patient's tracking</span></div>
-        <div class="card-body ptt-body">
-          <div class="ptt-profile" id="ptt-profile"></div>
-          <div class="ptt-out term-screen" id="ptt-out"></div>
-          <div class="ptt-inbar term-line" id="ptt-line">
-            <span class="cmd-prompt" id="ptt-prompt">bed<b>❯</b></span>
-            <span class="term-edit"><span class="ti-pre" id="pti-pre"></span><span class="ti-cur" id="pti-cur">&nbsp;</span><span class="ti-post" id="pti-post"></span></span>
-            <input id="ptt-in" class="term-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="patient terminal input" />
-          </div>
-        </div>
+      <section class="card cl-card ptt-launch-card">
+        <button class="ptt-open" id="ptt-open">
+          <span class="ptt-open-ic">❯_</span>
+          <span class="ptt-open-tx"><b>Patient Terminal</b>
+            <small>tracking · import history · clinician synthesis — opens the full terminal</small></span>
+          <span class="ptt-open-badge" id="ptt-hx"></span>
+        </button>
       </section>
       <section class="card cl-card cl-grow">
         <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Learned Behaviour</h2>
@@ -334,6 +329,41 @@
   </div>
 </div>
 
-<script src="tactical.js?v=20"></script>
+<!-- ============ PATIENT TERMINAL (big overlay — opened by the dossier button) ============ -->
+<div class="cmd ptt-modal" id="ptt-modal" aria-hidden="true">
+  <div class="cmd-frame term">
+    <div class="cmd-bar ptt-bar">
+      <span class="term-lights"><i class="tl tl-r"></i><i class="tl tl-y"></i><i class="tl tl-g"></i></span>
+      <span class="cmd-title">aegis@icu-wing</span>
+      <span class="term-cwd" id="ptt-cwd">:~/bed</span>
+      <span class="cmd-hint"><b>help</b> · <b>history</b> · <b>synth</b> · plain English</span>
+      <button class="cmd-x" id="ptt-x">esc</button>
+    </div>
+    <div class="ptt-toolbar">
+      <button class="ptt-tool" data-tool="history" id="ptt-tool-history">⇪ Import history</button>
+      <button class="ptt-tool" data-tool="ehr" id="ptt-tool-ehr">⛓ Link EHR</button>
+      <button class="ptt-tool" data-tool="synth" id="ptt-tool-synth">✎ Synthesis</button>
+    </div>
+    <div class="ptt-intake hidden" id="ptt-intake">
+      <div class="ptt-intake-h" id="ptt-intake-h">Import medical history</div>
+      <textarea id="ptt-doc" class="ptt-doc" placeholder="Paste the patient's medical history — comorbidities, medications, allergies, priorities…"></textarea>
+      <div class="ptt-intake-actions">
+        <label class="ptt-file-l">⇪ file<input type="file" id="ptt-file" accept=".txt,.md,.json,.csv,text/*" hidden /></label>
+        <span class="ptt-src" id="ptt-src"></span>
+        <span class="grow"></span>
+        <button class="ptt-submit" id="ptt-intake-submit">Import →</button>
+      </div>
+    </div>
+    <div class="ptt-profile" id="ptt-profile"></div>
+    <div class="cmd-out term-screen" id="ptt-out"></div>
+    <div class="cmd-inbar term-line" id="ptt-line">
+      <span class="cmd-prompt" id="ptt-prompt">aegis@icu-wing:~/bed<b>$</b></span>
+      <span class="term-edit"><span class="ti-pre" id="pti-pre"></span><span class="ti-cur" id="pti-cur">&nbsp;</span><span class="ti-post" id="pti-post"></span></span>
+      <input id="ptt-in" class="term-input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="patient terminal input" />
+    </div>
+  </div>
+</div>
+
+<script src="tactical.js?v=22"></script>
 </body>
 </html>

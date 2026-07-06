@@ -562,17 +562,103 @@ window.AegisStory = (function () {
     setHeader();
     let data; try { data = await api("/aegis/causal" + _bedQ()); } catch (e) { return; }
     if (data.status === "error") return;
-    lastGraph = data.graph; renderLedger(data);
+    lastGraph = data.graph; renderLedger(data); loadSynthesis();
+  }
+
+  const esc = s => String(s == null ? "" : s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const riskCls = r => (r >= 0.7 ? "crit" : r >= 0.4 ? "warn" : "");
+  // pretty labels for known payload keys so the audit reads like a chart
+  const PKEY = {
+    map: "MAP (mmHg)", lactate: "lactate (mmol/L)", sweat_lactate: "lactate (mmol/L)",
+    hr: "heart rate (bpm)", heart_rate: "heart rate (bpm)", spo2: "SpO₂ (%)",
+    resp_rate: "resp rate (/min)", respiratory_rate: "resp rate (/min)", temp: "temp (°C)",
+    skin_temp: "temp (°C)", systolic_bp: "systolic BP (mmHg)", wbc: "WBC (10⁹/L)",
+    risk_level: "risk band", triggered_rules: "rules fired", indicated: "indicated action",
+    z3_status: "Z3 verdict", state: "outcome state", sign: "abnormal sign", type: "event type",
+  };
+  const fmtVal = v => {
+    if (v == null) return "—";
+    if (typeof v === "number") { const a = Math.abs(v); return a >= 100 ? v.toFixed(0) : (a >= 10 ? v.toFixed(1) : v.toFixed(2)).replace(/\.0+$/, ""); }
+    if (Array.isArray(v)) return v.map(String).join(", ") || "—";
+    if (typeof v === "object") return JSON.stringify(v);
+    return String(v);
+  };
+
+  function edgeChip(e) {
+    return `<span class="story-edge ${e.evidence_type}">${esc(e.mechanism)} · ${EV[e.evidence_type] || e.evidence_type}` +
+      (e.support ? ` (n=${e.support})` : "") + `</span>`;
+  }
+
+  function renderVerdict(g) {
+    const box = document.querySelector("#story-verdict"); if (!box) return;
+    const nodes = g.nodes || [];
+    if (!nodes.length) { box.className = "story-verdict-panel"; box.innerHTML = ""; return; }
+    const last = nodes[nodes.length - 1], risk = last.risk || 0;
+    const band = risk >= 0.7 ? ["CRITICAL", "crit"] : risk >= 0.4 ? ["ELEVATED", "warn"] : ["STABLE", "ok"];
+    const counts = {}; nodes.forEach(n => counts[n.kind] = (counts[n.kind] || 0) + 1);
+    const mix = { z3_proven: 0, model_predicted: 0, observed_association: 0 };
+    (g.edges || []).forEach(e => { if (mix[e.evidence_type] != null) mix[e.evidence_type]++; });
+    const named = { vital_snapshot: "vital snapshots", lab_result: "labs", alert: "alerts",
+      protocol_decision: "decisions", omission: "omissions", drug_dose: "drug doses", outcome: "outcomes" };
+    const parts = Object.keys(named).filter(k => counts[k]).map(k => `${counts[k]} ${named[k]}`);
+    box.className = "story-verdict-panel show " + band[1];
+    box.innerHTML = `
+      <div class="verdict-hd">
+        <span class="verdict-band ${band[1]}">${band[0]}</span>
+        <span class="verdict-risk">risk ${Math.round(risk * 100)}%</span>
+        <span class="verdict-t">as of ${fmtT(last.t)}</span>
+      </div>
+      <div class="verdict-derive">verdict derived from <b>${nodes.length}</b> logged events — ${parts.join(" · ") || "—"}</div>
+      <div class="verdict-mix">
+        <span class="story-edge z3_proven">${mix.z3_proven} Z3-proven</span>
+        <span class="story-edge model_predicted">${mix.model_predicted} model-predicted</span>
+        <span class="story-edge observed_association">${mix.observed_association} association</span>
+      </div>
+      <div class="verdict-foot">${g.integrity_ok
+        ? "✓ hash-chain verified — every event below is tamper-evident"
+        : "✕ INTEGRITY FAIL — the ledger has been altered"} · click any event to expand its measured values, evidence provenance &amp; ledger hash to cross-check the OS against the chart.</div>`;
+  }
+
+  function auditBlock(n, edges) {
+    const p = n.payload || {};
+    const keys = Object.keys(p);
+    const rows = keys.length ? keys.map(key =>
+      `<div class="aud-row"><span class="aud-k">${esc(PKEY[key] || key)}</span>` +
+      `<span class="aud-v">${esc(fmtVal(p[key]))}</span></div>`).join("")
+      : '<div class="muted">no measured fields on this event</div>';
+    const prov = (edges && edges.length) ? edges.map(e => `
+      <div class="aud-prov ${e.evidence_type}">
+        <span class="story-edge ${e.evidence_type}">${EV[e.evidence_type] || e.evidence_type}</span>
+        <span class="aud-mech">${esc(e.mechanism)}</span>
+        ${e.support ? `<span class="aud-sup">cohort n=${e.support}</span>` : ""}
+        ${e.proven_by ? `<span class="aud-cert" title="Z3 safety certificate hash">cert ${esc(e.proven_by)}</span>` : ""}
+        <span class="aud-econf">edge conf ${Math.round((e.confidence || 0) * 100)}%</span>
+      </div>`).join("") : '<div class="muted">root event — no upstream evidence edges</div>';
+    return `
+      <div class="aud-sec">MEASURED VALUES <span class="aud-hint">cross-check against the chart</span></div>
+      <div class="aud-grid">${rows}</div>
+      <div class="aud-sec">EVIDENCE PROVENANCE <span class="aud-hint">how the OS justified this</span></div>
+      ${prov}
+      <div class="aud-sec">LEDGER · tamper-evident</div>
+      <div class="aud-chain">
+        <span class="aud-chip">seq #${n.seq}</span>
+        <span class="aud-chip">risk ${Math.round((n.risk || 0) * 100)}%</span>
+        <span class="aud-chip">confidence ${Math.round((n.confidence || 0) * 100)}%</span>
+        <div class="aud-hash">hash <code>${esc(n.hash || "—")}</code></div>
+        <div class="aud-hash">prev <code>${esc(n.prev_hash || "—")}</code></div>
+      </div>`;
   }
 
   function renderLedger(data) {
-    const g = data.graph, sum = data.summary || {};
+    const g = data.graph;
     const intg = document.querySelector("#story-integrity");
     const ok = g.integrity_ok;
     intg.className = "cam-state" + (ok ? " live" : " bad");
     intg.lastChild.textContent = ok ? `chain verified · ${g.head}` : "INTEGRITY FAIL";
     document.querySelector("#story-ledger-sub").textContent =
       `${g.n_nodes} events · ${g.n_edges} edges`;
+
+    renderVerdict(g);
 
     const edgesByDst = {};
     (g.edges || []).forEach(e => { (edgesByDst[e.dst] ||= []).push(e); });
@@ -581,39 +667,87 @@ window.AegisStory = (function () {
       tl.innerHTML = '<div class="muted">No clinical events yet. The graph grows as risk evolves.</div>';
       return;
     }
-    tl.innerHTML = g.nodes.map(n => {
+    tl.innerHTML = g.nodes.map((n, i) => {
       const k = KIND[n.kind] || { i: "•", c: "vital", t: n.kind };
-      const inc = (edgesByDst[n.id] || []).map(e =>
-        `<span class="story-edge ${e.evidence_type}">${e.mechanism} · ${EV[e.evidence_type] || e.evidence_type}` +
-        (e.support ? ` (n=${e.support})` : "") + `</span>`).join("");
-      const risk = Math.round((n.risk || 0) * 100);
-      return `<div class="story-node ${k.c}" data-id="${n.id}">
-        <div class="story-node-h"><span class="story-ico">${k.i}</span>
+      const inc = (edgesByDst[n.id] || []).map(edgeChip).join("");
+      const risk = Math.round((n.risk || 0) * 100), conf = Math.round((n.confidence || 0) * 100);
+      return `<div class="story-node ${k.c}${allExpanded ? " open" : ""}" data-id="${n.id}">
+        <div class="story-node-h" data-toggle>
+          <span class="story-ico">${k.i}</span>
           <span class="story-kind">${k.t}</span>
-          <span class="story-risk">risk ${risk}%</span>
-          <span class="story-t">${fmtT(n.t)}</span></div>
+          <span class="story-seq">#${n.seq ?? i}</span>
+          <span class="story-risk ${riskCls(n.risk)}">risk ${risk}%</span>
+          <span class="story-conf">conf ${conf}%</span>
+          <span class="story-t">${fmtT(n.t)}</span>
+          <span class="story-caret">▸</span></div>
         ${inc ? `<div class="story-edges">${inc}</div>` : ""}
         ${summaryLine(n)}
+        <div class="story-audit"${allExpanded ? "" : " hidden"}>${auditBlock(n, edgesByDst[n.id] || [])}
+          <div class="story-node-acts"><button class="story-mini" data-incident="${n.id}">⌖ trace incident from here</button></div>
+        </div>
       </div>`;
     }).join("");
-    // clicking a node makes it the incident anchor
-    tl.querySelectorAll(".story-node").forEach(el =>
-      el.onclick = () => runIncident(el.dataset.id));
+    // header click toggles the full audit; the trace button anchors an incident report
+    tl.querySelectorAll(".story-node-h[data-toggle]").forEach(h => h.onclick = () => {
+      const node = h.closest(".story-node"), aud = node.querySelector(".story-audit");
+      const opening = aud.hasAttribute("hidden");
+      opening ? aud.removeAttribute("hidden") : aud.setAttribute("hidden", "");
+      node.classList.toggle("open", opening);
+    });
+    tl.querySelectorAll("[data-incident]").forEach(b => b.onclick = e => {
+      e.stopPropagation(); runIncident(b.dataset.incident);
+    });
   }
 
   function summaryLine(n) {
     const p = n.payload || {};
     if (n.kind === "vital_snapshot")
-      return `<div class="story-pay">MAP ${p.map ?? "—"} · lactate ${p.lactate ?? p.sweat_lactate ?? "—"}</div>`;
+      return `<div class="story-pay">MAP ${fmtVal(p.map)} · lactate ${fmtVal(p.lactate ?? p.sweat_lactate)}` +
+        (p.hr != null ? ` · HR ${fmtVal(p.hr)}` : "") + (p.spo2 != null ? ` · SpO₂ ${fmtVal(p.spo2)}` : "") +
+        (p.resp_rate != null ? ` · RR ${fmtVal(p.resp_rate)}` : "") + `</div>`;
     if (n.kind === "omission")
-      return `<div class="story-pay">indicated: ${p.indicated || "treatment"} — not given</div>`;
+      return `<div class="story-pay">indicated: ${esc(p.indicated || "treatment")} — not given</div>`;
     if (n.kind === "protocol_decision")
-      return `<div class="story-pay">Z3 ${p.z3_status || "certified"} · protocol applied</div>`;
+      return `<div class="story-pay">Z3 ${esc(p.z3_status || "certified")} · protocol applied</div>`;
     if (n.kind === "outcome")
-      return `<div class="story-pay">${p.state || "outcome"}</div>`;
+      return `<div class="story-pay">${esc(p.state || "outcome")}</div>`;
     if (n.kind === "alert")
-      return `<div class="story-pay">${p.risk_level || ""} ${(p.triggered_rules || []).slice(0,3).join(", ")}</div>`;
+      return `<div class="story-pay">${esc(p.risk_level || "")} ${esc((p.triggered_rules || []).slice(0, 3).join(", "))}</div>`;
+    if (n.kind === "lab_result")
+      return `<div class="story-pay">${Object.keys(p).slice(0, 3).map(k => `${esc(k)} ${fmtVal(p[k])}`).join(" · ")}</div>`;
     return "";
+  }
+
+  async function loadSynthesis() {
+    const box = document.querySelector("#story-synth-out"); if (!box) return;
+    const b = window.AegisPatient?.bed();
+    if (!b) { box.innerHTML = '<div class="muted">Select a patient to see their clinician synthesis log.</div>'; return; }
+    let d; try { d = await api("/aegis/patient/" + encodeURIComponent(b) + "/synthesis"); } catch (e) { return; }
+    const ann = (d && d.annotations) || [];
+    if (!ann.length) {
+      box.innerHTML = '<div class="muted">No clinician synthesis recorded for this patient yet. Record one from the patient terminal — it lands here, timestamped.</div>';
+      return;
+    }
+    box.innerHTML = ann.slice().reverse().map(a => `
+      <div class="synth-note${a.order_intent ? " flag" : ""}">
+        <div class="synth-h"><span class="synth-author">${esc(a.author || "clinician")}</span>
+          <span class="synth-t">${fmtT(a.t)}</span></div>
+        <div class="synth-tx">${esc(a.text)}</div>
+        ${(a.applied && a.applied.length) ? `<div class="synth-applied">✓ applied to monitoring: ${esc(a.applied.join("; "))}</div>` : ""}
+        ${a.order_intent ? `<div class="synth-flag">⚠ treatment intent — NOT auto-executed; route via the certified order gate</div>` : ""}
+      </div>`).join("");
+  }
+
+  let allExpanded = false;
+  function toggleExpandAll() {
+    allExpanded = !allExpanded;
+    document.querySelectorAll("#story-timeline .story-node").forEach(node => {
+      const aud = node.querySelector(".story-audit"); if (!aud) return;
+      allExpanded ? aud.removeAttribute("hidden") : aud.setAttribute("hidden", "");
+      node.classList.toggle("open", allExpanded);
+    });
+    const btn = document.querySelector("#story-expand");
+    if (btn) btn.textContent = allExpanded ? "⊟ collapse all" : "⊞ expand all";
   }
 
   async function runIncident(nodeId) {
@@ -713,6 +847,7 @@ window.AegisStory = (function () {
     if (e.target.closest("#launch-story")) open();
     if (e.target.closest("#story-close")) close();
     if (e.target.closest("#story-refresh")) refresh();
+    if (e.target.closest("#story-expand")) toggleExpandAll();
     if (e.target.closest("#story-incident")) runIncident(null);
     if (e.target.closest("#story-replay")) runReplay();
     if (e.target.closest("#story-mine")) runMine();

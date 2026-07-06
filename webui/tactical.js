@@ -276,11 +276,16 @@ function pttRender(p){ var box=$("ptt-profile"); if(!box||!p) return; var h="";
   if(!(p.foci||[]).length && !(p.watches||[]).length) h=pttChip("whole-body · no custom tracking yet","empty");
   box.innerHTML=h; }
 function pttLoad(bed){ pttBed=bed; pttFiredSeen={}; pttFoci=[];
-  var pr=$("ptt-prompt"); if(pr) pr.innerHTML=esc(bedTag(bed).toLowerCase().replace(/\s+/g,""))+'<b>❯</b>';
+  var tag=bedTag(bed).toLowerCase().replace(/\s+/g,"");
+  var pr=$("ptt-prompt"); if(pr) pr.innerHTML='aegis@icu-wing:~/'+esc(tag)+'<b>$</b>';
+  var cwd=$("ptt-cwd"); if(cwd) cwd.textContent=":~/"+tag;
   var o=$("ptt-out"); if(o) o.innerHTML="";
-  pttPrint('<span class="cl-d">tracking for '+esc(bedTag(bed))+' — <b>help</b> or plain English</span>',"l-sys");
+  pttPrint('<b>AegisOS</b> patient terminal — '+esc(bedTag(bed))+' · shape how the OS watches THIS patient.',"sys");
+  pttPrint('<b>help</b> · <b>history</b> paste/import a chart · <b>synth</b> record a clinical instruction · or plain English.',"dim");
+  var ib=$("ptt-intake"); if(ib) ib.classList.add("hidden");
+  document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.remove("on"); });
   if(typeof pttRenderCursor==="function") pttRenderCursor();
-  pttPoll(bed,true); }
+  pttPoll(bed,true); pttLoadHistory(bed); pttLoadSources(); }
 function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tracking"))
   .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
     if(d.profile){ pttRender(d.profile); pttFoci=(d.profile.foci||[]).slice(); pttApplyFoci(bed, pttFoci); }
@@ -288,8 +293,18 @@ function pttPoll(bed,first){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/tra
       pttPrint("⚑ WATCH FIRED · "+esc(f.label)+" — now <b>"+f.value+"</b>","l-fire"+(f.severity==="critical"?" crit":"")); });
   }).catch(function(){ if(first) pttPrint("patient terminal unreachable","l-sys"); }); }
 function pttRun(cmd){ if(!pttBed||!cmd.trim()) return; var bed=pttBed;
-  pttPrint('<span class="cl-cmd">'+esc(bedTag(bed))+'❯</span> '+esc(cmd),"l-echo");
+  var tag=bedTag(bed).toLowerCase().replace(/\s+/g,"");
+  pttPrint('<span class="cl-pr">aegis@icu-wing:~/'+esc(tag)+'$</span> '+esc(cmd),"echo");
   pttHist.push(cmd); pttHi=pttHist.length;
+  // intercept the intake / synthesis / EHR verbs — these hit their own endpoints.
+  var parts=cmd.trim().split(/\s+/), verb=parts[0].toLowerCase(), rest=cmd.trim().slice(parts[0].length).trim();
+  if(verb==="history"||verb==="import"){ if(rest) return pttImportHistory(bed,rest,"manual");
+    pttToggleIntake("history",true); return pttPrint('paste the chart above, then <b>Import →</b> (or: <span class="cl-cmd">history &lt;text&gt;</span>)',"dim"); }
+  if(verb==="synth"||verb==="synthesis"||verb==="instruct"){ if(rest) return pttSynthesis(bed,rest);
+    pttToggleIntake("synth",true); return pttPrint('write your synthesis/instruction above, then submit (or: <span class="cl-cmd">synth &lt;text&gt;</span>)',"dim"); }
+  if(verb==="ehr"||verb==="link"){ if(rest) return pttLinkSource(bed,rest.split(/\s+/)[0]);
+    pttToggleIntake("ehr",true); return pttPrint("pick a records source above","dim"); }
+  if(verb==="sources"){ return pttLoadSources(true); }
   fetch(window.AEGIS.http("/aegis/patient/"+bed+"/track"),{method:"POST",headers:{"Content-Type":"application/json"},
     body:JSON.stringify({command:cmd})}).then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
       var tag=d.source==="llm"?'<span class="cl-d">⟐ llm</span> ':d.source==="parser"?'<span class="cl-d">⟐ parsed</span> ':'';
@@ -299,6 +314,86 @@ function pttRun(cmd){ if(!pttBed||!cmd.trim()) return; var bed=pttBed;
         if(added.length) pttSpecialize(nf);          // play the specialization visual on a new focus
         pttFoci=nf.slice(); }
     }).catch(function(){ pttPrint("terminal unreachable","l-sys"); }); }
+
+/* ---- medical-history intake · EHR link · clinician synthesis ---- */
+var pttIntakeMode="history", pttSources=[];
+var PTT_INTAKE={ history:{h:"Import medical history",ph:"Paste the patient's medical history — comorbidities, medications, allergies, priorities…",btn:"Import →"},
+                synth:{h:"Clinical synthesis / instruction to the OS",ph:"Write your synthesis or instruction… e.g. \"Immunosuppressed — treat any fever as high-risk; watch renal perfusion, alert if MAP < 60.\"",btn:"Record →"},
+                ehr:{h:"Link hospital records source",ph:"",btn:"Import →"} };
+function pttToggleIntake(mode,force){ var ib=$("ptt-intake"); if(!ib) return;
+  var opening = force ? true : ib.classList.contains("hidden") || pttIntakeMode!==mode;
+  pttIntakeMode=mode||"history";
+  document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.toggle("on", opening && b.dataset.tool===pttIntakeMode); });
+  if(!opening){ ib.classList.add("hidden"); return; }
+  ib.classList.remove("hidden");
+  var m=PTT_INTAKE[pttIntakeMode]||PTT_INTAKE.history;
+  var hd=$("ptt-intake-h"); if(hd) hd.textContent=m.h;
+  var doc=$("ptt-doc"); if(doc){ doc.placeholder=m.ph; doc.style.display=(pttIntakeMode==="ehr")?"none":""; }
+  var sub=$("ptt-intake-submit"); if(sub){ sub.textContent=m.btn; sub.style.display=(pttIntakeMode==="ehr")?"none":""; }
+  var srcWrap=$("ptt-src"), fileL=document.querySelector(".ptt-file-l");
+  if(fileL) fileL.style.display=(pttIntakeMode==="history")?"":"none";
+  if(srcWrap) srcWrap.style.display=(pttIntakeMode==="ehr")?"":"none";
+  if(pttIntakeMode==="ehr") pttLoadSources();
+  else if(doc) setTimeout(function(){ doc.focus(); },30); }
+function pttIntakeSubmit(){ var bed=pttBed; if(!bed) return; var doc=$("ptt-doc"); var t=doc?doc.value.trim():"";
+  if(!t){ if(doc) doc.focus(); return; }
+  if(pttIntakeMode==="synth") pttSynthesis(bed,t); else pttImportHistory(bed,t,"manual");
+  if(doc) doc.value=""; $("ptt-intake").classList.add("hidden");
+  document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.remove("on"); }); }
+function pttLoadSources(echo){ fetch(window.AEGIS.http("/aegis/records/sources"))
+  .then(function(r){return r.json();}).then(function(d){ pttSources=d.sources||[];
+    var wrap=$("ptt-src"); if(wrap) wrap.innerHTML=pttSources.map(function(s){
+      return '<button class="ptt-src-btn'+(s.live?"":" stub")+'" data-src="'+esc(s.id)+'">'+esc(s.label)+
+        (s.live?"":' <small>stub</small>')+'</button>'; }).join("");
+    if(echo){ pttPrint('<b>RECORDS SOURCES</b>','sys');
+      pttSources.forEach(function(s){ pttPrint('<span class="cl-cmd">'+esc(s.id)+'</span><span class="cl-d">'+esc(s.label)+' · '+
+        (s.live?'live':'stub')+'</span> — <span class="cl-d">ehr '+esc(s.id)+'</span>',"row"); }); }
+  }).catch(function(){}); }
+function pttImportHistory(bed,text,source){ pttPrint('<span class="cl-d">⇪ importing history…</span>',"dim");
+  fetch(window.AEGIS.http("/aegis/patient/"+bed+"/history"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:text,source:source||"manual"})}).then(function(r){return r.json();})
+    .then(function(d){ if(pttBed!==bed) return; if(!d.ok){ pttPrint(esc(d.reply||"import failed"),"err"); return; }
+      pttPrintHistory(d.history, d.source); if(d.profile){ pttRender(d.profile); var nf=(d.profile.foci||[]);
+        pttApplyFoci(bed,nf); if(nf.length) pttSpecialize(nf); pttFoci=nf.slice(); }
+      pttLoadHistory(bed);
+    }).catch(function(){ pttPrint("history import unreachable","l-sys"); }); }
+function pttLinkSource(bed,srcId){ pttPrint('<span class="cl-d">⛓ linking '+esc(srcId)+'…</span>',"dim");
+  fetch(window.AEGIS.http("/aegis/patient/"+bed+"/history/link"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({source:srcId})}).then(function(r){return r.json();})
+    .then(function(d){ if(pttBed!==bed) return; if(!d.ok){ pttPrint(esc(d.reply||"link failed"),"warn"); return; }
+      var live=d.source&&d.source.live; if(!live) pttPrint('<span class="cl-warn">⚠ '+esc((d.source&&d.source.label)||srcId)+
+        ' is a STUB — canned demo record, not a live chart.</span>',"warn");
+      pttPrintHistory(d.history, d.source&&d.source.id); if(d.profile){ pttRender(d.profile); var nf=(d.profile.foci||[]);
+        pttApplyFoci(bed,nf); if(nf.length) pttSpecialize(nf); pttFoci=nf.slice(); }
+      var ib=$("ptt-intake"); if(ib) ib.classList.add("hidden");
+      document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.remove("on"); });
+      pttLoadHistory(bed);
+    }).catch(function(){ pttPrint("EHR link unreachable","l-sys"); }); }
+function pttPrintHistory(h,source){ if(!h) return;
+  pttPrint('<b>◇ HISTORY IMPORTED</b> <span class="tag">· '+esc(source||h.source||"manual")+'</span>',"l-hx");
+  if(h.summary) pttPrint(esc(h.summary),"l-hx");
+  if((h.comorbidities||[]).length) pttPrint('comorbidities: <b>'+h.comorbidities.map(esc).join("</b> · <b>")+'</b>',"l-hx");
+  if((h.medications||[]).length) pttPrint('<span class="tag">meds:</span> '+h.medications.map(esc).join(", "),"l-hx");
+  if((h.allergies||[]).length) pttPrint('<span class="cl-warn">allergies: '+h.allergies.map(esc).join(", ")+'</span>',"l-hx");
+  var spec=[]; if((h.seeded_foci||[]).length) spec.push('focus → '+h.seeded_foci.map(esc).join(", "));
+  if((h.seeded_watches||[]).length) spec.push('watches → '+h.seeded_watches.map(esc).join(", "));
+  if(spec.length) pttPrint('<span class="cl-ok">✓ specialized monitor:</span> '+spec.join(" · "),"l-hx");
+  else pttPrint('<span class="cl-d">no new foci/watches seeded (already covered)</span>',"l-hx"); }
+function pttLoadHistory(bed){ fetch(window.AEGIS.http("/aegis/patient/"+bed+"/history"))
+  .then(function(r){return r.json();}).then(function(d){ if(pttBed!==bed) return;
+    var hx=$("ptt-hx"); if(!hx) return; var h=d.history;
+    if(h){ var n=(h.comorbidities||[]).length; hx.innerHTML='◇ history · <b>'+n+'</b> comorbidit'+(n===1?'y':'ies')+
+      ' · <span style="color:var(--dim)">'+esc(h.source||"manual")+'</span>'; }
+    else hx.innerHTML='<span style="color:var(--dim)">no history imported</span>'; }).catch(function(){}); }
+function pttSynthesis(bed,text){ pttPrint('<span class="cl-d">✎ recording synthesis…</span>',"dim");
+  fetch(window.AEGIS.http("/aegis/patient/"+bed+"/synthesis"),{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({text:text})}).then(function(r){return r.json();})
+    .then(function(d){ if(pttBed!==bed) return; if(!d.ok){ pttPrint(esc(d.reply||"synthesis failed"),"err"); return; }
+      pttPrint('<b>✎ SYNTHESIS LOGGED</b> — recorded to the clinical story.',"l-synth");
+      if((d.applied||[]).length) pttPrint('<span class="cl-ok">applied:</span> '+d.applied.map(esc).join("; "),"l-synth");
+      if(d.order_intent) pttPrint('<b>⚠ treatment intent detected</b> — orders/doses were NOT executed. Route via the certified <span class="cl-cmd">treat</span> gate (audited · Z3-verified).',"l-refuse");
+      if(d.profile){ pttRender(d.profile); var nf=(d.profile.foci||[]); pttApplyFoci(bed,nf); pttFoci=nf.slice(); }
+    }).catch(function(){ pttPrint("synthesis unreachable","l-sys"); }); }
 /* blinking block-cursor line editor — the SAME as the main AegisOS terminal */
 var PTT_PH="focus kidneys · watch lactate > 3 · or plain English…";
 function pttRenderCursor(){ var inp=$("ptt-in"); if(!inp) return;
@@ -306,6 +401,14 @@ function pttRenderCursor(){ var inp=$("ptt-in"); if(!inp) return;
   var pre=$("pti-pre"), cur=$("pti-cur"), post=$("pti-post"); if(!pre) return;
   if(!v){ pre.textContent=""; cur.textContent=" "; post.textContent=PTT_PH; post.className="ti-post ph"; return; }
   pre.textContent=v.slice(0,pos); cur.textContent=v.slice(pos,pos+1)||" "; post.textContent=v.slice(pos+1); post.className="ti-post"; }
+/* ---- the big patient-terminal overlay (opened by the dossier button) ---- */
+var pttModalOpen=false;
+function pttModalShow(){ var bed=selectedBed||pttBed; if(!bed) return;
+  if(pttBed!==bed) pttLoad(bed);            // (re)load the terminal for the open patient
+  pttModalOpen=true; $("ptt-modal").classList.add("open"); $("ptt-modal").setAttribute("aria-hidden","false");
+  setTimeout(function(){ var i=$("ptt-in"); if(i){ i.focus(); pttRenderCursor(); } },30); }
+function pttModalHide(){ pttModalOpen=false; $("ptt-modal").classList.remove("open"); $("ptt-modal").setAttribute("aria-hidden","true"); }
+function pttModalToggle(){ pttModalOpen?pttModalHide():pttModalShow(); }
 function pttInit(){ var inp=$("ptt-in");
   if(inp){
     inp.addEventListener("input",pttRenderCursor);
@@ -321,7 +424,21 @@ function pttInit(){ var inp=$("ptt-in");
     pttRenderCursor();
   }
   var box=$("ptt-profile"); if(box) box.addEventListener("click",function(e){ var x=e.target.closest("[data-x]"); if(!x||!pttBed) return;
-    var spec=x.dataset.x; pttRun(spec.indexOf("focus:")===0?("unfocus "+spec.slice(6)):("unwatch "+spec.slice(6))); }); }
+    var spec=x.dataset.x; pttRun(spec.indexOf("focus:")===0?("unfocus "+spec.slice(6)):("unwatch "+spec.slice(6))); });
+  // history / EHR / synthesis toolbar
+  document.querySelectorAll(".ptt-tool").forEach(function(b){ b.addEventListener("click",function(){ pttToggleIntake(b.dataset.tool); }); });
+  var sub=$("ptt-intake-submit"); if(sub) sub.addEventListener("click",pttIntakeSubmit);
+  var src=$("ptt-src"); if(src) src.addEventListener("click",function(e){ var s=e.target.closest("[data-src]"); if(!s||!pttBed) return;
+    pttLinkSource(pttBed, s.dataset.src); });
+  var file=$("ptt-file"); if(file) file.addEventListener("change",function(){ var f=file.files&&file.files[0]; if(!f) return;
+    var rd=new FileReader(); rd.onload=function(){ var doc=$("ptt-doc"); if(doc){ doc.value=String(rd.result||"").slice(0,20000); doc.focus(); } };
+    rd.readAsText(f); file.value=""; });
+  var doc=$("ptt-doc"); if(doc) doc.addEventListener("keydown",function(e){ if(e.key==="Enter"&&(e.metaKey||e.ctrlKey)){ e.preventDefault(); pttIntakeSubmit(); } });
+  // open/close the big overlay
+  var openBtn=$("ptt-open"); if(openBtn) openBtn.addEventListener("click",pttModalShow);
+  var xBtn=$("ptt-x"); if(xBtn) xBtn.addEventListener("click",pttModalHide);
+  var modal=$("ptt-modal"); if(modal) modal.addEventListener("mousedown",function(e){ if(e.target===this) pttModalHide(); });
+  document.addEventListener("keydown",function(e){ if(e.key==="Escape"&&pttModalOpen){ e.stopPropagation(); pttModalHide(); } },true); }
 
 function kvHTML(label,val,unit,cls){
   return '<div class="kv'+(cls?" "+cls:"")+'"><span class="k">'+label+'</span>'+
@@ -1659,9 +1776,9 @@ var CMD={
   open:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("no bed matches '"+esc(a)+"'","err");
     cmdHide(); openDossier(b.bed_id); cmdPrint("opening dossier · "+esc(b.name),"ok"); },
   patient:function(a){ var b=resolveBed(a); if(!b) return cmdPrint("usage: <b>patient &lt;bed&gt;</b> — open the patient's own OS + tracking terminal","err");
-    cmdPrint('<span class="cl-ok">▸ booting patient OS · '+esc(b.name)+'</span> <span class="cl-d">— tell the Patient Terminal what to watch (plain English)</span>',"sys");
+    cmdPrint('<span class="cl-ok">▸ booting patient terminal · '+esc(b.name)+'</span> <span class="cl-d">— history · synthesis · tell it what to watch (plain English)</span>',"sys");
     cmdHide(); openDossier(b.bed_id);
-    setTimeout(function(){ var i=$("ptt-in"); if(i){ i.focus(); i.placeholder="e.g. focus her kidneys · alert if lactate > 3 …"; } }, 480); },
+    setTimeout(function(){ pttModalShow(); }, 260); },
   alloc:function(){ var ns=(lastSnap&&lastSnap.topology)||[];
     cmdPrint('<b>COGNITIVE SCHEDULER</b> · mode '+((lastSnap&&lastSnap.scheduler&&lastSnap.scheduler.mode)||"—")+' · lane budget '+(V.budget||"—"),"sys");
     if(lastSnap&&lastSnap.scheduler) cmdPrint('Σ cost '+fmt(lastSnap.scheduler.cost,2)+(lastSnap.scheduler.owner?' · preempt owner '+esc(cleanName(lastSnap.scheduler.owner)):''),"row");

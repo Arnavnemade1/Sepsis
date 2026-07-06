@@ -1596,6 +1596,71 @@ def patient_track(bed: str, payload: TrackIn) -> Dict[str, Any]:
     return patient_terminal.exec(bed, payload.command, context=_patient_ctx(bed))
 
 
+# --- Medical-history intake + records sources (specialise the monitor) ------ #
+class HistoryIn(BaseModel):
+    text: str = ""
+    source: str = "manual"
+
+
+class LinkIn(BaseModel):
+    source: str = "mock_hospital"
+
+
+class SynthIn(BaseModel):
+    text: str = ""
+
+
+def _roster_entry(bed: str) -> Dict[str, Any]:
+    for p in _patient_roster():
+        if p["id"] == bed:
+            return p
+    return {"id": bed, "septic": None}
+
+
+@app.get("/aegis/records/sources")
+def records_sources() -> Dict[str, Any]:
+    """Registered records-source connectors (manual paste/upload + the MCP-shaped
+    demo hospital stub). Each carries a `live` flag so the UI is honest about stubs."""
+    return {"sources": patient_terminal.sources()}
+
+
+@app.get("/aegis/patient/{bed}/history")
+def patient_history_get(bed: str) -> Dict[str, Any]:
+    """The imported medical history for this patient (if any) + what it specialised."""
+    return {"history": patient_terminal.get_history(bed),
+            "sources": patient_terminal.sources()}
+
+
+@app.post("/aegis/patient/{bed}/history")
+def patient_history_import(bed: str, payload: HistoryIn) -> Dict[str, Any]:
+    """Import a pasted/uploaded medical history → parse → seed foci + watch-rules so
+    the monitor specialises toward this patient. Observation-only."""
+    if not (payload.text or "").strip():
+        return {"ok": False, "reply": "empty history"}
+    return patient_terminal.import_history(bed, payload.text, source=payload.source or "manual")
+
+
+@app.post("/aegis/patient/{bed}/history/link")
+def patient_history_link(bed: str, payload: LinkIn) -> Dict[str, Any]:
+    """Pull a history from a registered records source (stub/MCP/EHR) and import it."""
+    return patient_terminal.link_source(bed, payload.source, patient=_roster_entry(bed))
+
+
+@app.get("/aegis/patient/{bed}/synthesis")
+def patient_synthesis_get(bed: str) -> Dict[str, Any]:
+    """The clinician synthesis / instruction log for this patient (annotations shown
+    in the clinical story)."""
+    return {"annotations": patient_terminal.get_annotations(bed)}
+
+
+@app.post("/aegis/patient/{bed}/synthesis")
+def patient_synthesis_add(bed: str, payload: SynthIn) -> Dict[str, Any]:
+    """Record a doctor's detailed synthesis/instruction. Stored as a timestamped
+    annotation; monitoring intent (safe vocab) is applied; treatment intent is
+    flagged and redirected to the certified order gate — never auto-executed."""
+    return patient_terminal.add_synthesis(bed, payload.text, context=_patient_ctx(bed))
+
+
 @app.get("/aegis/ml")
 def ml_status() -> Dict[str, Any]:
     """The ML control plane: registered models + running training jobs."""

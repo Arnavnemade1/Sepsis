@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=20" />
+<link rel="stylesheet" href="os.css?v=21" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -335,8 +335,10 @@
     <section class="story-ledger">
       <div class="story-sec-h">EVENT LEDGER
         <span class="story-sub" id="story-ledger-sub">0 events · 0 edges</span>
+        <button class="dock-btn" id="story-expand">⊞ expand all</button>
         <button class="dock-btn" id="story-refresh">↻ refresh</button>
       </div>
+      <div id="story-verdict" class="story-verdict-panel"></div>
       <div id="story-timeline" class="story-timeline">
         <div class="muted">No clinical events yet. The graph grows as risk evolves.</div>
       </div>
@@ -361,6 +363,17 @@
         <div id="story-replay-out" class="story-report">
           <div class="muted">Run an incident report first, then replay an alternative
             action from the earliest actionable branch point.</div>
+        </div>
+      </div>
+
+      <div class="story-card">
+        <div class="story-sec-h">CLINICIAN SYNTHESIS
+          <span class="story-sub">doctor instructions on record</span>
+        </div>
+        <div id="story-synth-out" class="story-report">
+          <div class="muted">Detailed clinician synthesis &amp; instructions recorded via
+            the patient terminal appear here, timestamped and cross-referenceable —
+            monitoring directives are applied; treatment stays behind the certified order gate.</div>
         </div>
       </div>
 
@@ -843,6 +856,6 @@
 </script>
 <script type="module" src="twin3d.js?v=6"></script>
 <script type="module" src="camera.js?v=10"></script>
-<script src="os.js?v=24"></script>
+<script src="os.js?v=25"></script>
 </body>
 </html>
