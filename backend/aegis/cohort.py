@@ -614,6 +614,7 @@ class CohortCluster:
             "population_risk": d["fused_risk"],
             "fused_risk": pz.get("risk", d["fused_risk"]),
             "deviation": pz.get("deviation", 0.0),
+            "history_uplift": 0.0,
             "baseline_maturity": pz.get("maturity", 0.0),
             "personal_top": pz.get("top", []),
             "learned": pz.get("learned", {}),       # what the model learned about THIS patient
@@ -622,6 +623,19 @@ class CohortCluster:
             "ews": self._ews_at(nid, lab_i),        # Critical-Slowing-Down radar
             "resonance": self.resonance_state.get(nid, {}),  # cross-modal agreement gate
         })
+        # comorbidity-history personalization (imported/linked chart) — layered on top of
+        # the baseline-learning risk so the WHOLE UI (grid + dossier) reflects it. The
+        # provider is injected by the server; beds with no history return 0 (no-op).
+        prov = getattr(self, "susceptibility_provider", None)
+        if prov is not None:
+            try:
+                uplift = float(prov(nid) or 0.0)
+            except Exception:
+                uplift = 0.0
+            if uplift:
+                from backend.aegis.patient_records import personalize_risk
+                d["history_uplift"] = round(uplift, 3)
+                d["fused_risk"] = personalize_risk(d["fused_risk"], uplift)
         return d
 
     def _ews_at(self, nid: str, h: int) -> Dict[str, Any]:

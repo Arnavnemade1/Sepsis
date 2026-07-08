@@ -159,8 +159,10 @@ def compute_susceptibility(comorbidities: List[str]) -> Dict[str, Any]:
     factors.sort(key=lambda f: f["weight"], reverse=True)
     raw = sum(f["weight"] for f in factors)
     uplift = round(min(MAX_UPLIFT_LOGIT, raw), 3)
-    return {"logit_uplift": uplift, "capped": raw > MAX_UPLIFT_LOGIT,
-            "factors": factors,
+    level = ("none" if uplift <= 0 else "mild" if uplift < 0.4
+             else "moderate" if uplift < 0.8 else "high")
+    return {"logit_uplift": uplift, "odds_ratio": round(math.exp(uplift), 2),
+            "level": level, "capped": raw > MAX_UPLIFT_LOGIT, "factors": factors,
             "note": ("increases sepsis vigilance (prior shift) for this host — "
                      "raw population risk preserved") if uplift > 0
                     else "no documented host risk factors; monitoring unchanged"}

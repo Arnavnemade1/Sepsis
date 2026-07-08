@@ -266,6 +266,20 @@ from backend.aegis.patient_terminal import PatientTerminal as _PatientTerminal
 patient_terminal = _PatientTerminal(llm_client=_llm_client)
 
 
+def _bed_susceptibility(bed: str) -> float:
+    """Comorbidity risk-prior uplift for a bed (0 when no history imported). Injected
+    into the cohort so grid tiles + dossier reflect the same personalization the
+    per-patient snapshot does."""
+    h = patient_terminal.get_history(bed)
+    return float(((h or {}).get("susceptibility") or {}).get("logit_uplift", 0.0) or 0.0)
+
+
+try:
+    cluster.susceptibility_provider = _bed_susceptibility
+except Exception:
+    pass
+
+
 def _llm_state() -> Dict[str, Any]:
     """Assemble a compact, grounded snapshot for the assistant (read-only)."""
     st: Dict[str, Any] = {}

@@ -569,6 +569,9 @@ b{font-weight:700}
 .pa-sus-lvl{margin-left:8px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.06em;color:#f5cd7a}
 .pa-sus.mod .pa-sus-lvl{color:#f5a94b}.pa-sus.high .pa-sus-lvl{color:#ff9aa4}
 .pa-sus-up{margin-left:8px;font-family:var(--mono);font-size:8.5px;color:var(--dim)}
+.pa-sus-shift{float:right;font-family:var(--mono);font-size:10px;color:var(--muted)}
+.pa-sus-shift b{color:#ff9aa4}
+.pa-sus.mild .pa-sus-shift b{color:#f5cd7a}
 .pa-sus-f{margin-top:5px;font-family:var(--mono);font-size:10px;color:#cfe0ff}
 .pa-sus-n{margin-top:4px;font-size:9.5px;color:var(--muted)}
 .pa-adjust{margin-top:11px;padding-top:10px;border-top:1px dashed var(--hair-soft)}

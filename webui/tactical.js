@@ -404,13 +404,21 @@ function pttRenderAdapt(h){ var box=$("ptt-adapt"); if(!box) return;
   var row=function(k,arr,cls){ return (arr&&arr.length)?('<div class="pa-row"><span class="pa-k">'+k+'</span><span class="pa-v">'+pttChipList(arr,cls)+'</span></div>'):""; };
   var foci=pttChipList(h.seeded_foci,"foc")||'<span class="pa-none">already active</span>';
   var wat=pttChipList(h.seeded_watches,"wat")||'<span class="pa-none">already active</span>';
-  // sepsis-susceptibility (the risk-prior personalization)
+  // sepsis-susceptibility (the risk-prior personalization) — clinician-readable
   var sus=h.susceptibility||{}, up=+sus.logit_uplift||0;
-  var lvl=up<=0?null:up<0.4?["MILD","mild"]:up<0.8?["MODERATE","mod"]:["HIGH","high"];
-  var susHTML=lvl?('<div class="pa-sus '+lvl[1]+'"><span class="pa-sus-k">Sepsis susceptibility</span>'+
-    '<span class="pa-sus-lvl">'+lvl[0]+'</span><span class="pa-sus-up">prior +'+up.toFixed(2)+' logit</span>'+
-    '<div class="pa-sus-f">'+(sus.factors||[]).map(function(f){return esc(f.name);}).join(" · ")+'</div>'+
-    '<div class="pa-sus-n">↑ the OS alerts this patient earlier · population risk preserved</div></div>'):"";
+  var LV={mild:["MILD","mild"],moderate:["MODERATE","mod"],high:["HIGH","high"]};
+  var lvl=LV[sus.level]||(up>0?["ELEVATED","mild"]:null), susHTML="";
+  if(lvl){
+    var orv=+sus.odds_ratio||Math.exp(up);
+    var bd=(typeof latestBeds!=="undefined")?latestBeds[pttBed]:null, shift="";
+    if(bd&&bd.population_risk!=null&&bd.history_uplift){
+      shift='<span class="pa-sus-shift">'+Math.round(bd.population_risk*100)+'% → <b>'+Math.round(bd.fused_risk*100)+'%</b></span>';
+    }
+    susHTML='<div class="pa-sus '+lvl[1]+'"><span class="pa-sus-k">Sepsis susceptibility</span>'+
+      '<span class="pa-sus-lvl">'+lvl[0]+'</span><span class="pa-sus-up">risk odds ×'+orv.toFixed(1)+'</span>'+shift+
+      '<div class="pa-sus-f">'+(sus.factors||[]).map(function(f){return esc(f.name);}).join(" · ")+'</div>'+
+      '<div class="pa-sus-n">↑ the OS alerts this patient earlier · population risk preserved</div></div>';
+  }
   box.classList.remove("hidden");
   box.innerHTML=
     '<div class="pa-hd"><span class="pa-title">◈ Specialized for this patient</span>'+
