@@ -230,6 +230,92 @@ def normalized_utility(
 
 
 # --------------------------------------------------------------------------- #
+# Decision-curve analysis (net clinical benefit) + alarm burden
+# --------------------------------------------------------------------------- #
+def net_benefit(y: np.ndarray, p: np.ndarray, pt: float) -> float:
+    """Net benefit at threshold probability ``pt`` (Vickers & Elkin 2006):
+        NB = TP/N - FP/N * (pt / (1 - pt))
+    i.e. true positives credited, false positives penalised by the odds a clinician
+    would accept to act. Lets us compare against treat-all / treat-none policies."""
+    n = len(y)
+    if n == 0 or pt >= 1.0:
+        return float("nan")
+    pred = p >= pt
+    tp = float(((pred == 1) & (y == 1)).sum())
+    fp = float(((pred == 1) & (y == 0)).sum())
+    return float(tp / n - (fp / n) * (pt / (1.0 - pt)))
+
+
+def decision_curve(y: np.ndarray, p: np.ndarray,
+                   thresholds: Optional[np.ndarray] = None) -> Dict[str, List[float]]:
+    """Net benefit of the model vs treat-all and treat-none across threshold
+    probabilities. Per-hour sepsis prevalence is ~2%, so the clinically relevant
+    threshold-probability range is low (≈0.5%–20%)."""
+    if thresholds is None:
+        thresholds = np.linspace(0.005, 0.20, 40)
+    prev = float(y.mean())
+    model = [net_benefit(y, p, float(pt)) for pt in thresholds]
+    treat_all = [float(prev - (1.0 - prev) * (pt / (1.0 - pt))) for pt in thresholds]
+    return {"thresholds": [float(t) for t in thresholds], "model": model,
+            "treat_all": treat_all, "treat_none": [0.0] * len(thresholds)}
+
+
+def alarm_burden(y: np.ndarray, p: np.ndarray, groups: np.ndarray,
+                 thresholds: Optional[np.ndarray] = None) -> Dict[str, List[float]]:
+    """Across alarm thresholds: detection rate (sensitivity over septic patients),
+    false-alarm rate (fraction of non-septic patients ever alarmed), and alarm
+    burden as false alerts per 100 non-septic patient-hours — the alarm-fatigue axis
+    a clinician cares about as much as sensitivity."""
+    if thresholds is None:
+        thresholds = np.linspace(0.02, 0.6, 30)
+    uniq = list(set(groups.tolist()))
+    pos_g = {g: int(y[groups == g].max()) for g in uniq}
+    npos = sum(1 for g in uniq if pos_g[g])
+    nneg = sum(1 for g in uniq if not pos_g[g])
+    neg_hours = int((y == 0).sum())
+    det, far, burden = [], [], []
+    for t in thresholds:
+        alarmed_pos = alarmed_neg = 0
+        for g in uniq:
+            m = groups == g
+            any_alarm = bool((p[m] >= t).any())
+            if pos_g[g] and any_alarm:
+                alarmed_pos += 1
+            elif not pos_g[g] and any_alarm:
+                alarmed_neg += 1
+        det.append(alarmed_pos / max(npos, 1))
+        far.append(alarmed_neg / max(nneg, 1))
+        fp_hours = int(((p >= t) & (y == 0)).sum())
+        burden.append(100.0 * fp_hours / max(neg_hours, 1))
+    return {"thresholds": [float(t) for t in thresholds], "detection_rate": det,
+            "false_alarm_rate": far, "false_alerts_per_100h": burden}
+
+
+def bootstrap_ci(y: np.ndarray, p: np.ndarray, groups: np.ndarray,
+                 stat: str = "auroc", n_boot: int = 500, seed: int = 0,
+                 alpha: float = 0.05) -> Tuple[float, float]:
+    """Patient-level (cluster) bootstrap 95% CI. Resampling PATIENTS (not rows)
+    respects the within-patient correlation, so the interval is honest."""
+    fn = {"auroc": auroc, "auprc": auprc, "brier": brier}[stat]
+    rng = np.random.default_rng(seed)
+    uniq = np.array(sorted(set(groups.tolist())))
+    idx_by = {g: np.where(groups == g)[0] for g in uniq}
+    vals: List[float] = []
+    for _ in range(n_boot):
+        samp = rng.choice(uniq, size=len(uniq), replace=True)
+        rows = np.concatenate([idx_by[g] for g in samp])
+        yb, pb = y[rows], p[rows]
+        if len(np.unique(yb)) > 1:
+            v = fn(yb, pb)
+            if not np.isnan(v):
+                vals.append(v)
+    if not vals:
+        return float("nan"), float("nan")
+    return (float(np.percentile(vals, 100 * alpha / 2)),
+            float(np.percentile(vals, 100 * (1 - alpha / 2))))
+
+
+# --------------------------------------------------------------------------- #
 # One-shot report
 # --------------------------------------------------------------------------- #
 @dataclass
