@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=24" />
+<link rel="stylesheet" href="tactical.css?v=25" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -351,6 +351,7 @@
     <div class="ptt-intake hidden" id="ptt-intake">
       <div class="ptt-intake-h" id="ptt-intake-h">Import medical history</div>
       <textarea id="ptt-doc" class="ptt-doc" placeholder="Paste the patient's medical history — comorbidities, medications, allergies, priorities…"></textarea>
+      <input id="ptt-ref" class="ptt-ref hidden" placeholder="FHIR patient id (blank = demo patient)" autocomplete="off" spellcheck="false" />
       <div class="ptt-intake-actions">
         <label class="ptt-file-l">⇪ file<input type="file" id="ptt-file" accept=".txt,.md,.json,.csv,text/*" hidden /></label>
         <span class="ptt-src" id="ptt-src"></span>
@@ -369,6 +370,6 @@
   </div>
 </div>
 
-<script src="tactical.js?v=23"></script>
+<script src="tactical.js?v=24"></script>
 </body>
 </html>

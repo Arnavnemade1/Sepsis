@@ -331,10 +331,13 @@ function pttToggleIntake(mode,force){ var ib=$("ptt-intake"); if(!ib) return;
   var hd=$("ptt-intake-h"); if(hd) hd.textContent=m.h;
   var doc=$("ptt-doc"); if(doc){ doc.placeholder=m.ph; doc.style.display=(pttIntakeMode==="ehr")?"none":""; }
   var sub=$("ptt-intake-submit"); if(sub){ sub.textContent=m.btn; sub.style.display=(pttIntakeMode==="ehr")?"none":""; }
-  var srcWrap=$("ptt-src"), fileL=document.querySelector(".ptt-file-l");
+  var srcWrap=$("ptt-src"), fileL=document.querySelector(".ptt-file-l"), refIn=$("ptt-ref");
   if(fileL) fileL.style.display=(pttIntakeMode==="history")?"":"none";
   if(srcWrap) srcWrap.style.display=(pttIntakeMode==="ehr")?"":"none";
-  if(pttIntakeMode==="ehr") pttLoadSources();
+  if(refIn) refIn.classList.toggle("hidden",pttIntakeMode!=="ehr");
+  if(pttIntakeMode==="ehr"){ pttLoadSources();
+    if(refIn && !refIn.value){ var f=(pttSources||[]).filter(function(s){return s.accepts_ref&&s.default_ref;})[0];
+      if(f) refIn.value=f.default_ref; } }
   else if(doc) setTimeout(function(){ doc.focus(); },30); }
 function pttIntakeSubmit(){ var bed=pttBed; if(!bed) return; var doc=$("ptt-doc"); var t=doc?doc.value.trim():"";
   if(!t){ if(doc) doc.focus(); return; }
@@ -343,9 +346,9 @@ function pttIntakeSubmit(){ var bed=pttBed; if(!bed) return; var doc=$("ptt-doc"
   document.querySelectorAll(".ptt-tool").forEach(function(b){ b.classList.remove("on"); }); }
 function pttLoadSources(echo){ fetch(window.AEGIS.http("/aegis/records/sources"))
   .then(function(r){return r.json();}).then(function(d){ pttSources=d.sources||[];
-    var wrap=$("ptt-src"); if(wrap) wrap.innerHTML=pttSources.map(function(s){
-      return '<button class="ptt-src-btn'+(s.live?"":" stub")+'" data-src="'+esc(s.id)+'">'+esc(s.label)+
-        (s.live?"":' <small>stub</small>')+'</button>'; }).join("");
+    var wrap=$("ptt-src"); if(wrap) wrap.innerHTML=pttSources.filter(function(s){return s.id!=="manual";}).map(function(s){
+      var tag=s.kind==="fhir"?' <small>live FHIR</small>':(s.live?'':' <small>stub</small>');
+      return '<button class="ptt-src-btn'+(s.live?"":" stub")+(s.kind==="fhir"?" fhir":"")+'" data-src="'+esc(s.id)+'">'+esc(s.label)+tag+'</button>'; }).join("");
     if(echo){ pttPrint('<b>RECORDS SOURCES</b>','sys');
       pttSources.forEach(function(s){ pttPrint('<span class="cl-cmd">'+esc(s.id)+'</span><span class="cl-d">'+esc(s.label)+' · '+
         (s.live?'live':'stub')+'</span> — <span class="cl-d">ehr '+esc(s.id)+'</span>',"row"); }); }
@@ -358,9 +361,10 @@ function pttImportHistory(bed,text,source){ pttPrint('<span class="cl-d">⇪ imp
         pttApplyFoci(bed,nf); if(nf.length) pttSpecialize(nf); pttFoci=nf.slice(); }
       pttLoadHistory(bed);
     }).catch(function(){ pttPrint("history import unreachable","l-sys"); }); }
-function pttLinkSource(bed,srcId){ pttPrint('<span class="cl-d">⛓ linking '+esc(srcId)+'…</span>',"dim");
+function pttLinkSource(bed,srcId,ref){ var refIn=$("ptt-ref"); if(ref==null&&refIn) ref=refIn.value.trim();
+  pttPrint('<span class="cl-d">⛓ linking '+esc(srcId)+(ref?' · patient '+esc(ref):'')+'…</span>',"dim");
   fetch(window.AEGIS.http("/aegis/patient/"+bed+"/history/link"),{method:"POST",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({source:srcId})}).then(function(r){return r.json();})
+    body:JSON.stringify({source:srcId,patient_ref:ref||null})}).then(function(r){return r.json();})
     .then(function(d){ if(pttBed!==bed) return; if(!d.ok){ pttPrint(esc(d.reply||"link failed"),"warn"); return; }
       var live=d.source&&d.source.live; if(!live) pttPrint('<span class="cl-warn">⚠ '+esc((d.source&&d.source.label)||srcId)+
         ' is a STUB — canned demo record, not a live chart.</span>',"warn");
@@ -400,11 +404,19 @@ function pttRenderAdapt(h){ var box=$("ptt-adapt"); if(!box) return;
   var row=function(k,arr,cls){ return (arr&&arr.length)?('<div class="pa-row"><span class="pa-k">'+k+'</span><span class="pa-v">'+pttChipList(arr,cls)+'</span></div>'):""; };
   var foci=pttChipList(h.seeded_foci,"foc")||'<span class="pa-none">already active</span>';
   var wat=pttChipList(h.seeded_watches,"wat")||'<span class="pa-none">already active</span>';
+  // sepsis-susceptibility (the risk-prior personalization)
+  var sus=h.susceptibility||{}, up=+sus.logit_uplift||0;
+  var lvl=up<=0?null:up<0.4?["MILD","mild"]:up<0.8?["MODERATE","mod"]:["HIGH","high"];
+  var susHTML=lvl?('<div class="pa-sus '+lvl[1]+'"><span class="pa-sus-k">Sepsis susceptibility</span>'+
+    '<span class="pa-sus-lvl">'+lvl[0]+'</span><span class="pa-sus-up">prior +'+up.toFixed(2)+' logit</span>'+
+    '<div class="pa-sus-f">'+(sus.factors||[]).map(function(f){return esc(f.name);}).join(" · ")+'</div>'+
+    '<div class="pa-sus-n">↑ the OS alerts this patient earlier · population risk preserved</div></div>'):"";
   box.classList.remove("hidden");
   box.innerHTML=
     '<div class="pa-hd"><span class="pa-title">◈ Specialized for this patient</span>'+
       '<span class="pa-src'+(stub?" stub":"")+'">'+esc(h.source||"manual")+(stub?" · demo":"")+'</span></div>'+
     (h.summary?'<div class="pa-sum">'+esc(h.summary)+'</div>':"")+
+    susHTML+
     row("Comorbidities",h.comorbidities,"cmb")+
     row("Medications",h.medications,"med")+
     row("Allergies",h.allergies,"alg")+

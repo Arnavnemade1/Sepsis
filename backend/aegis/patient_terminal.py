@@ -368,18 +368,21 @@ class PatientTerminal:
                 "profile": prof.to_dict()}
 
     def link_source(self, bed_id: str, source_id: str,
-                    patient: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Pull a history from a registered records source (MCP-shaped stub / future
-        live EHR) and import it. Honest about stubs: the returned payload carries the
-        source's ``live`` flag so the UI never implies a real chart was fetched."""
+                    patient: Optional[Dict[str, Any]] = None,
+                    ref: Optional[str] = None) -> Dict[str, Any]:
+        """Pull a history from a registered records source (MCP-shaped stub / live FHIR
+        EHR) and import it. Honest about stubs: the returned payload carries the
+        source's ``live`` flag so the UI never implies a real chart was fetched. ``ref``
+        is a source-specific patient identifier (e.g. a FHIR patient id / MRN)."""
         src = self.registry.get(source_id)
         if src is None:
             return {"ok": False, "reply": f"unknown records source '{source_id}'",
                     "sources": self.registry.list_sources()}
-        text = src.fetch(bed_id, patient)
+        text = src.fetch(bed_id, patient, ref=ref)
         if not text:
             return {"ok": False, "reply": f"{src.label}: no record returned "
-                    "(paste/upload manually)", "source": src.describe()}
+                    "(check the patient id, or paste/upload manually)",
+                    "source": src.describe()}
         out = self.import_history(bed_id, text, source=src.id)
         out["source"] = src.describe()
         return out

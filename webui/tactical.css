@@ -552,6 +552,25 @@ b{font-weight:700}
 .pa-chip.pri{border-color:rgba(245,185,75,.35);color:#f5cd7a}
 .pa-chip.foc{border-color:rgba(72,196,242,.5);color:#bfeaff;background:rgba(72,196,242,.09)}
 .pa-chip.wat{border-color:rgba(79,224,192,.45);color:#8ff0db;background:rgba(79,224,192,.07)}
+/* FHIR patient-id input in the EHR intake */
+.ptt-ref{width:100%;box-sizing:border-box;font-family:var(--mono);font-size:11px;color:var(--ink);
+  background:rgba(3,6,12,.6);border:1px solid var(--hair);border-radius:var(--r-xs);padding:7px 10px;outline:none}
+.ptt-ref:focus{border-color:var(--hair-hot);box-shadow:0 0 0 1px rgba(72,196,242,.18)}
+.ptt-ref::placeholder{color:var(--dim)}
+.ptt-ref.hidden{display:none}
+.ptt-src-btn.fhir{border-color:rgba(79,224,192,.5);color:#8ff0db}
+.ptt-src-btn.fhir small{color:#4fe0c0}
+/* sepsis-susceptibility (the risk-prior personalization) */
+.pa-sus{margin:9px 0;padding:9px 11px;border-radius:9px;border:1px solid rgba(245,185,75,.3);
+  background:linear-gradient(180deg,rgba(245,185,75,.08),rgba(10,14,22,.2));position:relative}
+.pa-sus.mod{border-color:rgba(245,154,75,.42);background:linear-gradient(180deg,rgba(245,154,75,.1),rgba(10,14,22,.2))}
+.pa-sus.high{border-color:rgba(242,96,110,.5);background:linear-gradient(180deg,rgba(242,96,110,.12),rgba(10,14,22,.2))}
+.pa-sus-k{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.pa-sus-lvl{margin-left:8px;font-family:var(--mono);font-size:10px;font-weight:800;letter-spacing:.06em;color:#f5cd7a}
+.pa-sus.mod .pa-sus-lvl{color:#f5a94b}.pa-sus.high .pa-sus-lvl{color:#ff9aa4}
+.pa-sus-up{margin-left:8px;font-family:var(--mono);font-size:8.5px;color:var(--dim)}
+.pa-sus-f{margin-top:5px;font-family:var(--mono);font-size:10px;color:#cfe0ff}
+.pa-sus-n{margin-top:4px;font-size:9.5px;color:var(--muted)}
 .pa-adjust{margin-top:11px;padding-top:10px;border-top:1px dashed var(--hair-soft)}
 .pa-adjust-h{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:9px;
   letter-spacing:.05em;color:#8ff0db;margin-bottom:8px}

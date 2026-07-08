@@ -79,7 +79,45 @@ def main():
     _check("annotations are observation-only",
            all(a["monitoring_only"] for a in pt.get_annotations("bed_A")))
 
-    print("[6] Empty / junk input is safe")
+    print("[6] Personalization: comorbidities → bounded, disclosed risk-prior uplift")
+    from backend.aegis.patient_records import (
+        compute_susceptibility, personalize_risk, MAX_UPLIFT_LOGIT, FHIRSource)
+    s0 = compute_susceptibility([])
+    _check("no comorbidities → zero uplift", s0["logit_uplift"] == 0.0)
+    s1 = compute_susceptibility(["immunocompromised", "CKD", "CHF", "diabetes"])
+    _check("multiple risk factors → positive uplift", s1["logit_uplift"] > 0)
+    _check("uplift is capped", s1["logit_uplift"] <= MAX_UPLIFT_LOGIT)
+    _check("factors itemised + sorted", s1["factors"][0]["weight"] >= s1["factors"][-1]["weight"])
+    _check("personalize raises risk monotonically",
+           personalize_risk(0.30, s1["logit_uplift"]) > 0.30)
+    _check("zero uplift is a no-op", abs(personalize_risk(0.42, 0.0) - 0.42) < 1e-6)
+    _check("personalize stays in (0,1)",
+           0 < personalize_risk(0.99, MAX_UPLIFT_LOGIT) < 1)
+    reg2 = RecordsRegistry()
+    _check("FHIR source registered + live + accepts_ref",
+           reg2.get("fhir_sandbox") is not None and reg2.get("fhir_sandbox").live
+           and reg2.get("fhir_sandbox").accepts_ref)
+
+    print("[7] FHIR connector (live sandbox — best-effort, skipped if offline)")
+    try:
+        import httpx
+        r = httpx.get("https://r4.smarthealthit.org/metadata", timeout=8,
+                      headers={"Accept": "application/fhir+json"})
+        online = r.status_code == 200
+    except Exception:
+        online = False
+    if online:
+        link = pt.link_source("bed_FHIR", "fhir_sandbox")   # default demo patient
+        _check("live FHIR pull returned a record", link.get("ok") is True)
+        _check("FHIR source flagged live", link["source"]["live"] is True)
+        _check("FHIR chart parsed into comorbidities",
+               len(link["history"]["comorbidities"]) >= 1)
+        _check("FHIR history carries a susceptibility",
+               "susceptibility" in link["history"])
+    else:
+        print("      [SKIP] FHIR sandbox unreachable (offline) — connector unit-checked above")
+
+    print("[8] Empty / junk input is safe")
     e = pt.import_history("bed_Z", "   ")
     _check("empty history seeds nothing", not e["profile"]["foci"] and e["profile"]["n_watches"] == 0)
     j, jd = parse_history("bed_Z", "the weather is nice today", llm_client=None)

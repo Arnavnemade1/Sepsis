@@ -27,6 +27,7 @@ dispensing — those stay behind the audited, Z3-gated syscall gate.
 from __future__ import annotations
 
 import json
+import math
 import re
 import time
 from dataclasses import dataclass, field
@@ -109,6 +110,70 @@ COMORBIDITY_MAP: Dict[str, _Spec] = {
 
 
 # --------------------------------------------------------------------------- #
+# Personalisation: comorbidities → a bounded, DISCLOSED risk-prior uplift.
+#
+# These weights are a heuristic clinical PRIOR in log-odds units — documented
+# host risk factors for sepsis susceptibility/severity (immunosuppression, CKD,
+# CHF, cirrhosis, diabetes …). They are NOT learned from this cohort and make no
+# benchmark claim; they raise the OS's *vigilance* (shift the alerting prior /
+# band) for a patient the population model can't see is high-risk, and the raw
+# population risk is always preserved alongside. Total uplift is capped so a
+# comorbid history can never fabricate a crisis on its own.
+# --------------------------------------------------------------------------- #
+RISK_FACTOR_WEIGHTS: Dict[str, float] = {
+    "immunocompromised": 0.85, "neutropenia": 0.95, "on chemo": 0.90, "transplant": 0.60,
+    "malignancy": 0.40, "hiv": 0.40, "prior sepsis": 0.35, "prior septic shock": 0.55,
+    "ckd": 0.45, "renal failure": 0.50, "dialysis-dependent": 0.50, "prior aki": 0.25,
+    "chf": 0.35, "heart failure": 0.35, "cardiomyopathy": 0.30, "cad": 0.20,
+    "copd": 0.30, "asthma": 0.15, "ild": 0.35, "pneumonia hx": 0.25,
+    "cirrhosis": 0.50, "liver failure": 0.55, "hepatic disease": 0.40,
+    "diabetes": 0.30, "prior dka": 0.20, "prior lactic acidosis": 0.30,
+    "coagulopathy": 0.20, "prior dic": 0.30, "anticoagulated": 0.10,
+    "prior stroke": 0.15, "dementia": 0.15, "delirium-prone": 0.15,
+}
+MAX_UPLIFT_LOGIT = 1.2                 # cap the total prior shift (~OR 3.3)
+
+
+def _factor_weight(term: str) -> float:
+    """Best (max) weight whose key appears in / matches the comorbidity term."""
+    t = (term or "").strip().lower()
+    if not t:
+        return 0.0
+    best = 0.0
+    for key, w in RISK_FACTOR_WEIGHTS.items():
+        if key == t or key in t or t in key:
+            best = max(best, w)
+    return best
+
+
+def compute_susceptibility(comorbidities: List[str]) -> Dict[str, Any]:
+    """Map comorbidities → a bounded log-odds uplift + the itemised factors."""
+    factors: List[Dict[str, Any]] = []
+    seen = set()
+    for c in comorbidities or []:
+        w = _factor_weight(c)
+        key = c.strip().lower()
+        if w > 0 and key not in seen:
+            seen.add(key)
+            factors.append({"name": c, "weight": round(w, 2)})
+    factors.sort(key=lambda f: f["weight"], reverse=True)
+    raw = sum(f["weight"] for f in factors)
+    uplift = round(min(MAX_UPLIFT_LOGIT, raw), 3)
+    return {"logit_uplift": uplift, "capped": raw > MAX_UPLIFT_LOGIT,
+            "factors": factors,
+            "note": ("increases sepsis vigilance (prior shift) for this host — "
+                     "raw population risk preserved") if uplift > 0
+                    else "no documented host risk factors; monitoring unchanged"}
+
+
+def personalize_risk(base: float, uplift: float) -> float:
+    """Apply a log-odds prior shift to a population risk, clamped to (0,1)."""
+    b = min(max(float(base), 1e-4), 1.0 - 1e-4)
+    lg = math.log(b / (1.0 - b)) + float(uplift or 0.0)
+    return round(1.0 / (1.0 + math.exp(-lg)), 4)
+
+
+# --------------------------------------------------------------------------- #
 @dataclass
 class MedicalHistory:
     """A parsed, structured medical history + how it specialised the monitoring."""
@@ -124,6 +189,7 @@ class MedicalHistory:
     # what the import seeded (for the audit trail shown to the clinician)
     seeded_foci: List[str] = field(default_factory=list)
     seeded_watches: List[str] = field(default_factory=list)
+    susceptibility: Dict[str, Any] = field(default_factory=dict)   # risk-prior uplift
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -132,7 +198,7 @@ class MedicalHistory:
             "priorities": self.priorities, "summary": self.summary,
             "source": self.source, "imported": self.imported,
             "seeded_foci": self.seeded_foci, "seeded_watches": self.seeded_watches,
-            "raw_len": len(self.raw or ""),
+            "susceptibility": self.susceptibility, "raw_len": len(self.raw or ""),
         }
 
 
@@ -210,6 +276,7 @@ def parse_history(bed_id: str, text: str, source: str = "manual",
 
     if not hist.summary:
         hist.summary = _fallback_summary(hist)
+    hist.susceptibility = compute_susceptibility(hist.comorbidities)
     return hist, directive
 
 
@@ -296,12 +363,15 @@ class RecordsSource:
     label: str = "Records source"
     kind: str = "stub"           # "stub" | "manual" | "mcp" | "fhir" — honesty flag
     live: bool = False           # True only when a real backing system is attached
+    accepts_ref: bool = False    # True when fetch needs a patient identifier (MRN / FHIR id)
 
-    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None,
+              ref: Optional[str] = None) -> Optional[str]:
         raise NotImplementedError
 
     def describe(self) -> Dict[str, Any]:
-        return {"id": self.id, "label": self.label, "kind": self.kind, "live": self.live}
+        return {"id": self.id, "label": self.label, "kind": self.kind,
+                "live": self.live, "accepts_ref": self.accepts_ref}
 
 
 class MockHospitalSource(RecordsSource):
@@ -328,7 +398,8 @@ class MockHospitalSource(RecordsSource):
         "monitoring; low baseline acuity."
     )
 
-    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None,
+              ref: Optional[str] = None) -> Optional[str]:
         septic = bool((patient or {}).get("septic"))
         return self._SEPTIC if septic else self._STABLE
 
@@ -340,8 +411,97 @@ class ManualSource(RecordsSource):
     kind = "manual"
     live = True
 
-    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None) -> Optional[str]:
+    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None,
+              ref: Optional[str] = None) -> Optional[str]:
         return None
+
+
+class FHIRSource(RecordsSource):
+    """A REAL, standards-based EHR connector: pulls Condition / MedicationRequest /
+    AllergyIntolerance for a patient from a FHIR R4 endpoint and renders them into the
+    free-text history the parser consumes. Defaults to the public SMART R4 sandbox
+    (Synthea synthetic patients) so it works end-to-end with no credentials; point
+    ``base_url`` at a hospital's FHIR gateway (with auth headers) to go live for real.
+    This is the concrete transport the MCP-shaped :class:`RecordsSource` abstracts."""
+    id = "fhir_sandbox"
+    label = "FHIR EHR (SMART R4 sandbox)"
+    kind = "fhir"
+    live = True
+    accepts_ref = True
+
+    def __init__(self, base_url: str = "https://r4.smarthealthit.org",
+                 default_patient: str = "948e608d-e408-4788-8cf2-8157c49c2940",
+                 timeout: float = 12.0,
+                 headers: Optional[Dict[str, str]] = None) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.default_patient = default_patient
+        self.timeout = timeout
+        self.headers = {"Accept": "application/fhir+json"}
+        if headers:
+            self.headers.update(headers)
+
+    def _pull(self, resource: str, pid: str,
+              value_keys: Tuple[str, ...] = ("code", "medicationCodeableConcept")) -> List[str]:
+        import httpx
+        try:
+            r = httpx.get(f"{self.base_url}/{resource}",
+                          params={"patient": pid, "_count": 50},
+                          timeout=self.timeout, headers=self.headers)
+            data = r.json()
+        except Exception:
+            return []
+        out: List[str] = []
+        for e in data.get("entry", []) or []:
+            res = e.get("resource", {}) or {}
+            cc = None
+            for vk in value_keys:
+                if res.get(vk):
+                    cc = res[vk]; break
+            if not cc:
+                continue
+            txt = cc.get("text") or (cc.get("coding", [{}])[0].get("display")
+                                     if cc.get("coding") else None)
+            if txt and txt not in out:
+                out.append(txt)
+        return out
+
+    def fetch(self, bed_id: str, patient: Optional[Dict[str, Any]] = None,
+              ref: Optional[str] = None) -> Optional[str]:
+        import httpx
+        pid = (ref or (patient or {}).get("fhir_id") or self.default_patient or "").strip()
+        if not pid:
+            return None
+        conds = self._pull("Condition", pid)
+        meds = self._pull("MedicationRequest", pid) or self._pull("MedicationStatement", pid)
+        allergies = self._pull("AllergyIntolerance", pid,
+                               value_keys=("code",))
+        name = ""
+        try:
+            p = httpx.get(f"{self.base_url}/Patient/{pid}", timeout=self.timeout,
+                          headers=self.headers).json()
+            nm = (p.get("name", [{}]) or [{}])[0]
+            name = " ".join((nm.get("given") or []) + [nm.get("family", "")]).strip()
+        except Exception:
+            pass
+        if not conds and not meds:
+            return None
+        parts: List[str] = []
+        if name:
+            parts.append(f"Patient: {name}.")
+        if conds:
+            parts.append("Past medical history / active problems: " + "; ".join(conds) + ".")
+        if meds:
+            parts.append("Medications: " + "; ".join(meds) + ".")
+        if allergies:
+            parts.append("Allergies: " + "; ".join(allergies) + ".")
+        parts.append(f"[Imported live from FHIR {self.base_url} · patient {pid}]")
+        return " ".join(parts)
+
+    def describe(self) -> Dict[str, Any]:
+        d = super().describe()
+        d.update({"ref_label": "FHIR patient id", "default_ref": self.default_patient,
+                  "endpoint": self.base_url})
+        return d
 
 
 class RecordsRegistry:
@@ -351,6 +511,7 @@ class RecordsRegistry:
     def __init__(self) -> None:
         self._sources: Dict[str, RecordsSource] = {}
         self.register(ManualSource())
+        self.register(FHIRSource())
         self.register(MockHospitalSource())
 
     def register(self, source: RecordsSource) -> None:

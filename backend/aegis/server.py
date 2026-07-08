@@ -550,7 +550,15 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
          "sweat_lactate": float(raw.get("lactate", 1.2)), "hrv": 55.0,
          "systolic_bp": round(mp * 1.4, 1), "diastolic_bp": round(mp * 0.8, 1)}
     fused = float(getattr(prof, "fused_risk", 0.0)) if prof else 0.0
-    level = "HIGH" if fused >= 0.6 else "MEDIUM" if fused >= 0.35 else "LOW"
+    # Personalisation: an imported/linked chart shifts the alerting PRIOR for a
+    # high-risk host (immunosuppression, CKD, …). Population risk is preserved; the
+    # band is taken from the personalised risk so the OS alerts these patients sooner.
+    from backend.aegis.patient_records import personalize_risk as _personalize
+    _hobj = patient_terminal.get_history(bed)
+    _susc = (_hobj or {}).get("susceptibility") or {}
+    _uplift = float(_susc.get("logit_uplift", 0.0) or 0.0)
+    personalized = _personalize(fused, _uplift) if _uplift else round(fused, 4)
+    level = "HIGH" if personalized >= 0.6 else "MEDIUM" if personalized >= 0.35 else "LOW"
     wbc = float(hist.get("wbc", 7.5)); gcs = int(hist.get("gcs", 15))
     sirs = (int(v["skin_temp"] > 38 or v["skin_temp"] < 36) + int(v["heart_rate"] > 90)
             + int(v["respiratory_rate"] > 20) + int(wbc > 12 or wbc < 4))
@@ -571,7 +579,9 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
         "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,
         "patient": {"id": bed, "name": rp.name, "age": rp.age, "gender": rp.gender,
                     "clinical_history": hist},
-        "risk": {"level": level, "ml_probability": round(fused, 4), "ns_risk_level": level,
+        "risk": {"level": level, "ml_probability": round(personalized, 4), "ns_risk_level": level,
+                 "population_risk": round(fused, 4), "personalized_risk": round(personalized, 4),
+                 "susceptibility": _susc or None,
                  "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0},
         "vitals": v, "detection": det, "triggered_rules": [],
         "body_state": body, "reasoning": reasoning, "whatif": None, "consensus": None,
@@ -1604,6 +1614,7 @@ class HistoryIn(BaseModel):
 
 class LinkIn(BaseModel):
     source: str = "mock_hospital"
+    patient_ref: Optional[str] = None        # source-specific id (e.g. FHIR patient id / MRN)
 
 
 class SynthIn(BaseModel):
@@ -1642,8 +1653,10 @@ def patient_history_import(bed: str, payload: HistoryIn) -> Dict[str, Any]:
 
 @app.post("/aegis/patient/{bed}/history/link")
 def patient_history_link(bed: str, payload: LinkIn) -> Dict[str, Any]:
-    """Pull a history from a registered records source (stub/MCP/EHR) and import it."""
-    return patient_terminal.link_source(bed, payload.source, patient=_roster_entry(bed))
+    """Pull a history from a registered records source (stub / live FHIR EHR) and
+    import it. ``patient_ref`` is the source's patient identifier (FHIR id / MRN)."""
+    return patient_terminal.link_source(bed, payload.source, patient=_roster_entry(bed),
+                                        ref=payload.patient_ref)
 
 
 @app.get("/aegis/patient/{bed}/synthesis")
