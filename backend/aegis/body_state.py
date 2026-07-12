@@ -263,8 +263,15 @@ def build_body_state(
     cardio_sofa = sofa_cardiovascular(mapv, vaso)
     if cardio_sofa is None and _present(sbp):
         cardio_sofa = sofa_cardiovascular(sbp * 0.7, None)   # SBP-derived MAP fallback
-    if cardio_sofa is not None:
-        sofa_system("Cardiovascular", "heart", cardio_sofa)
+    
+    cardio_extra = 0.0
+    cardio_drivers = []
+    if detection.get("shock_signal"):
+        cardio_extra = 0.85
+        cardio_drivers.append("clinical septic shock")
+
+    if cardio_sofa is not None or cardio_extra > 0:
+        sofa_system("Cardiovascular", "heart", cardio_sofa, extra_sev=cardio_extra, extra_drivers=cardio_drivers)
     else:
         systems.append(OrganSystem("Cardiovascular", "heart", False, "UNMONITORED", 0.0))
 

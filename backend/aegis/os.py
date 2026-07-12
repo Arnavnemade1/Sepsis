@@ -212,12 +212,17 @@ class AegisOS:
         predictive what-if attached per the ``whatif`` policy."""
         self.register_source(source)
         a = self.core.ingest(telemetry, source=source, **kwargs)
-        if whatif == "always" or (whatif == "auto" and a.risk_level == "HIGH"):
+        # What-if projection is a read-only pharmacodynamic simulation, so it engages
+        # whenever risk is ELEVATED (MEDIUM or HIGH) — a MEDIUM patient benefits from
+        # seeing where each treatment path leads, not just a crashing one.
+        elevated = a.risk_level in ("MEDIUM", "HIGH")
+        if whatif == "always" or (whatif == "auto" and elevated):
             a.whatif = self.whatif(a)
-            # On HIGH risk the specialist panel auto-convenes: a treatment that
-            # touches the patient should carry a multi-signed, Z3-gated quorum (or
-            # the pre-certified emergency order if the patient is crashing faster
-            # than the panel can converge). Best-effort: never break the tick.
+        # The BFT specialist panel auto-convenes only on HIGH risk: it is a heavier
+        # quorum decision for a treatment that actually touches the patient (or the
+        # pre-certified emergency order if they crash faster than it converges).
+        # Best-effort: never break the tick.
+        if whatif != "never" and a.risk_level == "HIGH":
             try:
                 a.consensus = self.consensus(a)
             except Exception as exc:   # pragma: no cover

@@ -322,6 +322,9 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
   background:rgba(31,221,138,.08);font-family:var(--mono);font-size:12px;color:var(--ok)}
 .proof.bad{border-color:var(--crit);background:rgba(255,77,94,.08);color:var(--crit)}
 .proof i{font-size:15px}
+.proto-advisory{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;
+  border:1px solid var(--dys);background:rgba(245,154,75,.10);color:var(--dys);
+  font-family:var(--mono);font-size:11px;letter-spacing:.02em;font-weight:600}
 /* portable, third-party-checkable proof affordance (live core-cage decision) */
 .pproof{margin-top:8px;padding:9px 11px;border-radius:9px;border:1px solid var(--line-bright);
   background:rgba(255,255,255,.012);display:flex;flex-direction:column;gap:7px}

@@ -89,6 +89,14 @@ class AegisCore:
         self._verifier = None
         self._explainer = None
         self.use_llm = use_llm
+        # Throttle for the advisory synthesis path (protocol + narrative). The GA +
+        # Z3 solve is <1s but need not re-run every 3s tick while the risk band and
+        # vitals are unchanged; we reuse the last result until the band changes or it
+        # goes stale. Bounds CPU on constrained (free-tier) hosts.
+        self._proto_cache: Optional[Dict[str, Any]] = None
+        self._proto_stamp: float = 0.0
+        self._proto_band: Optional[str] = None
+        self._proto_ttl: float = 15.0
         from backend.aegis.body_state import OrganFailureTracker
         self._organ_tracker = OrganFailureTracker()   # per-patient organ trajectory
 
@@ -164,12 +172,17 @@ class AegisCore:
         self._organ_tracker.update(_bs)          # annotate trend / ETA / MODS-onset
         assessment.body_state = _bs.to_dict()
 
-        # 5) On HIGH risk: synthesize + formally verify a treatment protocol.
-        if risk == "HIGH" and self.enable_protocols:
+        # 5) When risk is ELEVATED (MEDIUM or HIGH): synthesize + formally verify a
+        #    treatment protocol. At MEDIUM it is advisory (a projected candidate,
+        #    labelled as such and never auto-applied); the actual apply path stays
+        #    HIGH-gated downstream. This keeps the protocol/proof card live whenever
+        #    there is genuine clinical concern instead of only in a full crisis.
+        elevated = risk in ("MEDIUM", "HIGH")
+        if elevated and self.enable_protocols:
             self._attach_protocol(assessment)
 
-        # 6) Narrative (LLM-optional), default only on HIGH transitions.
-        if (risk == "HIGH") if explain is None else explain:
+        # 6) Narrative (LLM-optional): on any elevated risk by default.
+        if (elevated) if explain is None else explain:
             self._attach_narrative(assessment)
 
         return assessment
@@ -221,6 +234,16 @@ class AegisCore:
 
     # ------------------------------------------------------------------ #
     def _attach_protocol(self, a: AegisAssessment) -> None:
+        # Advisory = elevated-but-not-crisis. The candidate is shown and proven, but
+        # only a HIGH-risk protocol is ever eligible to be auto-applied to the twin.
+        advisory = a.risk_level != "HIGH"
+        # Reuse the cached solve while the band is unchanged and it is fresh — the GA
+        # + Z3 need not re-run every tick when nothing material has moved.
+        if (self._proto_cache is not None and self._proto_band == a.risk_level
+                and (a.timestamp - self._proto_stamp) < self._proto_ttl):
+            a.protocol = dict(self._proto_cache["protocol"], advisory=advisory)
+            a.verification = self._proto_cache["verification"]
+            return
         if self._optimizer is None:
             from backend.core.evolution import EvolutionaryOptimizer
             from backend.core.verifier import ProtocolVerifier
@@ -231,8 +254,9 @@ class AegisCore:
         is_safe, msg, proof = self._verifier.verify_protocol(
             self.clinical_history, vitals, a.risk_level, protocol
         )
+        # Only a certified HIGH-risk protocol is eligible for auto-application.
         a.protocol = {"protocol": protocol, "fitness": round(float(fitness), 4),
-                      "applied": bool(is_safe)}
+                      "applied": bool(is_safe) and not advisory, "advisory": advisory}
         a.verification = {"safe": bool(is_safe), "message": msg,
                           "z3_status": proof.get("z3_status"),
                           "violated_rules": proof.get("violated_rules", [])}
@@ -253,6 +277,11 @@ class AegisCore:
                     "content_sha256": self.last_proof.get("content_sha256", "")[:16],
                     "policy_id": "aegis-core-cage",
                 }
+
+        # Cache this solve so subsequent same-band ticks reuse it (see throttle above).
+        self._proto_cache = {"protocol": dict(a.protocol), "verification": a.verification}
+        self._proto_stamp = a.timestamp
+        self._proto_band = a.risk_level
 
     def _get_proof_ca(self):
         """Lazy Ed25519 authority; disables export (never breaks monitoring) on error."""

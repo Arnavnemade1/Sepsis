@@ -547,6 +547,51 @@ def _patient_roster() -> List[Dict[str, Any]]:
 _organ_trackers: Dict[str, Any] = {}     # bed -> OrganFailureTracker (per-bed organ trajectory)
 
 
+# Per-bed advisory-synthesis cache: the GA + Z3 solve need not re-run on every 4s
+# desktop poll while the bed's band is unchanged (keyed on bed + risk band).
+_bed_advisory_cache: Dict[str, Dict[str, Any]] = {}
+
+
+def _bed_advisory(bed: str, v: Dict[str, float], det: Dict[str, Any],
+                  level: str, hist: Dict[str, Any]) -> Dict[str, Any]:
+    """Projected treatment (protocol + Z3 proof + narrative) and what-if trajectories
+    for an ELEVATED cohort bed, so the desktop's protocol/what-if cards are live for a
+    selected septic patient — not a permanent 'awaiting'. At MEDIUM it is advisory (a
+    proven candidate, never auto-applied); only a certified HIGH protocol is eligible."""
+    empty = {"protocol": None, "verification": None, "whatif": None, "narrative": None}
+    if level not in ("MEDIUM", "HIGH"):
+        return empty
+    cached = _bed_advisory_cache.get(bed)
+    if cached and cached.get("band") == level:
+        return cached["out"]
+    try:
+        from backend.core.evolution import EvolutionaryOptimizer
+        from backend.core.verifier import ProtocolVerifier
+        advisory = level != "HIGH"
+        protocol, fitness = EvolutionaryOptimizer().optimize(v, hist, level)
+        is_safe, msg, proof = ProtocolVerifier().verify_protocol(hist, v, level, protocol)
+        whatif = session.os.scheduler.project(v, det, level, hist)
+        try:
+            from backend.llm.explainer import AlertExplainer
+            narr = AlertExplainer().narrate(level, det, v, triggered_rules=[], use_llm=False)
+        except Exception:
+            narr = {"narrative": None, "source": None}
+        out = {
+            "protocol": {"protocol": protocol, "fitness": round(float(fitness), 4),
+                         "applied": bool(is_safe) and not advisory, "advisory": advisory},
+            "verification": {"safe": bool(is_safe), "message": msg,
+                             "z3_status": proof.get("z3_status"),
+                             "violated_rules": proof.get("violated_rules", [])},
+            "whatif": whatif,
+            "narrative": narr.get("narrative"), "narrative_source": narr.get("source"),
+        }
+    except Exception as exc:  # pragma: no cover — never break the bed snapshot
+        print(f"[aegis] bed advisory synth failed for {bed}: {exc}")
+        return empty
+    _bed_advisory_cache[bed] = {"band": level, "out": out}
+    return out
+
+
 def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
     """A snapshot-shaped payload for a cohort bed, built from real per-bed state so
     the desktop panels (risk/vitals/twin/agents) reflect the selected patient. Cohort
@@ -589,6 +634,9 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
     body = _bs.to_dict()
     body["tracking"] = patient_terminal.profile(bed).to_dict()   # foci + watches (display)
     ing = _causal_for(bed)
+    # Elevated cohort beds get a projected treatment + what-if so their protocol/what-if
+    # cards are live (advisory at MEDIUM); stable beds stay null (nothing to synthesize).
+    adv = _bed_advisory(bed, v, det, level, hist)
     return {
         "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,
         "patient": {"id": bed, "name": rp.name, "age": rp.age, "gender": rp.gender,
@@ -598,9 +646,10 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
                  "susceptibility": _susc or None,
                  "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0},
         "vitals": v, "detection": det, "triggered_rules": [],
-        "body_state": body, "reasoning": reasoning, "whatif": None, "consensus": None,
+        "body_state": body, "reasoning": reasoning, "whatif": adv["whatif"], "consensus": None,
         "history": {"t": [], "channels": {}, "risk": [], "probability": [], "region_severity": {}},
-        "protocol": None, "verification": None, "narrative": None, "narrative_source": None,
+        "protocol": adv["protocol"], "verification": adv["verification"],
+        "narrative": adv["narrative"], "narrative_source": adv.get("narrative_source"),
         "causal_graph": ing.summary() if ing else None,
         "system": session.os.status(),
         "recorded": True,

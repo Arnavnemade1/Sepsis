@@ -89,6 +89,7 @@ function render(d) {
   renderOrganHud(d);
   window.AegisStory?.onSnapshot(d);
   window.AegisConsensus?.onSnapshot(d);
+  window.AegisNotes?.updateFromBackend(d);   // physiologic observations when camera is idle
   $("#dock-tick").textContent = `tick · ${d.source || "—"} · ${new Date((d.timestamp||0)*1000).toLocaleTimeString()}`;
 }
 const num = (v, f = 0) => (typeof v === "number" && !isNaN(v)) ? v : f;
@@ -290,7 +291,13 @@ function renderAgents(d) {
 function renderWhatif(d) {
   const w = d.whatif;
   const box = $("#whatif-list");
-  if (!w || !w.candidates) { box.innerHTML = '<div class="muted">No active projection. Engages on HIGH risk.</div>'; return; }
+  if (!w || !w.candidates) {
+    const lvl = d.risk?.level || "LOW";
+    box.innerHTML = `<div class="muted">${lvl === "LOW"
+      ? "No active projection — patient stable. Treatment paths are projected automatically when risk becomes elevated."
+      : "Projecting treatment trajectories…"}</div>`;
+    return;
+  }
   box.innerHTML = w.candidates.map(c => {
     const best = c.name === w.recommended, s = c.summary || {};
     return `<div class="cand ${best ? "best" : ""} ${c.safe ? "" : "unsafe"}">
@@ -314,10 +321,20 @@ function sparkline(cv, arr) {
 /* ---------------- PROTOCOL + PROOF ---------------- */
 function renderProto(d) {
   const p = d.protocol, v = d.verification, box = $("#proto");
-  if (!p) { box.innerHTML = '<div class="muted">Awaiting high-risk synthesis…</div>' + narr(d); return; }
+  if (!p) {
+    // No synthesis yet — say why, honestly, per the current risk band.
+    const lvl = d.risk?.level || "LOW";
+    const msg = lvl === "LOW"
+      ? "No treatment indicated — patient within normal limits. Synthesis engages automatically when risk becomes elevated."
+      : "Synthesizing…";
+    box.innerHTML = `<div class="muted">${msg}</div>` + narr(d);
+    return;
+  }
   const t = p.protocol || {};
   const safe = v?.safe;
+  const advisory = !!p.advisory;   // MEDIUM: proven candidate, not an active order
   box.innerHTML = `
+    ${advisory ? '<div class="proto-advisory">◇ ADVISORY · elevated risk — projected candidate, not yet indicated for administration</div>' : ""}
     <div class="rx">
       <div>fluids<b>${t.fluid_rate ?? "—"}</b>mL/kg/h</div>
       <div>vaso<b>${t.vasopressor_dose ?? "—"}</b>µg/kg/m</div>
@@ -326,7 +343,7 @@ function renderProto(d) {
     <div class="proof ${safe ? "" : "bad"}"><i>${safe ? "✓" : "✕"}</i>
       Z3 ${v?.z3_status || "—"} · ${safe ? "mathematically certified safe" : (v?.message || "rejected")}</div>
     ${portableProofLine(v?.portable_proof)}
-    ${safe ? `<button class="dock-btn accent pulse-button" onclick="window.AegisTwin.triggerInfusion('fluids'); setTimeout(() => window.AegisTwin.triggerInfusion('antibiotic'), 1200); setTimeout(() => window.AegisTwin.triggerInfusion('vasopressor'), 2400);" style="width:100%;margin-top:8px;animation: pulse 2s infinite;cursor:pointer;background:#00d8ff;color:#0b1020;font-weight:bold;border:none;border-radius:4px;padding:8px 0;box-shadow: 0 0 10px rgba(0,216,255,0.4);">▲ APPROVE & INFUSE PROTOCOL</button>` : ""}
+    ${(safe && !advisory) ? `<button class="dock-btn accent pulse-button" onclick="window.AegisTwin.triggerInfusion('fluids'); setTimeout(() => window.AegisTwin.triggerInfusion('antibiotic'), 1200); setTimeout(() => window.AegisTwin.triggerInfusion('vasopressor'), 2400);" style="width:100%;margin-top:8px;animation: pulse 2s infinite;cursor:pointer;background:#00d8ff;color:#0b1020;font-weight:bold;border:none;border-radius:4px;padding:8px 0;box-shadow: 0 0 10px rgba(0,216,255,0.4);">▲ APPROVE & INFUSE PROTOCOL</button>` : ""}
     ${narr(d)}`;
   wireProofVerify();
 }
@@ -1996,7 +2013,7 @@ window.AegisNotes = (function () {
     let txt, cls = "";
     if (!notable.length) {
       txt = s.hr ? `No acute distress. Optical vitals within normal limits — HR ${Math.round(s.hr)} bpm, RR ${Math.round(s.rr || 0)}/min. Posture: ${s.posture}.`
-        : "Awaiting optical analysis…";
+        : "Acquiring optical signal…";
     } else {
       const lead = notable.slice(0, 3).map((x) => x.name.replace(/ \/.*| \(.*/, "").toLowerCase()).join(", ");
       txt = `Patient exhibits ${lead}${notable.length > 3 ? ` (+${notable.length - 3} more)` : ""}. `
@@ -2006,5 +2023,52 @@ window.AegisNotes = (function () {
     imp.className = "notes-impression " + cls; imp.textContent = txt;
     const st = document.querySelector("#notes-state"); if (st) st.textContent = notable.length ? (cls === "crit" ? "attention" : "observing") : "monitoring";
   }
-  return { update };
+
+  // Physiologic observations derived from the backend body-state (organ systems).
+  // Drives the card whenever the camera is NOT the live source, so it is never a
+  // dead "awaiting" panel. These are genuine physiologic findings (SOFA basis /
+  // trend / drivers) — NOT fabricated optical readings.
+  const seenBk = new Map();
+  function cameraLive() {
+    try { const c = window.AegisCamera?.state?.(); return !!(c && c.hr > 0 && c.enabled !== false); }
+    catch (e) { return false; }
+  }
+  function updateFromBackend(d) {
+    const imp = document.querySelector("#notes-impression"); if (!imp) return;
+    if (cameraLive()) return;   // camera owns the card when it is producing signal
+    const bs = d && d.body_state;
+    const systems = (bs && bs.organ_systems) || [];
+    const vit = (d && d.vitals) || {};
+    // Notable = any organ system that has left NORMAL.
+    const notable = systems
+      .filter(o => o.status && o.status !== "NORMAL" && (o.severity || 0) > 0.05)
+      .sort((a, b) => (b.severity || 0) - (a.severity || 0));
+    const active = new Map(notable.map(o => [o.name, o]));
+    for (const [name, o] of active) if (!seenBk.has(name)) {
+      const drv = (o.drivers && o.drivers.length) ? " — " + o.drivers.slice(0, 2).join(", ") : (o.sofa_basis ? " — " + o.sofa_basis : "");
+      const eta = (o.eta_critical_min != null) ? ` · ETA→critical ${o.eta_critical_min}m` : "";
+      addNote(`Onset — ${o.name} ${o.status.toLowerCase()}${drv}${eta}`, o.severity > 0.66 ? "crit" : "warn");
+    }
+    for (const name of seenBk.keys()) if (!active.has(name)) addNote("Resolved — " + name + " back to normal", "");
+    seenBk.clear(); for (const [n, o] of active) seenBk.set(n, o);
+
+    const hr = Math.round(vit.heart_rate || 0), rr = Math.round(vit.respiratory_rate || 0);
+    const map = Math.round(vit.map || 0), spo2 = Math.round(vit.spo2 || 0);
+    let txt, cls = "";
+    if (!notable.length) {
+      txt = hr ? `No acute organ dysfunction. Physiologic vitals within normal limits — HR ${hr} bpm, RR ${rr}/min, MAP ${map} mmHg, SpO₂ ${spo2}%.`
+        : "Monitoring — no live stream.";
+    } else {
+      const worst = notable[0];
+      const lead = notable.slice(0, 3).map(o => o.name.toLowerCase()).join(", ");
+      txt = `${worst.status === "CRITICAL" ? "Organ dysfunction" : "Physiologic stress"} in ${lead}${notable.length > 3 ? ` (+${notable.length - 3} more)` : ""}. `
+        + `HR ${hr} bpm, RR ${rr}/min, MAP ${map} mmHg, SpO₂ ${spo2}%.`;
+      cls = worst.severity > 0.66 ? "crit" : "warn";
+    }
+    imp.className = "notes-impression " + cls; imp.textContent = txt;
+    const st = document.querySelector("#notes-state");
+    if (st) st.textContent = notable.length ? (cls === "crit" ? "attention" : "observing") : "monitoring";
+  }
+
+  return { update, updateFromBackend };
 })();
