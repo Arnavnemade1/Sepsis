@@ -1,4 +1,4 @@
-# AegisOS — HyperSepsisTwin-Ω
+# AegisOS — HyperSepsisTwin-Omega
 
 > **A unified software operating system for continuous critical-care monitoring.**
 > AegisOS turns ordinary sensors — a wearable band and a plain camera — into a
@@ -45,7 +45,7 @@ real labelled data with leakage-free validation.
         │  LLM explainer        (clinician narrative)│
         └───────────────┬────────────────────────────┘
                         ▼
-        WebSocket / REST snapshot  ──►  (future) body-twin frontend
+        WebSocket / REST snapshot  ──►  AegisOS web shell (`webui/`)
 ```
 
 ### Subsystems
@@ -59,19 +59,21 @@ real labelled data with leakage-free validation.
 | `backend/llm/` | Sparing, rate-limited LLM clinical-narrative layer | — |
 | `backend/core/` | HDC engine, digital twin, neurosymbolic rules, GA, Z3 verifier | — |
 
+For a practical maintainer map, see [docs/REPO_MAP.md](docs/REPO_MAP.md).
+
 ---
 
 ## What's validated (real data, honest numbers)
 
 | Capability | Result | Data | Status |
 |---|---|---|---|
-| Sepsis detection (within-hospital) | **AUROC 0.774**, AUPRC 0.080, utility 0.353 | CinC 2019 (40,335 pts) | ✅ validated |
-| Sepsis detection (**cross-hospital**) | **AUROC 0.689**, calibration holds | CinC A↔B (BIDMC/Emory) | ✅ validated |
-| Probability calibration | **ECE 0.0008**, Brier 0.017; ECE ~0.005 cross-site | CinC 2019 | ✅ validated |
-| rPPG heart-rate recovery | within ~3 bpm | synthetic ground truth | ✅ validated |
-| Pulse→HRV chain | HR MAE **~1.2 bpm**, SDNN corr 0.71 | BIDMC (real PPG+ECG) | ✅ validated |
-| HRV→sepsis pipeline | AUROC ~0.9 | HeRO-grounded synthetic | 🔬 machinery only |
-| Treatment-protocol safety | Z3-proven invariants (allergy, fluid caps, vaso) | — | ✅ verified |
+| Sepsis detection (within-hospital) | **AUROC 0.774**, AUPRC 0.080, utility 0.353 | CinC 2019 (40,335 pts) | validated |
+| Sepsis detection (**cross-hospital**) | **AUROC 0.689**, calibration holds | CinC A<->B (BIDMC/Emory) | validated |
+| Probability calibration | **ECE 0.0008**, Brier 0.017; ECE ~0.005 cross-site | CinC 2019 | validated |
+| rPPG heart-rate recovery | within ~3 bpm | synthetic ground truth | validated |
+| Pulse-to-HRV chain | HR MAE **~1.2 bpm**, SDNN corr 0.71 | BIDMC (real PPG+ECG) | validated |
+| HRV-to-sepsis pipeline | AUROC ~0.9 | HeRO-grounded synthetic | machinery only |
+| Treatment-protocol safety | Z3-proven invariants (allergy, fluid caps, vaso) | - | verified |
 
 The **honest deployment number is the cross-hospital AUROC ≈ 0.69** (not the
 optimistic within-hospital 0.77) — and probabilities stay trustworthy across
@@ -85,10 +87,14 @@ sites. Full analysis: [docs/PHASE7_REPORT.md](docs/PHASE7_REPORT.md).
   video datasets are tens of GB; closing this needs a UBFC/PURE subset.
 - **HRV→sepsis on real labels** needs credentialed data (MIMIC-IV Waveform); the
   plug-and-play adapter is built and waiting.
-- The grounded HDC detector (AUROC ~0.70) trails the gradient-boosting benchmark
-  (0.77); GBM is the production detector.
+- Standalone HDC trails tree ensembles on raw tabular discrimination. HDC remains
+  valuable as interpretable case memory, resonance/consensus evidence, and an
+  optional stack member rather than the primary accuracy path.
+- The single GBM is the stable deployment-compatible artifact path
+  (`artifacts/gbm_wearable.joblib`). The current research trail shows the stacked
+  ensemble as the stronger production candidate; see `backend/ml/README.md`.
 
-Run it yourself: `python verify_full_system.py` (12 subsystem checks).
+Run it yourself: `python verify_full_system.py` (full subsystem verification).
 
 ---
 
@@ -139,44 +145,52 @@ Run the runtime on the wearable; close the loop band ⇄ backend ⇄ camera.
 
 ---
 
-## The vision
+## Developer Quickstart
 
-AegisOS is meant to feel like a living **mission-control for one human body**. The
-backend already emits everything that view needs as one JSON snapshot per tick:
-per-organ severity, anatomical regions, every signal's live waveform and source,
-the calibrated risk and its drivers, the verified protocol, and a plain-language
-narrative. The frontend — deliberately not built yet — will render that as an
-extraordinary, fully-integrateable digital twin: a body that lights up where it's
-struggling, signals that pulse in real time, and a system that not only says
-"sepsis risk rising" but shows *why*, *where*, and *what to do* — with a
-mathematical proof the proposed treatment is safe.
+The repo now has a small command surface for the common paths:
+
+```bash
+make setup
+make verify
+make serve
+```
+
+Then open `http://127.0.0.1:8100`.
+
+Manual equivalent:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r backend/requirements.txt
+python verify_full_system.py
+python -m uvicorn backend.aegis.server:app --host 127.0.0.1 --port 8100
+```
+
+Data-dependent workflows:
+
+```bash
+python -m backend.ml.data.cinc2019 --download
+python -m backend.physio.data.bidmc --download --n 20
+python -m backend.ml.scripts.train_and_compare --feature-set wearable --save
+python -m backend.ml.scripts.train_stacked --feature-set wearable
+python -m backend.ml.scripts.rigorous_eval --feature-set wearable --boot 500
+```
+
+`backend/api/app.py` + `frontend/` are the **legacy demo** (simulator + old
+heuristic). The real system is `backend/aegis/` served with `webui/`.
 
 ---
 
-## Getting started
+## The vision
 
-```bash
-git clone <your-repo-url> && cd Sepsis
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r backend/requirements.txt
-
-# 1. Real clinical data (open, resumable)
-python -m backend.ml.data.cinc2019 --download           # detection data (~40k pts)
-python -m backend.physio.data.bidmc --download --n 20    # PPG+ECG for HRV validation
-
-# 2. Verify everything works (12 subsystem checks)
-python verify_full_system.py
-
-# 3. Train + calibrate the detector
-python -m backend.ml.scripts.train_and_compare --feature-set wearable --save
-
-# 4. Run AegisOS (backend + the OS shell frontend)
-python -m backend.aegis.server      # open http://127.0.0.1:8100  → the AegisOS shell
-#                                     API: /aegis/snapshot · WS /aegis/stream
-```
-
-> `backend/api/app.py` + `frontend/` are the **legacy demo** (simulator + old
-> heuristic). The real system is `backend/aegis/` on the data-grounded models.
+AegisOS is meant to feel like a living **mission-control for one human body**.
+The backend emits one JSON snapshot per tick: per-organ severity, anatomical
+regions, every signal's live waveform and source, calibrated risk and drivers,
+the verified protocol, and a plain-language narrative. The `webui/` shell renders
+that as a digital twin: a body that lights up where it is struggling, signals
+that pulse in real time, and a system that shows *why*, *where*, and *what to do*
+with a mathematical proof that the proposed treatment is safe.
 
 ---
 
