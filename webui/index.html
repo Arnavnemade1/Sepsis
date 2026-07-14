@@ -114,8 +114,10 @@
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
         <span class="win-title">LIVE TELEMETRY</span></div>
       <div class="win-body vitals-body">
-        <div class="trace"><canvas id="ecg" height="74"></canvas><span class="trace-tag">ECG · <b id="t-hr">—</b> bpm</span></div>
-        <div class="trace"><canvas id="ppg" height="58"></canvas><span class="trace-tag">PLETH · SpO₂ <b id="t-spo2">—</b>%</span></div>
+        <div class="trace-row">
+          <div class="trace"><canvas id="ecg" height="72"></canvas><span class="trace-tag">ECG · <b id="t-hr">—</b> bpm</span></div>
+          <div class="trace"><canvas id="ppg" height="72"></canvas><span class="trace-tag">PLETH · SpO₂ <b id="t-spo2">—</b>%</span></div>
+        </div>
         <div id="vital-grid" class="vital-grid"></div>
       </div>
     </section>
@@ -859,6 +861,6 @@
 </script>
 <script type="module" src="twin3d.js?v=6"></script>
 <script type="module" src="camera.js?v=10"></script>
-<script src="os.js?v=26"></script>
+<script src="os.js?v=34"></script>
 </body>
 </html>

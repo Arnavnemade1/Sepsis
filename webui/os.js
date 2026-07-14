@@ -263,8 +263,8 @@ function renderVitals(d) {
   const show = ["heart_rate", "hrv", "respiratory_rate", "map", "sweat_lactate", "skin_temp"];
   $("#vital-grid").innerHTML = ch.filter(c => show.includes(c.key)).map(c => `
     <div class="vchip ${c.status}">
-      <span class="vk">${SHORT[c.key] || c.label}<div class="src">${c.source}</div></span>
-      <span><span class="vv">${c.value ?? "—"}</span><span class="vu">${c.unit}</span></span>
+      <span class="vk">${SHORT[c.key] || c.label}</span>
+      <span class="vnum"><span class="vv">${c.value ?? "—"}</span><span class="vu">${c.unit}</span></span>
     </div>`).join("");
 }
 
@@ -302,24 +302,26 @@ function renderWhatif(d) {
   }
   _whatifState = { whatif: w, vitals: d.vitals || {}, risk: d.risk || {} };
   const curRisk = num(d.risk?.ml_probability ?? d.body_state?.sepsis_probability);
+  // display order: recommended pinned first, then safest→riskiest, rejected last —
+  // but keep each candidate's ORIGINAL index so the modal opens the right path.
+  const order = w.candidates.map((c, i) => ({ c, i })).sort((a, b) => {
+    if ((a.c.name === w.recommended) !== (b.c.name === w.recommended)) return a.c.name === w.recommended ? -1 : 1;
+    if (a.c.safe !== b.c.safe) return a.c.safe ? -1 : 1;
+    return num(a.c.summary?.final_risk) - num(b.c.summary?.final_risk);
+  });
   box.innerHTML =
-    `<div class="whatif-hint">◧ ${w.candidates.length} paths projected over ${w.horizon_steps || "—"} steps · <b>tap any card for the full projection</b></div>` +
-    w.candidates.map((c, i) => {
+    `<div class="whatif-hint">${w.candidates.length} paths · ${w.horizon_steps || "—"}-step horizon · <b>tap a row for the full projection</b></div>` +
+    order.map(({ c, i }) => {
       const best = c.name === w.recommended, s = c.summary || {};
       const fr = num(s.final_risk), delta = fr - curRisk;
       const dCls = delta < -0.001 ? "down" : delta > 0.001 ? "up" : "flat";
-      const dTxt = delta < -0.001 ? `▼ ${Math.abs(delta*100)|0}%` : delta > 0.001 ? `▲ ${(delta*100)|0}%` : "◦ flat";
+      const dTxt = delta < -0.001 ? `▼${Math.abs(delta*100)|0}` : delta > 0.001 ? `▲${(delta*100)|0}` : "◦";
       return `<div class="cand ${best ? "best" : ""} ${c.safe ? "" : "unsafe"}" data-cand="${i}" role="button" tabindex="0">
-      <div class="cand-head"><span class="cand-name">${c.name.replace(/_/g, " ")}</span>
-        ${best ? '<span class="cand-badge rec">recommended</span>' :
-          `<span class="cand-badge ${c.safe ? "safe" : "no"}">${c.safe ? "Z3 safe" : "rejected"}</span>`}</div>
-      <div class="cand-spark"><canvas data-traj='${JSON.stringify((c.trajectory||[]).map(t=>t.projected_risk))}'></canvas></div>
-      <div class="cand-meta">
-        <span>final risk <b>${(fr*100)|0}%</b></span>
-        <span class="cand-delta ${dCls}">${dTxt}</span>
-        <span>MAP→<b>${s.final_map ?? "—"}</b></span>
-        <span class="cand-open">details →</span>
-      </div>
+      <span class="cand-dot ${c.safe ? (best ? "rec" : "safe") : "no"}"></span>
+      <span class="cand-name">${c.name.replace(/_/g, " ")}</span>
+      <span class="cand-spark"><canvas data-traj='${JSON.stringify((c.trajectory||[]).map(t=>t.projected_risk))}'></canvas></span>
+      <span class="cand-risk"><span class="cand-delta ${dCls}">${dTxt}</span><b>${(fr*100)|0}%</b></span>
+      <span class="cand-chev">›</span>
     </div>`;
     }).join("");
   box.querySelectorAll("canvas[data-traj]").forEach(cv => sparkline(cv, JSON.parse(cv.dataset.traj)));
@@ -330,10 +332,19 @@ function renderWhatif(d) {
   });
 }
 function sparkline(cv, arr) {
-  const w = cv.clientWidth || 280, h = 30; cv.width = w; cv.height = h;
-  const ctx = cv.getContext("2d"); ctx.clearRect(0, 0, w, h); if (!arr.length) return;
-  ctx.beginPath(); ctx.lineWidth = 1.6; ctx.strokeStyle = "#34e1ff";
-  arr.forEach((v, i) => { const x = i / (arr.length - 1) * w, y = h - 2 - v * (h - 4); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+  const w = cv.clientWidth || 90, h = 22, dpr = window.devicePixelRatio || 1;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, w, h); if (!arr.length) return;
+  const pad = 3, lo = Math.min(...arr, 0), hi = Math.max(...arr, 1);
+  const px = i => i / Math.max(1, arr.length - 1) * (w - pad * 2) + pad;
+  const py = v => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, "rgba(92,202,240,.28)"); grad.addColorStop(1, "rgba(92,202,240,0)");
+  ctx.beginPath(); ctx.moveTo(px(0), h - pad);
+  arr.forEach((v, i) => ctx.lineTo(px(i), py(v))); ctx.lineTo(px(arr.length - 1), h - pad); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#5ccaf0"; ctx.lineJoin = "round";
+  arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
   ctx.stroke();
 }
 
@@ -427,12 +438,12 @@ function whatifModalHTML(c, st) {
 
       <!-- projection charts -->
       <section class="wm-charts">
-        <div class="wm-chart-h">projected physiology over horizon <span class="wm-chart-note">step 1 → ${traj.length}</span></div>
+        <div class="wm-chart-h">projected physiology over horizon <span class="wm-chart-note">now → step ${traj.length}</span></div>
         <div class="wm-chart-grid">
-          ${chartCell("risk", "sepsis risk", "%", first.projected_risk, last.projected_risk, true)}
-          ${chartCell("map", "MAP", "mmHg", first.map, last.map, false)}
-          ${chartCell("heart_rate", "heart rate", "bpm", first.heart_rate, last.heart_rate, false)}
-          ${chartCell("sweat_lactate", "lactate", "mmol/L", first.sweat_lactate, last.sweat_lactate, false)}
+          ${chartCell("risk", first, last)}
+          ${chartCell("map", first, last)}
+          ${chartCell("heart_rate", first, last)}
+          ${chartCell("sweat_lactate", first, last)}
         </div>
       </section>
 
@@ -469,14 +480,28 @@ function whatifModalHTML(c, st) {
   </div>`;
 }
 
-function chartCell(key, label, unit, v0, v1, isRisk) {
-  const a = isRisk ? num(v0)*100 : num(v0), b = isRisk ? num(v1)*100 : num(v1);
-  const dv = b - a, arrow = Math.abs(dv) < (isRisk?0.5:0.05) ? "◦" : dv > 0 ? "▲" : "▼";
+/* Clinical metric config: fixed physiologic Y-domains (honest scale, not tight
+   autoscale), a reference threshold line, and whether rising is clinically good. */
+const METRICS = {
+  risk:          { key: "projected_risk", label: "sepsis risk", unit: "%", color: "#f2606e",
+                   domain: [0, 100], scale: 100, refs: [{ v: 66, t: "HIGH" }, { v: 33, t: "MED" }], goodDir: -1 },
+  map:           { key: "map", label: "MAP", unit: "mmHg", color: "#5ccaf0",
+                   domain: [40, 120], scale: 1, refs: [{ v: 65, t: "perfusion floor" }], goodDir: 1 },
+  heart_rate:    { key: "heart_rate", label: "heart rate", unit: "bpm", color: "#f5c451",
+                   domain: [40, 150], scale: 1, refs: [{ v: 100, t: "tachy" }], goodDir: 0 },
+  sweat_lactate: { key: "sweat_lactate", label: "lactate", unit: "mmol/L", color: "#9a8cf0",
+                   domain: [0, 6], scale: 1, refs: [{ v: 2, t: "sepsis ≥2" }], goodDir: -1 },
+};
+function chartCell(key, first, last) {
+  const m = METRICS[key];
+  const a = num(first[m.key]) * m.scale, b = num(last[m.key]) * m.scale;
+  const dv = b - a, eps = key === "risk" ? 0.5 : 0.1;
+  const arrow = Math.abs(dv) < eps ? "◦" : dv > 0 ? "▲" : "▼";
+  const trend = Math.abs(dv) < eps ? "flat" : (m.goodDir === 0 ? "neutral" : ((dv > 0) === (m.goodDir > 0) ? "good" : "bad"));
   return `<div class="wm-chart-cell" data-chart="${key}">
-    <div class="wm-cc-top"><span class="wm-cc-label">${label}</span>
-      <span class="wm-cc-end">${fmtNum(b)}<i>${unit}</i> <span class="wm-cc-arrow">${arrow}</span></span></div>
+    <div class="wm-cc-top"><span class="wm-cc-label">${m.label}</span>
+      <span class="wm-cc-end ${trend}">${fmtNum(b)}<i>${m.unit}</i> <span class="wm-cc-arrow">${arrow}</span></span></div>
     <canvas class="wm-cc-canvas"></canvas>
-    <div class="wm-cc-foot"><span>${fmtNum(a)}${unit}</span><span>${fmtNum(b)}${unit}</span></div>
   </div>`;
 }
 
@@ -514,45 +539,86 @@ function whatifProsCons(c, st) {
   return { pros, cons };
 }
 
-/* Draw the four sparkline-style projection charts inside the modal. */
+/* Draw the four clinical projection charts inside the modal. */
 function drawWhatifCharts(c, st) {
   const traj = c.trajectory || [];
   const modal = $("#whatif-modal");
-  const COL = { risk: "#f2606e", map: "#5ccaf0", heart_rate: "#f5c451", sweat_lactate: "#9a8cf0" };
   modal.querySelectorAll(".wm-chart-cell").forEach(cell => {
-    const key = cell.dataset.chart;
-    const arr = traj.map(p => key === "risk" ? num(p.projected_risk)*100 : num(p[key]));
-    const cv = cell.querySelector("canvas");
-    drawTrendChart(cv, arr, COL[key] || "#5ccaf0");
+    const m = METRICS[cell.dataset.chart]; if (!m) return;
+    const arr = traj.map(p => num(p[m.key]) * m.scale);
+    drawClinicalChart(cell.querySelector("canvas"), arr, m);
   });
 }
-function drawTrendChart(cv, arr, color) {
+/* A real monitor-style chart: fixed clinical Y-domain, gridlines with axis
+   labels, a dashed clinical threshold line, area+line, and an endpoint marker. */
+function drawClinicalChart(cv, arr, m) {
   if (!cv || !arr.length) return;
   const dpr = window.devicePixelRatio || 1;
-  const W = cv.clientWidth || 240, H = cv.clientHeight || 70;
+  const W = cv.clientWidth || 240, H = cv.clientHeight || 96;
   cv.width = W * dpr; cv.height = H * dpr;
-  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
-  const pad = 6;
-  let lo = Math.min(...arr), hi = Math.max(...arr);
-  if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
-  const py = v => H - pad - ((v - lo) / (hi - lo)) * (H - pad * 2);
-  const px = i => pad + (i / Math.max(1, arr.length - 1)) * (W - pad * 2);
-  // area fill
-  const grad = ctx.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, color + "44"); grad.addColorStop(1, color + "00");
-  ctx.beginPath(); ctx.moveTo(px(0), H - pad);
+  const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+  const padL = 30, padR = 10, padT = 8, padB = 15;         // room for y-labels + x-axis
+  const x0 = padL, x1 = W - padR, y0 = padT, y1 = H - padB;
+
+  // domain: clamp to the fixed clinical band, but grow to include the data
+  let [lo, hi] = m.domain;
+  lo = Math.min(lo, ...arr); hi = Math.max(hi, ...arr);
+  if (hi - lo < 1e-6) hi = lo + 1;
+  const px = i => x0 + (i / Math.max(1, arr.length - 1)) * (x1 - x0);
+  const py = v => y1 - ((v - lo) / (hi - lo)) * (y1 - y0);
+
+  ctx.font = "9px " + "ui-monospace,'JetBrains Mono',monospace";
+  ctx.textBaseline = "middle";
+
+  // horizontal gridlines + y-axis labels (4 divisions)
+  ctx.strokeStyle = "rgba(150,170,205,.08)"; ctx.lineWidth = 1;
+  ctx.fillStyle = "rgba(150,171,198,.5)"; ctx.textAlign = "right";
+  for (let g = 0; g <= 3; g++) {
+    const val = lo + (hi - lo) * (g / 3), gy = py(val);
+    ctx.beginPath(); ctx.moveTo(x0, gy); ctx.lineTo(x1, gy); ctx.stroke();
+    ctx.fillText(fmtNum(val), x0 - 5, gy);
+  }
+
+  // clinical threshold reference line(s) — dashed, labeled with a dark backing
+  // pill so the text stays legible wherever the projected line crosses it
+  (m.refs || []).forEach(r => {
+    if (r.v < lo || r.v > hi) return;
+    const ty = py(r.v);
+    ctx.save(); ctx.setLineDash([3, 3]); ctx.strokeStyle = "rgba(245,154,75,.4)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0, ty); ctx.lineTo(x1, ty); ctx.stroke();
+    ctx.setLineDash([]); ctx.textAlign = "left"; ctx.textBaseline = "middle";
+    const ly = ty - 7 < y0 ? ty + 7 : ty - 7, tw = ctx.measureText(r.t).width;
+    ctx.fillStyle = "rgba(8,11,20,.72)";
+    ctx.fillRect(x0 + 2, ly - 6, tw + 6, 12);
+    ctx.fillStyle = "rgba(248,182,128,.9)"; ctx.fillText(r.t, x0 + 5, ly);
+    ctx.restore();
+  });
+
+  // area fill under the curve
+  const grad = ctx.createLinearGradient(0, y0, 0, y1);
+  grad.addColorStop(0, m.color + "38"); grad.addColorStop(1, m.color + "05");
+  ctx.beginPath(); ctx.moveTo(px(0), y1);
   arr.forEach((v, i) => ctx.lineTo(px(i), py(v)));
-  ctx.lineTo(px(arr.length - 1), H - pad); ctx.closePath();
+  ctx.lineTo(px(arr.length - 1), y1); ctx.closePath();
   ctx.fillStyle = grad; ctx.fill();
-  // line
-  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = color;
-  ctx.lineJoin = "round"; ctx.shadowColor = color + "88"; ctx.shadowBlur = 8;
+
+  // the projected line
+  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = m.color; ctx.lineJoin = "round"; ctx.lineCap = "round";
   arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
-  ctx.stroke(); ctx.shadowBlur = 0;
-  // endpoint dot
-  const lx = px(arr.length - 1), ly = py(arr[arr.length - 1]);
-  ctx.beginPath(); ctx.arc(lx, ly, 3, 0, 7); ctx.fillStyle = color; ctx.fill();
-  ctx.beginPath(); ctx.arc(lx, ly, 5.5, 0, 7); ctx.strokeStyle = color + "66"; ctx.lineWidth = 1.4; ctx.stroke();
+  ctx.stroke();
+
+  // start + end markers
+  const sx = px(0), sy = py(arr[0]), ex = px(arr.length - 1), ey = py(arr[arr.length - 1]);
+  ctx.fillStyle = "rgba(159,171,198,.7)"; ctx.beginPath(); ctx.arc(sx, sy, 2.4, 0, 7); ctx.fill();
+  ctx.fillStyle = m.color; ctx.beginPath(); ctx.arc(ex, ey, 3.4, 0, 7); ctx.fill();
+  ctx.strokeStyle = m.color + "55"; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(ex, ey, 6, 0, 7); ctx.stroke();
+
+  // x-axis baseline + "now / step N" ticks
+  ctx.strokeStyle = "rgba(150,170,205,.14)"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.stroke();
+  ctx.fillStyle = "rgba(150,171,198,.5)"; ctx.textBaseline = "top";
+  ctx.textAlign = "left"; ctx.fillText("now", x0, y1 + 4);
+  ctx.textAlign = "right"; ctx.fillText("step " + arr.length, x1, y1 + 4);
 }
 function fmtNum(v) {
   const n = Number(v);
@@ -665,8 +731,8 @@ function animate() {
   }
   while (ecgBuf.length > W) ecgBuf.shift();
   while (ppgBuf.length > W) ppgBuf.shift();
-  drawTrace("#ecg", ecgBuf, "#5ccaf0", 74);
-  drawTrace("#ppg", ppgBuf, "#39d9a2", 58, true);
+  drawTrace("#ecg", ecgBuf, "#5ccaf0", 72);
+  drawTrace("#ppg", ppgBuf, "#39d9a2", 72, true);
   requestAnimationFrame(animate);
 }
 function drawTrace(id, buf, color, h) {
