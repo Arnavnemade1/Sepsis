@@ -288,27 +288,46 @@ function renderAgents(d) {
 }
 
 /* ---------------- WHAT-IF ---------------- */
+let _whatifState = null;   // {whatif, vitals, risk} kept for the drill-down modal
 function renderWhatif(d) {
   const w = d.whatif;
   const box = $("#whatif-list");
   if (!w || !w.candidates) {
+    _whatifState = null;
     const lvl = d.risk?.level || "LOW";
     box.innerHTML = `<div class="muted">${lvl === "LOW"
       ? "No active projection — patient stable. Treatment paths are projected automatically when risk becomes elevated."
       : "Projecting treatment trajectories…"}</div>`;
     return;
   }
-  box.innerHTML = w.candidates.map(c => {
-    const best = c.name === w.recommended, s = c.summary || {};
-    return `<div class="cand ${best ? "best" : ""} ${c.safe ? "" : "unsafe"}">
+  _whatifState = { whatif: w, vitals: d.vitals || {}, risk: d.risk || {} };
+  const curRisk = num(d.risk?.ml_probability ?? d.body_state?.sepsis_probability);
+  box.innerHTML =
+    `<div class="whatif-hint">◧ ${w.candidates.length} paths projected over ${w.horizon_steps || "—"} steps · <b>tap any card for the full projection</b></div>` +
+    w.candidates.map((c, i) => {
+      const best = c.name === w.recommended, s = c.summary || {};
+      const fr = num(s.final_risk), delta = fr - curRisk;
+      const dCls = delta < -0.001 ? "down" : delta > 0.001 ? "up" : "flat";
+      const dTxt = delta < -0.001 ? `▼ ${Math.abs(delta*100)|0}%` : delta > 0.001 ? `▲ ${(delta*100)|0}%` : "◦ flat";
+      return `<div class="cand ${best ? "best" : ""} ${c.safe ? "" : "unsafe"}" data-cand="${i}" role="button" tabindex="0">
       <div class="cand-head"><span class="cand-name">${c.name.replace(/_/g, " ")}</span>
         ${best ? '<span class="cand-badge rec">recommended</span>' :
           `<span class="cand-badge ${c.safe ? "safe" : "no"}">${c.safe ? "Z3 safe" : "rejected"}</span>`}</div>
       <div class="cand-spark"><canvas data-traj='${JSON.stringify((c.trajectory||[]).map(t=>t.projected_risk))}'></canvas></div>
-      <div class="cand-meta"><span>final risk ${(num(s.final_risk)*100|0)}%</span><span>MAP→${s.final_map ?? "—"}</span></div>
+      <div class="cand-meta">
+        <span>final risk <b>${(fr*100)|0}%</b></span>
+        <span class="cand-delta ${dCls}">${dTxt}</span>
+        <span>MAP→<b>${s.final_map ?? "—"}</b></span>
+        <span class="cand-open">details →</span>
+      </div>
     </div>`;
-  }).join("");
+    }).join("");
   box.querySelectorAll("canvas[data-traj]").forEach(cv => sparkline(cv, JSON.parse(cv.dataset.traj)));
+  box.querySelectorAll(".cand[data-cand]").forEach(el => {
+    const open = () => openWhatifModal(+el.dataset.cand);
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
 }
 function sparkline(cv, arr) {
   const w = cv.clientWidth || 280, h = 30; cv.width = w; cv.height = h;
@@ -316,6 +335,229 @@ function sparkline(cv, arr) {
   ctx.beginPath(); ctx.lineWidth = 1.6; ctx.strokeStyle = "#34e1ff";
   arr.forEach((v, i) => { const x = i / (arr.length - 1) * w, y = h - 2 - v * (h - 4); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
   ctx.stroke();
+}
+
+/* ---------------- WHAT-IF DRILL-DOWN MODAL ---------------- */
+const ANTIBIOTICS = { 0: "none", 1: "Piperacillin-Tazobactam", 2: "Meropenem", 3: "Cefepime", 4: "Vancomycin" };
+function openWhatifModal(idx) {
+  const st = _whatifState; if (!st) return;
+  const c = st.whatif.candidates[idx]; if (!c) return;
+  const modal = $("#whatif-modal");
+  modal.innerHTML = whatifModalHTML(c, st);
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+  // wire close affordances
+  const close = () => closeWhatifModal();
+  modal.querySelector(".wm-close")?.addEventListener("click", close);
+  modal.querySelector(".wm-scrim")?.addEventListener("click", close);
+  document.addEventListener("keydown", _whatifEsc);
+  // draw the multi-channel projection charts after layout settles
+  requestAnimationFrame(() => drawWhatifCharts(c, st));
+}
+function _whatifEsc(e) { if (e.key === "Escape") closeWhatifModal(); }
+function closeWhatifModal() {
+  const modal = $("#whatif-modal");
+  modal.classList.remove("show");
+  document.removeEventListener("keydown", _whatifEsc);
+  setTimeout(() => { modal.classList.add("hidden"); modal.innerHTML = ""; }, 260);
+}
+
+function whatifModalHTML(c, st) {
+  const s = c.summary || {}, t = c.treatment || {}, v = st.vitals || {};
+  const best = c.name === st.whatif.recommended;
+  const curRisk = num(st.risk?.ml_probability), finRisk = num(s.final_risk);
+  const dRisk = finRisk - curRisk;
+  const curMap = num(v.map), finMap = num(s.final_map);
+  const traj = c.trajectory || [];
+  const first = traj[0] || {}, last = traj[traj.length - 1] || {};
+  const z3 = c.verification || {};
+  const { pros, cons } = whatifProsCons(c, st);
+
+  const dose = (label, val, unit) =>
+    `<div class="wm-dose"><span class="wm-dose-l">${label}</span><span class="wm-dose-v">${val}<i>${unit}</i></span></div>`;
+
+  const compare = (label, cur, fin, unit, goodDir) => {
+    const dv = fin - cur;
+    const good = goodDir === 0 ? Math.abs(dv) < 1e-6 : (goodDir > 0 ? dv >= 0 : dv <= 0);
+    const arrow = Math.abs(dv) < 1e-6 ? "◦" : dv > 0 ? "▲" : "▼";
+    const cls = Math.abs(dv) < 1e-6 ? "flat" : good ? "good" : "bad";
+    return `<div class="wm-cmp">
+      <div class="wm-cmp-l">${label}</div>
+      <div class="wm-cmp-row"><span class="wm-cmp-cur">${fmtNum(cur)}${unit}</span>
+        <span class="wm-cmp-arrow ${cls}">${arrow}</span>
+        <span class="wm-cmp-fin ${cls}">${fmtNum(fin)}${unit}</span></div>
+    </div>`;
+  };
+
+  return `
+  <div class="wm-scrim"></div>
+  <div class="wm-panel ${best ? "best" : ""}" role="dialog" aria-modal="true" aria-label="Treatment projection">
+    <div class="wm-glow"></div>
+    <header class="wm-head">
+      <div class="wm-head-l">
+        <span class="wm-sigil">⑂</span>
+        <div>
+          <div class="wm-title">${c.name.replace(/_/g, " ")}</div>
+          <div class="wm-sub">projected treatment twin · ${st.whatif.horizon_steps || traj.length} steps · severity ${st.whatif.severity ?? "—"}</div>
+        </div>
+      </div>
+      <div class="wm-head-r">
+        ${best ? '<span class="wm-badge rec">◈ recommended path</span>' : ""}
+        <span class="wm-badge ${c.safe ? "safe" : "no"}">${c.safe ? "✓ Z3 certified safe" : "✕ rejected"}</span>
+        <button class="wm-close" aria-label="close">✕</button>
+      </div>
+    </header>
+
+    <div class="wm-body">
+      <!-- headline outcome -->
+      <section class="wm-hero">
+        <div class="wm-hero-risk">
+          <div class="wm-hero-label">projected sepsis risk</div>
+          <div class="wm-hero-val ${finRisk >= .66 ? "crit" : finRisk >= .33 ? "warn" : "ok"}">${(finRisk*100)|0}<i>%</i></div>
+          <div class="wm-hero-delta ${dRisk < -0.001 ? "good" : dRisk > 0.001 ? "bad" : "flat"}">
+            ${dRisk < -0.001 ? `▼ ${Math.abs(dRisk*100)|0}% vs now` : dRisk > 0.001 ? `▲ ${(dRisk*100)|0}% vs now` : "◦ unchanged"}</div>
+        </div>
+        <div class="wm-hero-doses">
+          <div class="wm-doses-h">treatment composition</div>
+          ${dose("fluids", fmtNum(t.fluid_rate), "mL/kg/h")}
+          ${dose("vasopressor", fmtNum(t.vasopressor_dose), "µg/kg/m")}
+          ${dose("antibiotic", ANTIBIOTICS[t.antibiotic_code] || `#${t.antibiotic_code}`, "")}
+        </div>
+      </section>
+
+      <!-- projection charts -->
+      <section class="wm-charts">
+        <div class="wm-chart-h">projected physiology over horizon <span class="wm-chart-note">step 1 → ${traj.length}</span></div>
+        <div class="wm-chart-grid">
+          ${chartCell("risk", "sepsis risk", "%", first.projected_risk, last.projected_risk, true)}
+          ${chartCell("map", "MAP", "mmHg", first.map, last.map, false)}
+          ${chartCell("heart_rate", "heart rate", "bpm", first.heart_rate, last.heart_rate, false)}
+          ${chartCell("sweat_lactate", "lactate", "mmol/L", first.sweat_lactate, last.sweat_lactate, false)}
+        </div>
+      </section>
+
+      <!-- current → projected state -->
+      <section class="wm-state">
+        <div class="wm-sec-h">patient state · now → end of horizon</div>
+        <div class="wm-cmp-grid">
+          ${compare("sepsis risk", curRisk*100, finRisk*100, "%", -1)}
+          ${compare("MAP", curMap, finMap, " mmHg", 1)}
+          ${compare("min MAP (perfusion floor)", curMap, num(s.min_map), " mmHg", 1)}
+          ${compare("mean risk (horizon)", curRisk*100, num(s.mean_risk)*100, "%", -1)}
+        </div>
+      </section>
+
+      <!-- upsides / downsides -->
+      <section class="wm-tradeoff">
+        <div class="wm-trade-col up">
+          <div class="wm-trade-h">▲ upsides</div>
+          ${pros.length ? pros.map(p => `<div class="wm-trade-item good">${p}</div>`).join("") : '<div class="wm-trade-item muted">none identified</div>'}
+        </div>
+        <div class="wm-trade-col down">
+          <div class="wm-trade-h">▼ downsides &amp; cautions</div>
+          ${cons.length ? cons.map(p => `<div class="wm-trade-item bad">${p}</div>`).join("") : '<div class="wm-trade-item muted">no material downside projected</div>'}
+        </div>
+      </section>
+
+      <!-- verification + honesty note -->
+      <section class="wm-verify ${c.safe ? "" : "bad"}">
+        <span class="wm-verify-i">${c.safe ? "✓" : "✕"}</span>
+        <span>Z3 <b>${z3.z3_status || "—"}</b> · ${c.safe ? "all safety obligations satisfied" : (z3.message || "safety obligation violated")}</span>
+      </section>
+      <div class="wm-disclaimer">${st.whatif.note || "Illustrative pharmacodynamic projection for decision exploration — not a validated outcome forecast."}</div>
+    </div>
+  </div>`;
+}
+
+function chartCell(key, label, unit, v0, v1, isRisk) {
+  const a = isRisk ? num(v0)*100 : num(v0), b = isRisk ? num(v1)*100 : num(v1);
+  const dv = b - a, arrow = Math.abs(dv) < (isRisk?0.5:0.05) ? "◦" : dv > 0 ? "▲" : "▼";
+  return `<div class="wm-chart-cell" data-chart="${key}">
+    <div class="wm-cc-top"><span class="wm-cc-label">${label}</span>
+      <span class="wm-cc-end">${fmtNum(b)}<i>${unit}</i> <span class="wm-cc-arrow">${arrow}</span></span></div>
+    <canvas class="wm-cc-canvas"></canvas>
+    <div class="wm-cc-foot"><span>${fmtNum(a)}${unit}</span><span>${fmtNum(b)}${unit}</span></div>
+  </div>`;
+}
+
+/* Derive upsides/downsides from the projected trajectory + treatment. */
+function whatifProsCons(c, st) {
+  const s = c.summary || {}, t = c.treatment || {}, v = st.vitals || {};
+  const pros = [], cons = [];
+  const curRisk = num(st.risk?.ml_probability), finRisk = num(s.final_risk);
+  const dRisk = finRisk - curRisk;
+  const minMap = num(s.min_map), finMap = num(s.final_map);
+
+  if (dRisk <= -0.05) pros.push(`Cuts projected sepsis risk by <b>${Math.abs(dRisk*100)|0}%</b> over the horizon.`);
+  else if (dRisk < -0.001) pros.push(`Nudges projected risk down <b>${Math.abs(dRisk*100)|0}%</b>.`);
+  else if (dRisk > 0.02) cons.push(`Projected risk <b>rises ${(dRisk*100)|0}%</b> — does not contain the trajectory.`);
+  else pros.push("Holds projected risk roughly stable.");
+
+  if (minMap >= 65) pros.push(`Perfusion floor stays adequate (min MAP <b>${fmtNum(minMap)}</b> ≥ 65 mmHg).`);
+  else if (minMap > 0) cons.push(`Perfusion dips to <b>${fmtNum(minMap)} mmHg</b> — below the 65 mmHg target at some point.`);
+
+  if (num(t.fluid_rate) > 0) {
+    if (finMap - num(v.map) >= 3) pros.push(`Fluids raise MAP toward <b>${fmtNum(finMap)} mmHg</b>.`);
+    if (num(t.fluid_rate) >= 5) cons.push(`Higher fluid rate (<b>${fmtNum(t.fluid_rate)} mL/kg/h</b>) — watch for volume overload / pulmonary edema.`);
+  }
+  if (num(t.vasopressor_dose) > 0) {
+    pros.push(`Vasopressor support defends MAP under distributive shock.`);
+    cons.push(`Vasopressor (<b>${fmtNum(t.vasopressor_dose)} µg/kg/m</b>) adds afterload / arrhythmia and end-organ ischemia risk.`);
+  }
+  if (num(t.antibiotic_code) > 0) pros.push(`Broad-spectrum antibiotic (<b>${ANTIBIOTICS[t.antibiotic_code] || "#"+t.antibiotic_code}</b>) covers the suspected source early.`);
+  else cons.push("No antibiotic — leaves a suspected infection untreated.");
+
+  if (num(t.fluid_rate) === 0 && num(t.vasopressor_dose) === 0 && num(t.antibiotic_code) === 0) {
+    cons.push("No active intervention — relies on the patient self-correcting.");
+  }
+  if (!c.safe) cons.push("Z3 rejected this path — a hard safety obligation is violated.");
+  return { pros, cons };
+}
+
+/* Draw the four sparkline-style projection charts inside the modal. */
+function drawWhatifCharts(c, st) {
+  const traj = c.trajectory || [];
+  const modal = $("#whatif-modal");
+  const COL = { risk: "#f2606e", map: "#5ccaf0", heart_rate: "#f5c451", sweat_lactate: "#9a8cf0" };
+  modal.querySelectorAll(".wm-chart-cell").forEach(cell => {
+    const key = cell.dataset.chart;
+    const arr = traj.map(p => key === "risk" ? num(p.projected_risk)*100 : num(p[key]));
+    const cv = cell.querySelector("canvas");
+    drawTrendChart(cv, arr, COL[key] || "#5ccaf0");
+  });
+}
+function drawTrendChart(cv, arr, color) {
+  if (!cv || !arr.length) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth || 240, H = cv.clientHeight || 70;
+  cv.width = W * dpr; cv.height = H * dpr;
+  const ctx = cv.getContext("2d"); ctx.scale(dpr, dpr); ctx.clearRect(0, 0, W, H);
+  const pad = 6;
+  let lo = Math.min(...arr), hi = Math.max(...arr);
+  if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
+  const py = v => H - pad - ((v - lo) / (hi - lo)) * (H - pad * 2);
+  const px = i => pad + (i / Math.max(1, arr.length - 1)) * (W - pad * 2);
+  // area fill
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, color + "44"); grad.addColorStop(1, color + "00");
+  ctx.beginPath(); ctx.moveTo(px(0), H - pad);
+  arr.forEach((v, i) => ctx.lineTo(px(i), py(v)));
+  ctx.lineTo(px(arr.length - 1), H - pad); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+  // line
+  ctx.beginPath(); ctx.lineWidth = 2; ctx.strokeStyle = color;
+  ctx.lineJoin = "round"; ctx.shadowColor = color + "88"; ctx.shadowBlur = 8;
+  arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
+  ctx.stroke(); ctx.shadowBlur = 0;
+  // endpoint dot
+  const lx = px(arr.length - 1), ly = py(arr[arr.length - 1]);
+  ctx.beginPath(); ctx.arc(lx, ly, 3, 0, 7); ctx.fillStyle = color; ctx.fill();
+  ctx.beginPath(); ctx.arc(lx, ly, 5.5, 0, 7); ctx.strokeStyle = color + "66"; ctx.lineWidth = 1.4; ctx.stroke();
+}
+function fmtNum(v) {
+  const n = Number(v);
+  if (!isFinite(n)) return "—";
+  return Math.abs(n) >= 100 ? Math.round(n) : (Math.round(n * 10) / 10).toFixed(1).replace(/\.0$/, "");
 }
 
 /* ---------------- PROTOCOL + PROOF ---------------- */
