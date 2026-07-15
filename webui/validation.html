@@ -1,35 +1,49 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>AegisOS — Detection Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
 <style>
+/* ============================================================
+   Detection Validation — same family as the clinical instrument, different artifact.
+   This page is a REPORT, not an instrument: it is read end-to-end, shared with
+   reviewers, and printed. So it deliberately keeps its light/dark paper surfaces
+   rather than the shell's graphite — a printed dark dashboard is a worse report, and
+   an honest results document should look like a document.
+   What it DOES share is the identity's substance: IBM Plex, and the exact same
+   clinical state hues, so "good/warn/bad" here means the same colour it means at the
+   bedside. One family, two appropriate expressions.
+   ============================================================ */
 :root{
   --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
   --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
-  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;
-  --s1soft:rgba(42,120,214,.12); --s2soft:rgba(27,175,122,.14);
+  --s1:#3f6fd0; --s2:#2f8f66; --ref:#b9b8b0; --good:#2f8f66; --warn:#a8761f; --bad:#c0433b;
+  --s1soft:rgba(63,111,208,.12); --s2soft:rgba(47,143,102,.14);
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
-  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
-  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;
-  --s1soft:rgba(57,135,229,.16); --s2soft:rgba(31,189,134,.16);
+  --bg:#0a0b0c; --surface:#111214; --card:#16181b; --line:#2a2d31; --line2:#1f2226;
+  --ink:#f2f3f5; --ink2:#a0a4ac; --muted:#6d7178;
+  --s1:#7aa2f7; --s2:#40b880; --ref:#4b4f56; --good:#40b880; --warn:#e2a33c; --bad:#e5544c;
+  --s1soft:rgba(122,162,247,.16); --s2soft:rgba(64,184,128,.16);
 }}
 :root[data-theme=dark]{
-  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
-  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
-  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;
-  --s1soft:rgba(57,135,229,.16); --s2soft:rgba(31,189,134,.16);}
+  --bg:#0a0b0c; --surface:#111214; --card:#16181b; --line:#2a2d31; --line2:#1f2226;
+  --ink:#f2f3f5; --ink2:#a0a4ac; --muted:#6d7178;
+  --s1:#7aa2f7; --s2:#40b880; --ref:#4b4f56; --good:#40b880; --warn:#e2a33c; --bad:#e5544c;
+  --s1soft:rgba(122,162,247,.16); --s2soft:rgba(64,184,128,.16);}
 :root[data-theme=light]{
   --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
   --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
-  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;
-  --s1soft:rgba(42,120,214,.12); --s2soft:rgba(27,175,122,.14);}
+  --s1:#3f6fd0; --s2:#2f8f66; --ref:#b9b8b0; --good:#2f8f66; --warn:#a8761f; --bad:#c0433b;
+  --s1soft:rgba(63,111,208,.12); --s2soft:rgba(47,143,102,.14);}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
-  line-height:1.55;-webkit-font-smoothing:antialiased}
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  line-height:1.55;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
 .wrap{max-width:1060px;margin:0 auto;padding:40px 22px 80px}
-.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.mono,.num,.axl{font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  font-variant-numeric:tabular-nums slashed-zero}
 h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
 .sub{color:var(--ink2);font-size:15px;max-width:70ch}
 .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;

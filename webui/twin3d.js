@@ -27,10 +27,14 @@ import { OutputPass } from "./vendor/three/postprocessing/OutputPass.js";
 let composer, bloomPass;
 
 const H = 1.7;                                    // body height (feet ~0)
-const BASE = new THREE.Color(0x2f7fd8);           // calm / healthy
-const NODATA = new THREE.Color(0x3a4660);
-const RIM = new THREE.Color(0x9fe6ff);
-const TIER_HEX = { STRESS: 0xffd23b, DYSFUNCTION: 0xff9a3b, CRITICAL: 0xff4d5e };
+// Clinical-instrument palette — mirrors the --low/--med/--dys/--high tokens in os.css.
+// A HEALTHY organ is neutral slate, not blue: rendering "calm" in saturated blue lit the
+// whole torso up whenever nothing was wrong, so a genuinely stressed organ had to
+// out-shout eleven glowing healthy ones. Colour on this body now means pathology.
+const BASE = new THREE.Color(0x848a93);           // calm / healthy — neutral
+const NODATA = new THREE.Color(0x4b4f56);
+const RIM = new THREE.Color(0xc2c7cf);
+const TIER_HEX = { STRESS: 0xe2a33c, DYSFUNCTION: 0xde833a, CRITICAL: 0xe5544c };
 const REGION_LABEL = {
   brain: "Neurological", heart: "Cardiovascular", lungs: "Respiratory",
   liver: "Hepatic", kidneys: "Renal", skin: "Peripheral", blood: "Coagulation",
@@ -77,7 +81,7 @@ let focusFoci = [], focusRegions = {};       // the attending's per-patient focu
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
 let infectFX, infLabel, lastInfection = null;     // suspected infection focus
-const INFECT_COL = 0xff7a3b;                       // distinct "infection" orange
+const INFECT_COL = 0xde833a;                       // distinct "infection" orange (= --dys)
 // suspected-focus region -> organ to light up (null = no single organ / systemic)
 const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver" };
 const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
@@ -86,7 +90,7 @@ const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal
 let infusionParticles = null;
 let infusionActive = false;
 let infusionProgress = 0.0;
-const infusionColor = new THREE.Color(0x00ffff);
+const infusionColor = new THREE.Color(0x7aa2f7);   // = --accent (an action, not a state)
 // The venous route (wrist → elbow → shoulder → SVC → heart) and the organ
 // destinations are REBUILT from live world positions on each triggerInfusion()
 // call — the organ atlas is skeleton-calibrated at runtime, so any hardcoded
@@ -142,7 +146,7 @@ function tierColor(region) {
   if (!region || !region.monitored) return NODATA;
   const sev = region.severity || 0;
   if (sev < 0.18 || region.status === "NORMAL") return BASE;
-  return new THREE.Color(TIER_HEX[region.status] || 0xffd23b);
+  return new THREE.Color(TIER_HEX[region.status] || 0xe2a33c);
 }
 const worse = (a, b) => (((a && a.severity) || 0) >= ((b && b.severity) || 0) ? a : b);
 
@@ -204,7 +208,7 @@ function makeOrganMat() {
   // tinted by the system colour, plus a bright fresnel rim so the organ reads as
   // a glowing volume rather than a flat blob.
   const m = new THREE.MeshStandardMaterial({
-    color: 0x222a38, emissive: BASE.clone(), emissiveIntensity: 0.5,
+    color: 0x1d2024, emissive: BASE.clone(), emissiveIntensity: 0.5,
     transparent: true, opacity: 0.6, roughness: 0.42, metalness: 0.0,
     depthWrite: true, side: THREE.DoubleSide,
   });
@@ -221,7 +225,7 @@ function makeOrganMat() {
    MeshBasic so it self-illuminates (and blooms) regardless of scene lighting. */
 function makeVascularMat() {
   return new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0x2b5f9e), transparent: true, opacity: 0.26,
+    color: new THREE.Color(0x6b7078), transparent: true, opacity: 0.26,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 }
 function loadOrgans() {
@@ -309,11 +313,11 @@ function circle(r, segs) {
 function buildGround() {
   ground = new THREE.Group(); ground.position.y = 0.01; scene.add(ground);
   const disc = new THREE.Mesh(new THREE.CircleGeometry(0.52, 64),
-    new THREE.MeshBasicMaterial({ color: 0x0a1830, transparent: true, opacity: 0.35, depthWrite: false }));
+    new THREE.MeshBasicMaterial({ color: 0x101113, transparent: true, opacity: 0.35, depthWrite: false }));
   disc.rotation.x = -Math.PI / 2; disc.position.y = -0.004; ground.add(disc);
   [0.18, 0.30, 0.42, 0.52].forEach((r, i) => {
     const ring = new THREE.LineLoop(circle(r, 80),
-      new THREE.LineBasicMaterial({ color: 0x3f9fe0, transparent: true, opacity: i === 3 ? 0.5 : 0.22 }));
+      new THREE.LineBasicMaterial({ color: 0x5b6068, transparent: true, opacity: i === 3 ? 0.5 : 0.22 }));
     ground.add(ring);
   });
   const spokes = new THREE.Group();
@@ -322,7 +326,7 @@ function buildGround() {
     const g = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(Math.cos(a) * 0.18, 0, Math.sin(a) * 0.18),
       new THREE.Vector3(Math.cos(a) * 0.52, 0, Math.sin(a) * 0.52)]);
-    spokes.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x274a72, transparent: true, opacity: 0.28 })));
+    spokes.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x44484f, transparent: true, opacity: 0.28 })));
   }
   ground.add(spokes);
   // rotating sweep wedge (two bright radials)
@@ -331,7 +335,7 @@ function buildGround() {
     const a = off;
     const g = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(0, 0, 0), new THREE.Vector3(Math.cos(a) * 0.52, 0, Math.sin(a) * 0.52)]);
-    sweep.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.45 })));
+    sweep.add(new THREE.Line(g, new THREE.LineBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.45 })));
   });
   ground.add(sweep);
 }
@@ -347,7 +351,7 @@ function buildParticles() {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
   particles = new THREE.Points(geo, new THREE.PointsMaterial({
-    size: 0.016, map: glowTex, color: 0x6fd3ff, transparent: true, opacity: 0.5,
+    size: 0.016, map: glowTex, color: 0x7d838b, transparent: true, opacity: 0.5,
     depthWrite: false, blending: THREE.AdditiveBlending, sizeAttenuation: true }));
   pData = { spd, N }; scene.add(particles);
 }
@@ -361,7 +365,7 @@ function buildInfusionParticles() {
   infusionParticles = new THREE.Points(geo, new THREE.PointsMaterial({
     size: 0.025,
     map: glowTex,
-    color: 0x00ffff,
+    color: 0x7aa2f7,
     transparent: true,
     opacity: 0.0,
     depthWrite: false,
@@ -374,13 +378,12 @@ function buildInfusionParticles() {
 function triggerInfusion(drugType) {
   infusionActive = true;
   infusionProgress = 0.0;
-  if (drugType === "fluids") {
-    infusionColor.setHex(0x00d8ff); // bright cyan
-  } else if (drugType === "antibiotic") {
-    infusionColor.setHex(0x3cfc3c); // bright neon green
-  } else if (drugType === "vasopressor") {
-    infusionColor.setHex(0xe03cff); // bright magenta/purple
-  }
+  // Every infusion renders in --accent, because an infusion is an ACTION the system is
+  // taking, not a state the patient is in. The old per-drug hues broke that: antibiotic
+  // was neon green — the same signal this UI uses for "healthy" — and vasopressor was
+  // magenta, which encodes nothing clinical at all. Drug identity is carried by the
+  // label in the protocol panel, where it can be read; hue is reserved for state.
+  infusionColor.setHex(0x7aa2f7);
   if (infusionParticles) {
     infusionParticles.material.color.copy(infusionColor);
     infusionParticles.material.opacity = 0.9;
@@ -417,7 +420,7 @@ function buildReticle() {
   for (let i = 0; i < 4; i++) {                    // corner brackets
     const a = i / 4 * Math.PI * 2 + Math.PI / 4;
     const br = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.004, 6, 24, 0.5),
-      new THREE.MeshBasicMaterial({ color: 0x7fe8ff, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
+      new THREE.MeshBasicMaterial({ color: 0x9aa0a8, transparent: true, opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending }));
     br.rotation.x = Math.PI / 2; br.rotation.z = a; reticle.add(br);
   }
 }
@@ -672,11 +675,15 @@ function start(el) {
   controls.target.set(0, H * 0.50, 0);
   controls.autoRotate = true; controls.autoRotateSpeed = 0.28;
   controls.minPolarAngle = Math.PI * 0.38; controls.maxPolarAngle = Math.PI * 0.56;
+  // Neutral studio lighting. Every lamp used to be tinted cool blue, which put the old
+  // brand cast back onto the tissue after the materials had been neutralised — and a
+  // blue key light shifts amber toward brown, quietly weakening the exact signal the
+  // organ colours exist to send. White key, neutral fill, achromatic hemisphere.
   scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const key = new THREE.DirectionalLight(0xcfe4ff, 1.5); key.position.set(0.6, 1.4, 1.2); scene.add(key);
-  const fill = new THREE.DirectionalLight(0x6080c0, 0.55); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
-  const rim = new THREE.DirectionalLight(0x8fd0ff, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // cool back-rim → separates the body from the dark
-  scene.add(new THREE.HemisphereLight(0x6f86c8, 0x0a1020, 0.45));                                          // soft sky/ground gradient over the tissue
+  const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(0.6, 1.4, 1.2); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x9aa0a8, 0.55); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xdfe3e8, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // back-rim → separates the body from the dark
+  scene.add(new THREE.HemisphereLight(0x9298a1, 0x101113, 0.45));                                          // soft sky/ground gradient over the tissue
 
   // ---- bloom post-processing: the single biggest step up from "rudimentary" —
   // the emissive organs/vessels now bloom like a real hologram instead of reading
@@ -786,7 +793,7 @@ function applyRegions() {
   // brightens as circulatory stress rises (stays a faint blue network when calm).
   const vcol = overall >= 0.75 ? new THREE.Color(TIER_HEX.CRITICAL)
              : overall >= 0.45 ? new THREE.Color(TIER_HEX.DYSFUNCTION)
-             : overall >= 0.2 ? new THREE.Color(TIER_HEX.STRESS) : new THREE.Color(0x2b5f9e);
+             : overall >= 0.2 ? new THREE.Color(TIER_HEX.STRESS) : new THREE.Color(0x6b7078);
   for (const k in organs) {
     const o = organs[k]; if (!o.vascular || !o.mat) continue;
     o.mon = true; o.sev = overall;
@@ -797,7 +804,7 @@ function applyRegions() {
   // body shell: a single clean translucent tint (neutral blue, washing gently
   // toward the overall tier colour in a crisis) — the diagnostic colour lives in
   // the organs, so the body always reads as a body, not a patchy heat-map.
-  const tierHex = overall >= 0.75 ? 0xff4d5e : overall >= 0.45 ? 0xff9a3b : overall >= 0.2 ? 0xffd23b : null;
+  const tierHex = overall >= 0.75 ? 0xff4d5e : overall >= 0.45 ? 0xff9a3b : overall >= 0.2 ? 0xe2a33c : null;
   const bc = BASE.clone(); if (tierHex) bc.lerp(new THREE.Color(tierHex), 0.4);
   ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
 

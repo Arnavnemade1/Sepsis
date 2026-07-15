@@ -6,9 +6,9 @@
 <title>Aegis OS · Tactical Bio-Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=28" />
+<link rel="stylesheet" href="tactical.css?v=31" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -75,18 +75,18 @@
   <section class="view view-ops active" id="view-ops">
     <main class="board">
       <section class="card span-ops">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span>
+        <div class="card-hd"><span class="hd-dot"></span>
           <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">real ICU cohort</span></div>
         <div class="card-body"><div class="opgrid" id="opgrid"></div></div>
       </section>
       <section class="card span-learn">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--indigo)"></span>
+        <div class="card-hd"><span class="hd-dot"></span>
           <h2>Per-Patient Baseline Learning</h2>
           <span class="hd-meta" id="b-meta">deviation from each patient's <em>own</em> learned norm</span></div>
         <div class="card-body"><canvas id="cv-learn"></canvas></div>
       </section>
       <section class="card span-blind">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span>
+        <div class="card-hd"><span class="hd-dot"></span>
           <h2>Personalization Map</h2>
           <span class="hd-meta" id="d-meta">where learning changes the call</span></div>
         <div class="card-body"><canvas id="cv-blind"></canvas></div>
@@ -109,7 +109,7 @@
       <h3>ICU Command</h3>
       <p>Click any bed to open its dossier — fast-forward a patient to sepsis onset, inspect its trajectory, memory &amp; latency.</p>
       <div class="legend">
-        <span><i style="background:var(--cyan)"></i>stable</span>
+        <span><i style="background:var(--ok)"></i>stable</span>
         <span><i style="background:var(--watch)"></i>watch</span>
         <span><i style="background:var(--crit)"></i>critical</span>
       </div>
@@ -126,17 +126,17 @@
     <div class="val-kpis" id="val-kpis"></div>
     <div class="val-grid">
       <div class="card val-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Early-warning lead time</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Early-warning lead time</h2>
           <span class="hd-meta">hours before onset</span></div>
         <div class="card-body"><canvas id="cv-leadhist"></canvas></div>
       </div>
       <div class="card val-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Sensitivity / specificity</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Sensitivity / specificity</h2>
           <span class="hd-meta">across alarm thresholds</span></div>
         <div class="card-body"><canvas id="cv-sweep"></canvas></div>
       </div>
       <div class="card val-card val-card-wide">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Per-patient detection</h2></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Per-patient detection</h2></div>
         <div class="card-body val-table" id="val-table"></div>
       </div>
     </div>
@@ -244,21 +244,21 @@
     <!-- left column — synchronized signal acquisition + vitals -->
     <div class="cl-col cl-left">
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Synchronized Detection Hub</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Synchronized Detection Hub</h2>
           <span class="hd-meta" id="dos-sync">— · in sync</span><span class="dos-ebpf" id="dos-ebpf" hidden></span></div>
         <div class="card-body cl-pad"><div class="dos-hub" id="dos-hub"></div></div>
       </section>
       <section class="card cl-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--indigo)"></span><h2>Vital Signs</h2><span class="hd-meta">live</span></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Vital Signs</h2><span class="hd-meta">live</span></div>
         <div class="card-body cl-pad"><div class="dos-vitals" id="dos-vitals"></div></div>
       </section>
       <section class="card cl-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Cross-Modal Resonance</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Cross-Modal Resonance</h2>
           <span class="hd-meta" id="dos-xmr-meta">agreement gate</span></div>
         <div class="card-body cl-pad"><div class="xmr" id="dos-xmr"></div></div>
       </section>
       <section class="card cl-card">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Ground Truth</h2><span class="hd-meta">CinC-2019 label</span></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Ground Truth</h2><span class="hd-meta">CinC-2019 label</span></div>
         <div class="card-body cl-pad"><div class="dos-truth" id="dos-truth"></div></div>
       </section>
     </div>
@@ -266,7 +266,7 @@
     <!-- center column — anatomical 3D bio-twin + risk timeline -->
     <div class="cl-col cl-main">
       <section class="card cl-card cl-grow cl-twin">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--cyan)"></span><h2>Anatomical Bio-Twin</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Anatomical Bio-Twin</h2>
           <span class="hd-meta">organ-system load · live</span></div>
         <div class="card-body">
           <div id="twin-stage" class="twin-stage"></div>
@@ -274,7 +274,7 @@
         </div>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--crit)"></span><h2>Fused Sepsis-Risk Timeline</h2><span class="hd-meta">history + forecast vs labelled onset</span></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Fused Sepsis-Risk Timeline</h2><span class="hd-meta">history + forecast vs labelled onset</span></div>
         <div class="card-body"><canvas id="cv-dos-risk"></canvas></div>
       </section>
     </div>
@@ -293,16 +293,16 @@
         </button>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--violet)"></span><h2>Learned Behaviour</h2>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Learned Behaviour</h2>
           <span class="hd-meta" id="dos-learn-meta">baseline —</span></div>
         <div class="card-body cl-pad"><div class="dos-learned" id="dos-learned"></div></div>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--watch)"></span><h2>Active Problems</h2><span class="hd-meta">ranked</span></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Active Problems</h2><span class="hd-meta">ranked</span></div>
         <div class="card-body cl-pad"><div class="dos-drivers" id="dos-drivers"></div></div>
       </section>
       <section class="card cl-card cl-grow">
-        <div class="card-hd"><span class="hd-dot" style="--c:var(--ok)"></span><h2>Certified Hour-1 Protocol</h2><span class="hd-meta">Z3-verified</span></div>
+        <div class="card-hd"><span class="hd-dot"></span><h2>Certified Hour-1 Protocol</h2><span class="hd-meta">Z3-verified</span></div>
         <div class="card-body cl-pad"><div class="dos-bundle" id="dos-bundle"></div></div>
       </section>
     </div>
@@ -312,7 +312,7 @@
 <script type="importmap">
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
-<script type="module" src="twin3d.js?v=6"></script>
+<script type="module" src="twin3d.js?v=7"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -370,6 +370,6 @@
   </div>
 </div>
 
-<script src="tactical.js?v=25"></script>
+<script src="tactical.js?v=27"></script>
 </body>
 </html>

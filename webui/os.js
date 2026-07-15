@@ -176,10 +176,14 @@ function countUpProb(el, to, has) {
 
 // Tier palette — a clinical traffic-light read (green → amber → red), matched to
 // the tier badge + band meter so the whole instrument agrees. In-theme, no pink.
+// Clinical-instrument palette. Each tier is ONE colour — the arc used to ramp between
+// two hues (a->b), which made the stroke's colour depend on how full it was as well as
+// on the tier, so a mid-range LOW and a low-range MEDIUM shaded into each other. A tier
+// now reads the same at 1% as at 99%. Values mirror --low/--med/--high in os.css.
 const RISK_THEME = {
-  LOW:    { a: "#39d9a2", b: "#3fb8c8", glow: "57,217,162" },
-  MEDIUM: { a: "#f5c451", b: "#f59a4b", glow: "245,196,81" },
-  HIGH:   { a: "#f2606e", b: "#ef5d8f", glow: "242,96,110" },
+  LOW:    { a: "#40b880", b: "#40b880", glow: "64,184,128" },
+  MEDIUM: { a: "#e2a33c", b: "#e2a33c", glow: "226,163,60" },
+  HIGH:   { a: "#e5544c", b: "#e5544c", glow: "229,84,76" },
 };
 // 270° instrument sweep: a 90° gap centred at the bottom.
 const ARC_START = -135, ARC_SWEEP = 270;
@@ -216,19 +220,19 @@ function buildGauge() {
   svg.innerHTML = `
     <defs>
       <linearGradient id="rg" gradientUnits="userSpaceOnUse" x1="10" y1="100" x2="110" y2="20">
-        <stop id="rg0" offset="0" stop-color="#5ccaf0"/><stop id="rg1" offset="1" stop-color="#6f8cf5"/></linearGradient>
+        <stop id="rg0" offset="0" stop-color="#40b880"/><stop id="rg1" offset="1" stop-color="#40b880"/></linearGradient>
       <radialGradient id="rgCore" cx="50%" cy="50%" r="55%">
-        <stop id="rgc0" offset="0" stop-color="rgba(92,202,240,.16)"/>
-        <stop offset="100%" stop-color="rgba(92,202,240,0)"/></radialGradient>
+        <stop id="rgc0" offset="0" stop-color="rgba(64,184,128,0)"/>
+        <stop offset="100%" stop-color="rgba(64,184,128,0)"/></radialGradient>
     </defs>
     <circle id="rg-core" cx="${cx}" cy="${cy}" r="46" fill="url(#rgCore)"/>
     <g class="risk-ticks">${ticks}</g>
-    <path d="${fullPath}" fill="none" stroke="rgba(140,165,210,.12)" stroke-width="7" stroke-linecap="round"/>
+    <path d="${fullPath}" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="6" stroke-linecap="butt"/>
     <path id="rg-fill" class="risk-arc-fill" d="${fullPath}" pathLength="1000" fill="none"
-      stroke="url(#rg)" stroke-width="7" stroke-linecap="round"
+      stroke="url(#rg)" stroke-width="6" stroke-linecap="butt"
       stroke-dasharray="1000" stroke-dashoffset="1000"/>
-    ${marker(0.04, "#f5c451")}${marker(0.12, "#f2606e")}
-    <circle id="rg-dot" class="risk-arc-dot" r="4.4" fill="#fff" opacity="0"/>`;
+    ${marker(0.04, "#e2a33c")}${marker(0.12, "#e5544c")}
+    <circle id="rg-dot" class="risk-arc-dot" r="3.4" fill="#f2f3f5" opacity="0"/>`;
   RG.built = true;
 }
 function drawArc(p, lvl) {
@@ -239,15 +243,18 @@ function drawArc(p, lvl) {
   const th = RISK_THEME[lvl] || RISK_THEME.LOW;
   $("#risk-gauge")?.style.setProperty("--halo", th.glow);
   fill.style.strokeDashoffset = String(1000 * (1 - f));
-  fill.style.filter = `drop-shadow(0 0 7px rgba(${th.glow},.85))`;
   $("#rg0")?.setAttribute("stop-color", th.a);
   $("#rg1")?.setAttribute("stop-color", th.b);
-  core?.setAttribute("stop-color", `rgba(${th.glow},.16)`);
+  // The dial's inner core wash stays fully transparent: it was a tier-tinted radial
+  // glow behind the number, i.e. coloured light directly under the one reading that
+  // has to stay legible at a glance.
+  core?.setAttribute("stop-color", `rgba(${th.glow},0)`);
   const [dx, dy] = polar(RG.cx, RG.cy, RG.r, ARC_START + ARC_SWEEP * f);
   dot.setAttribute("cx", dx.toFixed(2));
   dot.setAttribute("cy", dy.toFixed(2));
   dot.setAttribute("opacity", f > 0.003 ? "1" : "0");
-  dot.style.filter = `drop-shadow(0 0 7px rgba(${th.glow},1))`;
+  // No drop-shadow on arc or dot (rule 2). The arc's colour and length already carry
+  // the tier and the magnitude; a halo only smears the edge you read the value off.
 }
 
 /* ---------------- BODY TWIN (3D — see twin3d.js) ---------------- */

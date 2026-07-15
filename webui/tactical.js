@@ -9,15 +9,24 @@
 (function () {
 "use strict";
 
-/* ---------- palette (mirrors tactical.css) ---------- */
+/* ---------- palette (mirrors tactical.css — clinical instrument) ----------
+   Canvas cannot read CSS custom properties, so these literals must be kept in step
+   with the tokens in tactical.css by hand. Clinical state is the only saturated set. */
 var C = {
-  ink:"#f0f4ff", muted:"#9aa6c8", dim:"#5a6488",
-  cyan:"#5fd0f7", indigo:"#7d8cff", violet:"#b08cff",
-  ok:"#41e6a4", watch:"#ffc24d", crit:"#ff6b86",
-  grid:"rgba(108,140,255,.06)", gridHi:"rgba(108,140,255,.13)",
+  ink:"#f2f3f5", muted:"#a0a4ac", dim:"#6d7178", faint:"#4b4f56",
+  accent:"#7aa2f7", accentInk:"#a8c4ff",
+  cyan:"#7aa2f7", indigo:"#7aa2f7", violet:"#7aa2f7",   // legacy aliases -> one accent
+  ok:"#40b880", watch:"#e2a33c", crit:"#e5544c",
+  grid:"rgba(255,255,255,.045)", gridHi:"rgba(255,255,255,.1)",
 };
-var TIER_COL = { STABLE:C.cyan, WATCH:C.watch, CRITICAL:C.crit };
-var LANE_COL = { safety:C.ok, ml_tracking:C.cyan, render:C.indigo, logging:C.violet };
+// STABLE was drawn in the brand hue, so a stable bed rendered BLUE while the legend
+// beside it (and every other "healthy" signal in the product) said green. A tier is
+// clinical state; it takes the clinical palette.
+var TIER_COL = { STABLE:C.ok, WATCH:C.watch, CRITICAL:C.crit };
+// Scheduler lanes are CATEGORIES, not patient state, so they get a neutral/accent ramp.
+// Painting a "safety" lane in --ok green would spend the healthy-patient signal on a
+// chart axis and leave the two meanings competing.
+var LANE_COL = { safety:C.accent, ml_tracking:C.accentInk, render:"#8a8f97", logging:"#5b6068" };
 var LANE_LABEL = { safety:"Safety", ml_tracking:"ML tracking", render:"Render", logging:"Logging" };
 var LANE_ORDER = ["safety","ml_tracking","render","logging"];
 var DEADLINE_US = 50000;
@@ -590,14 +599,14 @@ function renderHub(b){
   html+='<div class="hub-fuse">'+
     fuseRow("Population",b.population_risk||0,C.indigo,false)+
     fuseRow("Baseline Δ",clamp(dev/3,0,1),C.violet,false)+
-    fuseRow("Fused",b.fused_risk||0,tierOf(b.fused_risk)==="critical"?C.crit:tierOf(b.fused_risk)==="watch"?C.watch:C.cyan,true)+
+    fuseRow("Fused",b.fused_risk||0,tierOf(b.fused_risk)==="critical"?C.crit:tierOf(b.fused_risk)==="watch"?C.watch:C.ok,true)+
     '</div>';
   var inf=inferInfection(b);
   if(inf){ html+='<div class="hub-focus"><span class="hf-ic">⚠</span><div class="hf-tx">'+
     'SUSPECTED FOCUS · <b>'+inf.site+'</b>'+
     '<span class="hf-sub">inferred from vitals'+(inf.why?' · '+inf.why:'')+' · '+inf.conf+' confidence</span></div></div>'; }
   var hd=b.hdc;
-  if(hd&&hd.k){ var resem=hd.resemblance||0, rc=resem>=0.5?C.crit:resem>=0.25?C.watch:C.cyan;
+  if(hd&&hd.k){ var resem=hd.resemblance||0, rc=resem>=0.5?C.crit:resem>=0.25?C.watch:C.muted;
     var lead=hd.lead_h!=null?(' · median lead '+Math.round(hd.lead_h)+'h'):'';
     html+='<div class="hub-hdc"><div class="hh-top"><span class="hh-ic">⬡</span>'+
       '<span class="hh-t">HDC CASE MEMORY</span><span class="hh-sim">sim '+(hd.top_sim||0).toFixed(2)+'</span></div>'+
@@ -605,7 +614,7 @@ function renderHub(b){
       '<div class="hh-sub"><b style="color:'+rc+'">'+(hd.n_septic||0)+'/'+hd.k+'</b> nearest real ICU bio-states became septic'+lead+
       ' · <span class="hh-resem">'+Math.round(resem*100)+'% resemblance</span></div></div>'; }
   var ew=b.ews;
-  if(ew&&ew.trace&&ew.trace.length>3){ var ec=ew.ews>=0.5?C.crit:ew.ews>=0.25?C.watch:C.indigo;
+  if(ew&&ew.trace&&ew.trace.length>3){ var ec=ew.ews>=0.5?C.crit:ew.ews>=0.25?C.watch:C.muted;
     html+='<div class="hub-ews"><div class="he-top"><span class="he-ic">⌁</span>'+
       '<span class="he-t">EARLY-WARNING RADAR</span><span class="he-sub">critical slowing down</span>'+
       (ew.rising&&!ew.warming?'<span class="he-rise">▲ rising</span>':'')+'</div>'+
@@ -651,7 +660,7 @@ function renderLearned(b){
   }
   if(top.length){
     html+=top.map(function(t){ var now=chVal(b,t.ch), z=t.z||0;
-      var col=z>=2?C.crit:z>=1?C.watch:C.cyan, wpct=clamp(z/3*50,2,50);
+      var col=z>=2?C.crit:z>=1?C.watch:C.muted, wpct=clamp(z/3*50,2,50);
       return '<div class="lb-ch"><span class="lc-k">'+(CH_LABEL[t.ch]||t.ch)+'</span>'+
         '<span class="lc-bar"><i style="width:'+wpct+'%;background:'+col+'"></i></span>'+
         '<span class="lc-v">now <b>'+fmt(now,now>=10?0:1)+'</b> · base '+fmt(t.baseline,t.baseline>=10?0:1)+' · +'+z.toFixed(1)+'σ</span></div>'; }).join("");
@@ -849,7 +858,7 @@ function drawLanes(s){
   var sorted=ids.slice().sort(function(a,b){return V.nodes[b].lanes-V.nodes[a].lanes;});
   var x=L;
   sorted.forEach(function(id){ var nd=V.nodes[id], seg=nd.lanes/budget*BW; if(seg<0.6) return;
-    var owner=(V.owner===id), col=owner||nd.tier==="CRITICAL"?C.crit:nd.tier==="WATCH"?C.watch:C.cyan, a=owner?.97:.55;
+    var owner=(V.owner===id), col=owner||nd.tier==="CRITICAL"?C.crit:nd.tier==="WATCH"?C.watch:C.ok, a=owner?.97:.55;
     var g=ctx.createLinearGradient(x,0,x+seg,0); g.addColorStop(0,withAlpha(col,a)); g.addColorStop(1,withAlpha(col,a*.66));
     ctx.fillStyle=g; roundRect(ctx,x,y1,Math.max(seg-1.6,1.6),bh,Math.min(bh/2,5)); ctx.fill();
     if(seg>58){ ctx.fillStyle=owner?"#fff":withAlpha(C.ink,.88); ctx.font=FM(10.5,600); ctx.textAlign="left";
@@ -1575,7 +1584,11 @@ function renderValidation(d){ var s=d.summary;
    patient's personal norm and tracks how far each has drifted from it.
    ============================================================ */
 var CH_LABEL={hr:"HR",temp_c:"T°",resp_rate:"RR",spo2:"SpO₂",map:"MAP",wbc:"WBC",lactate:"Lac"};
-function devCol(d){ return d>=2.0?C.crit:d>=1.0?C.watch:d>=0.4?C.cyan:C.dim; }
+// Severity ramp: faint -> muted -> amber -> red. A mild 0.4-1.0σ excursion used to be
+// drawn in the brand hue, so "very slightly off their own baseline" rendered as a
+// saturated blue bar sitting louder than a genuine 1.5σ amber. Deviation below the
+// clinical thresholds is now neutral — visible, but not making a claim.
+function devCol(d){ return d>=2.0?C.crit:d>=1.0?C.watch:d>=0.4?C.muted:C.faint; }
 function drawLearn(s){
   var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h);
   var beds=Object.keys(latestBeds).map(function(k){return latestBeds[k];});
