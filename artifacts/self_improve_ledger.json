@@ -1,0 +1,880 @@
+{
+  "baseline_config": {
+    "roster": [
+      "hgb",
+      "hgb2",
+      "et",
+      "lr"
+    ],
+    "params": {
+      "hgb": {
+        "learning_rate": 0.06,
+        "max_iter": 400,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "hgb2": {
+        "learning_rate": 0.12,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "max_depth": 4,
+        "l2_regularization": 0.1,
+        "max_features": 0.6
+      },
+      "et": {
+        "n_estimators": 120,
+        "max_depth": 10,
+        "min_samples_leaf": 50
+      },
+      "lr": {
+        "C": 0.5
+      },
+      "meta": {
+        "C": 1.0
+      }
+    }
+  },
+  "champion_config": {
+    "roster": [
+      "hgb",
+      "hgb2",
+      "et",
+      "lr"
+    ],
+    "params": {
+      "hgb": {
+        "learning_rate": 0.06,
+        "max_iter": 400,
+        "max_leaf_nodes": 63,
+        "l2_regularization": 1.0
+      },
+      "hgb2": {
+        "learning_rate": 0.12,
+        "max_iter": 300,
+        "max_leaf_nodes": 15,
+        "max_depth": 4,
+        "l2_regularization": 0.1,
+        "max_features": 0.6
+      },
+      "et": {
+        "n_estimators": 120,
+        "max_depth": 10,
+        "min_samples_leaf": 50
+      },
+      "lr": {
+        "C": 0.5
+      },
+      "meta": {
+        "C": 1.0
+      }
+    }
+  },
+  "baseline_search_auroc": 0.7313644462072958,
+  "champion_search_auroc": 0.7313644462072958,
+  "trials": [
+    {
+      "trial_id": 0,
+      "round_idx": 1,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06658375603127153,
+            "max_iter": 335,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 118,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7655177846641446,
+        0.6989467340374673,
+        0.7270323910885318
+      ],
+      "mean_auroc": 0.7304989699300478,
+      "delta_vs_champion": -0.0008654762772480155,
+      "p_value": 0.6019246784742149,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 58.7
+    },
+    {
+      "trial_id": 1,
+      "round_idx": 1,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 381,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.11332769169706709,
+            "max_features": 0.6141958863708548
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7661771875484605,
+        0.7064733795128519,
+        0.7325748885664563
+      ],
+      "mean_auroc": 0.735075151875923,
+      "delta_vs_champion": 0.003710705668627005,
+      "p_value": 0.07062771707485031,
+      "accepted": false,
+      "reason": "delta +0.0037 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 46.6
+    },
+    {
+      "trial_id": 2,
+      "round_idx": 1,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.05375488876190642,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.05976558692783989,
+            "max_features": 0.5270345750568564
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7452961375316454,
+        0.7041723990310222,
+        0.7315221279486179
+      ],
+      "mean_auroc": 0.7269968881704285,
+      "delta_vs_champion": -0.004367558036867392,
+      "p_value": 0.7111782814454952,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 58.2
+    },
+    {
+      "trial_id": 3,
+      "round_idx": 1,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.0488239589665012,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.08472319749071963,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 51
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7575755096566358,
+        0.7030658444751009,
+        0.7239515198771719
+      ],
+      "mean_auroc": 0.7281976246696362,
+      "delta_vs_champion": -0.0031668215376597177,
+      "p_value": 0.9705121588799384,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 68.2
+    },
+    {
+      "trial_id": 4,
+      "round_idx": 2,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 60,
+            "l2_regularization": 1.0966575526032782
+          },
+          "hgb2": {
+            "learning_rate": 0.14863235149965884,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7691885371618988,
+        0.7041761708403307,
+        0.7302680433917599
+      ],
+      "mean_auroc": 0.7345442504646632,
+      "delta_vs_champion": 0.0031798042573672283,
+      "p_value": 0.15860783525714311,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 55.6
+    },
+    {
+      "trial_id": 5,
+      "round_idx": 2,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.15589341422276662,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6212843032799115
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 54
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.8090486016927669,
+        0.707493771799879,
+        0.7243507513976922
+      ],
+      "mean_auroc": 0.7469643749634461,
+      "delta_vs_champion": 0.015599928756150164,
+      "p_value": 0.21119439118486605,
+      "accepted": false,
+      "reason": "delta +0.0156 but p=0.211 >= corrected alpha 0.0125 (not distinguishable from fold noise)",
+      "seconds": 49.5
+    },
+    {
+      "trial_id": 6,
+      "round_idx": 2,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 441,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.14768701803077952,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.07418017078549315,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.754018614015587,
+        0.6952870181867215,
+        0.7257581299260861
+      ],
+      "mean_auroc": 0.7250212540427983,
+      "delta_vs_champion": -0.006343192164497709,
+      "p_value": 0.9158039190285949,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 52.4
+    },
+    {
+      "trial_id": 7,
+      "round_idx": 2,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.046936933972759,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 0.49467687566891305
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 132,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7720138234743955,
+        0.696880666554141,
+        0.7274861235596034
+      ],
+      "mean_auroc": 0.7321268711960466,
+      "delta_vs_champion": 0.0007624249887507503,
+      "p_value": 0.449341216548176,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 69.1
+    },
+    {
+      "trial_id": 8,
+      "round_idx": 3,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 460,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 12,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.4791396495683966
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7756837702350038,
+        0.7041000863744331,
+        0.7306343171103242
+      ],
+      "mean_auroc": 0.736806057906587,
+      "delta_vs_champion": 0.005441611699291138,
+      "p_value": 0.1662939085920695,
+      "accepted": false,
+      "reason": "delta +0.0054 but p=0.166 >= corrected alpha 0.0125 (not distinguishable from fold noise)",
+      "seconds": 51.4
+    },
+    {
+      "trial_id": 9,
+      "round_idx": 3,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.13581706141441993,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 97,
+            "max_depth": 9,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7666791617904073,
+        0.6764621536653973,
+        0.7419334573940025
+      ],
+      "mean_auroc": 0.7283582576166023,
+      "delta_vs_champion": -0.0030061885906935335,
+      "p_value": 0.5781102193877675,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 47.8
+    },
+    {
+      "trial_id": 10,
+      "round_idx": 3,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 76,
+            "l2_regularization": 1.032474725009883
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 9,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7493488094365951,
+        0.684127118460272,
+        0.7398626222352626
+      ],
+      "mean_auroc": 0.7244461833773764,
+      "delta_vs_champion": -0.006918262829919364,
+      "p_value": 0.7100707900767584,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 50.3
+    },
+    {
+      "trial_id": 11,
+      "round_idx": 3,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 276,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 43
+          },
+          "lr": {
+            "C": 0.5101610367936233
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7309011475804272,
+        0.6789006873179513,
+        0.7162680112378067
+      ],
+      "mean_auroc": 0.7086899487120618,
+      "delta_vs_champion": -0.022674497495234164,
+      "p_value": 0.963222396460105,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 49.1
+    },
+    {
+      "trial_id": 12,
+      "round_idx": 4,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 419,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.1585669394754367,
+            "max_iter": 300,
+            "max_leaf_nodes": 17,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7692616733028417,
+        0.7027587956235698,
+        0.7305877742631721
+      ],
+      "mean_auroc": 0.7342027477298613,
+      "delta_vs_champion": 0.0028383015225652932,
+      "p_value": 0.21544475070620506,
+      "accepted": false,
+      "reason": "delta +0.0028 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 72.0
+    },
+    {
+      "trial_id": 13,
+      "round_idx": 4,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 13,
+            "max_depth": 4,
+            "l2_regularization": 0.1,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 125,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7639110828152752,
+        0.7062103547480949,
+        0.7319642046116808
+      ],
+      "mean_auroc": 0.7340285473916838,
+      "delta_vs_champion": 0.0026641011843877203,
+      "p_value": 0.11533147348265178,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 66.6
+    },
+    {
+      "trial_id": 14,
+      "round_idx": 4,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 400,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.10537655621524795,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.08016794685234649,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 9,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7758403931402267,
+        0.6792767484929264,
+        0.7452597838450501
+      ],
+      "mean_auroc": 0.7334589751594011,
+      "delta_vs_champion": 0.002094528952105157,
+      "p_value": 0.44836563993087586,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 61.7
+    },
+    {
+      "trial_id": 15,
+      "round_idx": 4,
+      "config": {
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ],
+        "params": {
+          "hgb": {
+            "learning_rate": 0.06,
+            "max_iter": 340,
+            "max_leaf_nodes": 63,
+            "l2_regularization": 1.0
+          },
+          "hgb2": {
+            "learning_rate": 0.12,
+            "max_iter": 300,
+            "max_leaf_nodes": 15,
+            "max_depth": 4,
+            "l2_regularization": 0.10511787007206708,
+            "max_features": 0.6
+          },
+          "et": {
+            "n_estimators": 120,
+            "max_depth": 10,
+            "min_samples_leaf": 50
+          },
+          "lr": {
+            "C": 0.5
+          },
+          "meta": {
+            "C": 1.0
+          }
+        }
+      },
+      "fold_scores": [
+        0.7565513557643118,
+        0.706536851991374,
+        0.7296224723978411
+      ],
+      "mean_auroc": 0.7309035600511756,
+      "delta_vs_champion": -0.0004608861561203141,
+      "p_value": 0.5586995026278221,
+      "accepted": false,
+      "reason": "not the round's best challenger",
+      "seconds": 56.1
+    }
+  ],
+  "gate": {
+    "skipped": true,
+    "why": "search accepted nothing; champion IS the incumbent, so there is no change to gate"
+  },
+  "promoted": false,
+  "verdict": "NO CHANGE \u2014 the search could not beat the shipped configuration. Consistent with this project's data-limited prior."
+}

@@ -24,7 +24,9 @@ async function boot() {
     const line = document.createElement("div");
     line.innerHTML = `<span class="ok">[ OK ]</span> layer ${i + 1}/8 · <b>${n}</b> <span style="color:#536084">— ${d}</span>`;
     log.appendChild(line);
-    while (log.children.length > 7) log.removeChild(log.firstChild);
+    // 8 layers boot, so keep 8 — the old cap of 7 evicted layer 1 the moment layer 8
+    // arrived, and the "8-layer cold boot" footer described a list nobody ever saw whole.
+    while (log.children.length > 8) log.removeChild(log.firstChild);
     fill.style.width = `${((i + 1) / 8) * 100}%`;
     await sleep(180 + Math.random() * 120);
   }

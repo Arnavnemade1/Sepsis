@@ -64,15 +64,19 @@ b{font-weight:700}
 .boot-title{font-size:30px;font-weight:800;letter-spacing:-.02em;margin-top:14px}
 .boot-title b{color:var(--cyan)}
 .boot-tag{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--dim);margin-top:6px}
-.boot-log{font-family:var(--mono);font-size:11.5px;text-align:left;height:150px;overflow:hidden;
+/* 8 boot lines at 11.5px/1.75 need ~161px; the box was fixed at 150px, so the first
+   line ("init kernel image") was sheared in half for the whole sequence. Sized to hold
+   the log it actually prints, with lines ellipsizing rather than wrapping. */
+.boot-log{font-family:var(--mono);font-size:11.5px;text-align:left;min-height:168px;overflow:hidden;
   margin:24px auto 14px;color:var(--dim);line-height:1.75}
+.boot-log > div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .boot-log .ok{color:var(--ok)} .boot-log b{color:var(--ink)}
 .boot-bar{height:2px;background:rgba(190,205,255,.06);overflow:hidden}
 .boot-fill,.boot-bar i{height:100%;width:0;background:var(--grad);
   box-shadow:0 0 12px rgba(72,196,242,.55);transition:width .3s}
 
 /* ---------------- TOP BAR ---------------- */
-.topbar{flex:0 0 auto;height:56px;display:flex;align-items:center;gap:24px;padding:0 20px;
+.topbar{flex:0 0 auto;height:56px;display:flex;align-items:center;gap:16px;padding:0 14px;
   border-bottom:1px solid var(--hair);
   background:linear-gradient(180deg,rgba(13,17,27,.9),rgba(8,11,18,.6));
   backdrop-filter:blur(18px) saturate(1.2)}
@@ -94,11 +98,19 @@ b{font-weight:700}
 .tab:hover{color:var(--ink);background:rgba(190,205,255,.04)}
 .tab.active{color:var(--bg);background:var(--cyan);box-shadow:0 0 14px -4px rgba(72,196,242,.7)}
 
-.metrics{display:flex;align-items:center;gap:18px;margin-left:auto}
-.metric{display:flex;flex-direction:column;gap:3px;padding-left:14px;border-left:1px solid var(--hair-soft)}
-.m-k{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-family:var(--mono)}
+/* flex:0 0 auto (not min-width:0) — the metrics must hold their own content width.
+   Letting this box shrink while its children refused to made them spill out and paint
+   over the CONSOLE button to the right. The bar is tight (brand + tabs + 5 metrics +
+   right cluster ≈ 1480px), so the room comes out of spacing, not out of the readouts. */
+.metrics{display:flex;align-items:center;gap:13px;margin-left:auto;flex:0 0 auto}
+.metric{display:flex;flex-direction:column;gap:3px;padding-left:11px;border-left:1px solid var(--hair-soft);flex:0 0 auto}
+/* nowrap on both rows: the two-word keys ("SAFETY CAGE") wrapped to a second line,
+   which made the metric taller than the topbar's fixed 56px and sheared the key off
+   at the top. Values are tabular-nums and must not reflow as digits change either. */
+.m-k{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);font-family:var(--mono);
+  white-space:nowrap}
 .m-v{font-family:var(--mono);font-size:14px;font-weight:500;font-variant-numeric:tabular-nums;
-  color:var(--ink);transition:color .4s}
+  color:var(--ink);transition:color .4s;white-space:nowrap}
 .m-v.is-preempt{color:var(--crit);text-shadow:0 0 12px rgba(255,93,122,.6)}
 .topbar-right{display:flex;align-items:center;gap:13px;flex:0 0 auto}
 .conn{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}

@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core serve train-gbm train-stack rigorous clean-cache
+.PHONY: help setup verify verify-core serve train-gbm train-stack self-improve rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -14,6 +14,7 @@ help:
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
+	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
 	@echo "  make clean-cache  Remove regenerated feature caches"
 
@@ -35,6 +36,12 @@ train-gbm:
 
 train-stack:
 	$(PY) -m backend.ml.scripts.train_stacked --feature-set wearable
+
+# Searches its own champion each round and gates the winner on patients the search
+# never touched. Add --promote to let a CONFIRMED gain replace the production artifact;
+# without a confirmed gain it deliberately changes nothing.
+self-improve:
+	$(PY) -m backend.ml.scripts.self_improve --limit 2000 --rounds 4 --population 4
 
 rigorous:
 	$(PY) -m backend.ml.scripts.rigorous_eval --feature-set wearable --boot 100

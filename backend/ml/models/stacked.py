@@ -50,6 +50,22 @@ def _class_weights(y: np.ndarray) -> np.ndarray:
     return np.where(y == 1, n / p, 1.0)
 
 
+#: Default base-learner hyperparameters. ``StackedEnsembleDetector.params`` overrides
+#: these per learner; the self-improvement search (:mod:`backend.ml.selfimprove`)
+#: mutates them. Kept as data so a searched config is a plain JSON-serialisable dict.
+DEFAULT_PARAMS: Dict[str, Dict[str, float]] = {
+    "hgb":  {"learning_rate": 0.06, "max_iter": 400, "max_leaf_nodes": 63,
+             "l2_regularization": 1.0},
+    "hgb2": {"learning_rate": 0.12, "max_iter": 300, "max_leaf_nodes": 15,
+             "max_depth": 4, "l2_regularization": 0.1, "max_features": 0.6},
+    "et":   {"n_estimators": 120, "max_depth": 10, "min_samples_leaf": 50},
+    "lr":   {"C": 0.5},
+    "meta": {"C": 1.0},
+}
+
+DEFAULT_ROSTER: List[str] = ["hgb", "hgb2", "et", "lr"]
+
+
 @dataclass
 class StackedEnsembleDetector:
     channels: List[str] = field(default_factory=list)
@@ -57,6 +73,25 @@ class StackedEnsembleDetector:
     inner_folds: int = 3
     calib_fraction: float = 0.15
     seed: int = 42
+    #: Which base learners to stack (subset of DEFAULT_ROSTER). Searchable.
+    roster: List[str] = field(default_factory=lambda: list(DEFAULT_ROSTER))
+    #: Per-learner hyperparameter overrides, e.g. {"hgb": {"max_iter": 250}}.
+    #: Only the named keys override; everything else falls back to DEFAULT_PARAMS.
+    params: Dict[str, Dict[str, float]] = field(default_factory=dict)
+
+    # ------------------------------------------------------------------ #
+    # Attribute access is routed through these helpers rather than read
+    # directly off ``self`` because detectors are shipped as pickles: an artifact
+    # trained before ``roster``/``params`` existed unpickles WITHOUT those
+    # attributes (dataclass defaults do not run on unpickle), and must keep
+    # serving. getattr-with-default keeps old artifacts loadable.
+    def _roster(self) -> List[str]:
+        return list(getattr(self, "roster", None) or DEFAULT_ROSTER)
+
+    def _p(self, name: str) -> Dict[str, float]:
+        merged = dict(DEFAULT_PARAMS.get(name, {}))
+        merged.update((getattr(self, "params", None) or {}).get(name, {}))
+        return merged
 
     # learned state
     feature_names_: List[str] = field(default_factory=list)
@@ -70,26 +105,33 @@ class StackedEnsembleDetector:
     # ------------------------------------------------------------------ #
     def _make(self, name: str):
         s = self.seed
+        p = self._p(name)
         if name == "hgb":
             return HistGradientBoostingClassifier(
-                learning_rate=0.06, max_iter=400, max_leaf_nodes=63,
-                l2_regularization=1.0, class_weight="balanced", random_state=s)
+                learning_rate=float(p["learning_rate"]), max_iter=int(p["max_iter"]),
+                max_leaf_nodes=int(p["max_leaf_nodes"]),
+                l2_regularization=float(p["l2_regularization"]),
+                class_weight="balanced", random_state=s)
         if name == "hgb2":
             # a deliberately different-biased booster (shallower, faster, row/col
             # subsampled) for ensemble diversity — histogram-based so it stays tiny.
             return HistGradientBoostingClassifier(
-                learning_rate=0.12, max_iter=300, max_leaf_nodes=15, max_depth=4,
-                l2_regularization=0.1, max_features=0.6, class_weight="balanced",
-                random_state=s + 7)
+                learning_rate=float(p["learning_rate"]), max_iter=int(p["max_iter"]),
+                max_leaf_nodes=int(p["max_leaf_nodes"]), max_depth=int(p["max_depth"]),
+                l2_regularization=float(p["l2_regularization"]),
+                max_features=float(p["max_features"]),
+                class_weight="balanced", random_state=s + 7)
         if name == "et":
             # bagged randomised trees — the key complement to boosting. Depth/leaf
             # bounds keep the serialised model compact (unbounded ET on 150k rows is
             # ~300 MB; these bounds cost negligible accuracy and shrink it ~30x).
             return ExtraTreesClassifier(
-                n_estimators=120, max_depth=10, min_samples_leaf=50,
+                n_estimators=int(p["n_estimators"]), max_depth=int(p["max_depth"]),
+                min_samples_leaf=int(p["min_samples_leaf"]),
                 max_features="sqrt", class_weight="balanced", n_jobs=-1, random_state=s)
         if name == "lr":
-            return LogisticRegression(class_weight="balanced", max_iter=2000, C=0.5)
+            return LogisticRegression(
+                class_weight="balanced", max_iter=2000, C=float(p["C"]))
         raise ValueError(name)
 
     def _fit_base(self, name, X, y, Xpred, scaler):
@@ -111,7 +153,7 @@ class StackedEnsembleDetector:
         y = np.asarray(y).astype(int)
         self.feature_names_ = list(feats.columns)
         X = np.nan_to_num(feats.to_numpy())
-        base = ["hgb", "hgb2", "et", "lr"]
+        base = self._roster()
         self.base_order_ = base + (["hdc"] if self.use_hdc else [])
         groups = groups if groups is not None else np.arange(len(y))
 
@@ -128,7 +170,8 @@ class StackedEnsembleDetector:
 
         # --- meta-learner on a fit slice; calibrate on a held-out slice -- #
         fit_idx, cal_idx = _grouped_holdout(y, groups, self.calib_fraction, self.seed)
-        self.meta_ = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0)
+        self.meta_ = LogisticRegression(
+            class_weight="balanced", max_iter=2000, C=float(self._p("meta")["C"]))
         self.meta_.fit(OOF[fit_idx], y[fit_idx])
         self.calibrator_ = ProbabilityCalibrator().fit(
             self.meta_.predict_proba(OOF[cal_idx])[:, 1], y[cal_idx])

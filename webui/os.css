@@ -45,14 +45,21 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .boot{position:fixed;inset:0;z-index:50;background:radial-gradient(circle at 50% 45%,#0a1326,#04060d 70%);
   display:grid;place-items:center;animation:bootfade .6s ease}
 .boot.gone{opacity:0;transform:scale(1.04);transition:.7s ease;pointer-events:none}
-.boot-inner{width:min(560px,86vw);text-align:center}
+.boot-inner{width:min(680px,90vw);text-align:center}
 .boot-mark{margin-bottom:22px}
 .boot-sigil{width:74px;height:74px;color:var(--cyan);filter:drop-shadow(var(--glow));animation:spin 6s linear infinite}
 .boot-title{font-size:36px;font-weight:800;letter-spacing:2.5px;margin-top:12px;
   background:linear-gradient(100deg,#fff,var(--cyan) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
 .boot-sub{color:var(--muted);font-size:11.5px;letter-spacing:2px;text-transform:uppercase;margin-top:5px}
-.boot-log{font-family:var(--mono);font-size:12px;text-align:left;height:172px;overflow:hidden;
-  margin:24px auto 16px;color:var(--dim);line-height:1.7}
+/* Each entry is one boot line and must read as one line: at the old 560px width the
+   longer layers ("Digital Twin + What-if Scheduler — live twin · predictive sim")
+   wrapped, which both broke the phrase mid-clause and pushed the 8th layer out of the
+   fixed 172px box, so the log visibly clipped as it filled. The box is now sized to
+   hold all 8 lines, and lines ellipsize rather than wrap if a viewport is too narrow
+   to hold them. */
+.boot-log{font-family:var(--mono);font-size:11.5px;text-align:left;min-height:186px;overflow:hidden;
+  margin:24px auto 16px;color:var(--dim);line-height:1.72}
+.boot-log > div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .boot-log .ok{color:var(--ok)}.boot-log b{color:var(--ink)}
 .boot-bar{height:3px;background:rgba(120,160,220,.12);border-radius:3px;overflow:hidden}
 .boot-fill{height:100%;width:0;background:var(--grad-accent);box-shadow:0 0 18px rgba(92,202,240,.5);transition:width .25s}
@@ -93,17 +100,31 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .sysbar-risk.MEDIUM{background:rgba(255,210,59,.12);color:var(--stress);border-color:rgba(255,210,59,.4)}
 .sysbar-risk.HIGH{background:rgba(255,77,94,.16);color:var(--crit);border-color:rgba(255,77,94,.5);animation:pulse 1.4s infinite}
 
-/* desktop grid — rows weighted to each panel's real content so the gauge and the
-   agents plane breathe instead of being clipped. twin spans 3 rows (hero), the
-   agents plane spans 2 (it is the tallest panel), proto sits center-bottom. */
-.desk{flex:1;display:grid;gap:13px;padding:15px;min-height:0;
+/* desktop grid — twin spans 3 rows (hero), the agents plane spans 2 (it is the
+   tallest panel), proto sits center-bottom.
+
+   Rows are minmax(floor, weight), NOT bare fr. With bare fr the four rows were forced
+   to divide whatever the viewport had left: on a 720px-tall screen that is ~572px, so
+   rows collapsed to 128/156/98/121px — and since a card spends ~33px on its title bar
+   and 26px on padding, most panels had under 100px of usable body and sheared their
+   own content (the risk tiles, the vitals grid, 4 of the kernel's 8 layers). The floor
+   is the height each panel actually needs to render whole; the weight still governs how
+   any SURPLUS is shared, so a tall display fills exactly as before with no scrollbar.
+   When the viewport cannot meet the floors, the desk scrolls — a panel you scroll to is
+   strictly better than a panel that lies about its contents. */
+.desk{flex:1;display:grid;gap:13px;padding:15px;min-height:0;overflow-y:auto;overflow-x:hidden;
   grid-template-columns:344px 1fr 392px;
-  grid-template-rows:1.02fr 1.24fr 0.78fr 0.96fr;
+  grid-template-rows:minmax(172px,1.02fr) minmax(208px,1.24fr) minmax(132px,.78fr) minmax(164px,.96fr);
   grid-template-areas:
     "risk   twin  agents"
     "vitals twin  agents"
     "camera twin  whatif"
     "sys    proto notes";}
+.desk::-webkit-scrollbar{width:9px}
+.desk::-webkit-scrollbar-track{background:transparent}
+.desk::-webkit-scrollbar-thumb{background:linear-gradient(rgba(86,205,255,.26),rgba(86,205,255,.1));
+  border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+.desk::-webkit-scrollbar-thumb:hover{background:rgba(86,205,255,.4)}
 .win-twin{grid-area:twin}.win-risk{grid-area:risk}.win-vitals{grid-area:vitals}
 .win-agents{grid-area:agents;display:flex}.win-whatif{grid-area:whatif}
 .win-proto{grid-area:proto;display:flex}.win-sys{grid-area:sys;display:flex}
@@ -128,14 +149,25 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .win-risk{animation-delay:.04s}.win-vitals{animation-delay:.10s}.win-camera{animation-delay:.16s}
 .win-sys{animation-delay:.22s}.win-twin{animation-delay:.08s}.win-agents{animation-delay:.14s}
 .win-whatif{animation-delay:.20s}.win-proto{animation-delay:.26s}.win-notes{animation-delay:.30s}
-.win-bar{display:flex;align-items:center;gap:10px;padding:12px 15px;border-bottom:1px solid var(--line-soft);
+/* min-height keeps every card's header on the same baseline: a bar carrying a status
+   tag or a button measured 44px while a bare one measured 39px, so headers sat 5px out
+   of alignment across the three columns and shifted whenever a panel gained a tag. */
+.win-bar{display:flex;align-items:center;gap:10px;padding:8px 15px;min-height:44px;box-sizing:border-box;
+  border-bottom:1px solid var(--line-soft);
   background:linear-gradient(180deg,rgba(255,255,255,.025),transparent);position:relative;z-index:1}
 /* premium accent instead of generic window dots */
 .dots{width:3px;height:13px;border-radius:3px;background:linear-gradient(var(--cyan),var(--blue));flex:0 0 auto;opacity:.9}
 .dots i{display:none}
-.win-title{font-family:var(--sans);font-size:11.5px;letter-spacing:.4px;color:var(--ink);font-weight:600}
+/* A title bar is one line. Without these, a long title next to a live tag ("MULTI-AGENT
+   REASONING PLANE" + "consensus 8% · agree 73%") wrapped BOTH to two lines in a narrow
+   column, so the bar grew and stole height from the panel body below it — and the bar
+   changed height as the tag's text changed, making the whole card twitch on every tick.
+   The title now ellipsizes and the tag never breaks, so bar height is constant. */
+.win-title{font-family:var(--sans);font-size:11.5px;letter-spacing:.4px;color:var(--ink);font-weight:600;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .win-tag{margin-left:auto;font-family:var(--sans);font-size:10.5px;color:var(--muted);letter-spacing:0;font-weight:500;
-  border:1px solid var(--line);padding:2px 9px;border-radius:7px;background:rgba(255,255,255,.025)}
+  border:1px solid var(--line);padding:2px 9px;border-radius:7px;background:rgba(255,255,255,.025);
+  white-space:nowrap;flex:0 0 auto}
 .win-body{flex:1;min-height:0;overflow:auto;padding:13px;position:relative;z-index:1}
 .win-body::-webkit-scrollbar{width:7px}
 .win-body::-webkit-scrollbar-track{background:transparent}
@@ -212,10 +244,14 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .lg.critical{background:var(--crit)}.lg.unmon{background:var(--unmon)}
 
 /* ===================== RISK ===================== */
-/* Horizontal instrument: compact dial on the left, readout column on the right —
-   fits the wide/short panel cleanly (no overflow, no cramped circle). */
-.risk-body{display:flex;flex-direction:row;align-items:center;gap:15px;height:100%}
-.risk-gauge{position:relative;width:106px;height:106px;flex:none}
+/* Horizontal instrument: compact dial on the left, readout column on the right.
+   Sizing is deliberately tight — the desk's grid row gives this body only ~98px,
+   and the dial + readout column previously totalled ~115px, so the SIRS/qSOFA tiles
+   were sheared off behind a scrollbar. The dial is sized in `em`-free fixed px and
+   the side column's rhythm is compressed so the whole instrument fits the row it
+   actually gets, rather than the row it wishes it had. */
+.risk-body{display:flex;flex-direction:row;align-items:center;gap:14px;height:100%}
+.risk-gauge{position:relative;width:92px;height:92px;flex:none}
 .risk-gauge svg{width:100%;height:100%;overflow:visible}
 .risk-arc-fill{transition:stroke-dashoffset .8s cubic-bezier(.2,.85,.25,1),filter .5s ease}
 .risk-arc-dot{transition:cx .8s cubic-bezier(.2,.85,.25,1),cy .8s cubic-bezier(.2,.85,.25,1),
@@ -234,7 +270,7 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .risk-gauge.is-high .risk-prob{text-shadow:0 0 22px rgba(242,96,110,.45)}
 .risk-cap{font-size:7.5px;color:var(--dim);text-transform:uppercase;letter-spacing:1.5px;margin-top:3px}
 
-.risk-side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px;height:100%;padding:2px 0}
+.risk-side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:6px;height:100%;padding:2px 0}
 .risk-tierline{display:flex;flex-direction:column;gap:4px}
 .risk-eyebrow{font-family:var(--mono);font-size:8.5px;letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
 .risk-tier-badge{font-family:var(--sans);font-size:21px;font-weight:800;letter-spacing:.4px;line-height:1;
@@ -250,10 +286,11 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .rb-seg.on[data-t="MEDIUM"]{color:#ffe3a0;border-color:rgba(245,196,81,.5);background:rgba(245,196,81,.13);box-shadow:0 0 14px rgba(245,196,81,.2)}
 .rb-seg.on[data-t="HIGH"]{color:#ffb5bd;border-color:rgba(242,96,110,.55);background:rgba(242,96,110,.15);box-shadow:0 0 16px rgba(242,96,110,.3)}
 .risk-scores{display:flex;gap:7px}
-.rsc{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 9px;border-radius:7px;
+.rsc{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:5px 8px;border-radius:7px;
   background:rgba(255,255,255,.02);border:1px solid var(--line-soft)}
-.rsc-v{font-family:var(--mono);font-size:15px;font-weight:700;color:var(--ink);font-feature-settings:"tnum";line-height:1}
-.rsc-k{font-family:var(--mono);font-size:7.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)}
+.rsc-v{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--ink);font-feature-settings:"tnum";line-height:1}
+.rsc-k{font-family:var(--mono);font-size:7.5px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);
+  white-space:nowrap}
 
 /* ===================== VITALS ===================== */
 .vitals-body{display:flex;flex-direction:column;gap:6px;min-height:0}
@@ -485,15 +522,21 @@ body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.4;
 .layer .lx{color:var(--dim)}.layer b{color:var(--ink);font-weight:600}
 
 /* ===================== DOCK ===================== */
-.dock{height:56px;display:flex;align-items:center;justify-content:flex-start;gap:22px;padding:0 18px;
+/* The dock carries 13 launchers across 4 groups: at laptop widths that content is
+   ~1800px wide and does NOT fit on one row. It used to be a fixed-height nowrap
+   strip with overflow-x:auto, which pushed half the apps off-screen behind a footer
+   scrollbar nobody looks for — the apps were effectively undiscoverable. It now
+   wraps instead: one row on wide displays, two on a laptop, always fully visible.
+   Height is intentionally auto (the .os flex column lets the desk absorb the change)
+   and overflow is left visible so the buttons' hover lift isn't sheared off. */
+.dock{min-height:56px;display:flex;align-items:center;justify-content:flex-start;
+  gap:9px 14px;padding:8px 16px;flex-wrap:wrap;
   background:linear-gradient(0deg,rgba(11,17,32,.96),rgba(7,11,22,.66));border-top:1px solid var(--line);
-  backdrop-filter:blur(18px) saturate(1.3);box-shadow:0 -1px 0 rgba(65,230,255,.05),0 -8px 28px -10px rgba(0,0,0,.6);
-  overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap}
-.dock::-webkit-scrollbar{height:5px}.dock::-webkit-scrollbar-thumb{background:rgba(80,120,180,.3);border-radius:6px}
-.dock-grp{display:flex;align-items:center;gap:8px;flex:0 0 auto}
-.dock-label{font-family:var(--sans);font-size:10.5px;font-weight:500;color:var(--dim);letter-spacing:.2px;margin-right:5px;white-space:nowrap}
+  backdrop-filter:blur(18px) saturate(1.3);box-shadow:0 -1px 0 rgba(65,230,255,.05),0 -8px 28px -10px rgba(0,0,0,.6)}
+.dock-grp{display:flex;align-items:center;gap:7px;flex:0 0 auto}
+.dock-label{font-family:var(--sans);font-size:10.5px;font-weight:500;color:var(--dim);letter-spacing:.2px;margin-right:4px;white-space:nowrap}
 .dock-btn{font-family:var(--sans);font-size:12px;font-weight:500;color:var(--ink);background:rgba(110,140,245,.09);
-  border:1px solid var(--line);border-radius:10px;padding:8px 15px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
+  border:1px solid var(--line);border-radius:10px;padding:8px 11px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
   transition:transform .18s cubic-bezier(.2,.8,.2,1),background .18s,box-shadow .18s,border-color .18s}
 .dock-btn:hover{background:rgba(92,202,240,.15);border-color:var(--line-bright);box-shadow:var(--glow);transform:translateY(-2px)}
 .dock-btn:active{transform:translateY(0)}

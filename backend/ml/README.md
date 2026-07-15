@@ -42,6 +42,7 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `data/cinc2019.py` | Parallel downloader + PSV parser → `PatientRecord` |
 | `data/features.py` | **Causal** feature engineering (no future leakage) |
 | `models/stacked.py` | **Stacked ensemble** (hgb+hgb2+et+lr [+hdc]) — the gap-closing production detector that beats the single GBM |
+| `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |
 | `quantum/gb_qhdc.py` | **GB-QHDC** — gradient boosting with a QHDC weak learner (SPSA, data re-uploading) |
 | `scripts/qhdc_ablation.py` | Ablation matrix (GBM vs HDC vs GB-QHDC) + dimensional-capacity sweep |
@@ -135,6 +136,61 @@ See `artifacts/compare_*.json` for the exact, current numbers from your run.
 
 ---
 
+## Recursive self-improvement (`selfimprove.py`)
+
+```bash
+make self-improve                 # search only; changes nothing
+python -m backend.ml.scripts.self_improve --limit 2000 --rounds 4 --population 4 --promote
+```
+
+A self-adaptive **(1+λ) evolution strategy** over the stacked detector's configuration.
+It is "recursive" in two senses: each round mutates the *champion the previous round
+produced* (the search walks toward its own best result), and the mutation step size is
+adapted from the loop's own hit-rate — shrink after a miss, widen after a win — so the
+search tunes the search. It is **not** self-rewriting code, and it cannot invent signal
+the data does not contain.
+
+The interesting engineering here is not the search — it is the **refusal machinery**,
+because a self-improving loop's characteristic failure is improving its own scoreboard:
+
+- **A locked gate set.** Patients are split off *before* the search starts and are never
+  scored, fitted, or selected on. The champion meets them once, at the end. Verified
+  patient-disjoint from the search set.
+- **Paired folds + Bonferroni.** Every candidate is scored on the champion's *identical*
+  patient-grouped folds, so the comparison is paired. Since each round takes the best of
+  λ challengers and *then* tests it, the winner's p-value is max-selection-biased; the
+  threshold is corrected by the population size. A candidate must clear a minimum effect
+  size **and** the corrected test.
+- **A bootstrap CI at the gate.** Promotion needs the gate gain's 95% patient-level
+  bootstrap CI to exclude zero — a CI straddling zero means the "gain" is patient
+  sampling.
+- **A full ledger** (`artifacts/self_improve_ledger.json`) recording every trial,
+  accepted or rejected, with its per-fold scores and the reason. The rejects are the
+  scientific content.
+
+**Measured result (2,000 real CinC patients, 16 candidates over 4 rounds):** the loop
+**accepted nothing** and left the shipped detector untouched. The incumbent scored
+0.7314 search AUROC; no challenger cleared the bar. The instructive rejections:
+
+| Trial | ΔAUROC | p | Outcome |
+|---|---|---|---|
+| 5 | **+0.0156** | 0.211 | rejected — big-looking gain, indistinguishable from fold noise |
+| 8 | +0.0054 | 0.166 | rejected — clears the effect-size floor, fails significance |
+| 1 | +0.0037 | 0.071 | rejected — below the effect-size floor |
+
+Trial 5 is the whole point. A tuning loop that compared means would have banked
++0.0156 AUROC (+2.1% relative) and reported a better model; across three folds that
+"gain" was noise. Step scale self-contracted 0.350 → 0.245 → 0.171 → 0.120 as rounds
+missed.
+
+This is a **negative result, and it is the expected one**: it independently reproduces
+this subsystem's central finding — detection here is **data-limited, not model-limited**
+(see *Honest limitations* below and `docs/PHASE7_REPORT.md`). Hyperparameters were never
+the constraint, so a hyperparameter search should find nothing, and does. The value
+shipped is the falsifiable apparatus, not a leaderboard number.
+
+---
+
 ## Quantum HDC — GB-QHDC (`backend/ml/quantum/`)
 
 A rigorously-built, honestly-benchmarked exploration of whether a quantum
@@ -184,3 +240,11 @@ classical calibrated GBM.
   (still-aspirational) continuous sweat-lactate sensor.
 - A retrospective ICU dataset is **not** a prospective wearable cohort. These
   metrics validate the *algorithm*, not a deployed medical device.
+- **The detector does not "detect everything", and no amount of tuning will make it.**
+  Within-site AUROC sits ~0.77 and cross-hospital ~0.69; at a usable threshold the
+  early-warning false-alarm rate (~40%) is the real product bottleneck, not
+  discrimination. The recursive self-improvement search (`selfimprove.py`) was run
+  precisely to test whether tuning could move this and **found no admissible gain in 16
+  candidates** — independent evidence that the ceiling is the *data* (domain shift,
+  label noise, missing channels), not the model. Raising it requires better/more
+  diverse data or new signal (HRV, waveforms, multi-site), not better hyperparameters.
