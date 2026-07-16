@@ -43,6 +43,7 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `data/features.py` | **Causal** feature engineering (no future leakage) |
 | `models/stacked.py` | **Stacked ensemble** (hgb+hgb2+et+lr [+hdc]) — the gap-closing production detector that beats the single GBM |
 | `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |
+| `operating_point.py` | **Derived alarm thresholds** — the operating point, computed from out-of-fold predictions against the official utility, instead of guessed |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |
 | `quantum/gb_qhdc.py` | **GB-QHDC** — gradient boosting with a QHDC weak learner (SPSA, data re-uploading) |
 | `scripts/qhdc_ablation.py` | Ablation matrix (GBM vs HDC vs GB-QHDC) + dimensional-capacity sweep |
@@ -133,6 +134,65 @@ raw-accuracy replacement for trees. Stated, not hidden — see the
 `hdc_detector.py` / `augmented.py` / `stacked.py` docstrings for the full trail.
 
 See `artifacts/compare_*.json` for the exact, current numbers from your run.
+
+---
+
+## The operating point (`operating_point.py`) — where the real headroom was
+
+```bash
+make operating-point                        # derive + gate, change nothing
+python -m backend.ml.scripts.derive_operating_point --limit 4000 --save
+```
+
+Every other number in this subsystem is measured. The alarm thresholds were not — they
+were constants in `AegisCore.__init__` (`high=0.12`, `medium=0.04`) carrying a comment
+telling someone to derive them from validation, which never happened.
+
+A detector's **ranking** and its **operating point** are different things. This project
+spent enormous effort proving the ranking is at its data ceiling and none at all on the
+point where that ranking is read. That asymmetry was expensive.
+
+**What the guess cost** (real CinC, 4,000 patients; threshold derived from patient-grouped
+out-of-fold predictions on train patients, then scored on held-out patients):
+
+| operating point | utility | detection | false-alarm | lead |
+|---|---|---|---|---|
+| shipped `0.12` (hand-set) | +0.2946 | 35.2% | 9.3% | 50 h |
+| **derived, FAR ≤ 15% (`0.0725`, now default)** | **+0.3356** | **45.1%** | 19.2% | **52 h** |
+| derived, utility-optimal (`0.025`) | +0.3670 | 52.7% | 34.8% | 40 h |
+
+**AUROC is identical (0.7334) across all three rows.** Same model, same predictions —
+the entire difference is where the line was drawn. The shipped default is now the
+FAR-capped point: it beats the old constant on utility, detection *and* lead time, and
+loses only on alarm burden.
+
+**The cliff — the part that actually mattered.** Sepsis is ~2% of hours and the detector
+is well calibrated (ECE ~0.005), so it *correctly* almost never emits a high probability.
+Its out-of-fold distribution is `p95 = 0.086`, `p99 = 0.140`. The shipped `0.12` therefore
+sat at the **98.3rd percentile of the detector's own output** — not conservative, nearly
+out of range — and just above it the system falls off a cliff:
+
+| thr | OOF utility | detection |
+|---|---|---|
+| 0.025 | +0.3751 | 65.3% |
+| 0.12 (shipped) | +0.0850 | 13.4% |
+| 0.16 | +0.0309 | 6.3% |
+
+A small calibration drift would have silently turned the alarm off. Deriving the point
+from the model's real output distribution removes that failure mode by construction.
+
+**Method notes (both are load-bearing):**
+- Thresholds come from **out-of-fold** predictions only. A model's training predictions
+  are far sharper than anything it emits in deployment (train utility 0.918 vs held-out
+  0.347 on the same fit); a threshold tuned on those is tuned to a distribution that does
+  not exist at serve time. An early version of this analysis made exactly that mistake.
+- The objective is **explicit and configurable**. The CinC utility prices a missed case
+  at −2 and a false alarm at −0.05, so left alone it will alarm on a third of healthy
+  patients. Whether that trade is acceptable is a clinical judgement about alarm fatigue,
+  not a modelling question — so it is a parameter, not a hidden constant.
+- **Honest limitation:** the FAR cap constrains the *derivation* (10.6% out-of-fold), not
+  the deployed rate — held-out FAR came in at 19.2%. The cap is a design input, not a
+  guarantee.
 
 ---
 
@@ -241,10 +301,14 @@ classical calibrated GBM.
 - A retrospective ICU dataset is **not** a prospective wearable cohort. These
   metrics validate the *algorithm*, not a deployed medical device.
 - **The detector does not "detect everything", and no amount of tuning will make it.**
-  Within-site AUROC sits ~0.77 and cross-hospital ~0.69; at a usable threshold the
-  early-warning false-alarm rate (~40%) is the real product bottleneck, not
-  discrimination. The recursive self-improvement search (`selfimprove.py`) was run
-  precisely to test whether tuning could move this and **found no admissible gain in 16
-  candidates** — independent evidence that the ceiling is the *data* (domain shift,
-  label noise, missing channels), not the model. Raising it requires better/more
-  diverse data or new signal (HRV, waveforms, multi-site), not better hyperparameters.
+  Within-site AUROC sits ~0.77 and cross-hospital ~0.69; the alarm burden, not
+  discrimination, is the real product bottleneck. The recursive self-improvement search
+  (`selfimprove.py`) was run precisely to test whether tuning could move this and
+  **found no admissible gain in 16 candidates** — independent evidence that the ceiling
+  is the *data* (domain shift, label noise, missing channels), not the model. Raising
+  AUROC requires better/more diverse data or new signal (HRV, waveforms, multi-site),
+  not better hyperparameters.
+- **Corollary worth internalising:** when AUROC is at its ceiling, the remaining wins are
+  in *decisions*, not *scores*. Deriving the operating point bought +14% utility and +10
+  points of detection **at AUROC 0.7334 — completely unchanged**. It is worth auditing
+  every other unmeasured constant in the serving path on the same suspicion.

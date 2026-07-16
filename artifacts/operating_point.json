@@ -1,0 +1,15 @@
+{
+  "high": 0.0725,
+  "medium": 0.0362,
+  "objective": "constrained",
+  "max_false_alarm_rate": 0.15,
+  "oof_utility": 0.27964408960636444,
+  "oof_detection_rate": 0.3805970149253731,
+  "oof_false_alarm_rate": 0.10599415204678363,
+  "oof_median_lead_hours": 33.5,
+  "prob_p95": 0.0857843137254902,
+  "prob_p99": 0.13953488372093023,
+  "prob_max": 0.8571428571428571,
+  "frac_above_high": 0.05653237224868066,
+  "n_patients": 3004
+}

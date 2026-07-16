@@ -22,6 +22,7 @@ from backend.core.twin import PatientDigitalTwin
 from backend.core.neurosymbolic import NeurosymbolicEngine
 from backend.ml import config
 from backend.ml.data.features import FeatureConfig
+from backend.ml.operating_point import load as load_operating_point
 from backend.aegis.streaming_features import StreamingFeatureBuilder
 
 
@@ -58,8 +59,8 @@ class AegisCore:
         clinical_history: Optional[Dict[str, Any]] = None,
         model_path: Optional[str] = None,
         feature_set: str = "wearable",
-        high_threshold: float = 0.12,     # calibrated-probability operating points
-        medium_threshold: float = 0.04,   # (derive from validation; see ml/README)
+        high_threshold: Optional[float] = None,
+        medium_threshold: Optional[float] = None,
         use_llm: bool = True,
         enable_protocols: bool = True,
     ):
@@ -68,6 +69,23 @@ class AegisCore:
             "chf": False, "renal_failure": False, "penicillin_allergy": False,
             "wbc": 7.5, "gcs": 15,
         }
+        # ---- alarm operating point: DERIVED, not guessed --------------------- #
+        # These were hard-coded at 0.12 / 0.04 with a comment saying to derive them
+        # from validation, which never happened. Measured on real CinC patients, that
+        # guess cost a fifth of the official utility score and a third of the septic
+        # patients we could have caught (35.2% -> 45.1% detection), because 0.12 sat at
+        # the 98.3rd percentile of the detector's own calibrated output — a sepsis
+        # detector is well calibrated on a 2%-prevalence task, so it almost never emits
+        # a probability that high, and just above it detection collapses to ~3%.
+        # artifacts/operating_point.json is produced by
+        # `python -m backend.ml.scripts.derive_operating_point --save`, which refuses to
+        # write a point that loses to the old constants on held-out patients.
+        # Explicit arguments still win, so callers can pin a point for a study.
+        self.operating_point = load_operating_point()
+        if high_threshold is None:
+            high_threshold = self.operating_point.high if self.operating_point else 0.12
+        if medium_threshold is None:
+            medium_threshold = self.operating_point.medium if self.operating_point else 0.04
         self.high_threshold = high_threshold
         self.medium_threshold = medium_threshold
         self.enable_protocols = enable_protocols

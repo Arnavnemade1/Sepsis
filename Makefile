@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core serve train-gbm train-stack self-improve rigorous clean-cache
+.PHONY: help setup verify verify-core serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -15,6 +15,7 @@ help:
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
 	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
+	@echo "  make operating-point  Derive the alarm thresholds from data (add --save to apply)"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
 	@echo "  make clean-cache  Remove regenerated feature caches"
 
@@ -42,6 +43,12 @@ train-stack:
 # without a confirmed gain it deliberately changes nothing.
 self-improve:
 	$(PY) -m backend.ml.scripts.self_improve --limit 2000 --rounds 4 --population 4
+
+# Derives the alarm thresholds from out-of-fold predictions and gates them on held-out
+# patients. Reports only; add --save to write artifacts/operating_point.json (it refuses
+# to save a point that loses to the incumbent).
+operating-point:
+	$(PY) -m backend.ml.scripts.derive_operating_point --limit 4000
 
 rigorous:
 	$(PY) -m backend.ml.scripts.rigorous_eval --feature-set wearable --boot 100
