@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -11,6 +11,7 @@ help:
 	@echo "  make setup        Create/update the local Python environment"
 	@echo "  make verify       Run the full end-to-end verification suite"
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
+	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
@@ -28,6 +29,12 @@ verify:
 
 verify-core:
 	$(PY) verify_system.py
+
+# Verifies the CLAIMS, not the code: plants a known pathology (shuffled labels,
+# in-sample predictions, zero-mean noise deltas, identical predictors, an out-of-range
+# alarm) and asserts the honesty machinery catches each one. Complements `verify`.
+verify-integrity:
+	$(PY) verify_integrity.py
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)

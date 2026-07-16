@@ -12,6 +12,22 @@ leakage-free, patient-level evaluation.
 > and dataset that justify it. Every threshold/weight/archetype is either learned
 > from data or accompanied by the evaluation that earned it.
 
+> **Verifying the honesty principle itself.** `make verify-integrity`
+> (`verify_integrity.py`) is an *adversarial* audit: rather than checking the pipeline
+> produces the right answer, it feeds the machinery a **known lie** and asserts the guard
+> fires. Every claim this project rests on is a *negative* one ("no leakage", "no
+> admissible gain", "the operating point is derived, not fitted to the test") — and
+> negative claims are only falsifiable, never provable by a green functional test. So the
+> audit plants the pathology: it shuffles the labels and demands AUROC collapse to chance
+> (leakage tripwire); it shows in-sample AUROC (0.999) vs OOF (0.560) to prove the OOF
+> discipline is load-bearing, not cosmetic; it feeds the statistical gate a zero-mean
+> noise delta and a real gain and demands it reject one and accept the other; it hands the
+> promotion CI two identical predictors and demands the interval straddle zero; it proves
+> the search/gate patient sets are disjoint; and it guards the shipped alarm against ever
+> again sitting in the sparse output tail (`high ≤ p95`) where the old 0.12 lived. Each
+> check prints what it planted and what it expected. Complements — does not replace —
+> `verify_full_system.py`.
+
 ---
 
 ## The dataset: PhysioNet/CinC 2019
