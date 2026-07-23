@@ -700,15 +700,20 @@ function paintSHAL() {
   }).join("");
   const c = $("#shal-spark");
   if (c) {
-    const w = c.clientWidth || 200, h = 40; if (c.width !== w) c.width = w; c.height = h;
-    const x = c.getContext("2d"); x.clearRect(0, 0, w, h);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = c.clientWidth || 200, h = c.clientHeight || 40;
+    if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+    }
+    const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, h);
     const arr = SHAL.latencyUs.toArray(); if (arr.length < 2) return;
     const mx = Math.max(...arr, 1), yOf = (v, i) => [i / (arr.length - 1) * w, h - 2 - (v / mx) * (h - 6)];
     x.beginPath(); arr.forEach((v, i) => { const [px, py] = yOf(v, i); i ? x.lineTo(px, py) : x.moveTo(px, py); });
     x.lineTo(w, h); x.lineTo(0, h); x.closePath();
-    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#5ccaf040"); g.addColorStop(1, "#5ccaf000"); x.fillStyle = g; x.fill();
+    // --accent, duplicated by hand as elsewhere; was the retired theme's cyan
+    const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#7aa2f740"); g.addColorStop(1, "#7aa2f700"); x.fillStyle = g; x.fill();
     x.beginPath(); arr.forEach((v, i) => { const [px, py] = yOf(v, i); i ? x.lineTo(px, py) : x.moveTo(px, py); });
-    x.strokeStyle = "#5ccaf0"; x.lineWidth = 1.4; x.stroke();
+    x.strokeStyle = "#7aa2f7"; x.lineWidth = 1.4; x.stroke();
   }
 }
 
@@ -789,10 +794,22 @@ function paintMini() {
   const sc = $("#mini-signs"); if (sc) sc.textContent = S.calibrating ? "…" : S.signs.filter((s) => s.cat !== "system").length;
   setText("#mini-posture", S.posture);
 }
+/* The rPPG pulse waveform. Sized at device resolution (it was drawn at CSS-pixel
+   density, i.e. half-resolution on every retina display) and stroked flat in the
+   neutral ink — it used to be #34e1ff with a 6px shadowBlur halo, a leftover of the
+   retired cyan theme and the kind of glow this identity replaced with hairlines. */
 function paintWave(sel) {
-  const c = $(sel); if (!c || !S.wave) return; const w = c.clientWidth || 300, h = 56; c.width = w; c.height = h;
-  const ctx = c.getContext("2d"); ctx.clearRect(0, 0, w, h); const seg = S.wave.slice(-Math.min(S.wave.length, 240)); if (seg.length < 4) return;
-  const mx = Math.max(...seg.map(Math.abs)) || 1; ctx.beginPath(); ctx.strokeStyle = "#34e1ff"; ctx.lineWidth = 1.6; ctx.shadowColor = "#34e1ff"; ctx.shadowBlur = 6;
+  const c = $(sel); if (!c || !S.wave) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const w = c.clientWidth || 300, h = c.clientHeight || 56;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
+  }
+  const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  const seg = S.wave.slice(-Math.min(S.wave.length, 240)); if (seg.length < 4) return;
+  const mx = Math.max(...seg.map(Math.abs)) || 1;
+  ctx.beginPath(); ctx.strokeStyle = "rgba(242,243,245,.85)"; ctx.lineWidth = 1.4;
+  ctx.lineJoin = "round"; ctx.lineCap = "round";
   seg.forEach((v, i) => { const x = i / (seg.length - 1) * w, y = h / 2 - (v / mx) * (h / 2 - 4); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.stroke();
 }
 const setText = (sel, t) => { const e = $(sel); if (e) e.textContent = t; };

@@ -347,12 +347,15 @@ function sparkline(cv, arr) {
   const pad = 3, lo = Math.min(...arr, 0), hi = Math.max(...arr, 1);
   const px = i => i / Math.max(1, arr.length - 1) * (w - pad * 2) + pad;
   const py = v => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+  // canvas cannot read CSS custom properties, so --accent (#7aa2f7) is duplicated here
+  // by hand — as tactical.js and twin3d.js already do. The old literal was #5ccaf0, a
+  // cyan left over from the retired theme and the last one on the desktop.
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, "rgba(92,202,240,.28)"); grad.addColorStop(1, "rgba(92,202,240,0)");
+  grad.addColorStop(0, "rgba(122,162,247,.26)"); grad.addColorStop(1, "rgba(122,162,247,0)");
   ctx.beginPath(); ctx.moveTo(px(0), h - pad);
   arr.forEach((v, i) => ctx.lineTo(px(i), py(v))); ctx.lineTo(px(arr.length - 1), h - pad); ctx.closePath();
   ctx.fillStyle = grad; ctx.fill();
-  ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#5ccaf0"; ctx.lineJoin = "round";
+  ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#7aa2f7"; ctx.lineJoin = "round";
   arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
   ctx.stroke();
 }
@@ -728,7 +731,6 @@ function ecgY(t) { // t in [0,1)
 function animate() {
   const now = performance.now(), dt = Math.min(.05, (now - last) / 1000); last = now;
   const W = $("#ecg").clientWidth || 320;
-  [["#ecg", ecgBuf, 74], ["#ppg", ppgBuf, 58]].forEach(([id]) => { const c = $(id); if (c) { c.width = W; } });
   // advance phases by heart rate
   const beats = HR / 60 * dt; ecgPhase = (ecgPhase + beats);
   ppgPhase = (ppgPhase + beats);
@@ -740,25 +742,56 @@ function animate() {
   }
   while (ecgBuf.length > W) ecgBuf.shift();
   while (ppgBuf.length > W) ppgBuf.shift();
-  drawTrace("#ecg", ecgBuf, "#5ccaf0", 72);
-  drawTrace("#ppg", ppgBuf, "#39d9a2", 72, true);
+  drawTrace("#ecg", ecgBuf);
+  drawTrace("#ppg", ppgBuf);
   requestAnimationFrame(animate);
 }
-function drawTrace(id, buf, color, h) {
-  const c = $(id); if (!c) return; const ctx = c.getContext("2d"), W = c.width;
-  ctx.clearRect(0, 0, W, h); if (!buf.length) return;
-  const yOf = v => h * 0.55 - v * h * 0.42;
-  // gradient area fill under the waveform
+/* A bedside trace, drawn like one.
+   The previous version had three separate quality bugs stacked on top of each other:
+   the canvas bitmap was sized in CSS pixels (so it resolved at half density on every
+   retina display), its height attribute said 72 while its CSS said 30 (so the whole
+   waveform was squashed to 40% and resampled), and it was stroked with a 7px coloured
+   shadowBlur — a glow, which this identity does not use, and which at 30px tall was
+   most of what you actually saw. It is now sized from its own CSS box at full device
+   resolution, with a calibration grid behind it and a leading-edge dot, so it reads as
+   an instrument sweep rather than a smear.
+   The colour is neutral on purpose: saturated hue is reserved for clinical state, and
+   the old traces were cyan and MINT-GREEN — the same green this system uses to mean
+   "low risk", sitting permanently on screen regardless of the patient. */
+function drawTrace(id, buf) {
+  const c = $(id); if (!c) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const W = c.clientWidth || 320, h = c.clientHeight || 52;
+  if (c.width !== Math.round(W * dpr) || c.height !== Math.round(h * dpr)) {
+    c.width = Math.round(W * dpr); c.height = Math.round(h * dpr);
+  }
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, W, h);
+  if (!buf.length) return;
+  const yOf = v => h * 0.56 - v * h * 0.40;
+
+  // calibration grid — the faint reference a monitor sweep is read against
+  ctx.strokeStyle = "rgba(255,255,255,.045)"; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let gx = 0; gx <= W; gx += 26) { ctx.moveTo(Math.round(gx) + .5, 0); ctx.lineTo(Math.round(gx) + .5, h); }
+  for (let gy = h * .5 % 13; gy <= h; gy += 13) { ctx.moveTo(0, Math.round(gy) + .5); ctx.lineTo(W, Math.round(gy) + .5); }
+  ctx.stroke();
+  // baseline
+  ctx.strokeStyle = "rgba(255,255,255,.10)";
+  ctx.beginPath(); ctx.moveTo(0, Math.round(yOf(0)) + .5); ctx.lineTo(W, Math.round(yOf(0)) + .5); ctx.stroke();
+
+  // the sweep itself
   ctx.beginPath();
   buf.forEach((v, i) => { i ? ctx.lineTo(i, yOf(v)) : ctx.moveTo(i, yOf(v)); });
-  ctx.lineTo(W, h); ctx.lineTo(0, h); ctx.closePath();
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, color + "30"); g.addColorStop(1, color + "00");
-  ctx.fillStyle = g; ctx.fill();
-  // glowing stroke on top
-  ctx.beginPath(); ctx.lineWidth = 1.8; ctx.strokeStyle = color; ctx.shadowBlur = 7; ctx.shadowColor = color;
-  buf.forEach((v, i) => { i ? ctx.lineTo(i, yOf(v)) : ctx.moveTo(i, yOf(v)); });
-  ctx.stroke(); ctx.shadowBlur = 0;
+  ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.lineCap = "round";
+  ctx.strokeStyle = "rgba(242,243,245,.82)";
+  ctx.stroke();
+
+  // leading edge: where the sweep is right now
+  const lx = buf.length - 1, ly = yOf(buf[lx]);
+  ctx.beginPath(); ctx.arc(lx, ly, 1.9, 0, Math.PI * 2);
+  ctx.fillStyle = "#f2f3f5"; ctx.fill();
 }
 
 /* ---------------- DOCK / CLOCK ---------------- */

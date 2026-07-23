@@ -182,17 +182,36 @@ function bodyMaterial() {
         col = mix(col, uHead,   smoothstep(0.80,0.88,h));
         float arm = smoothstep(0.17,0.27,vWX) * smoothstep(0.55,0.62,h) * (1.0-smoothstep(0.80,0.86,h));
         col = mix(col, uLimb, arm);
-        float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 1.5);
+        // Exponent 1.5 spread the rim across most of a curved surface, so the smallest,
+        // roundest parts — the head above all — grazed the viewer nearly everywhere and
+        // lit up brighter than the torso. The head carries no clinical signal; it should
+        // not be the brightest thing on the body. A tighter falloff confines the rim to
+        // the actual silhouette edge, which is what a rim is.
+        float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 2.4);
         // horizontal scanlines drifting downward
         float sl = 0.86 + 0.14*sin(vWY*150.0 - uTime*2.2);
         // rising diagnostic sweep band
         float sweep = exp(-pow((h - uScan)*8.0, 2.0));
-        vec3 outc = col*(0.42 + 0.55*fres) + uRim*fres*0.9;
+        // Weighted toward the FRESNEL rim rather than the flat fill. The old mix was
+        // 0.42 flat + 0.55 edge, which lit the whole surface fairly evenly — the shell
+        // read as milk, not glass, so the organ atlas underneath it was a vague smudge.
+        // Dropping the flat term and pushing the rim gives a defined silhouette with a
+        // genuinely transparent interior: you can see the anatomy through the body.
+        // Weighted toward the FRESNEL rim rather than the flat fill, but only so far.
+        // The old mix was 0.42 flat + 0.55 edge, which lit the surface evenly and made
+        // the shell read as milk rather than glass, hiding the organ atlas underneath.
+        // Pushing the rim too hard has the opposite failure: a limb is a near-cylinder,
+        // so it grazes the viewer almost everywhere and blows out to solid white while
+        // the flatter torso stays dark. These values keep a defined silhouette AND an
+        // even luminance from head to foot, with the interior genuinely transparent.
+        vec3 outc = col*(0.26 + 0.52*fres) + uRim*fres*0.55;
         outc *= sl;
-        outc += col*0.10;                          // faint volumetric luminescence
+        outc += col*0.07;                          // faint volumetric luminescence
         outc += col*sweep*0.9 + vec3(0.55,0.85,1.0)*sweep*0.5;
         outc *= (1.0 + 0.08*uPulse);
-        float a = clamp(0.20 + fres*0.6 + sweep*0.34, 0.0, 0.95);
+        // capped below 1.0: the shell is a window onto the anatomy and must never
+        // resolve to an opaque surface, however steep the viewing angle gets.
+        float a = clamp(0.13 + fres*0.42 + sweep*0.30, 0.0, 0.68);
         gl_FragColor = vec4(outc, a);`);
     shellU = sh.uniforms;
   };
@@ -801,11 +820,16 @@ function applyRegions() {
     o.mat.opacity = 0.16 + 0.44 * overall;
   }
 
-  // body shell: a single clean translucent tint (neutral blue, washing gently
-  // toward the overall tier colour in a crisis) — the diagnostic colour lives in
-  // the organs, so the body always reads as a body, not a patchy heat-map.
-  const tierHex = overall >= 0.75 ? 0xff4d5e : overall >= 0.45 ? 0xff9a3b : overall >= 0.2 ? 0xe2a33c : null;
-  const bc = BASE.clone(); if (tierHex) bc.lerp(new THREE.Color(tierHex), 0.4);
+  // Body shell: NEUTRAL, always. It used to wash 40% toward the tier colour from the
+  // lowest threshold up (overall >= 0.2), which meant a merely-stressed patient turned
+  // the entire mannequin — head, arms, legs, all of it — amber. That is the exact
+  // inversion of "colour is signal": a body-wide amber localises nothing, and worse, it
+  // removes the neutral ground the ONE genuinely amber organ needs to stand out against,
+  // so the more the patient deteriorated the less you could see where. The shell stays
+  // slate and the organs carry the diagnosis; only true CRITICAL gets a restrained tint,
+  // because at that point the silhouette itself is the message.
+  const bc = BASE.clone();
+  if (overall >= 0.75) bc.lerp(new THREE.Color(TIER_HEX.CRITICAL), 0.16);
   ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
 
   // suspected infection focus — light up the source organ + an orange hot zone.
