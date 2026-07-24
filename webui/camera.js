@@ -235,9 +235,15 @@ function handleHands(res, ts, w, h) {
 
 /* ---------------- box / skeleton rendering (per target) ---------------- */
 function drawTo(t, lm) {
+  // Backing store at device resolution; the drawing below stays in CSS-pixel coordinates
+  // via the transform, so every call site keeps working unchanged. Without this the whole
+  // AR layer — face mesh, skeleton, hand tracking, the corner boxes — rendered at half
+  // resolution on any retina display, which is exactly where fine 1px mesh lines look worst.
   const ov = t.overlay; const cw = ov.clientWidth || ov.width, ch = ov.clientHeight || ov.height;
-  if (ov.width !== cw || ov.height !== ch) { ov.width = cw; ov.height = ch; }
-  const x = t.ctx; x.clearRect(0, 0, cw, ch);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);
+  if (ov.width !== bw || ov.height !== bh) { ov.width = bw; ov.height = bh; }
+  const x = t.ctx; x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, cw, ch);
   const big = cw > 400;
   if (big) drawScan(x, cw, ch);
   if (big && lastPoseLm) drawSkeleton(x, lastPoseLm, cw, ch);

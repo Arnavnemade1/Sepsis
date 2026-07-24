@@ -211,17 +211,36 @@ class RealPatient:
         for k, ch in enumerate(CHANNELS):
             col = self._ff[lo:hi, k]
             series[ch] = [round(float(v), 2) for v in col]
-        # fused risk per hour (warm the fusion from hour 0 so windows are valid)
+        # Risk per hour, warmed from hour 0 so the fusion windows are valid.
+        #
+        # This must be the SAME quantity the rest of the dossier displays. The engine
+        # produces two: the raw population risk, and the per-patient personalized risk
+        # (`personalized_risk(pop, deviation, maturity)`) that `_bed_dict` publishes as
+        # `fused_risk`. The header number, the tier badge, the detection hub's FUSED bar
+        # and the protocol gating all read the personalized one — but this method used to
+        # return the raw POPULATION series, under a panel titled "FUSED SEPSIS-RISK
+        # TIMELINE". For a patient whose own baseline is already deranged the two diverge
+        # hard (population 0.95 vs fused 0.60), so the chart drew him pinned above the
+        # 0.70 alarm line for his entire admission while the system's actual call, three
+        # inches away on the same screen, was WATCH. Both are returned now: `risk` is the
+        # personalized series the label promises, `population_risk` is kept alongside so
+        # the divergence is inspectable rather than invisible.
         from backend.aegis.kernel.fusion import FusionEngine
         ent_keys = ("temp_c", "resp_rate", "spo2", "map", "wbc", "lactate")
         fe = FusionEngine()
+        lz = PatientBaselineLearner()
         risk_full: List[float] = []
+        pop_full: List[float] = []
         for hr in range(hi):
             vals = {ch: float(self._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
             edge = {"hr": vals["hr"],
                     "perfusion": max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0))}
             ent = {k: vals[k] for k in ent_keys}
-            risk_full.append(round(fe.update(self.bed_id, self.name, edge, ent).fused_risk, 3))
+            pop = fe.update(self.bed_id, self.name, edge, ent).fused_risk
+            lz.observe(vals)
+            snap = lz.snapshot(vals)
+            pop_full.append(round(pop, 3))
+            risk_full.append(round(personalized_risk(pop, snap["deviation"], snap["maturity"]), 3))
         labels = self.record.labels[lo:hi].astype(int).tolist()
         # trajectory forecast from the recent window
         from backend.aegis.forecast import TrajectoryForecaster
@@ -231,7 +250,8 @@ class RealPatient:
         forecast = TrajectoryForecaster(8).forecast(windows, start_hour=self.icu_hour)
         return {
             "hours": list(range(lo, hi)), "series": series, "labels": labels,
-            "risk": risk_full[lo:hi], "onset_hour": self.onset_hour,
+            "risk": risk_full[lo:hi], "population_risk": pop_full[lo:hi],
+            "onset_hour": self.onset_hour,
             "icu_hour": self.icu_hour, "alarm": 0.70, "forecast": forecast,
         }
 
@@ -667,7 +687,23 @@ class CohortCluster:
 
     def chart(self, bed_id: str) -> Optional[Dict[str, Any]]:
         p = self._by.get(bed_id)
-        return p.chart() if p else None
+        if not p:
+            return None
+        ch = p.chart()
+        # Anchor the series' final point to the LIVE personalized risk.
+        #
+        # `Patient.chart` reconstructs the history from the raw hourly record with a
+        # fresh fusion engine and a fresh baseline learner, while the live value comes
+        # from cluster-wide engines that have been fed jittered per-tick samples across
+        # the whole stay. The two therefore land close but never equal, and "close" is
+        # not good enough for the right-hand end of the line: that point is drawn as the
+        # "now" marker directly beneath the headline risk number, so any disagreement
+        # reads as the instrument contradicting itself. The reconstruction is right for
+        # the SHAPE of the history; the live engine is authoritative for NOW.
+        pz = self.personalized.get(bed_id)
+        if pz and ch.get("risk"):
+            ch["risk"][-1] = round(float(pz["risk"]), 3)
+        return ch
 
     # -- validation: real detection performance vs ground-truth labels --- #
     def validation(self, alarm: float = 0.5) -> Dict[str, Any]:

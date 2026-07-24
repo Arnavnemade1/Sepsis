@@ -63,7 +63,13 @@ body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
     linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px) 0 0/100% 40px,
     linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px) 0 0/40px 100%,
     radial-gradient(135% 118% at 50% 24%, transparent 58%, rgba(2,4,9,.6));}
-#ambient{position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5}
+/* width/height are REQUIRED, not redundant with inset:0. A canvas is a replaced element,
+   so `width:auto` resolves to its intrinsic size — the `width`/`height` ATTRIBUTES — and
+   the `right`/`bottom` offsets are ignored rather than stretching it. ambientFit sets the
+   backing store to innerWidth*dpr, so on a 2x display the element laid out at 3024x1740
+   over a 1512x870 viewport: the node mesh was drawn at 2x zoom with three quarters of it
+   off-screen, anchored to the top-left corner. */
+#ambient{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;opacity:.5}
 b{font-weight:700}
 ::selection{background:rgba(var(--accent-rgb),.28)}
 /* premium scrollbars (global) */
@@ -371,7 +377,14 @@ b{font-weight:700}
 .kpi.good::before{background:var(--ok)}.kpi.warn::before{background:var(--watch)}
 .val-grid{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:16px;flex:1 1 auto;min-height:300px}
 .val-card{min-height:320px}
-.val-table{position:absolute;inset:0;overflow-y:auto;padding:4px 12px 10px}
+/* This is the card BODY, and `position:absolute;inset:0` pinned it to the whole card —
+   including the 40px occupied by the card header above it. The table's own column-header
+   row ("Patient · Onset · First alarm · Result") therefore rendered on the same line as
+   the card's title, reading as "PER-PATIENT DETECTION ONSET FIRST ALARM RESULT" with the
+   two sets of labels interleaved. `.card` is a flex column and `.card-body` is already
+   `flex:1 1 auto;min-height:0`, so the body only ever needed the scroll — the absolute
+   positioning was doing nothing except lifting it out of that flow. */
+.val-table{overflow-y:auto;padding:4px 12px 10px}
 .vrow{display:grid;grid-template-columns:1.4fr .8fr .8fr .9fr;align-items:center;gap:10px;
   padding:9px 8px;border-bottom:1px solid var(--hair-soft);font-size:14px}
 .vrow.hdr{position:sticky;top:0;background:var(--surface-2);backdrop-filter:blur(8px);
@@ -416,9 +429,15 @@ b{font-weight:700}
 /* ============================================================
    DOSSIER — full-screen per-patient CLINICAL VIEW
    ============================================================ */
+/* OPAQUE. This declaration used to read `background:transparent 60%), linear-gradient(…)`
+   — a truncated function whose opening `radial-gradient(` had been lost in an edit. CSS
+   drops a declaration with unbalanced parens silently, with no console error, so the
+   full-screen dossier was rendering with NO background at all: the entire console
+   underneath it (topbar, tabs, the metric strip, all twelve beds of the ops grid) painted
+   straight through the patient record, colliding with the dossier's own header and making
+   both unreadable. A patient record is a modal view — it covers what it replaces. */
 .dossier{position:fixed;inset:0;z-index:41;display:flex;flex-direction:column;
-  background:transparent 60%),
-    linear-gradient(180deg,var(--bg),var(--bg));
+  background:var(--bg);
   opacity:0;visibility:hidden;transform:scale(.995);
   transition:opacity .3s,transform .3s,visibility .3s}
 .dossier.open{opacity:1;visibility:visible;transform:none}
@@ -449,6 +468,22 @@ b{font-weight:700}
 .cl-card.cl-grow{flex:1 1 auto}
 .cl-twin{flex:1.5 1 0}
 .cl-pad{overflow-y:auto;padding:11px 13px}
+/* THE SIDE COLUMNS SCROLL; THEIR CARDS DO NOT GET CRUSHED.
+   `cl-grow` means "absorb the surplus", which is right only when there IS surplus. In the
+   left column the other three cards (vitals + resonance + ground truth) already exceed the
+   column on their own, so the single grow card — the Synchronized Detection Hub — absorbed
+   the entire SHORTFALL instead: it rendered as a 50px slot over 604px of content, showing
+   about 8% of itself, with its three detection tiers sliced through the middle of a chip.
+   `flex:1 0 auto` still grows into spare room but can never shrink below what it contains,
+   and the column scrolls once when the total doesn't fit. The middle column is untouched —
+   its twin and timeline are fixed-aspect viewports that are SUPPOSED to divide the height. */
+.cl-left,.cl-right{overflow-y:auto;overflow-x:hidden}
+.cl-left>.cl-card.cl-grow,.cl-right>.cl-card.cl-grow{flex:1 0 auto}
+.cl-left .cl-pad,.cl-right .cl-pad{overflow:visible}
+.cl-left::-webkit-scrollbar,.cl-right::-webkit-scrollbar{width:8px}
+.cl-left::-webkit-scrollbar-track,.cl-right::-webkit-scrollbar-track{background:transparent}
+.cl-left::-webkit-scrollbar-thumb,.cl-right::-webkit-scrollbar-thumb{
+  background:rgba(255,255,255,.12);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .cl-pad::-webkit-scrollbar{width:6px}.cl-pad::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1)}
 /* vital-signs monitor */
 .dos-vitals{display:grid;grid-template-columns:1fr 1fr;gap:7px}
@@ -717,7 +752,11 @@ b{font-weight:700}
 .twin-hud-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
   color:color-mix(in srgb,var(--tc,rgb(var(--dys-rgb))) 75%,#fff 25%)}
 .twin-hud-nm{font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.05em;color:var(--accent)}
-.twin-legend{position:absolute;right:9px;top:9px;bottom:9px;width:138px;display:flex;flex-direction:column;gap:4px;
+/* 138px fit "CARDIOVASCULAR" at the old type size with nothing to spare; at the readable
+   size the longest two labels overflowed by ~5px and ellipsized to "CARDIOVASCUL…" and
+   "NEUROLOG…". Sized to the longest label the list can actually contain, which is the only
+   width that is not a guess. It floats over an empty region of the twin, so this is free. */
+.twin-legend{position:absolute;right:9px;top:9px;bottom:9px;width:164px;display:flex;flex-direction:column;gap:4px;
   pointer-events:none;z-index:3}
 .tl-organ{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;color:var(--muted);
   padding:4px 6px;border:1px solid var(--hair-soft);border-radius:var(--r-xs);background:rgba(6,8,13,.55);backdrop-filter:blur(3px)}

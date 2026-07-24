@@ -115,8 +115,11 @@
         <span class="win-title">LIVE TELEMETRY</span></div>
       <div class="win-body vitals-body">
         <div class="trace-row">
-          <div class="trace"><canvas id="ecg" height="72"></canvas><span class="trace-tag">ECG · <b id="t-hr">—</b> bpm</span></div>
-          <div class="trace"><canvas id="ppg" height="72"></canvas><span class="trace-tag">PLETH · SpO₂ <b id="t-spo2">—</b>%</span></div>
+          <!-- no width/height attributes: drawTrace sizes the backing store from the
+               element's own CSS box at device resolution. The stale height="72" left over
+               from the old 72px-tall trace only ever set a wrong initial resolution. -->
+          <div class="trace"><canvas id="ecg"></canvas><span class="trace-tag">ECG · <b id="t-hr">—</b> bpm</span></div>
+          <div class="trace"><canvas id="ppg"></canvas><span class="trace-tag">PLETH · SpO₂ <b id="t-spo2">—</b>%</span></div>
         </div>
         <div id="vital-grid" class="vital-grid"></div>
       </div>
@@ -860,7 +863,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=10"></script>
-<script type="module" src="camera.js?v=11"></script>
-<script src="os.js?v=38"></script>
+<script type="module" src="camera.js?v=12"></script>
+<script src="os.js?v=39"></script>
 </body>
 </html>

@@ -761,7 +761,12 @@ function animate() {
 function drawTrace(id, buf) {
   const c = $(id); if (!c) return;
   const dpr = Math.min(2, window.devicePixelRatio || 1);
-  const W = c.clientWidth || 320, h = c.clientHeight || 52;
+  // Bail rather than fall back to a guess. A `|| 320` default here is not a safety net:
+  // on the frames before the panel is laid out it BAKES 320x52 into the backing store,
+  // and the element then keeps that resolution for as long as nothing resizes it — which
+  // on a throttled/background tab (where rAF stops firing) is forever.
+  const W = c.clientWidth, h = c.clientHeight;
+  if (!W || !h) return;
   if (c.width !== Math.round(W * dpr) || c.height !== Math.round(h * dpr)) {
     c.width = Math.round(W * dpr); c.height = Math.round(h * dpr);
   }
@@ -769,6 +774,12 @@ function drawTrace(id, buf) {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, h);
   if (!buf.length) return;
+  // Map the buffer ACROSS the canvas instead of assuming one sample per pixel. The
+  // buffer is trimmed to a width `animate()` measures separately, so the moment the
+  // two disagree — which they do on the very first frames, when the panel has not been
+  // laid out and both fall back to different guesses — the sweep silently drew into
+  // only the left fraction of its box and looked like a stub.
+  const xOf = i => buf.length < 2 ? 0 : i / (buf.length - 1) * W;
   const yOf = v => h * 0.56 - v * h * 0.40;
 
   // calibration grid — the faint reference a monitor sweep is read against
@@ -783,13 +794,13 @@ function drawTrace(id, buf) {
 
   // the sweep itself
   ctx.beginPath();
-  buf.forEach((v, i) => { i ? ctx.lineTo(i, yOf(v)) : ctx.moveTo(i, yOf(v)); });
+  buf.forEach((v, i) => { i ? ctx.lineTo(xOf(i), yOf(v)) : ctx.moveTo(xOf(i), yOf(v)); });
   ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.lineCap = "round";
   ctx.strokeStyle = "rgba(242,243,245,.82)";
   ctx.stroke();
 
   // leading edge: where the sweep is right now
-  const lx = buf.length - 1, ly = yOf(buf[lx]);
+  const lx = xOf(buf.length - 1), ly = yOf(buf[buf.length - 1]);
   ctx.beginPath(); ctx.arc(lx, ly, 1.9, 0, Math.PI * 2);
   ctx.fillStyle = "#f2f3f5"; ctx.fill();
 }

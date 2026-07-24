@@ -1685,7 +1685,11 @@ function drawLeadHist(s){ var ctx=s.ctx,w=s.w,h=s.h; ctx.clearRect(0,0,w,h); if(
   if(!leads.length){ ctx.fillStyle=C.dim; ctx.font=FS(11,500); ctx.textAlign="center"; ctx.fillText("no detections",w/2,h/2); return; }
   var bins=[[0,6],[6,12],[12,24],[24,48],[48,1e9]], labels=["0–6","6–12","12–24","24–48","48 h+"];
   var counts=bins.map(function(b){return leads.filter(function(l){return l>=b[0]&&l<b[1];}).length;});
-  var mx=Math.max.apply(null,counts)||1, padL=14,padR=14,padT=16,padB=26,bw=(w-padL-padR)/bins.length;
+  // padT has to clear the VALUE LABEL, not just the bar. The tallest bar is by definition
+  // full height, so its top lands exactly at padT and its count is drawn 5px above that in
+  // a 14px face — at padT=16 the glyph started around y=-3 and the number was sliced off
+  // the top of the canvas, on the one bar the eye goes to first.
+  var mx=Math.max.apply(null,counts)||1, padL=14,padR=14,padT=32,padB=26,bw=(w-padL-padR)/bins.length;
   counts.forEach(function(c,i){ var bh=(c/mx)*(h-padT-padB), x=padL+i*bw, y=h-padB-bh;
     var g=ctx.createLinearGradient(0,y,0,h-padB); g.addColorStop(0,withAlpha(C.cyan,.95)); g.addColorStop(1,withAlpha(C.cyan,.32));
     ctx.fillStyle=g; roundRect(ctx,x+7,y,bw-14,Math.max(bh,2),5); ctx.fill();
