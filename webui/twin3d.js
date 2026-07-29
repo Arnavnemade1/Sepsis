@@ -882,7 +882,11 @@ function resize() {
 const _v = new THREE.Vector3();
 function animate() {
   requestAnimationFrame(animate);
-  const dt = clock.getDelta(); tNow += dt; const t = tNow;
+  const dt = clock.getDelta();
+  // Parked = the treatment overlay is covering us. Keep the RAF alive (so we
+  // resume instantly) but skip the simulation and the draw entirely.
+  if (parked) return;
+  tNow += dt; const t = tNow;
   controls.update();
 
   // heartbeat (sharp) + breathing cycles, from live vitals
@@ -1080,7 +1084,29 @@ function _measure() {
   for (const k in organs) { const o = organs[k]; if (o.pivot) { o.pivot.getWorldPosition(_v); out[k] = { p: _v.toArray().map(n => +n.toFixed(3)), col: "#" + o.mat.emissive.getHexString(), mon: o.mon, sev: +(o.sev || 0).toFixed(2), op: +o.mat.opacity.toFixed(2) }; } }
   return out;
 }
-window.AegisTwin = { start, update, resize, setOptical, setFocus, _setAtlas, _measure, triggerInfusion };
+/* Lend the parsed anatomy to a SECOND scene (the pharmacokinetic twin).
+   The atlas is ~23 MB of GLB and takes 10-14 s to parse; the treatment twin needs
+   the same bodies, so it clones these instead of re-parsing them. Object3D.clone()
+   shares the underlying BufferGeometry by reference, so the clone costs no parse
+   and no extra CPU-side geometry — only the second renderer's own GPU upload. The
+   borrower must NOT mutate these objects: it re-materialises every clone. Returns
+   null while the atlas is still loading, and the caller falls back to loading the
+   files itself (the browser cache makes that a warm fetch, just not a free parse). */
+function _lendAnatomy() {
+  const core = Object.values(organs).filter((o) => o.pivot && !o.vascular && !o.cfg.calExclude);
+  if (!modelGroup || core.length < 6) return null;
+  const out = { body: modelGroup, atlas: atlasGroup, metrics: bodyMetrics, organs: {} };
+  for (const k in organs) if (organs[k].pivot) out.organs[k] = organs[k].pivot;
+  return out;
+}
+/* The main twin's render loop is pure overhead while the treatment overlay covers
+   it — two WebGL contexts drawing 20 MB of anatomy each is a real cost on a
+   laptop. The overlay parks it on open and wakes it on close. */
+let parked = false;
+function setParked(v) { parked = !!v; }
+window.AegisTwin = { start, update, resize, setOptical, setFocus, _setAtlas, _measure,
+                     triggerInfusion, _lendAnatomy, setParked,
+                     isParked: () => parked };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
   if (el && el.clientWidth > 40 && el.clientHeight > 40) { clearInterval(probe); start(el); }

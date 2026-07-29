@@ -1,0 +1,163 @@
+/* ============================================================
+   AEGIS-OS — the treatment-projection overlay (pharmacokinetic twin)
+
+   A full-bleed surface rather than the console's docked drawer: this view is
+   read, not typed into, and the body needs the height. Tokens, hairlines and
+   typography come from tactical.css — this file adds only what the projection
+   needs and reuses everything else, so a change to the instrument palette still
+   reaches here.
+
+   The one new colour idea: --pkt-drug, set per arm from JS to the drug-class hue.
+   It is deliberately outside the clinical severity ramp, because in this overlay
+   brightness means DRUG, never danger.
+   ============================================================ */
+
+.pkt{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;
+  background:rgba(3,5,10,.72);backdrop-filter:blur(5px);opacity:0;visibility:hidden;transition:.22s}
+.pkt.open{opacity:1;visibility:visible}
+.pkt-frame{--pkt-drug:95,179,212;--pkt-drug-c:rgb(var(--pkt-drug));
+  width:min(1320px,96vw);height:min(880px,92vh);display:flex;flex-direction:column;
+  background:linear-gradient(180deg,rgba(10,13,19,.985),rgba(6,8,13,.99));
+  border:1px solid var(--hair-hot);border-radius:var(--r);
+  box-shadow:0 50px 110px -30px rgba(0,0,0,.92),0 0 0 1px rgba(var(--pkt-drug),.14),
+             inset 0 1px 0 rgba(200,224,255,.07);
+  overflow:hidden;transform:translateY(20px) scale(.992);
+  transition:transform .24s cubic-bezier(.2,.85,.2,1)}
+.pkt.open .pkt-frame{transform:none}
+
+/* ---- header: who, what was ordered, which arm ---- */
+.pkt-head{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:11px 15px;
+  border-bottom:1px solid var(--hair-soft);
+  background:linear-gradient(180deg,rgba(var(--pkt-drug),.07),transparent);min-height:52px}
+.pkt-tag{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--pkt-drug-c);border:1px solid rgba(var(--pkt-drug),.34);
+  border-radius:var(--r-xs);padding:3px 7px;white-space:nowrap}
+.pkt-id{min-width:0}
+.pkt-name{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pkt-sub{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.pkt-sub b{color:var(--muted);font-weight:600}
+/* "administered" vs "not yet ordered" — the distinction the backend preserves and
+   the one thing in this overlay that must never be ambiguous at a bedside. */
+.pkt-state{font-family:var(--mono);font-size:10px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;padding:3px 7px;border-radius:var(--r-xs);white-space:nowrap}
+.pkt-state.live{color:var(--ok-ink);border:1px solid rgba(var(--low-rgb),.4);
+  background:rgba(var(--low-rgb),.09)}
+.pkt-state.hypo{color:var(--watch-ink);border:1px solid rgba(var(--med-rgb),.4);
+  background:rgba(var(--med-rgb),.09)}
+.pkt-grow{flex:1 1 auto;min-width:8px}
+
+.pkt-arms{display:flex;gap:0;border:1px solid var(--hair);border-radius:var(--r-xs);
+  overflow:hidden;flex:0 0 auto}
+.pkt-arm{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--muted);
+  background:rgba(0,0,0,.25);border:0;border-right:1px solid var(--hair);
+  padding:6px 11px;cursor:pointer;white-space:nowrap;transition:.14s}
+.pkt-arm:last-child{border-right:0}
+.pkt-arm:hover{color:var(--ink);background:rgba(255,255,255,.04)}
+.pkt-arm.on{color:#08111a;background:var(--pkt-drug-c);font-weight:700}
+.pkt-arm i{font-style:normal;opacity:.72;margin-left:6px}
+.pkt-x{margin-left:0}
+
+/* ---- body: stage + side rail ---- */
+.pkt-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+.pkt-stage{position:relative;min-width:0;min-height:0;
+  background:radial-gradient(120% 90% at 50% 12%,rgba(var(--pkt-drug),.055),transparent 62%),
+             linear-gradient(180deg,#07090d,#05070a)}
+.pkt-stage canvas{display:block;width:100%;height:100%}
+
+/* the stage's own overlay chrome: what is being shown, and what is not */
+.pkt-hud{position:absolute;left:14px;top:12px;pointer-events:none;max-width:60%}
+.pkt-hud-t{font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--pkt-drug-c);font-weight:700}
+.pkt-hud-s{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px;line-height:1.5}
+.pkt-clock{position:absolute;right:14px;top:12px;text-align:right;pointer-events:none}
+.pkt-clock b{display:block;font-family:var(--mono);font-size:26px;font-weight:600;
+  color:var(--ink);letter-spacing:-.01em;line-height:1}
+.pkt-clock span{font-family:var(--mono);font-size:10.5px;color:var(--dim);
+  letter-spacing:.07em;text-transform:uppercase}
+/* the honest footnote: which meshes carry no computed value */
+.pkt-nodata{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:10px;
+  color:var(--faint);pointer-events:none;letter-spacing:.03em}
+
+/* colour scale — brightness is concentration, and the scale says relative to what */
+.pkt-scale{position:absolute;right:14px;bottom:12px;width:150px;pointer-events:none}
+.pkt-scale-bar{height:5px;border-radius:3px;
+  background:linear-gradient(90deg,rgba(var(--pkt-drug),.06),rgba(var(--pkt-drug),1))}
+.pkt-scale-l{display:flex;justify-content:space-between;margin-top:4px;
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.04em}
+
+/* ---- side rail ---- */
+.pkt-side{border-left:1px solid var(--hair-soft);background:var(--s1);
+  display:flex;flex-direction:column;min-height:0;overflow-y:auto}
+.pkt-sec{border-bottom:1px solid var(--hair-soft);padding:12px 14px}
+.pkt-sec-h{display:flex;align-items:baseline;gap:8px;margin-bottom:9px}
+.pkt-sec-h h3{font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);margin:0}
+.pkt-sec-h span{font-family:var(--mono);font-size:10px;color:var(--faint);margin-left:auto}
+
+/* per-organ concentration readout — numbers are the interface */
+.pkt-organ{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;
+  padding:4px 0;border-bottom:1px solid var(--hair-soft)}
+.pkt-organ:last-child{border-bottom:0}
+.pkt-organ-n{font-family:var(--mono);font-size:11px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pkt-organ-v{font-family:var(--mono);font-size:11.5px;color:var(--ink);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pkt-organ-bar{grid-column:1/-1;height:2px;background:rgba(255,255,255,.05);border-radius:2px;overflow:hidden}
+.pkt-organ-bar i{display:block;height:100%;background:var(--pkt-drug-c);
+  transition:width .12s linear}
+.pkt-organ.off .pkt-organ-n,.pkt-organ.off .pkt-organ-v{color:var(--faint)}
+
+/* metric grid */
+.pkt-metrics{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}
+.pkt-metric span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint)}
+.pkt-metric b{display:block;font-family:var(--mono);font-size:14px;font-weight:600;
+  color:var(--ink);font-variant-numeric:tabular-nums;margin-top:2px}
+.pkt-metric b em{font-style:normal;font-size:10px;color:var(--dim);margin-left:3px}
+
+.pkt-note{font-family:var(--mono);font-size:10px;line-height:1.55;color:var(--faint)}
+.pkt-note b{color:var(--dim);font-weight:600}
+
+/* ---- footer: transport ---- */
+.pkt-foot{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:10px 15px;
+  border-top:1px solid var(--hair-soft);background:rgba(0,0,0,.28);min-height:50px}
+.pkt-btn{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted);background:rgba(0,0,0,.3);
+  border:1px solid var(--hair);border-radius:var(--r-xs);padding:6px 12px;cursor:pointer;
+  white-space:nowrap;transition:.14s}
+.pkt-btn:hover{color:var(--ink);border-color:var(--hair-hot)}
+.pkt-btn.on{color:#08111a;background:var(--pkt-drug-c);border-color:transparent}
+.pkt-track{flex:1 1 auto;position:relative;height:26px;cursor:pointer;min-width:80px}
+.pkt-track-l{position:absolute;left:0;right:0;top:12px;height:3px;border-radius:2px;
+  background:rgba(255,255,255,.07)}
+.pkt-track-f{position:absolute;left:0;top:12px;height:3px;border-radius:2px;
+  background:var(--pkt-drug-c);width:0}
+.pkt-track-h{position:absolute;top:6px;width:3px;height:15px;margin-left:-1px;border-radius:2px;
+  background:var(--ink);box-shadow:0 0 0 3px rgba(var(--pkt-drug),.22)}
+/* PK landmarks — infusion start/end, Cmax, first arrival in an organ */
+.pkt-ev{position:absolute;top:3px;width:1px;height:8px;background:var(--faint)}
+.pkt-ev.key{height:11px;top:1px;background:rgba(var(--pkt-drug),.85)}
+.pkt-time{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.pkt-time b{color:var(--ink)}
+.pkt-rate{display:flex;gap:0;border:1px solid var(--hair);border-radius:var(--r-xs);overflow:hidden}
+.pkt-rate button{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  background:rgba(0,0,0,.25);border:0;border-right:1px solid var(--hair);padding:5px 8px;cursor:pointer}
+.pkt-rate button:last-child{border-right:0}
+.pkt-rate button.on{color:#08111a;background:var(--pkt-drug-c);font-weight:700}
+
+/* loading + failure states — never an empty black box */
+.pkt-load{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:9px;font-family:var(--mono);font-size:11.5px;color:var(--dim);
+  letter-spacing:.05em;text-align:center;padding:20px}
+.pkt-load i{font-style:normal;font-size:10.5px;color:var(--faint);max-width:340px;line-height:1.6}
+
+/* ---- narrow: the rail drops under the stage ---- */
+@media (max-width:1080px){
+  .pkt-frame{width:98vw;height:96vh}
+  .pkt-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto}
+  .pkt-side{border-left:0;border-top:1px solid var(--hair-soft);max-height:38vh}
+  .pkt-head{flex-wrap:wrap;row-gap:8px}
+}

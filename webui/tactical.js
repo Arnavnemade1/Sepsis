@@ -230,7 +230,13 @@ function renderBundleDossier(b){
     (b.severity_name||"")+'</span><span class="db-stamp '+(b.all_verified?"ok":"bad")+'">'+
     (b.all_verified?"✓ formally verified · safe to dispatch":"✗ quarantined")+'</span></div>'+items+
     '<div class="db-proto">'+p.antibiotic+' · fluid '+p.fluid_rate+' mL/kg/h · vaso '+p.vasopressor_dose+
-    ' mcg/kg/min — <span class="db-z3">Z3 '+p.z3.toUpperCase()+'</span></div>';
+    ' mcg/kg/min — <span class="db-z3">Z3 '+p.z3.toUpperCase()+'</span></div>'+
+    '<button class="db-project" id="db-project">◎ Project this treatment through the body</button>';
+  var btn=$("db-project");
+  if(btn) btn.addEventListener("click",function(){
+    if(!selectedBed||!window.AegisPK) return;
+    window.AegisPK.open(selectedBed,{name:(latestBeds[selectedBed]||{}).name||selectedBed});
+  });
 }
 function openDossier(id){
   selectedBed=id; dosChart=null;
@@ -1781,7 +1787,7 @@ function cmdRun(raw){
   try{ H(arg); }catch(e){ cmdPrint("error: "+esc(e&&e.message),"err"); }
 }
 function fmtRisk(b){ var t=tierOf(b.fused_risk); return '<span class="cl-'+(t==="critical"?"crit":t==="watch"?"warn":"ok")+'">'+fmt(b.fused_risk,2)+'</span>'; }
-var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief",fit:"train",ml:"model",models:"model",pt:"patient",patientos:"patient"};
+var CMD_ALIAS={ls:"roster","?":"help",inspect:"who",inject:"crisis",cls:"clr",sched:"alloc",bundle:"protocol",p:"protocol",ews:"radar",pk:"project",pharmacokinetics:"project",twin:"project",resilience:"radar",kernel:"kstat",log:"dmesg",order:"treat",rx:"treat",esc:"escalate",syslog:"audit",lsdrv:"drivers",kdev:"drivers",devplane:"drivers",vrf:"verify",kill:"fault",unplug:"fault",xmr:"resonance",agree:"resonance",ppg:"vascular",tone:"vascular",vaso:"vasodilate",svc:"service",systemctl:"service",services:"service",sysfs:"proc",hdk:"krun",kthreads:"krun",query:"ask",q:"ask",handoff:"brief",fit:"train",ml:"model",models:"model",pt:"patient",patientos:"patient"};
 var CMD={
   help:function(){ cmdPrint('<b>COMMANDS</b>','sys');
     [['roster / ls','list every monitored bed + risk'],
@@ -1812,6 +1818,7 @@ var CMD={
      ['protocol <bed>','certified Hour-1 sepsis bundle'],
      ['— write syscalls —','audited · Z3-gated · default-deny'],
      ['treat <bed> [k=v]','order the certified bundle (fluid=/vaso=/abx= override)'],
+     ['project <bed>','render the ordered treatment travelling through the body'],
      ['escalate <bed> [lvl]','raise priority — pins kernel compute if justified'],
      ['crisis <bed> [int]','⚠ privileged crisis drill (envelope-gated)'],
      ['clear <bed>','recover a bed · release the pin'],
@@ -1879,7 +1886,19 @@ var CMD={
       else if(k==="vaso"||k==="vasopressor_dose") args.vasopressor_dose=v;
       else if(k==="abx"||k==="antibiotic"||k==="antibiotic_code") args.antibiotic_code=v; });
     syscall("treat", b.bed_id, args, function(d){
-      if(d.allowed&&d.result&&d.result.bundle) printBundle(d.result.bundle,b); }); },
+      if(!d.allowed) return;
+      if(d.result&&d.result.bundle) printBundle(d.result.bundle,b);
+      // A certified order now has a destination. The backend returns the handle;
+      // offer it rather than seizing the screen — the operator may be mid-sweep
+      // across the wing and an overlay that opens itself is an interruption.
+      if(d.projection&&d.projection.available)
+        cmdPrint('order dispatched → <span class="cl-cmd">project '+esc(b.bed_id)+
+          '</span> to watch it travel through the body',"row"); }); },
+  project:function(a){ var b=resolveBed(a);
+    if(!b) return cmdPrint("usage: project <bed> — render the ordered treatment through the body","err");
+    if(!window.AegisPK) return cmdPrint("treatment twin not loaded on this page","err");
+    cmdPrint("opening the treatment projection · "+esc(b.name)+" …","dim");
+    window.AegisPK.open(b.bed_id,{name:b.name}); },
   escalate:function(a){ var s=splitBedArgs(a), b=resolveBed(s.bedq);
     if(!b) return cmdPrint("usage: escalate <bed> [low|medium|high|0-3]","err");
     var args={}, lv=s.rest[0];
@@ -2175,7 +2194,7 @@ function termCandidates(v){
   else if(cmd==="krun") pool=(parts.length===2)?["mixed","pipeline","fanout","stress"]:["FIFO","RR","CFS","EDF","HDSched"];
   else if(cmd==="cat"||cmd==="proc") pool=(PROC_CACHE||[]).map(function(p){return p.replace(/^\/proc\//,"").replace(/^\//,"");});
   else if(cmd==="man") pool=uniq(Object.keys(CMD));
-  else if(/^(who|open|treat|escalate|clear|explain|radar|resonance|protocol|crisis|inspect|verify|fault)$/.test(cmd)) pool=beds().map(function(b){return b.bed_id;});
+  else if(/^(who|open|treat|escalate|clear|explain|radar|resonance|protocol|crisis|inspect|verify|fault|project)$/.test(cmd)) pool=beds().map(function(b){return b.bed_id;});
   return uniq(pool).filter(function(n){return String(n).toLowerCase().indexOf(last)===0;}).sort();
 }
 function termComplete(){ var inp=$("cmd-in"), v=inp.value, cands=termCandidates(v); if(!cands.length) return;
@@ -2190,6 +2209,7 @@ var MAN={ps:"ps — process table (each monitored bed is a scheduled bio-process
   ask:"ask <question> — grounded natural-language query over live cohort + kernel state (read-only, no orders)",
   brief:"brief — LLM shift-handoff summary of the cohort",dmesg:"dmesg — kernel interrupt / preemption log",
   proc:"proc <path> — read the /proc introspection namespace",treat:"treat <bed> [fluid= vaso= abx=] — order the certified Hour-1 bundle (Z3-gated)",
+  project:"project <bed> — render the ordered treatment travelling through the body (PBPK twin)",
   escalate:"escalate <bed> [lvl] — raise priority; pins kernel compute if justified",ls:"ls [dir] — list a virtual directory (/proc /bin /cohort /kernel)",
   cd:"cd <dir> — change directory",cat:"cat <proc-path> — print a live /proc value"};
 CMD.clear=function(){ $("cmd-out").innerHTML=""; };
