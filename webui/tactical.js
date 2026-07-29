@@ -240,6 +240,11 @@ function renderBundleDossier(b){
 }
 function openDossier(id){
   selectedBed=id; dosChart=null;
+  var pb=$("dos-project");
+  if(pb&&!pb._bound){ pb._bound=true;
+    pb.addEventListener("click",function(){
+      if(!selectedBed||!window.AegisPK) return;
+      window.AegisPK.open(selectedBed,{name:(latestBeds[selectedBed]||{}).name||selectedBed}); }); }
   $("dossier").classList.add("open");
   $("dossier").setAttribute("aria-hidden","false");
   if(latestBeds[id]) updateDossier(latestBeds[id]);

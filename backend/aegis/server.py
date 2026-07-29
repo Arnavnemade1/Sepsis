@@ -1566,6 +1566,62 @@ def pk_bed(bed_id: str, adverse: bool = True, n_points: int = 121) -> Dict[str, 
     return out
 
 
+@app.get("/aegis/pk/session")
+def pk_session(adverse: bool = True, n_points: int = 121) -> Dict[str, Any]:
+    """The same projection for the LIVE single-patient session the clinical console
+    watches, rather than for a cohort bed.
+
+    The clinical console has one patient and no bed id, so it cannot use
+    ``/aegis/pk/bed/{id}``. Same contract, same honesty: if a protocol has actually
+    been dispatched into the session it projects that, otherwise it projects what
+    the current assessment would certify and says so."""
+    from backend.aegis.pharmacokinetics import PatientState, project_protocol
+    snap = session.snapshot()
+    vitals = snap.get("vitals") or {}
+    hist = (snap.get("patient") or {}).get("clinical_history") or {}
+    proto_block = snap.get("protocol") or {}
+    proto = dict(proto_block.get("protocol") or {})
+    administered = bool(proto_block.get("applied"))
+    if not proto:
+        # Nothing certified yet — derive what would be ordered for this patient, so
+        # the twin can still answer "where would this go" before anyone commits.
+        prof = SimpleNamespace(
+            enterprise={"map": float(vitals.get("map", 80.0) or 80.0),
+                        "lactate": float(vitals.get("sweat_lactate",
+                                                    vitals.get("lactate", 1.0)) or 1.0)},
+            fused_risk=float((snap.get("risk") or {}).get("ml_probability", 0.0) or 0.0),
+            name=(snap.get("patient") or {}).get("name", "patient"),
+            drivers=[], primary_system="")
+        proto = dict(bundle_engine._derive_protocol(prof, hist))
+        administered = False
+
+    mapv = float(vitals.get("map", 80.0) or 80.0)
+    hr = float(vitals.get("heart_rate", 90.0) or 90.0)
+    egfr = 25.0 if hist.get("renal_failure") else 90.0
+    patient = PatientState(
+        weight_kg=float(hist.get("weight_kg", 78.0) or 78.0), egfr=egfr,
+        hepatic_factor=0.6 if hist.get("cirrhosis") else 1.0, map_mmhg=mapv,
+        cardiac_output_factor=float(min(1.6, max(0.7, 0.85 + (hr - 80.0) / 200.0))))
+
+    key = "session|" + _pk_key(proto, patient, adverse)
+    if key in _PK_CACHE:
+        out = dict(_PK_CACHE[key])
+    else:
+        out = project_protocol(proto, patient,
+                               n_points=max(41, min(401, n_points)))
+        out["status"] = "ok"
+        if adverse and out["arms"]:
+            from backend.aegis.adverse import AdverseEventEngine
+            out["adverse"] = AdverseEventEngine().project(out["arms"], patient, hist)
+        _pk_store(key, out)
+        out = dict(out)
+    out["administered"] = administered
+    out["source"] = ("administered order" if administered
+                     else "certified protocol (not yet ordered)")
+    out["bed_name"] = (snap.get("patient") or {}).get("name", "Monitored patient")
+    return out
+
+
 @app.get("/aegis/cohort/{bed_id}/chart")
 def cohort_chart(bed_id: str) -> Dict[str, Any]:
     """One patient's real vitals/labs trajectory + ground-truth sepsis label."""

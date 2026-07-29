@@ -791,6 +791,10 @@ b{font-weight:700}
 .db-n{font-size:11px;color:var(--dim);width:13px;flex:0 0 auto}
 .db-proto{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px;padding:8px 10px;border-radius:var(--r-sm);background:rgba(var(--accent-rgb),.06);border:1px solid rgba(var(--accent-rgb),.2)}
 .db-z3{color:var(--ok);font-weight:600}
+/* the header affordance — the projection is an inspection, so it reads cool and
+   sits apart from the perturbation controls next to it */
+.dos-act.project{color:#9fd4e8;border-color:rgba(95,179,212,.42);background:rgba(95,179,212,.11)}
+.dos-act.project:hover{color:#e8f6fb;border-color:rgba(95,179,212,.75);background:rgba(95,179,212,.2)}
 /* the way into the pharmacokinetic twin. Full-width and quiet: it is an
    inspection, not an order, so it must not read like the treat affordance. */
 .db-project{display:block;width:100%;margin-top:8px;padding:8px 10px;cursor:pointer;

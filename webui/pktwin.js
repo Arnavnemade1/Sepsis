@@ -223,6 +223,8 @@ function borrowAnatomy() {
     o.material = shellMat; o.frustumCulled = false; o.renderOrder = 6;
   });
   scene.add(bodyGroup);
+  bodyGroup.updateWorldMatrix(true, true);
+  buildVesselTree(bodyGroup);
   // The lent atlas is already calibrated into the body; copying its transform
   // means this scene inherits the seating rather than re-deriving it.
   atlasGroup = new THREE.Group();
@@ -248,7 +250,8 @@ function loadAnatomy() {
       if (/joint/i.test(o.name)) { o.visible = false; return; }
       o.material = shellMat; o.frustumCulled = false; o.renderOrder = 6;
     });
-    normalizeBySkeleton(bodyGroup); scene.add(bodyGroup); calibrate();
+    normalizeBySkeleton(bodyGroup); scene.add(bodyGroup);
+    bodyGroup.updateWorldMatrix(true, true); buildVesselTree(bodyGroup); calibrate();
   }, undefined, () => {});
   let n = 0;
   const need = ORGAN_FILES.filter((c) => !c.defer && !c.calExclude).length;
@@ -416,6 +419,22 @@ function applyLevels() {
       o.pivot.getWorldPosition(o.halo.position);
     }
   }
+  // The full-body tree. Each segment shows the arterial concentration as it was
+  // one transit time AGO, so the front genuinely travels: out of the heart, down
+  // the aorta, splitting at the iliacs, reaching the feet last. Sampling the same
+  // curve at a delayed time is the whole mechanism — no keyframes, no easing.
+  if (vesselTree) {
+    const times = arm.times_h, series = arm.organs.arterial;
+    vesselTree.segs.forEach((sg) => {
+      const v = series ? sampleAt(series, times, tHours - sg.delay) : 0;
+      const lvl = Math.pow(Math.max(0, Math.min(1, v / armNorm.vessel)), DISPLAY_GAMMA);
+      ramp(col, lvl, _c2);
+      sg.mat.color.copy(_c2);
+      // Veins sit a touch dimmer than arteries at equal concentration, so the two
+      // limbs of the circuit stay tellable apart when both are loaded.
+      sg.mat.opacity = 0.02 + (sg.kind === "a" ? 0.30 : 0.19) * lvl;
+    });
+  }
   // The vascular tree carries the plasma channel — this is what makes the bolus
   // legible: the vessels light before any organ does, because that is the route.
   // A SURGE term on the rising edge is what turns a slow fade into an arrival:
@@ -428,7 +447,7 @@ function applyLevels() {
     vesselPrev = art;
     ramp(col, Math.min(1, art + 0.5 * vesselSurge), _c2);
     vessels.mat.color.copy(_c2);
-    vessels.mat.opacity = 0.035 + 0.26 * art + 0.20 * vesselSurge;
+    vessels.mat.opacity = 0.02 + 0.14 * art + 0.12 * vesselSurge;
   }
   // Muscle, skin, fat and the remainder have no mesh of their own — they are most
   // of the body by mass and hold most of the drug, so the shell carries them.
@@ -448,6 +467,137 @@ const SHELL_BASE = new THREE.Color(0x2f353d);
 let vesselPrev = null, vesselSurge = 0, labelTick = 0, riskPhase = 0;
 
 /* ------------------------------------------------------------------ */
+/* The circulation — a full-body vascular tree                        */
+/* ------------------------------------------------------------------ */
+/* The CCF vasculature mesh stops at the trunk, so the drug appeared to reach the
+   organs and then stop existing: no delivery to the head, the arms or the legs,
+   which between them are most of the body and most of the muscle compartment the
+   model is actually solving for. This builds the missing circulation.
+
+   WHAT IT IS. A schematic arterial tree and its venous return, routed along the
+   body's OWN SKELETON — the bones are read out of the rigged mesh, so the vessels
+   follow this body's actual shoulders, hips and limb lengths rather than a set of
+   coordinates that would drift the moment the model changed. Aortic arch to
+   carotids, subclavians down each arm, descending aorta to the iliacs and down
+   each leg, with veins running alongside.
+
+   WHAT IT IS NOT. It is not this patient's vasculature, and it is not a segmented
+   angiogram: it is the major-vessel plan every anatomy text draws, at this body's
+   proportions. It carries a real quantity — the model's arterial concentration —
+   along a schematic route, and the twin says so rather than implying the geometry
+   was measured.
+
+   WHY IT EARNS ITS PLACE. Transit is not instant. Blood leaves the heart and
+   reaches the foot several seconds later, and rendering that delay is what turns
+   "the vessels are glowing" into "the drug is moving": on the first pass you watch
+   the front travel out the aorta, split at the iliacs and run down both legs. The
+   delay is computed from path length at a stated mean circulation velocity, so it
+   is a physiological claim, not an animation curve. */
+const VESSEL_SOURCE = "schematic major-vessel plan, routed along this body's skeleton";
+// Mean flow velocity used to convert path length to arrival delay. Aortic flow is
+// far faster than capillary flow; this is a whole-circuit average chosen so one
+// complete pass takes about a minute, which is the textbook figure.
+const CIRCULATION_M_PER_S = 0.22;
+
+function boneMap(root) {
+  const B = {};
+  root.traverse((o) => { if (o.isBone) B[o.name.toLowerCase().replace(/^mixamorig:?/, "")] = o; });
+  return B;
+}
+function bonePos(B, ...names) {
+  for (const n of names) {
+    const k = Object.keys(B).find((k) => k === n) || Object.keys(B).find((k) => k.includes(n));
+    if (k) { const v = new THREE.Vector3(); B[k].getWorldPosition(v); return v; }
+  }
+  return null;
+}
+
+/* Each route: a name, the ordered skeleton anchors it threads through, and a
+   radius. Arteries run slightly anterior, veins slightly posterior, so the two
+   read as a pair rather than one doubled line. */
+function vesselRoutes(B) {
+  const P = (...n) => bonePos(B, ...n);
+  const hips = P("hips", "pelvis"), spine = P("spine1", "spine"), chest = P("spine2", "spine1");
+  const neck = P("neck"), head = P("head");
+  if (!hips || !chest) return [];
+  const heart = chest.clone().add(new THREE.Vector3(0.012, -0.02, 0.03));
+  const routes = [];
+  const side = (s) => (s === "l" ? "left" : "right");
+
+  // Calibre is to scale on a 1.7 m body: a ~2 cm aorta, ~6 mm carotid, ~4 mm
+  // brachial, ~7 mm femoral. The first pass used aorta-width tubes in every limb,
+  // which read as plumbing rather than anatomy and drowned the organs behind them.
+  const arch = chest.clone().lerp(neck || chest, 0.45);   // aortic arch / great vessels
+  routes.push({ key: "aorta", pts: [heart, arch, chest, spine || chest, hips], r: 0.0105 });
+  if (neck && head) {
+    // Carotids run as a pair either side of the midline, not up the centre.
+    [-1, 1].forEach((sgn) => routes.push({
+      key: "carotid" + (sgn < 0 ? "L" : "R"), r: 0.0032,
+      pts: [arch,
+            neck.clone().add(new THREE.Vector3(sgn * 0.022, 0, 0)),
+            head.clone().add(new THREE.Vector3(sgn * 0.016, 0, 0))] }));
+  }
+  ["l", "r"].forEach((s) => {
+    const sh = P(side(s) + "arm", side(s) + "shoulder");
+    const el = P(side(s) + "forearm");
+    const hd = P(side(s) + "hand");
+    if (sh && el && hd) {
+      // Subclavian off the arch, then along the limb itself — routing it from the
+      // heart made it bow out across the chest on its way to the shoulder.
+      routes.push({ key: "arm" + s.toUpperCase(), r: 0.0028,
+                    pts: [arch, sh.clone().lerp(arch, 0.28), sh, el, hd] });
+    }
+    const up = P(side(s) + "upleg", side(s) + "thigh");
+    const lo = P(side(s) + "leg", side(s) + "shin");
+    const ft = P(side(s) + "foot");
+    if (up && lo && ft) {
+      // Common iliac off the aortic bifurcation, then femoral down the leg.
+      const iliac = hips.clone().lerp(up, 0.45);
+      routes.push({ key: "leg" + s.toUpperCase(), r: 0.0042,
+                    pts: [hips.clone(), iliac, up, lo, ft] });
+    }
+  });
+  return routes;
+}
+
+let vesselTree = null;   // { group, segs:[{mesh, mat, delay, t0}] }
+
+function buildVesselTree(root) {
+  const B = boneMap(root);
+  const routes = vesselRoutes(B);
+  if (!routes.length) return false;
+  const group = new THREE.Group();
+  const segs = [];
+  routes.forEach((rt) => {
+    const pts = rt.pts.filter(Boolean);
+    if (pts.length < 2) return;
+    [["a", 0.010, 1.0], ["v", -0.012, 1.30]].forEach(([kind, off, rmul]) => {
+      // Artery anterior, vein posterior and a little wider — the venous side of
+      // the circulation genuinely carries more volume at lower pressure.
+      const shifted = pts.map((p, i) =>
+        p.clone().add(new THREE.Vector3(0, 0, i === 0 ? off * 0.4 : off)));
+      const curve = new THREE.CatmullRomCurve3(shifted, false, "centripetal");
+      const len = curve.getLength();
+      const geo = new THREE.TubeGeometry(curve, Math.max(20, Math.round(len * 70)),
+                                         rt.r * rmul, 6, false);
+      const mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0x5fb3d4), transparent: true, opacity: 0.05,
+        blending: THREE.AdditiveBlending, depthWrite: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.frustumCulled = false;
+      group.add(mesh);
+      // Arrival delay from path length at the stated mean velocity. Venous return
+      // lags by the same journey again, which is why the veins light second.
+      const delay = len / CIRCULATION_M_PER_S / 3600;      // hours
+      segs.push({ mesh, mat, delay: kind === "a" ? delay : delay * 2.1, kind });
+    });
+  });
+  scene.add(group);
+  vesselTree = { group, segs };
+  return true;
+}
+
+/* ------------------------------------------------------------------ */
 /* Framing — the drug lives in the torso, so frame the torso           */
 /* ------------------------------------------------------------------ */
 /* Inherited framing from the clinical twin put the whole body head-to-feet in
@@ -457,6 +607,7 @@ let vesselPrev = null, vesselSurge = 0, labelTick = 0, riskPhase = 0;
    organ atlas roughly triples the organs on screen, which is most of why the
    changes were hard to see at all. */
 function fitToAtlas() {
+  fitMode = "atlas";
   if (!camera || !controls || !atlasGroup) return;
   const core = Object.values(organs).filter(
     (o) => o.pivot && !o.vascular && o.comp && !o.pivot.userData.calExclude);
@@ -561,7 +712,7 @@ function updateLabels() {
   const left = rows.filter((r) => r.sx < w * 0.5).sort((a, b) => a.sy - b.sy);
   const right = rows.filter((r) => r.sx >= w * 0.5).sort((a, b) => a.sy - b.sy);
 
-  const PITCH = 30, TOP = 54;
+  const PITCH = 30, TOP = 84;   // clears the HUD block in the top-left
   function place(list, side) {
     // Walk down the column pushing each label below the previous one; a simple
     // monotone pass is enough because the list is already sorted by depth on
@@ -592,6 +743,38 @@ function updateLabels() {
     });
   }
   place(left, "l"); place(right, "r");
+}
+
+/* Two framings, because the scene now has two scales of information. The torso
+   view is where the organ numbers are legible; the body view is where the
+   circulation reads as a circulation. Neither is right for both, so it is a
+   toggle rather than a compromise that serves neither. */
+function fitToBody() {
+  fitMode = "body";
+  if (!camera || !controls || !bodyGroup) return;
+  bodyGroup.updateWorldMatrix(true, true);
+  // Measure the BONES, not the mesh. Box3.setFromObject on a skinned mesh reads
+  // the bind-pose geometry bounds, which ignore the skeleton this body is
+  // actually posed with — the box comes out offset and oversized, and the camera
+  // ends up aimed at empty space beside the patient. The bones are where the body
+  // really is, which is why normalizeBySkeleton uses them too.
+  const box = new THREE.Box3();
+  const bv = new THREE.Vector3();
+  let nb = 0;
+  bodyGroup.traverse((o) => { if (o.isBone) { o.getWorldPosition(bv); box.expandByPoint(bv); nb++; } });
+  if (nb < 4) box.setFromObject(bodyGroup);          // un-rigged fallback
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  // Bones sit inside the flesh, so the skeleton box understates the silhouette.
+  size.multiplyScalar(1.18);
+  const fov = camera.fov * Math.PI / 180;
+  const dist = (Math.max(size.y, size.x) * 1.22) / (2 * Math.tan(fov / 2));
+  controls.target.copy(c);
+  camera.position.set(c.x + dist * 0.10, c.y + size.y * 0.04, c.z + dist);
+  controls.minDistance = dist * 0.25; controls.maxDistance = dist * 2.2;
+  camera.near = Math.max(0.01, dist * 0.01); camera.far = dist * 12;
+  camera.updateProjectionMatrix(); controls.update();
 }
 
 function setLabels(on) { labelsOn = !!on; updateLabels(); }
@@ -723,15 +906,25 @@ function play() { playing = true; }
 function pause() { playing = false; }
 function setRate(r) { playRate = Math.max(0.05, +r || 1); }
 
+let fitMode = "atlas";
 function resize() {
   if (!renderer || !container) return;
   const w = container.clientWidth, h = container.clientHeight;
   if (!w || !h) return;
+  const changed = Math.abs(w - lastW) > 1 || Math.abs(h - lastH) > 1;
+  lastW = w; lastH = h;
   camera.aspect = w / h; camera.updateProjectionMatrix();
   renderer.setSize(w, h);
   if (composer) composer.setSize(w, h);
   if (bloomPass) bloomPass.setSize(w, h);
+  // Re-apply the framing whenever the box actually changes. The overlay is
+  // measured the instant it becomes visible, before layout has settled, so the
+  // first mount fits a camera to a stage that is about to get wider — and the
+  // body ends up half out of frame with no way back except a manual drag.
+  if (changed) { if (fitMode === "body") fitToBody(); else fitToAtlas(); }
+  updateLabels();
 }
+let lastW = 0, lastH = 0;
 
 function animate() {
   if (disposed) return;
@@ -816,7 +1009,8 @@ function state() {
 
 window.AegisPKTwin = {
   mount, setProjection, setArm, setTime, play, pause, setRate, resize, dispose,
-  setLabels, setLabelFormat, fitToAtlas, setRiskFocus, clearRiskFocus,
+  setLabels, setLabelFormat, fitToAtlas, fitToBody, setRiskFocus, clearRiskFocus,
+  hasVessels: () => !!vesselTree, VESSEL_SOURCE,
   state, levelsNow, isPlaying: () => playing, currentArm: () => arm,
   DRUG_COLOR, UNMODELLED: UNMODELLED_LABEL,
 };

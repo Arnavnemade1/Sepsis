@@ -8,8 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=38" />
-<link rel="stylesheet" href="pktwin.css?v=3" />
+<link rel="stylesheet" href="tactical.css?v=39" />
+<link rel="stylesheet" href="pktwin.css?v=5" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -235,6 +235,7 @@
     <div class="dos-demo" id="dos-demo"></div>
     <div class="dos-risk"><b id="dos-risk">0.00</b><span id="dos-tier" class="dos-tier">stable</span></div>
     <div class="dos-actions">
+      <button class="dos-act project" id="dos-project" title="Project the ordered treatment through the body">◎ Treatment projection</button>
       <button class="dos-act crisis" data-act="crisis">⏵ Advance to onset</button>
       <button class="dos-act clear" data-act="clear">↺ Reset</button>
       <button class="dos-act noise" data-act="noise">≈ Noise</button>
@@ -314,7 +315,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=8"></script>
-<script type="module" src="pktwin.js?v=8"></script>
+<script type="module" src="pktwin.js?v=12"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -459,7 +460,7 @@
       </div>
       <span class="pkt-time" id="pkt-time"><b>0:00</b> / —</span>
       <button class="pkt-btn on" id="pkt-labels-btn" title="anatomical labels">◉ labels</button>
-      <button class="pkt-btn" id="pkt-fit" title="re-frame on the organs">⤢ fit</button>
+      <button class="pkt-btn" id="pkt-fit" title="switch between the organ view and the whole-body circulation">⤢ torso</button>
       <div class="pkt-rate" id="pkt-rate">
         <button data-r="0.5">½×</button><button data-r="1" class="on">1×</button><button data-r="3">3×</button>
       </div>
@@ -467,7 +468,7 @@
   </div>
 </div>
 
-<script src="pktwin_ui.js?v=7"></script>
-<script src="tactical.js?v=29"></script>
+<script src="pktwin_ui.js?v=9"></script>
+<script src="tactical.js?v=30"></script>
 </body>
 </html>

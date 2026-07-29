@@ -67,7 +67,12 @@
 .pkt-stage canvas{display:block;width:100%;height:100%}
 
 /* the stage's own overlay chrome: what is being shown, and what is not */
-.pkt-hud{position:absolute;left:14px;top:12px;pointer-events:none;max-width:60%}
+/* The HUD sits above the label columns, so labels start below it (see TOP in
+   updateLabels) and it gets its own backing — over a dark body the copy was
+   legible, over a lit lung it was not. */
+.pkt-hud{position:absolute;left:14px;top:12px;pointer-events:none;max-width:52%;
+  background:linear-gradient(90deg,rgba(6,9,14,.82),rgba(6,9,14,.35) 78%,transparent);
+  padding:5px 22px 6px 8px;border-radius:var(--r-xs);z-index:3}
 .pkt-hud-t{font-family:var(--mono);font-size:11px;letter-spacing:.06em;
   text-transform:uppercase;color:var(--pkt-drug-c);font-weight:700}
 .pkt-hud-s{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-top:3px;line-height:1.5}

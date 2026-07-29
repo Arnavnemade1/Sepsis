@@ -33,7 +33,7 @@ async function boot() {
   await sleep(360);
   $("#boot").classList.add("gone");
   setTimeout(() => { $("#boot").remove(); $("#os").classList.remove("hidden"); window.AegisTwin?.resize(); }, 650);
-  connect(); animate(); tickClock(); window.AegisPatient?.load();
+  connect(); animate(); tickClock(); window.AegisPatient?.load(); bindWhatifPK();
 }
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -260,6 +260,7 @@ function drawArc(p, lvl) {
 /* ---------------- BODY TWIN (3D — see twin3d.js) ---------------- */
 function renderTwin(d) {
   window.AegisTwin?.update(d);
+  _lastPatientName = d?.patient?.name || _lastPatientName;
 }
 
 /* ---------------- VITALS ---------------- */
@@ -359,6 +360,22 @@ function sparkline(cv, arr) {
   arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
   ctx.stroke();
 }
+
+/* The pharmacokinetic twin, opened from the what-if card. It sits here rather
+   than behind a protocol panel because "what would this treatment do" and "where
+   would it actually go" are the same question asked one step apart, and the second
+   one was previously three clicks deep in a different console. Unlike the what-if
+   projection it does NOT require elevated risk — you can ask where a drug lands in
+   a stable patient — so the button is always live. */
+function bindWhatifPK() {
+  const b = $("#whatif-pk");
+  if (!b) return;
+  b.addEventListener("click", () => {
+    if (!window.AegisPK) return;
+    window.AegisPK.open("session", { name: _lastPatientName || "Monitored patient" });
+  });
+}
+let _lastPatientName = null;
 
 /* ---------------- WHAT-IF DRILL-DOWN MODAL ---------------- */
 const ANTIBIOTICS = { 0: "none", 1: "Piperacillin-Tazobactam", 2: "Meropenem", 3: "Cefepime", 4: "Vancomycin" };

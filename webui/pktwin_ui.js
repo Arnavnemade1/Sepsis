@@ -141,6 +141,10 @@
     if (p.drug) bits.push("<b>Drug PK:</b> " + esc(p.drug));
     if (p.physiology) bits.push("<b>Physiology:</b> " + esc(p.physiology));
     if (p.target) bits.push("<b>Target:</b> " + esc(p.target));
+    if (window.AegisPKTwin.hasVessels && window.AegisPKTwin.hasVessels())
+      bits.push("<b>Circulation:</b> " + esc(window.AegisPKTwin.VESSEL_SOURCE)
+        + ". The route is schematic; the concentration it carries and the transit "
+        + "delay along it are from the model.");
     if (a.honesty) bits.push(esc(a.honesty));
     $("pkt-prov").innerHTML = bits.join("<br><br>");
   }
@@ -379,14 +383,19 @@
   }
 
   function openBed(bedId, opts) {
+    // bedId null/"session" → the clinical console's single live patient, which has
+    // no bed id. Same overlay, same contract, different endpoint.
     bed = bedId; opts = opts || {};
+    var url = (!bedId || bedId === "session")
+      ? "/aegis/pk/session"
+      : "/aegis/pk/bed/" + encodeURIComponent(bedId);
     show();
     $("pkt-load").style.display = "";
     $("pkt-load").innerHTML = "projecting…<i>solving the compartment model and assembling the anatomy</i>";
-    $("pkt-name").textContent = opts.name || bedId;
+    $("pkt-name").textContent = opts.name || bedId || "Monitored patient";
     $("pkt-sub").textContent = "—";
 
-    fetch(window.AEGIS.http("/aegis/pk/bed/" + encodeURIComponent(bedId)))
+    fetch(window.AEGIS.http(url))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!open) return;
@@ -395,7 +404,7 @@
           return fail("nothing to project", "no drug is ordered for this bed — the "
             + "certified protocol has no antibiotic, vasopressor or fluid arm.");
         data = d;
-        $("pkt-name").textContent = d.bed_name || bedId;
+        $("pkt-name").textContent = d.bed_name || bedId || "Monitored patient";
         var p = d.patient || {};
         $("pkt-sub").innerHTML = "<b>eGFR</b> " + Math.round(p.egfr) + " · <b>MAP</b> "
           + Math.round(p.map_mmhg) + " mmHg · <b>" + Math.round(p.weight_kg) + "</b> kg"
@@ -426,11 +435,15 @@
       // renders into nothing (see the same trap in the clinical twin).
       requestAnimationFrame(function () {
         window.AegisPKTwin.mount(stage);
+        // Two settle passes: the overlay animates in (transform + opacity over
+        // ~240ms), so the stage is still growing when the first frame lands.
         requestAnimationFrame(function () { window.AegisPKTwin.resize(); });
+        setTimeout(function () { window.AegisPKTwin.resize(); }, 320);
       });
       mounted = true;
     } else {
       requestAnimationFrame(function () { window.AegisPKTwin.resize(); });
+      setTimeout(function () { window.AegisPKTwin.resize(); }, 320);
     }
   }
 
@@ -493,8 +506,13 @@
       lb.classList.toggle("on", on);
       window.AegisPKTwin.setLabels(on);
     });
-    var fb = $("pkt-fit");
-    if (fb) fb.addEventListener("click", function () { window.AegisPKTwin.fitToAtlas(); });
+    var fb = $("pkt-fit"), wholeBody = false;
+    if (fb) fb.addEventListener("click", function () {
+      wholeBody = !wholeBody;
+      fb.textContent = wholeBody ? "⤢ body" : "⤢ torso";
+      if (wholeBody) window.AegisPKTwin.fitToBody();
+      else window.AegisPKTwin.fitToAtlas();
+    });
     Array.prototype.forEach.call($("pkt-rate").querySelectorAll("button"), function (b) {
       b.addEventListener("click", function () {
         Array.prototype.forEach.call($("pkt-rate").querySelectorAll("button"),
