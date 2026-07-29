@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -14,6 +14,7 @@ help:
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
+	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
@@ -49,6 +50,12 @@ verify-pk:
 # that stops an invented dose-response passing as a measured one.
 verify-ae:
 	$(PY) -m backend.aegis.verify_adverse
+
+# The wiring, not the pharmacology: administered-vs-hypothetical labelling, cache
+# keys that cover every covariate, and the guarantee that projecting mutates
+# nothing. Runs the FastAPI app in-process — no server required.
+verify-pk-api:
+	$(PY) -m backend.aegis.verify_pk_api
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)

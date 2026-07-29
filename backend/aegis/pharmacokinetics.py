@@ -129,6 +129,11 @@ ORGAN_MESH: Dict[str, str] = {
     "lung": "lung", "heart": "heart", "liver": "liver", "kidney": "kidney",
     "spleen": "spleen", "pancreas": "pancreas", "intestine": "intestine",
     "brain": "brain", "arterial": "vessels", "venous": "vessels",
+    # No mesh of their own — but they must still map to something, or an adverse
+    # event that lands in skin or muscle (extravasation necrosis, tendinopathy,
+    # interstitial oedema) would have nowhere to appear on the body. They render
+    # as a wash over the whole body shell, which is anatomically what they are.
+    "skin": "shell", "muscle": "shell", "adipose": "shell", "rest": "shell",
 }
 
 

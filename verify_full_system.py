@@ -398,6 +398,53 @@ def test_llm_fallback() -> None:
     _ok("template narrative produced; system never depends on the LLM")
 
 
+def test_treatment_projection() -> None:
+    print("[19] Treatment projection — PBPK twin + exposure-driven adverse events")
+    from backend.aegis.adverse import AdverseEventEngine, REFERENCE_PATIENT
+    from backend.aegis.pharmacokinetics import (DRUGS, PBPKModel, PatientState,
+                                                project_protocol)
+
+    # Mass balance is the load-bearing property: the linear system is solved with
+    # a matrix exponential, so nothing should be created or destroyed at all.
+    healthy = PBPKModel(PatientState(weight_kg=78.0, egfr=90.0, map_mmhg=75.0))
+    for key in DRUGS:
+        m = healthy.project(key).metrics
+        assert m["mass_balance_error"] < 1e-9, \
+            f"{key} mass balance {m['mass_balance_error']:.2e} — drug is being lost"
+
+    # Published clearance must be recoverable from the simulated curve itself.
+    spec = DRUGS["meropenem"]
+    single = healthy.project("meropenem", horizon_h=12.0, n_points=2001)
+    expected = spec.regimen.dose_mg / (spec.cl_l_per_h_per_kg * 78.0)
+    got = single.metrics["auc"] / max(1, spec.regimen.n_doses)
+    assert abs(got - expected) / expected < 0.10, \
+        f"AUC/dose implies CL {expected:.0f} vs measured {got:.0f}"
+
+    # Renal impairment must raise exposure — the mechanism the twin exists to show.
+    sick = PBPKModel(PatientState(weight_kg=78.0, egfr=20.0, map_mmhg=55.0))
+    a = healthy.project("vancomycin", horizon_h=24.0).metrics["auc"]
+    b = sick.project("vancomycin", horizon_h=24.0).metrics["auc"]
+    assert b > a * 1.3, f"renal failure must raise vancomycin exposure ({a:.0f}→{b:.0f})"
+
+    # Anchoring: the standard order in a typical patient returns PUBLISHED rates.
+    arms = project_protocol({"fluid_rate": 10.0, "vasopressor_dose": 0.10,
+                             "antibiotic_code": 1}, REFERENCE_PATIENT)["arms"]
+    ae = AdverseEventEngine(n_samples=20000).project(arms, REFERENCE_PATIENT, {})
+    ev = {e["key"]: e for e in ae["events"]}
+    for key in ("pip_aki", "ne_arrhythmia", "fluid_pulm_oedema"):
+        e = ev[key]
+        assert abs(e["probability"] - e["base_incidence"]) / e["base_incidence"] < 0.05, \
+            (f"{key} drifted off its published rate: {e['probability']:.4f} vs "
+             f"{e['base_incidence']:.4f}")
+    assert all(e["mesh"] for e in ae["events"]), "every event must be renderable"
+    assert "never gates an order" in ae["honesty"], "honesty boundary must be attached"
+    _ok(f"{len(DRUGS)} drugs mass-balanced exactly; vancomycin exposure "
+        f"{a:.0f}→{b:.0f} mg/L·h in renal failure; {ae['n_events']} adverse events "
+        f"return their published rates at the standard order "
+        f"({ae['evidence_mix']['anchored']} of them carry a published "
+        f"exposure-response — this order contains neither anchored drug)")
+
+
 def main() -> int:
     print("=" * 64)
     print("AEGIS-OS — END-TO-END VERIFICATION")
@@ -407,7 +454,7 @@ def main() -> int:
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
-             test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback]
+             test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection]
     failed = 0
     for t in tests:
         try:

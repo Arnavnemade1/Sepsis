@@ -146,8 +146,36 @@ def _warm_orchestrator() -> None:
         print(f"[aegis] orchestrator warmup skipped: {exc}")
 
 
+def _warm_pk() -> None:
+    """Same cold-start problem, different subsystem: the first treatment
+    projection pays for importing SciPy, the first ``expm`` call reaching BLAS,
+    and building the reference projections that every adverse-event probability is
+    anchored to. That is seconds on the free tier and then microseconds forever.
+    Doing it here means the first clinician to open the treatment twin does not
+    pay for it. Uses only the reference patient — the live wing is untouched."""
+    import time as _t
+    try:
+        _t.sleep(3.0)                                  # after the orchestrator warmup
+        t0 = _t.perf_counter()
+        from backend.aegis.adverse import (AdverseEventEngine, REFERENCE_PATIENT,
+                                           reference_projection)
+        from backend.aegis.pharmacokinetics import DRUGS, project_protocol
+        for key in DRUGS:
+            reference_projection(key)
+        reference_projection("crystalloid")
+        warm = project_protocol({"fluid_rate": 10.0, "vasopressor_dose": 0.10,
+                                 "antibiotic_code": 1}, REFERENCE_PATIENT)
+        AdverseEventEngine().project(warm["arms"], REFERENCE_PATIENT, {})
+        print(f"[aegis] treatment-projection warmup complete in "
+              f"{_t.perf_counter()-t0:.2f}s ({len(DRUGS)+1} reference projections "
+              f"cached; live wing untouched)")
+    except Exception as exc:  # pragma: no cover — warmup must never break boot
+        print(f"[aegis] treatment-projection warmup skipped: {exc}")
+
+
 import threading as _threading
 _threading.Thread(target=_warm_orchestrator, name="orch-warmup", daemon=True).start()
+_threading.Thread(target=_warm_pk, name="pk-warmup", daemon=True).start()
 
 
 def _keep_alive() -> None:
@@ -1385,6 +1413,159 @@ def cohort_bundle(bed_id: str) -> Dict[str, Any]:
         cluster.profiles[bed_id], getattr(cluster, "histories", {}).get(bed_id, {}))
 
 
+# --- Treatment projection: the pharmacokinetic twin ------------------------ #
+# Where an ordered drug actually goes, and what that exposure risks. The heavy
+# work is a matrix-exponential PBPK solve plus a Monte Carlo, so results are
+# cached on the exact inputs that determine them — the protocol and the patient
+# covariates. A bed whose vitals have not moved re-serves its projection for free.
+_PK_CACHE: Dict[str, Any] = {}
+_PK_CACHE_MAX = 64
+
+
+def _pk_patient(bed_id: str):
+    """Derive PK covariates from a live bed: its profile plus imported history."""
+    from backend.aegis.pharmacokinetics import patient_from_profile
+    prof = getattr(cluster, "profiles", {}).get(bed_id)
+    hist = getattr(cluster, "histories", {}).get(bed_id, {}) or {}
+    return patient_from_profile(prof, hist), hist
+
+
+def _pk_protocol(bed_id: str) -> Dict[str, Any]:
+    """The order to project: what was actually ADMINISTERED if this bed has been
+    treated, otherwise the protocol the bundle engine would certify for it. A
+    projection of an order nobody placed would be a different question."""
+    iv = syscalls.interventions.get(bed_id)
+    if iv is not None and iv.treated and iv.protocol:
+        return dict(iv.protocol)
+    prof = getattr(cluster, "profiles", {}).get(bed_id)
+    hist = getattr(cluster, "histories", {}).get(bed_id, {}) or {}
+    return dict(bundle_engine._derive_protocol(prof, hist))
+
+
+def _pk_key(protocol: Dict[str, Any], patient, adverse: bool) -> str:
+    p = patient.to_dict()
+    return (f"{protocol.get('antibiotic_code', 0)}|{protocol.get('fluid_rate', 0):.2f}"
+            f"|{protocol.get('vasopressor_dose', 0):.3f}|{p['weight_kg']:.1f}"
+            f"|{p['egfr']:.0f}|{p['map_mmhg']:.0f}|{p['hepatic_factor']:.2f}"
+            f"|{p['cardiac_output_factor']:.2f}|{int(adverse)}")
+
+
+def _pk_store(key: str, value: Any) -> Any:
+    if len(_PK_CACHE) >= _PK_CACHE_MAX:
+        _PK_CACHE.pop(next(iter(_PK_CACHE)), None)
+    _PK_CACHE[key] = value
+    return value
+
+
+@app.get("/aegis/pk/drugs")
+def pk_drugs() -> Dict[str, Any]:
+    """The drug library behind the treatment twin, with every PK parameter's
+    citation and the adverse-event catalogue's evidence tiers. This is the
+    provenance surface: everything the projection is built from, inspectable."""
+    from backend.aegis.pharmacokinetics import (DRUGS, ANTIBIOTIC_CODE_TO_DRUG,
+                                                FLUID_SOURCE, ORGAN_MESH,
+                                                PHYSIOLOGY_SOURCE)
+    from backend.aegis.adverse import CATALOGUE, VARIABILITY_SOURCE
+    return {
+        "drugs": [{
+            "key": s.key, "label": s.label, "class": s.drug_class,
+            "vd_l_per_kg": s.vd_l_per_kg, "cl_l_per_h_per_kg": s.cl_l_per_h_per_kg,
+            "t_half_h": s.t_half_h, "f_renal": s.f_renal,
+            "protein_binding": s.protein_binding, "regimen": s.regimen.label,
+            "horizon_h": s.horizon_h, "unit": s.conc_unit,
+            "mic_mg_l": s.mic_mg_l, "target": s.target_note, "citation": s.citation,
+        } for s in DRUGS.values()],
+        "fluid": {"key": "crystalloid", "label": "Crystalloid (balanced)",
+                  "class": "fluid", "citation": FLUID_SOURCE},
+        "antibiotic_codes": ANTIBIOTIC_CODE_TO_DRUG,
+        "organ_mesh": ORGAN_MESH,
+        "adverse_events": [e.to_dict() for e in CATALOGUE],
+        "provenance": {"physiology": PHYSIOLOGY_SOURCE,
+                       "variability": VARIABILITY_SOURCE},
+        "honesty": ("Literature-parameterised population PK and population "
+                    "adverse-event rates. Not therapeutic drug monitoring, and "
+                    "not a prediction for an individual patient."),
+    }
+
+
+class PKProjectIn(BaseModel):
+    bed: Optional[str] = None                    # derive patient + order from a bed
+    protocol: Optional[Dict[str, Any]] = None    # or state the order explicitly
+    patient: Optional[Dict[str, Any]] = None     # or the covariates explicitly
+    adverse: bool = True                         # also run the side-effect projection
+    n_points: int = 121
+
+
+def _pk_resolve(payload: "PKProjectIn"):
+    """Turn a request into (protocol, patient, history) or an error string."""
+    from backend.aegis.pharmacokinetics import PatientState
+    if payload.bed:
+        if payload.bed not in getattr(cluster, "profiles", {}):
+            return None, None, None, f"unknown bed '{payload.bed}'"
+        patient, hist = _pk_patient(payload.bed)
+        protocol = payload.protocol or _pk_protocol(payload.bed)
+    else:
+        patient = PatientState(**(payload.patient or {}))
+        protocol = payload.protocol or {}
+        hist = {}
+    if payload.patient and payload.bed:
+        # An explicit covariate override on a real bed: honour it, but only the
+        # fields actually supplied — the rest stay derived from the live patient.
+        for k, v in payload.patient.items():
+            if hasattr(patient, k) and v is not None:
+                setattr(patient, k, float(v))
+    return protocol, patient, hist, None
+
+
+@app.post("/aegis/pk/project")
+def pk_project(payload: PKProjectIn) -> Dict[str, Any]:
+    """Project a certified order through the body: per-organ drug concentration
+    over each arm's own timeframe, plus (by default) the side-effect projection.
+
+    This is what the treatment twin renders. It never modifies anything — a
+    projection is a read, and the Z3 cage remains the only thing that can gate an
+    order."""
+    from backend.aegis.pharmacokinetics import project_protocol
+    protocol, patient, hist, err = _pk_resolve(payload)
+    if err:
+        return {"status": "error", "detail": err}
+
+    key = _pk_key(protocol, patient, payload.adverse)
+    if key in _PK_CACHE:
+        return _PK_CACHE[key]
+
+    out = project_protocol(protocol, patient, n_points=max(41, min(401, payload.n_points)))
+    out["status"] = "ok"
+    out["bed"] = payload.bed
+    if payload.adverse and out["arms"]:
+        from backend.aegis.adverse import AdverseEventEngine
+        out["adverse"] = AdverseEventEngine().project(out["arms"], patient, hist)
+    return _pk_store(key, out)
+
+
+@app.get("/aegis/pk/bed/{bed_id}")
+def pk_bed(bed_id: str, adverse: bool = True, n_points: int = 121) -> Dict[str, Any]:
+    """The one-call form the dossier uses: project this bed's order as it stands.
+
+    If the bed has been treated, this projects what was actually administered; if
+    not, it projects the protocol the bundle engine would certify — and says which,
+    so the UI never implies a drug is running when none was ordered."""
+    if bed_id not in getattr(cluster, "profiles", {}):
+        return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
+    iv = syscalls.interventions.get(bed_id)
+    administered = bool(iv is not None and iv.treated and iv.protocol)
+    out = pk_project(PKProjectIn(bed=bed_id, adverse=adverse, n_points=n_points))
+    if out.get("status") == "ok":
+        # Copied, not mutated in place: the cached payload is shared, and the
+        # administered flag depends on syscall state that can change under it.
+        out = dict(out)
+        out["administered"] = administered
+        out["source"] = "administered order" if administered else "certified protocol (not yet ordered)"
+        prof = cluster.profiles[bed_id]
+        out["bed_name"] = getattr(prof, "name", bed_id)
+    return out
+
+
 @app.get("/aegis/cohort/{bed_id}/chart")
 def cohort_chart(bed_id: str) -> Dict[str, Any]:
     """One patient's real vitals/labs trajectory + ground-truth sepsis label."""
@@ -1466,7 +1647,17 @@ async def aegis_syscall(payload: SyscallIn) -> Dict[str, Any]:
     # push the post-write state to all cockpits immediately so the grid reacts.
     if res.allowed:
         await _broadcast_cluster(_cluster_payload())
-    return res.to_dict()
+    out = res.to_dict()
+    if res.allowed and res.syscall == "treat":
+        # A certified order now has somewhere to go: the treatment twin can show
+        # where this drug travels and what it risks. The trap gate deliberately
+        # does NOT compute it here — a PBPK solve plus a Monte Carlo does not
+        # belong on the write path, and a projection is a read. The console opens
+        # the twin against this href.
+        out["projection"] = {"available": True,
+                             "href": f"/aegis/pk/bed/{payload.bed}",
+                             "label": "treatment projection"}
+    return out
 
 
 @app.get("/aegis/syscall/audit")
