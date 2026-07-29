@@ -143,8 +143,17 @@ function glowTexture() {
 /* ------------------------------------------------------------------ */
 /* Anatomy — borrowed from the clinical twin if it has already parsed it */
 /* ------------------------------------------------------------------ */
+const ORGAN_CFG = {};
+ORGAN_FILES.forEach((c) => { ORGAN_CFG[c.key] = c; });
+
 function adoptOrgan(key, srcPivot) {
   const pivot = srcPivot.clone(true);          // shares BufferGeometry by reference
+  // Carry the calibration exclusions onto the clone. The clinical twin keeps
+  // these on its own config record rather than on the pivot, so a borrowed
+  // pivot arrives without them — and then the long spinal cord and the pelvic
+  // bladder drag the fitted bounds down until the camera frames the hips.
+  const cfg = ORGAN_CFG[key];
+  pivot.userData.calExclude = !!(cfg && (cfg.calExclude || cfg.vascular));
   const tissue = makeTissueMat();
   pivot.traverse((o) => { if (o.isMesh) { o.material = tissue; o.frustumCulled = false; } });
 
@@ -202,7 +211,7 @@ function borrowAnatomy() {
   atlasGroup.rotation.copy(lent.atlas.rotation);
   scene.add(atlasGroup);
   for (const k in lent.organs) adoptOrgan(k, lent.organs[k]);
-  applyLevels();
+  buildLabels(); fitToAtlas(); applyLevels();
   return true;
 }
 
@@ -228,9 +237,10 @@ function loadAnatomy() {
       const root = g.scene;
       const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group(); pivot.position.copy(c); root.position.sub(c); pivot.add(root);
-      pivot.userData.calExclude = !!cfg.calExclude || !!cfg.vascular;
       adoptOrgan(cfg.key, pivot);                      // clones and parents it itself
-      if (!cfg.defer && !cfg.calExclude && ++n >= need) calibrate();
+      if (!cfg.defer && !cfg.calExclude && ++n >= need) {
+        calibrate(); buildLabels(); fitToAtlas();
+      }
       applyLevels();
     }, undefined, () => {});
     if (cfg.defer) setTimeout(go, 900); else go();
@@ -334,6 +344,21 @@ function levelsNow() {
   return out;
 }
 
+/* Concentration → colour. Opacity alone was not enough to read: between a kidney
+   at 30% and one at 80% the difference was a slightly less transparent shape, and
+   the whole point of the view was getting lost. Loading now moves along a RAMP —
+   a dim, desaturated version of the drug hue at trace levels, the full hue in the
+   mid range, and a hot near-white core at the peak — which is how any thermal or
+   uptake image is read, and which the eye resolves far better than alpha. */
+const WHITE = new THREE.Color(0xffffff);
+function ramp(base, level, out) {
+  out.copy(base);
+  if (level < 0.55) out.multiplyScalar(0.42 + 1.05 * level);  // dim → full hue
+  else out.lerp(WHITE, (level - 0.55) * 0.80);                // full hue → hot core
+  return out;
+}
+const _c1 = new THREE.Color(), _c2 = new THREE.Color();
+
 function applyLevels() {
   if (!arm || !armNorm) return;
   const lv = levelsNow();
@@ -346,29 +371,44 @@ function applyLevels() {
     if (!o.comp) continue;                          // unmodelled — stays inert
     const rec = lv[o.comp];
     const level = rec ? Math.pow(rec.level, DISPLAY_GAMMA) : 0;
+    // First arrival is the single most informative instant for an organ — it is
+    // the perfusion order made visible — and it used to slide past unmarked. The
+    // organ now flashes as the drug reaches it, once, on the way up.
+    if (level > 0.04 && (o.prev || 0) <= 0.04) o.flash = 1.0;
+    o.prev = level;
+    o.level = level;
     if (o.fillMat) {
-      o.fillMat.color.copy(col);
-      o.fillMat.opacity = 0.06 + 0.62 * level;
+      ramp(col, level, _c1);
+      o.fillMat.color.copy(_c1);
+      o.fillMat.opacity = 0.015 + 0.38 * level;
     }
-    // The tissue itself lifts slightly so a loaded organ reads as solid rather
-    // than as a glow hovering in an empty silhouette.
-    o.tissue.opacity = 0.30 + 0.22 * level;
-    o.tissue.emissive.copy(col).multiplyScalar(0.30 * level);
+    // The tissue itself lifts so a loaded organ reads as a solid, dense volume
+    // rather than a glow hovering inside an empty silhouette.
+    o.tissue.opacity = 0.26 + 0.32 * level;
+    o.tissue.emissive.copy(_c1).multiplyScalar(0.42 * level);
     if (o.halo) {
-      o.halo.visible = level > 0.06;
-      o.halo.material.color.copy(col);
-      o.halo.material.opacity = 0.34 * level;
-      const s = 0.13 + 0.16 * level;
+      const boost = level + 0.55 * (o.flash || 0);
+      o.halo.visible = boost > 0.04;
+      o.halo.material.color.copy(_c1);
+      o.halo.material.opacity = Math.min(0.5, 0.30 * boost);
+      const s = 0.11 + 0.24 * boost;
       o.halo.scale.set(s, s, 1);
       o.pivot.getWorldPosition(o.halo.position);
     }
   }
   // The vascular tree carries the plasma channel — this is what makes the bolus
   // legible: the vessels light before any organ does, because that is the route.
+  // A SURGE term on the rising edge is what turns a slow fade into an arrival:
+  // while plasma concentration is climbing, the vasculature flares and then
+  // settles, which is the delivery itself rather than a summary of it.
   if (vessels && vessels.mat) {
     const art = lv.arterial ? Math.pow(lv.arterial.level, DISPLAY_GAMMA) : 0;
-    vessels.mat.color.copy(col);
-    vessels.mat.opacity = 0.06 + 0.40 * art;
+    const rising = Math.max(0, art - (vesselPrev == null ? art : vesselPrev));
+    vesselSurge = Math.max(vesselSurge * 0.90, Math.min(1, rising * 26));
+    vesselPrev = art;
+    ramp(col, Math.min(1, art + 0.5 * vesselSurge), _c2);
+    vessels.mat.color.copy(_c2);
+    vessels.mat.opacity = 0.035 + 0.26 * art + 0.20 * vesselSurge;
   }
   // Muscle, skin, fat and the remainder have no mesh of their own — they are most
   // of the body by mass and hold most of the drug, so the shell carries them.
@@ -377,11 +417,163 @@ function applyLevels() {
       .map((k) => (lv[k] ? lv[k].level : 0))
       .reduce((a, b) => Math.max(a, b), 0);
     const g = Math.pow(rest, DISPLAY_GAMMA);
-    shellMat.color.copy(new THREE.Color(0x2a2f36)).lerp(col, 0.55 * g);
-    shellMat.opacity = 0.055 + 0.075 * g;
+    shellMat.color.copy(SHELL_BASE).lerp(col, 0.60 * g);
+    shellMat.opacity = 0.075 + 0.105 * g;
   }
   if (onFrame) onFrame(tHours, lv, arm);
 }
+const SHELL_BASE = new THREE.Color(0x2f353d);
+let vesselPrev = null, vesselSurge = 0, labelTick = 0;
+
+/* ------------------------------------------------------------------ */
+/* Framing — the drug lives in the torso, so frame the torso           */
+/* ------------------------------------------------------------------ */
+/* Inherited framing from the clinical twin put the whole body head-to-feet in
+   shot. That is right for a severity view, where the question is "which part of
+   this patient", and wrong here, where every value lives inside one 40 cm band
+   and the legs are a third of the frame carrying no information. Fitting to the
+   organ atlas roughly triples the organs on screen, which is most of why the
+   changes were hard to see at all. */
+function fitToAtlas() {
+  if (!camera || !controls || !atlasGroup) return;
+  const core = Object.values(organs).filter(
+    (o) => o.pivot && !o.vascular && o.comp && !o.pivot.userData.calExclude);
+  if (core.length < 4) return;
+  // Bounds come from world matrices, and nothing has rendered yet when this runs
+  // straight after the organs are adopted — every matrixWorld is still identity,
+  // so the box collapses toward the origin and the camera ends up framing the
+  // feet. Force the update before measuring.
+  atlasGroup.updateWorldMatrix(true, true);
+  const box = new THREE.Box3();
+  core.forEach((o) => box.expandByObject(o.pivot));
+  if (box.isEmpty()) return;
+  const c = box.getCenter(new THREE.Vector3());
+  const size = box.getSize(new THREE.Vector3());
+  const extent = Math.max(size.y, size.x * 0.9, 0.12);
+  const fov = camera.fov * Math.PI / 180;
+  // 1.95 leaves room for the labels that sit outboard of the body.
+  const dist = (extent * 1.95) / (2 * Math.tan(fov / 2));
+  controls.target.copy(c);
+  camera.position.set(c.x + dist * 0.16, c.y + extent * 0.10, c.z + dist);
+  controls.minDistance = dist * 0.45;
+  controls.maxDistance = dist * 2.6;
+  camera.near = Math.max(0.01, dist * 0.02); camera.far = dist * 12;
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+
+/* ------------------------------------------------------------------ */
+/* Anatomical labels                                                  */
+/* ------------------------------------------------------------------ */
+/* A body with no names on it asks the viewer to already know the anatomy, and
+   the numbers were only in the side rail — so reading "which organ is that bright
+   one" meant looking away and matching by guesswork.
+
+   Labels are placed in two OUTBOARD COLUMNS with leader lines back to the organ,
+   the way an anatomical plate does it, rather than floating over the body. That
+   is deliberate: labels pinned directly to their organ overlap each other
+   constantly on a body this dense (the pancreas, spleen and kidney project within
+   a few dozen pixels of one another), and an overlapping label is worse than
+   none. Columns cannot overlap by construction, and the leader line carries the
+   association instead. */
+const LABEL_NAME = {
+  lung: "Lungs", heart: "Heart", liver: "Liver", spleen: "Spleen",
+  kidneyL: "Kidney", kidneyR: "Kidney", pancreas: "Pancreas",
+  intestine: "Intestine", cord: "CNS", bladder: "Bladder", thymus: "Thymus",
+};
+let labelHost = null, labelSvg = null, labelItems = {}, labelsOn = true;
+let labelUnit = "", labelFmt = null;
+
+function buildLabels() {
+  if (!container) return;
+  labelHost = document.createElement("div");
+  labelHost.className = "pkt-labels";
+  labelSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  labelSvg.setAttribute("class", "pkt-leaders");
+  labelHost.appendChild(labelSvg);
+  container.appendChild(labelHost);
+  labelItems = {};
+  // One chip per labelled mesh. Both kidneys exist in the atlas but share a
+  // compartment, so only one is labelled — two identical "Kidney 76.7" chips
+  // would imply two independent measurements.
+  const skip = { kidneyR: true };
+  for (const k in organs) {
+    if (skip[k] || !LABEL_NAME[k]) continue;
+    const el = document.createElement("div");
+    el.className = "pkt-label" + (organs[k].comp ? "" : " inert");
+    el.innerHTML = '<b>' + LABEL_NAME[k] + "</b><span></span>";
+    labelHost.appendChild(el);
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+    line.setAttribute("class", "pkt-leader" + (organs[k].comp ? "" : " inert"));
+    labelSvg.appendChild(line);
+    labelItems[k] = { el, line, val: el.querySelector("span") };
+  }
+}
+
+const _p = new THREE.Vector3();
+function updateLabels() {
+  if (!labelHost || !container || !camera) return;
+  const w = container.clientWidth, h = container.clientHeight;
+  if (!w || !h) return;
+  if (!labelsOn) { labelHost.style.display = "none"; return; }
+  labelHost.style.display = "";
+  labelSvg.setAttribute("viewBox", "0 0 " + w + " " + h);
+
+  // Pull the CURRENT values rather than reading a snapshot handed over by the
+  // last render callback. A formatter that closes over a levels object goes stale
+  // the moment the scrub moves without a repaint, and a label showing a different
+  // number from the organ it points at is worse than no label at all.
+  const lv = levelsNow();
+  const rows = [];
+  for (const k in labelItems) {
+    const o = organs[k];
+    if (!o || !o.pivot) { labelItems[k].el.style.display = "none"; continue; }
+    o.pivot.getWorldPosition(_p);
+    const anchor = _p.clone();
+    _p.project(camera);
+    // Behind the camera, or outside the frustum — drop it rather than clamp it to
+    // an edge, where the leader line would point at the wrong thing.
+    if (_p.z > 1) { labelItems[k].el.style.display = "none"; continue; }
+    rows.push({ k, sx: (_p.x * 0.5 + 0.5) * w, sy: (-_p.y * 0.5 + 0.5) * h, anchor });
+  }
+  const left = rows.filter((r) => r.sx < w * 0.5).sort((a, b) => a.sy - b.sy);
+  const right = rows.filter((r) => r.sx >= w * 0.5).sort((a, b) => a.sy - b.sy);
+
+  const PITCH = 30, TOP = 54;
+  function place(list, side) {
+    // Walk down the column pushing each label below the previous one; a simple
+    // monotone pass is enough because the list is already sorted by depth on
+    // screen, and it keeps the leaders from crossing.
+    let y = TOP;
+    list.forEach((r) => {
+      y = Math.max(y, Math.min(r.sy, h - 30));
+      const it = labelItems[r.k];
+      const o = organs[r.k];
+      it.el.style.display = "";
+      it.el.classList.toggle("hot", (o.level || 0) > 0.55);
+      it.el.style.top = (y - 11) + "px";
+      const x = side === "l" ? 10 : w - 10;
+      it.el.style.left = side === "l" ? "10px" : "";
+      it.el.style.right = side === "l" ? "" : "10px";
+      const lw = it.el.offsetWidth || 96;
+      const ex = side === "l" ? 10 + lw + 4 : w - 10 - lw - 4;
+      const mx = side === "l" ? Math.min(r.sx, ex + 26) : Math.max(r.sx, ex - 26);
+      it.line.setAttribute("points", ex + "," + y + " " + mx + "," + y + " " + r.sx + "," + r.sy);
+      it.line.style.opacity = String(0.22 + 0.55 * (o.level || 0));
+      if (it.val) {
+        const rec = o.comp ? lv[o.comp] : null;
+        it.val.textContent = o.comp
+          ? (labelFmt && rec ? labelFmt(rec.value) : "")
+          : "no compartment";
+      }
+      y += PITCH;
+    });
+  }
+  place(left, "l"); place(right, "r");
+}
+
+function setLabels(on) { labelsOn = !!on; updateLabels(); }
+function setLabelFormat(fn) { labelFmt = fn; }
 
 /* ------------------------------------------------------------------ */
 /* Public API                                                         */
@@ -392,19 +584,19 @@ function mount(el) {
   const w = el.clientWidth || 520, h = el.clientHeight || 560;
   scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x05070d, 0.11);
   camera = new THREE.PerspectiveCamera(33, w / h, 0.1, 100);
-  camera.position.set(0.18, H * 0.56, H * 1.85);
+  camera.position.set(0.18, H * 0.62, H * 0.95);
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.92;
   el.querySelectorAll("canvas").forEach((c) => c.remove());
   el.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.06; controls.enablePan = false;
-  controls.target.set(0, H * 0.50, 0);
+  controls.target.set(0, H * 0.62, 0);
   controls.autoRotate = true; controls.autoRotateSpeed = 0.22;
-  controls.minPolarAngle = Math.PI * 0.36; controls.maxPolarAngle = Math.PI * 0.58;
+  controls.minPolarAngle = Math.PI * 0.30; controls.maxPolarAngle = Math.PI * 0.62;
 
   // Darker key than the clinical twin: the drug layer is additive, so any
   // ambient lift on the tissue eats the contrast the concentration needs.
@@ -415,7 +607,7 @@ function mount(el) {
 
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.46, 0.62, 0.72);
+  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.26, 0.50, 0.86);
   composer.addPass(bloomPass);
   composer.addPass(new OutputPass());
 
@@ -444,11 +636,16 @@ function selectArm(i) {
   applyLevels();
 }
 
-function setArm(i) { selectArm(i); }
+function setArm(i) { selectArm(i); updateLabels(); }
 function setTime(h) {
   if (!arm) return;
   tHours = Math.max(0, Math.min(arm.horizon_h, +h || 0));
   applyLevels();
+  // Refresh the labels HERE rather than waiting for the animation tick. A scrub
+  // is a discrete jump: the body repaints on the next frame either way, but the
+  // numbers on it must not be one tick behind the numbers beside it, and on a
+  // paused twin there may not BE a next tick for a while.
+  updateLabels();
 }
 function play() { playing = true; }
 function pause() { playing = false; }
@@ -470,6 +667,16 @@ function animate() {
   const dt = clock.getDelta();
   if (!renderer || !container || !container.offsetParent) return;   // overlay closed
   controls.update();
+  // Arrival flashes decay on wall-clock time, not model time, so they read the
+  // same whether the scrub is at 1x or 3x.
+  let flashing = false;
+  for (const k in organs) {
+    const o = organs[k];
+    if (o.flash > 0) { o.flash = Math.max(0, o.flash - dt * 1.6); flashing = true; }
+  }
+  if (flashing && !playing) applyLevels();
+  labelTick += dt;
+  if (labelTick > 0.06) { labelTick = 0; updateLabels(); }
   if (playing && arm) {
     // One pass over the drug's OWN timeframe takes a fixed wall-clock duration,
     // so a 2 h vasopressor and a 24 h antibiotic both read at a watchable speed
@@ -520,6 +727,7 @@ function state() {
 
 window.AegisPKTwin = {
   mount, setProjection, setArm, setTime, play, pause, setRate, resize, dispose,
+  setLabels, setLabelFormat, fitToAtlas,
   state, levelsNow, isPlaying: () => playing, currentArm: () => arm,
   DRUG_COLOR, UNMODELLED: UNMODELLED_LABEL,
 };

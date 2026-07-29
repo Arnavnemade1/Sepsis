@@ -169,6 +169,11 @@
   /* Called by the renderer every frame with the levels IT is drawing. */
   function onFrame(t, levels, a) {
     lastLevels = levels;
+    // The on-body labels format with the SAME function as the side rail, and the
+    // renderer supplies the value it is currently drawing — so a number on the
+    // anatomy and the same number in the list cannot drift apart.
+    var unit = (a.kind === "volume" ? "mL" : a.unit);
+    window.AegisPKTwin.setLabelFormat(function (v) { return sig(v) + " " + unit; });
     var horizon = a.horizon_h || 1;
     $("pkt-clock").textContent = clock(t);
     $("pkt-time").innerHTML = "<b>" + clock(t) + "</b> / " + clock(horizon);
@@ -325,6 +330,14 @@
     });
     window.addEventListener("mousemove", function (e) { if (dragging) trackSeek(e); });
     window.addEventListener("mouseup", function () { dragging = false; });
+    var lb = $("pkt-labels-btn");
+    if (lb) lb.addEventListener("click", function () {
+      var on = !lb.classList.contains("on");
+      lb.classList.toggle("on", on);
+      window.AegisPKTwin.setLabels(on);
+    });
+    var fb = $("pkt-fit");
+    if (fb) fb.addEventListener("click", function () { window.AegisPKTwin.fitToAtlas(); });
     Array.prototype.forEach.call($("pkt-rate").querySelectorAll("button"), function (b) {
       b.addEventListener("click", function () {
         Array.prototype.forEach.call($("pkt-rate").querySelectorAll("button"),

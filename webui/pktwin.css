@@ -76,6 +76,30 @@
   color:var(--ink);letter-spacing:-.01em;line-height:1}
 .pkt-clock span{font-family:var(--mono);font-size:10.5px;color:var(--dim);
   letter-spacing:.07em;text-transform:uppercase}
+/* ---- anatomical labels ----
+   Two outboard columns with leader lines back to the organ, the way an
+   anatomical plate is annotated. Pointer-events off: the labels are annotation,
+   and the body underneath stays draggable through them. */
+.pkt-labels{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.pkt-leaders{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+.pkt-leader{fill:none;stroke:rgba(var(--pkt-drug),.55);stroke-width:1;
+  stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke}
+.pkt-leader.inert{stroke:var(--faint);opacity:.3!important}
+.pkt-label{position:absolute;display:flex;align-items:baseline;gap:6px;
+  padding:2px 7px;border-radius:var(--r-xs);white-space:nowrap;
+  background:rgba(8,11,16,.72);border:1px solid var(--hair);
+  backdrop-filter:blur(2px);transition:border-color .2s,background .2s}
+.pkt-label b{font-family:var(--mono);font-size:10.5px;font-weight:600;
+  letter-spacing:.05em;color:var(--muted);text-transform:uppercase}
+.pkt-label span{font-family:var(--mono);font-size:11px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+/* the most loaded organs earn the emphasis — nothing else changes rank */
+.pkt-label.hot{border-color:rgba(var(--pkt-drug),.6);background:rgba(var(--pkt-drug),.13)}
+.pkt-label.hot b{color:var(--pkt-drug-c)}
+.pkt-label.inert{opacity:.5}
+.pkt-label.inert b{color:var(--faint)}
+.pkt-label.inert span{font-size:9.5px;color:var(--faint);text-transform:none}
+
 /* the honest footnote: which meshes carry no computed value */
 .pkt-nodata{position:absolute;left:14px;bottom:12px;font-family:var(--mono);font-size:10px;
   color:var(--faint);pointer-events:none;letter-spacing:.03em}

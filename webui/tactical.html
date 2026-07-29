@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="tactical.css?v=38" />
-<link rel="stylesheet" href="pktwin.css?v=1" />
+<link rel="stylesheet" href="pktwin.css?v=2" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -314,7 +314,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=8"></script>
-<script type="module" src="pktwin.js?v=1"></script>
+<script type="module" src="pktwin.js?v=7"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -429,6 +429,8 @@
         <div class="pkt-track-h" id="pkt-track-h"></div>
       </div>
       <span class="pkt-time" id="pkt-time"><b>0:00</b> / —</span>
+      <button class="pkt-btn on" id="pkt-labels-btn" title="anatomical labels">◉ labels</button>
+      <button class="pkt-btn" id="pkt-fit" title="re-frame on the organs">⤢ fit</button>
       <div class="pkt-rate" id="pkt-rate">
         <button data-r="0.5">½×</button><button data-r="1" class="on">1×</button><button data-r="3">3×</button>
       </div>
@@ -436,7 +438,7 @@
   </div>
 </div>
 
-<script src="pktwin_ui.js?v=3"></script>
+<script src="pktwin_ui.js?v=5"></script>
 <script src="tactical.js?v=29"></script>
 </body>
 </html>
