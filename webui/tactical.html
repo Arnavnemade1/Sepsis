@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="tactical.css?v=38" />
-<link rel="stylesheet" href="pktwin.css?v=2" />
+<link rel="stylesheet" href="pktwin.css?v=3" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -314,7 +314,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=8"></script>
-<script type="module" src="pktwin.js?v=7"></script>
+<script type="module" src="pktwin.js?v=8"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -406,6 +406,12 @@
       </div>
 
       <aside class="pkt-side">
+        <div class="pkt-tabs" id="pkt-tabs">
+          <button class="pkt-tab on" data-t="dist">Distribution</button>
+          <button class="pkt-tab" data-t="ae">Side effects <i id="pkt-ae-n"></i></button>
+        </div>
+
+        <div class="pkt-pane" id="pkt-pane-dist">
         <section class="pkt-sec">
           <div class="pkt-sec-h"><h3>Concentration by organ</h3><span id="pkt-unit">—</span></div>
           <div id="pkt-organs"></div>
@@ -418,6 +424,29 @@
           <div class="pkt-sec-h"><h3>Provenance</h3></div>
           <div class="pkt-note" id="pkt-prov">—</div>
         </section>
+        </div>
+
+        <div class="pkt-pane hidden" id="pkt-pane-ae">
+          <section class="pkt-sec pkt-ae-top">
+            <div class="pkt-ae-any">
+              <span>Probability of any serious event</span>
+              <b id="pkt-ae-any">—</b>
+              <i id="pkt-ae-any-sub">—</i>
+            </div>
+            <div class="pkt-ae-filter" id="pkt-ae-filter">
+              <span>show</span>
+              <button data-p="0" class="on">all</button>
+              <button data-p="0.01">≥1%</button>
+              <button data-p="0.05">≥5%</button>
+              <button data-p="0.10">≥10%</button>
+            </div>
+          </section>
+          <div id="pkt-ae-list"></div>
+          <section class="pkt-sec">
+            <div class="pkt-sec-h"><h3>Evidence</h3><span id="pkt-ae-mix">—</span></div>
+            <div class="pkt-note" id="pkt-ae-note">—</div>
+          </section>
+        </div>
       </aside>
     </div>
 
@@ -438,7 +467,7 @@
   </div>
 </div>
 
-<script src="pktwin_ui.js?v=5"></script>
+<script src="pktwin_ui.js?v=7"></script>
 <script src="tactical.js?v=29"></script>
 </body>
 </html>

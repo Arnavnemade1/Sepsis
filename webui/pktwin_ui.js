@@ -206,10 +206,152 @@
     setPlaying(true);
   }
 
+  function showPane(which) {
+    $("pkt-pane-dist").classList.toggle("hidden", which !== "dist");
+    $("pkt-pane-ae").classList.toggle("hidden", which !== "ae");
+    Array.prototype.forEach.call($("pkt-tabs").querySelectorAll(".pkt-tab"), function (b) {
+      b.classList.toggle("on", b.dataset.t === which);
+    });
+  }
+
   function setPlaying(on) {
     var b = $("pkt-play");
     if (on) { window.AegisPKTwin.play(); b.textContent = "❚❚ pause"; b.classList.add("on"); }
     else { window.AegisPKTwin.pause(); b.textContent = "▶ play"; b.classList.remove("on"); }
+  }
+
+  /* ---------------- the side-effect explorer ---------------- */
+  var SEV_RGB = { "mild": "132,138,147", "moderate": "226,163,60",
+                  "severe": "222,131,58", "life-threatening": "229,84,76" };
+  var aeThreshold = 0, aeSelected = null;
+
+  function pct(p) { return (p * 100).toFixed(p < 0.01 ? 2 : 1) + "%"; }
+
+  /* An onset can fall well outside the arm being viewed — vancomycin AKI shows up
+     around day three, and the antibiotic arm is a 24 h window. Saying "84.7 h" next
+     to a scrubber that stops at 24 h invites the reading that the bar just has not
+     got there yet, so the copy is explicit about which of the two is true. */
+  function armForDrug(drug) {
+    var list = (data && data.arms) || [];
+    for (var i = 0; i < list.length; i++) if (list[i].drug === drug) return list[i];
+    return null;
+  }
+  function onsetText(e) {
+    // Judge the onset against the arm THIS EVENT'S DRUG belongs to, not against
+    // whichever arm happens to be on screen. Fluid overload at 17 h is outside the
+    // 4 h crystalloid window whether or not you are currently looking at a 12 h
+    // antibiotic — and reading it against the wrong arm gets the answer backwards
+    // in both directions.
+    var a = armForDrug(e.drug);
+    var within = a && e.onset_p50_h <= a.horizon_h;
+    var t = e.onset_p50_h < 48 ? clock(e.onset_p50_h)
+          : (e.onset_p50_h / 24).toFixed(1) + " d";
+    return t + (within ? "" : " · after this arm's window");
+  }
+
+  function renderAE() {
+    var ae = data && data.adverse;
+    var host = $("pkt-ae-list"); if (!host) return;
+    if (!ae || !ae.events || !ae.events.length) {
+      host.innerHTML = '<div class="pkt-ae-empty">No catalogued adverse events for '
+        + 'the drugs in this order.</div>';
+      $("pkt-ae-n").textContent = "";
+      return;
+    }
+    var s = ae.summary || {};
+    $("pkt-ae-any").textContent = pct(s.p_any_serious || 0);
+    $("pkt-ae-any-sub").textContent = "across " + (s.n_serious || 0)
+      + " serious events · assumes independence, so correlated toxicity would put "
+      + "the true joint risk below this";
+    $("pkt-ae-n").textContent = "(" + ae.events.length + ")";
+
+    var mix = ae.evidence_mix || {};
+    $("pkt-ae-mix").textContent = mix.anchored + " anchored · " + mix.label_rate
+      + " label · " + mix.mechanistic + " mechanistic";
+    $("pkt-ae-note").innerHTML = esc(mix.note || "") + "<br><br>" + esc(ae.honesty || "");
+
+    var shown = ae.events.filter(function (e) { return e.probability >= aeThreshold; });
+    if (!shown.length) {
+      host.innerHTML = '<div class="pkt-ae-empty">Nothing above this probability. '
+        + 'The most likely event is ' + esc(ae.events[0].label) + ' at '
+        + pct(ae.events[0].probability) + '.</div>';
+      return;
+    }
+    host.innerHTML = shown.map(function (e) {
+      var rgb = SEV_RGB[e.severity] || SEV_RGB.moderate;
+      var open = aeSelected === e.key;
+      var lo = Math.min(100, e.ci_low * 100), hi = Math.min(100, e.ci_high * 100);
+      var mid = Math.min(100, e.probability * 100);
+      var delta = e.probability - e.baseline;
+      return '<div class="pkt-ae' + (open ? " on" : "") + '" data-k="' + esc(e.key)
+        + '" style="--ae:' + rgb + '">'
+        + '<div class="pkt-ae-hd"><i class="pkt-ae-dot"></i>'
+        + '<span class="pkt-ae-name">' + esc(e.label) + "</span>"
+        + '<span class="pkt-ae-p">' + pct(e.probability) + "</span></div>"
+        + '<div class="pkt-ae-bar"><u style="left:' + lo + "%;width:" + Math.max(0.5, hi - lo)
+        + '%"></u><i style="left:0;width:' + mid + '%"></i></div>'
+        + '<div class="pkt-ae-meta">'
+        + '<span>' + esc(e.severity) + "</span>"
+        + '<span>◷ ' + esc(onsetText(e)) + "</span>"
+        + '<span class="pkt-ae-delta">base ' + pct(e.baseline)
+        + (Math.abs(delta) > 0.002
+            ? ' → <b>' + (delta > 0 ? "+" : "") + (delta * 100).toFixed(1) + " pts</b>" : "")
+        + "</span>"
+        + '<span class="pkt-ae-ev ' + esc(e.evidence.toLowerCase()) + '">'
+        + esc(e.evidence.replace("_", " ")) + "</span>"
+        + "</div>"
+        + (open ? aeDetail(e) : "")
+        + "</div>";
+    }).join("");
+    Array.prototype.forEach.call(host.querySelectorAll(".pkt-ae"), function (el) {
+      el.addEventListener("click", function () { selectAE(el.dataset.k); });
+    });
+  }
+
+  function aeDetail(e) {
+    var mods = (e.modifiers || []).map(function (m) {
+      return "<li>" + esc(m.why) + " — <b>×" + m.factor + "</b></li>";
+    }).join("");
+    var exposure = e.exposure_metric
+      ? "<b>Driven by:</b> " + esc(e.exposure_metric.replace("organ_auc:", "exposure in the "))
+        + " — projected " + sig(e.exposure) + " vs " + sig(e.reference)
+        + " at the reference dose (" + (e.exposure_ratio || 0).toFixed(2) + "×)<br>"
+      : "<b>Not exposure-dependent</b> — an idiosyncratic reaction, so the dose does "
+        + "not move it<br>";
+    return '<div class="pkt-ae-more">'
+      + exposure
+      + "<b>95% interval:</b> " + pct(e.ci_low) + " – " + pct(e.ci_high)
+      + " · <b>onset window:</b> " + clock(e.onset_p10_h) + " – " + clock(e.onset_p90_h) + "<br>"
+      + "<b>Watch for it:</b> " + esc(e.monitoring)
+      + (mods ? "<br><b>Raised here by:</b><ul>" + mods + "</ul>" : "")
+      + '<span class="cite">' + esc(e.citation) + "</span></div>";
+  }
+
+  /* Selecting an event puts it on the BODY: the organ it lands in is ringed in its
+     severity colour, and the transport jumps to the median onset when that moment
+     is actually inside the arm being viewed. */
+  function selectAE(key) {
+    var ae = data && data.adverse; if (!ae) return;
+    var e = ae.events.filter(function (x) { return x.key === key; })[0];
+    if (!e) return;
+    if (aeSelected === key) {                    // click again to clear
+      aeSelected = null;
+      window.AegisPKTwin.clearRiskFocus();
+      renderAE();
+      return;
+    }
+    aeSelected = key;
+    // Show the arm that actually contains this drug — an event on the vasopressor
+    // is meaningless while the antibiotic arm is on screen.
+    var idx = (data.arms || []).map(function (a) { return a.drug; }).indexOf(e.drug);
+    if (idx >= 0 && idx !== armIdx) selectArm(idx);
+    window.AegisPKTwin.setRiskFocus(e.mesh, e.severity);
+    var a = armForDrug(e.drug);
+    if (a && e.onset_p50_h <= a.horizon_h) {
+      setPlaying(false);
+      window.AegisPKTwin.setTime(e.onset_p50_h);
+    }
+    renderAE();
   }
 
   /* ---------------- open / close ---------------- */
@@ -226,6 +368,8 @@
     el.classList.remove("open"); el.setAttribute("aria-hidden", "true");
     open = false;
     try { window.AegisPKTwin && window.AegisPKTwin.pause(); } catch (e) {}
+    try { window.AegisPKTwin && window.AegisPKTwin.clearRiskFocus(); } catch (e) {}
+    aeSelected = null;
     try { window.AegisTwin && window.AegisTwin.setParked && window.AegisTwin.setParked(false); } catch (e) {}
   }
 
@@ -267,7 +411,8 @@
 
         mountTwin();
         window.AegisPKTwin.setProjection(d, { onFrame: onFrame });
-        armIdx = 0; selectArm(0);
+        armIdx = 0; aeSelected = null; selectArm(0);
+        renderAE();
         $("pkt-load").style.display = "none";
       })
       .catch(function (e) { fail("projection unavailable", String(e && e.message || e)); });
@@ -330,6 +475,18 @@
     });
     window.addEventListener("mousemove", function (e) { if (dragging) trackSeek(e); });
     window.addEventListener("mouseup", function () { dragging = false; });
+    Array.prototype.forEach.call($("pkt-tabs").querySelectorAll(".pkt-tab"), function (b) {
+      b.addEventListener("click", function () { showPane(b.dataset.t); });
+    });
+    Array.prototype.forEach.call($("pkt-ae-filter").querySelectorAll("button"), function (b) {
+      b.addEventListener("click", function () {
+        Array.prototype.forEach.call($("pkt-ae-filter").querySelectorAll("button"),
+          function (x) { x.classList.remove("on"); });
+        b.classList.add("on");
+        aeThreshold = +b.dataset.p;
+        renderAE();
+      });
+    });
     var lb = $("pkt-labels-btn");
     if (lb) lb.addEventListener("click", function () {
       var on = !lb.classList.contains("on");

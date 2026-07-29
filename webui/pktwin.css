@@ -144,6 +144,71 @@
 .pkt-note{font-family:var(--mono);font-size:10px;line-height:1.55;color:var(--faint)}
 .pkt-note b{color:var(--dim);font-weight:600}
 
+/* ---- rail tabs: distribution ↔ side effects ---- */
+.pkt-tabs{flex:0 0 auto;display:flex;border-bottom:1px solid var(--hair-soft);position:sticky;top:0;
+  background:var(--s1);z-index:2}
+.pkt-tab{flex:1 1 auto;font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--dim);background:transparent;border:0;
+  border-bottom:2px solid transparent;padding:10px 8px;cursor:pointer;transition:.14s}
+.pkt-tab:hover{color:var(--ink)}
+.pkt-tab.on{color:var(--ink);border-bottom-color:var(--pkt-drug-c)}
+.pkt-tab i{font-style:normal;font-size:9.5px;color:var(--faint);margin-left:4px}
+.pkt-pane.hidden{display:none}
+
+/* ---- the headline joint risk ---- */
+.pkt-ae-top{display:flex;flex-direction:column;gap:10px}
+.pkt-ae-any{display:flex;flex-direction:column;gap:2px}
+.pkt-ae-any span{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint)}
+.pkt-ae-any b{font-family:var(--mono);font-size:26px;font-weight:600;color:var(--ink);
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.pkt-ae-any i{font-style:normal;font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.5}
+.pkt-ae-filter{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.pkt-ae-filter>span{font-family:var(--mono);font-size:9.5px;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--faint);margin-right:2px}
+.pkt-ae-filter button{font-family:var(--mono);font-size:10px;color:var(--muted);
+  background:rgba(0,0,0,.28);border:1px solid var(--hair);border-radius:var(--r-xs);
+  padding:3px 7px;cursor:pointer;transition:.14s}
+.pkt-ae-filter button:hover{color:var(--ink);border-color:var(--hair-hot)}
+.pkt-ae-filter button.on{color:#08111a;background:var(--pkt-drug-c);border-color:transparent;font-weight:700}
+
+/* ---- one adverse event ---- */
+.pkt-ae{border-bottom:1px solid var(--hair-soft);padding:10px 14px;cursor:pointer;transition:background .14s}
+.pkt-ae:hover{background:rgba(255,255,255,.025)}
+.pkt-ae.on{background:rgba(var(--ae),.07);box-shadow:inset 2px 0 0 rgb(var(--ae))}
+.pkt-ae-hd{display:flex;align-items:baseline;gap:7px}
+.pkt-ae-dot{width:6px;height:6px;border-radius:50%;background:rgb(var(--ae));flex:0 0 auto;
+  align-self:center}
+.pkt-ae-name{font-size:12px;color:var(--ink);flex:1 1 auto;min-width:0;line-height:1.3}
+.pkt-ae-p{font-family:var(--mono);font-size:13px;font-weight:600;color:rgb(var(--ae));
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+/* probability with its interval drawn underneath — a point estimate with no
+   spread would overstate what a population model can actually say */
+.pkt-ae-bar{position:relative;height:3px;margin-top:6px;border-radius:2px;
+  background:rgba(255,255,255,.06);overflow:visible}
+.pkt-ae-bar u{position:absolute;top:0;height:100%;border-radius:2px;
+  background:rgba(var(--ae),.28)}
+.pkt-ae-bar i{position:absolute;top:0;height:100%;border-radius:2px;background:rgb(var(--ae))}
+.pkt-ae-meta{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap}
+.pkt-ae-meta span{font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.03em}
+.pkt-ae-ev{font-family:var(--mono);font-size:9px;font-weight:700;letter-spacing:.07em;
+  padding:1px 5px;border-radius:2px;border:1px solid var(--hair)}
+.pkt-ae-ev.anchored{color:var(--ok-ink);border-color:rgba(var(--low-rgb),.42)}
+.pkt-ae-ev.label_rate{color:var(--muted)}
+.pkt-ae-ev.mechanistic{color:var(--faint);border-style:dashed}
+.pkt-ae-delta{font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.pkt-ae-delta b{color:var(--watch-ink);font-weight:600}
+
+/* expanded detail */
+.pkt-ae-more{margin-top:9px;padding-top:9px;border-top:1px solid var(--hair-soft);
+  font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--dim)}
+.pkt-ae-more b{color:var(--muted);font-weight:600}
+.pkt-ae-more .cite{color:var(--faint);display:block;margin-top:6px}
+.pkt-ae-more ul{margin:5px 0 0;padding-left:14px}
+.pkt-ae-more li{margin-bottom:2px}
+.pkt-ae-empty{padding:16px 14px;font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  line-height:1.6}
+
 /* ---- footer: transport ---- */
 .pkt-foot{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:10px 15px;
   border-top:1px solid var(--hair-soft);background:rgba(0,0,0,.28);min-height:50px}

@@ -182,11 +182,31 @@ function adoptOrgan(key, srcPivot) {
     // Unmodelled: force it inert and leave it that way.
     tissue.color.setHex(INERT); tissue.opacity = 0.16;
   }
+  // The RISK layer — an outward-facing shell around the organ, dark until an
+  // adverse event is selected. It is a separate channel from the drug fill on
+  // purpose: the drug is cool and means "where the dose went", the risk shell is
+  // warm and means "what this exposure threatens". Overloading one channel with
+  // both is how a bright kidney would come to mean two opposite things.
+  let risk = null;
+  if (!vascular) {
+    risk = pivot.clone(true);
+    const rm = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(0xe5544c), transparent: true, opacity: 0.0,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      side: THREE.BackSide,          // BackSide → reads as a rim around the organ
+    });
+    risk.traverse((o) => { if (o.isMesh) { o.material = rm; o.frustumCulled = false; } });
+    risk.scale.multiplyScalar(1.10);
+    risk.userData.mat = rm;
+    risk.visible = false;
+  }
   atlasGroup.add(pivot);
   if (fill) atlasGroup.add(fill);
+  if (risk) atlasGroup.add(risk);
   if (halo) scene.add(halo);
-  organs[key] = { pivot, fill, halo, tissue, comp, vascular,
-                  fillMat: fill ? fill.userData.mat : null };
+  organs[key] = { pivot, fill, halo, risk, tissue, comp, vascular,
+                  fillMat: fill ? fill.userData.mat : null,
+                  riskMat: risk ? risk.userData.mat : null };
 }
 
 function borrowAnatomy() {
@@ -412,7 +432,9 @@ function applyLevels() {
   }
   // Muscle, skin, fat and the remainder have no mesh of their own — they are most
   // of the body by mass and hold most of the drug, so the shell carries them.
-  if (shellMat) {
+  // …unless an adverse event has claimed the shell, in which case the animation
+  // loop owns it and writing the drug tint here every frame would erase the pulse.
+  if (shellMat && !(riskFocus && riskFocus.shell)) {
     const rest = ["muscle", "skin", "adipose", "rest"]
       .map((k) => (lv[k] ? lv[k].level : 0))
       .reduce((a, b) => Math.max(a, b), 0);
@@ -423,7 +445,7 @@ function applyLevels() {
   if (onFrame) onFrame(tHours, lv, arm);
 }
 const SHELL_BASE = new THREE.Color(0x2f353d);
-let vesselPrev = null, vesselSurge = 0, labelTick = 0;
+let vesselPrev = null, vesselSurge = 0, labelTick = 0, riskPhase = 0;
 
 /* ------------------------------------------------------------------ */
 /* Framing — the drug lives in the torso, so frame the torso           */
@@ -576,6 +598,56 @@ function setLabels(on) { labelsOn = !!on; updateLabels(); }
 function setLabelFormat(fn) { labelFmt = fn; }
 
 /* ------------------------------------------------------------------ */
+/* Adverse-event focus                                                */
+/* ------------------------------------------------------------------ */
+/* Selecting a side effect puts the body into a second, warm channel: the organ
+   the event lands in is ringed in its SEVERITY colour and breathes, while the
+   drug channel keeps doing exactly what it was doing. The two never share a
+   colour, so "this organ is well perfused with antibiotic" and "this organ is
+   what the antibiotic threatens" can be true at once and still be told apart.
+
+   The severity ramp is the console's own (amber → orange → red), because an
+   adverse event IS the clinical-risk vocabulary the rest of the OS already
+   speaks — this is the one place in this scene where that vocabulary belongs. */
+const SEVERITY_COLOR = {
+  "mild": 0x848a93, "moderate": 0xe2a33c,
+  "severe": 0xde833a, "life-threatening": 0xe5544c,
+};
+// An adverse event names a compartment; the atlas may draw it with more than one
+// mesh (two kidneys) or with none at all (skin and muscle live on the shell).
+const MESH_FOR = {
+  lung: ["lung"], heart: ["heart"], liver: ["liver"], spleen: ["spleen"],
+  kidney: ["kidneyL", "kidneyR"], pancreas: ["pancreas"],
+  intestine: ["intestine"], brain: ["cord"], vessels: ["vessels"], shell: [],
+};
+let riskFocus = null;          // { meshes:[], color, shell:bool }
+
+function setRiskFocus(meshName, severity) {
+  clearRiskFocus();
+  if (!meshName) return;
+  const keys = MESH_FOR[meshName] || [];
+  const color = new THREE.Color(SEVERITY_COLOR[severity] || 0xe2a33c);
+  riskFocus = { meshes: keys.filter((k) => organs[k]), color,
+                shell: meshName === "shell" || keys.length === 0 };
+  riskFocus.meshes.forEach((k) => {
+    const o = organs[k];
+    if (!o.risk) return;
+    o.risk.visible = true;
+    o.riskMat.color.copy(color);
+  });
+  applyLevels();
+}
+
+function clearRiskFocus() {
+  for (const k in organs) {
+    const o = organs[k];
+    if (o.risk) { o.risk.visible = false; o.riskMat.opacity = 0; }
+  }
+  riskFocus = null;
+  applyLevels();          // hands the shell back to the drug channel
+}
+
+/* ------------------------------------------------------------------ */
 /* Public API                                                         */
 /* ------------------------------------------------------------------ */
 function mount(el) {
@@ -667,6 +739,23 @@ function animate() {
   const dt = clock.getDelta();
   if (!renderer || !container || !container.offsetParent) return;   // overlay closed
   controls.update();
+  // The selected adverse event breathes. A static ring gets read as part of the
+  // anatomy within a few seconds; a slow pulse stays legible as an ALERT without
+  // competing with the drug channel, which never moves on its own.
+  if (riskFocus) {
+    riskPhase += dt;
+    const p = 0.5 - 0.5 * Math.cos(riskPhase * 2.4);
+    riskFocus.meshes.forEach((k) => {
+      const o = organs[k];
+      if (o && o.riskMat) o.riskMat.opacity = 0.16 + 0.30 * p;
+    });
+    if (riskFocus.shell && shellMat) {
+      // Skin, muscle and fat have no mesh of their own, so a risk that lands
+      // there is shown on the body shell — which is anatomically what it is.
+      shellMat.color.lerp(riskFocus.color, 0.10);
+      shellMat.opacity = 0.075 + 0.10 * p;
+    }
+  }
   // Arrival flashes decay on wall-clock time, not model time, so they read the
   // same whether the scrub is at 1x or 3x.
   let flashing = false;
@@ -727,7 +816,7 @@ function state() {
 
 window.AegisPKTwin = {
   mount, setProjection, setArm, setTime, play, pause, setRate, resize, dispose,
-  setLabels, setLabelFormat, fitToAtlas,
+  setLabels, setLabelFormat, fitToAtlas, setRiskFocus, clearRiskFocus,
   state, levelsNow, isPlaying: () => playing, currentArm: () => arm,
   DRUG_COLOR, UNMODELLED: UNMODELLED_LABEL,
 };
