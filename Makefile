@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api verify-opts serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -15,6 +15,7 @@ help:
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
+	@echo "  make verify-opts  Treatment options: reasons traceable to numbers, cage refusals shown"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
@@ -56,6 +57,12 @@ verify-ae:
 # nothing. Runs the FastAPI app in-process — no server required.
 verify-pk-api:
 	$(PY) -m backend.aegis.verify_pk_api
+
+# Candidate treatment paths: that every upside/downside traces to a number in its
+# own option (change the patient, the reasons change), and that an option the Z3
+# cage refuses is labelled refused with the cage's own words rather than hidden.
+verify-opts:
+	$(PY) -m backend.aegis.verify_treatment_options
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)

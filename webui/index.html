@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="os.css?v=37" />
-<link rel="stylesheet" href="pktwin.css?v=5" />
+<link rel="stylesheet" href="pktwin.css?v=6" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -886,6 +886,11 @@
     </header>
 
     <div class="pkt-body">
+      <aside class="pkt-opts" id="pkt-opts">
+        <div class="pkt-opts-h">Treatment options<span id="pkt-opts-n"></span></div>
+        <div class="pkt-opts-l" id="pkt-opts-l"></div>
+        <div class="pkt-opts-f" id="pkt-opts-f"></div>
+      </aside>
       <div class="pkt-stage" id="pkt-stage">
         <div class="pkt-hud">
           <div class="pkt-hud-t" id="pkt-hud-t">—</div>
@@ -917,6 +922,10 @@
         <section class="pkt-sec">
           <div class="pkt-sec-h"><h3>Exposure</h3><span id="pkt-exp-meta">—</span></div>
           <div class="pkt-metrics" id="pkt-metrics"></div>
+        </section>
+        <section class="pkt-sec">
+          <div class="pkt-sec-h"><h3>Upsides &amp; downsides</h3><span id="pkt-pc-meta">derived from this projection</span></div>
+          <div id="pkt-pc"></div>
         </section>
         <section class="pkt-sec">
           <div class="pkt-sec-h"><h3>Provenance</h3></div>
@@ -966,9 +975,9 @@
 </div>
 
 <script type="module" src="twin3d.js?v=10"></script>
-<script type="module" src="pktwin.js?v=12"></script>
+<script type="module" src="pktwin.js?v=13"></script>
 <script type="module" src="camera.js?v=12"></script>
-<script src="pktwin_ui.js?v=9"></script>
+<script src="pktwin_ui.js?v=10"></script>
 <script src="os.js?v=41"></script>
 </body>
 </html>

@@ -60,7 +60,58 @@
 .pkt-x{margin-left:0}
 
 /* ---- body: stage + side rail ---- */
-.pkt-body{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 340px;min-height:0}
+.pkt-body{flex:1 1 auto;display:grid;grid-template-columns:236px minmax(0,1fr) 340px;min-height:0}
+
+/* ---- options rail: the comparison, made the primary axis ----
+   The twin used to show one order. The decision is a choice between orders, so
+   the options are a permanent column rather than a mode you switch into: you pick
+   a path and the whole right-hand side — body, exposures, side effects, reasons —
+   re-answers for that path. */
+.pkt-opts{border-right:1px solid var(--hair-soft);background:var(--s2);
+  display:flex;flex-direction:column;min-height:0}
+.pkt-opts-h{flex:0 0 auto;display:flex;align-items:baseline;gap:6px;padding:11px 13px 9px;
+  font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.11em;
+  text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--hair-soft)}
+.pkt-opts-h span{font-size:9.5px;color:var(--faint);letter-spacing:.04em;
+  text-transform:none;margin-left:auto}
+.pkt-opts-l{flex:1 1 auto;overflow-y:auto;min-height:0}
+.pkt-opts-f{flex:0 0 auto;padding:9px 13px;border-top:1px solid var(--hair-soft);
+  font-family:var(--mono);font-size:9.5px;line-height:1.55;color:var(--faint)}
+
+.pkt-opt{width:100%;text-align:left;display:block;padding:9px 13px;cursor:pointer;
+  background:transparent;border:0;border-bottom:1px solid var(--hair-soft);
+  border-left:2px solid transparent;transition:.14s}
+.pkt-opt:hover{background:rgba(255,255,255,.03)}
+.pkt-opt.on{background:rgba(var(--pkt-drug),.09);border-left-color:var(--pkt-drug-c)}
+.pkt-opt-t{display:flex;align-items:baseline;gap:6px}
+.pkt-opt-n{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;
+  flex:1 1 auto;min-width:0}
+.pkt-opt.refused .pkt-opt-n{color:var(--muted)}
+/* A refused option stays visible and stays clickable — seeing WHY the cage
+   rejected a path is the point, and hiding it would just look like the option
+   was never considered. */
+.pkt-opt-flag{font-family:var(--mono);font-size:8.5px;font-weight:700;letter-spacing:.08em;
+  padding:1px 4px;border-radius:2px;white-space:nowrap}
+.pkt-opt-flag.rec{color:#08111a;background:var(--pkt-drug-c)}
+.pkt-opt-flag.ref{color:var(--crit-ink);border:1px solid rgba(var(--high-rgb),.45)}
+.pkt-opt-s{font-family:var(--mono);font-size:9.5px;color:var(--dim);margin-top:3px;
+  line-height:1.4}
+.pkt-opt-m{display:flex;align-items:center;gap:7px;margin-top:5px;
+  font-family:var(--mono);font-size:9.5px;color:var(--faint)}
+.pkt-opt-m b{color:var(--watch-ink);font-weight:600;font-variant-numeric:tabular-nums}
+.pkt-opt-m i{font-style:normal;color:var(--ok-ink)}
+
+/* ---- upsides / downsides ---- */
+.pkt-pc{display:flex;flex-direction:column;gap:5px}
+.pkt-pc-i{display:grid;grid-template-columns:12px 1fr;gap:6px;
+  font-family:var(--mono);font-size:10px;line-height:1.5}
+.pkt-pc-i>span:first-child{font-weight:700;text-align:center}
+.pkt-pc-i.up>span:first-child{color:var(--ok-ink)}
+.pkt-pc-i.down>span:first-child{color:var(--watch-ink)}
+.pkt-pc-i.safety>span:first-child{color:var(--crit-ink)}
+.pkt-pc-i>span:last-child{color:var(--dim)}
+.pkt-pc-i em{font-style:normal;color:var(--faint);font-size:9px;display:block;margin-top:1px}
+.pkt-pc-none{font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.5}
 .pkt-stage{position:relative;min-width:0;min-height:0;
   background:radial-gradient(120% 90% at 50% 12%,rgba(var(--pkt-drug),.055),transparent 62%),
              linear-gradient(180deg,#07090d,#05070a)}
@@ -249,9 +300,16 @@
 .pkt-load i{font-style:normal;font-size:10.5px;color:var(--faint);max-width:340px;line-height:1.6}
 
 /* ---- narrow: the rail drops under the stage ---- */
+@media (max-width:1240px){
+  .pkt-body{grid-template-columns:198px minmax(0,1fr) 300px}
+}
 @media (max-width:1080px){
   .pkt-frame{width:98vw;height:96vh}
-  .pkt-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(320px,1fr) auto}
+  .pkt-body{grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(300px,1fr) auto}
+  .pkt-opts{border-right:0;border-bottom:1px solid var(--hair-soft);max-height:150px}
+  .pkt-opts-l{display:flex;overflow-x:auto}
+  .pkt-opt{border-bottom:0;border-left:0;border-top:2px solid transparent;min-width:170px}
+  .pkt-opt.on{border-left-color:transparent;border-top-color:var(--pkt-drug-c)}
   .pkt-side{border-left:0;border-top:1px solid var(--hair-soft);max-height:38vh}
   .pkt-head{flex-wrap:wrap;row-gap:8px}
 }

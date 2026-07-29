@@ -224,6 +224,104 @@
     else { window.AegisPKTwin.pause(); b.textContent = "▶ play"; b.classList.remove("on"); }
   }
 
+  /* ---------------- treatment options ---------------- */
+  /* The overlay used to answer one question about one order. It now holds a set of
+     candidate orders and re-answers everything for whichever one is selected: the
+     body, the exposures, the side effects and the reasons all belong to the same
+     option, so nothing on screen can describe a path you are not looking at. */
+  var options = null, optKey = null;
+
+  function renderOptions() {
+    var host = $("pkt-opts-l"); if (!host || !options) return;
+    var list = options.options || [];
+    $("pkt-opts-n").textContent = list.length + " paths";
+    host.innerHTML = list.map(function (o) {
+      var rec = o.key === options.recommended;
+      var flag = rec ? '<span class="pkt-opt-flag rec">REC</span>'
+               : (!o.safe ? '<span class="pkt-opt-flag ref">REFUSED</span>' : "");
+      var p = o.p_any_serious || 0;
+      var drugs = [];
+      if (o.protocol.antibiotic_code) drugs.push(o.antibiotic.split("-")[0]);
+      if (o.protocol.vasopressor_dose > 0) drugs.push("pressor");
+      if (o.protocol.fluid_rate > 0) drugs.push(Math.round(o.protocol.fluid_rate) + " mL/kg/h");
+      return '<button class="pkt-opt' + (o.key === optKey ? " on" : "")
+        + (o.safe ? "" : " refused") + '" data-k="' + esc(o.key) + '">'
+        + '<span class="pkt-opt-t"><span class="pkt-opt-n">' + esc(o.label)
+        + "</span>" + flag + "</span>"
+        + '<span class="pkt-opt-s">' + esc(drugs.length ? drugs.join(" · ") : "nothing given") + "</span>"
+        + '<span class="pkt-opt-m">'
+        + (o.arms.length
+            ? "serious risk <b>" + (p * 100).toFixed(0) + "%</b>"
+            : "<i>no exposure</i>")
+        + "</span></button>";
+    }).join("");
+    Array.prototype.forEach.call(host.querySelectorAll(".pkt-opt"), function (el) {
+      el.addEventListener("click", function () { selectOption(el.dataset.k); });
+    });
+    $("pkt-opts-f").textContent = options.honesty || "";
+  }
+
+  function renderProsCons(o) {
+    var host = $("pkt-pc"); if (!host) return;
+    function row(pt, cls) {
+      return '<div class="pkt-pc-i ' + cls + '"><span>'
+        + (cls === "up" ? "+" : cls === "safety" ? "✕" : "−") + "</span><span>"
+        + esc(pt.text) + (pt.evidence ? "<em>" + esc(pt.evidence) + "</em>" : "")
+        + "</span></div>";
+    }
+    var up = (o.upsides || []).map(function (p) { return row(p, "up"); });
+    var dn = (o.downsides || []).map(function (p) {
+      return row(p, p.kind === "safety" ? "safety" : "down"); });
+    host.innerHTML = up.concat(dn).join("")
+      || '<div class="pkt-pc-none">Nothing crossed a reporting threshold for this '
+         + 'option. That is not the same as no risk.</div>';
+    host.className = "pkt-pc";
+    $("pkt-pc-meta").textContent = (o.upsides || []).length + " up · "
+      + (o.downsides || []).length + " down";
+  }
+
+  /* Selecting an option swaps in that option's arms wholesale — same renderer,
+     different projection — and resets the side-effect selection, because an event
+     belongs to the exposure that produced it. */
+  function selectOption(key) {
+    if (!options) return;
+    var o = (options.options || []).filter(function (x) { return x.key === key; })[0];
+    if (!o) return;
+    optKey = key;
+    data = { arms: o.arms, adverse: o.adverse, patient: options.patient,
+             administered: options.administered && key === "recommended",
+             bed_name: options.bed_name, protocol: o.protocol,
+             source: options.administered && key === "recommended"
+               ? "administered order" : "projected option" };
+    aeSelected = null;
+    try { window.AegisPKTwin.clearRiskFocus(); } catch (e) {}
+    renderOptions();
+    renderProsCons(o);
+    var st = $("pkt-state");
+    if (o.safe) {
+      st.textContent = data.administered ? "administered"
+        : (key === "recommended" ? "certified · not ordered" : "hypothetical");
+      st.className = "pkt-state " + (data.administered ? "live" : "hypo");
+    } else {
+      st.textContent = "refused by cage";
+      st.className = "pkt-state hypo";
+    }
+    if (!o.arms.length) {
+      // Nothing is administered under this option, so there is no body to fill.
+      // Say so rather than showing an inert twin that looks like a loading failure.
+      $("pkt-load").style.display = "";
+      $("pkt-load").innerHTML = esc(o.label) + " administers nothing"
+        + "<i>There is no exposure to project. "
+        + esc((o.downsides[0] || {}).text || "") + "</i>";
+      renderAE();
+      return;
+    }
+    $("pkt-load").style.display = "none";
+    window.AegisPKTwin.setProjection(data, { onFrame: onFrame });
+    armIdx = 0; selectArm(0);
+    renderAE();
+  }
+
   /* ---------------- the side-effect explorer ---------------- */
   var SEV_RGB = { "mild": "132,138,147", "moderate": "226,163,60",
                   "severe": "222,131,58", "life-threatening": "229,84,76" };
@@ -373,7 +471,7 @@
     open = false;
     try { window.AegisPKTwin && window.AegisPKTwin.pause(); } catch (e) {}
     try { window.AegisPKTwin && window.AegisPKTwin.clearRiskFocus(); } catch (e) {}
-    aeSelected = null;
+    aeSelected = null; options = null; optKey = null;
     try { window.AegisTwin && window.AegisTwin.setParked && window.AegisTwin.setParked(false); } catch (e) {}
   }
 
@@ -387,11 +485,12 @@
     // no bed id. Same overlay, same contract, different endpoint.
     bed = bedId; opts = opts || {};
     var url = (!bedId || bedId === "session")
-      ? "/aegis/pk/session"
-      : "/aegis/pk/bed/" + encodeURIComponent(bedId);
+      ? "/aegis/pk/options"
+      : "/aegis/pk/options?bed=" + encodeURIComponent(bedId);
     show();
     $("pkt-load").style.display = "";
-    $("pkt-load").innerHTML = "projecting…<i>solving the compartment model and assembling the anatomy</i>";
+    $("pkt-load").innerHTML = "projecting…<i>solving the compartment model for every "
+      + "candidate order and assembling the anatomy</i>";
     $("pkt-name").textContent = opts.name || bedId || "Monitored patient";
     $("pkt-sub").textContent = "—";
 
@@ -400,18 +499,16 @@
       .then(function (d) {
         if (!open) return;
         if (d.status !== "ok") return fail("could not project", d.detail || "");
-        if (!d.arms || !d.arms.length)
-          return fail("nothing to project", "no drug is ordered for this bed — the "
-            + "certified protocol has no antibiotic, vasopressor or fluid arm.");
-        data = d;
+        if (!d.options || !d.options.length)
+          return fail("nothing to compare", "no candidate treatment paths were "
+            + "returned for this patient.");
+        options = d;
         $("pkt-name").textContent = d.bed_name || bedId || "Monitored patient";
         var p = d.patient || {};
         $("pkt-sub").innerHTML = "<b>eGFR</b> " + Math.round(p.egfr) + " · <b>MAP</b> "
           + Math.round(p.map_mmhg) + " mmHg · <b>" + Math.round(p.weight_kg) + "</b> kg"
+          + " · risk <b>" + esc(d.risk_level || "—") + "</b>"
           + (p.shock_index > 0 ? " · shock redistribution active" : "");
-        var st = $("pkt-state");
-        st.textContent = d.administered ? "administered" : "not ordered";
-        st.className = "pkt-state " + (d.administered ? "live" : "hypo");
 
         var un = (window.AegisPKTwin.UNMODELLED || {});
         var names = Object.keys(un).map(function (k) { return un[k]; });
@@ -419,10 +516,13 @@
           ? "inert — no compartment in the model: " + names.join(", ") : "";
 
         mountTwin();
-        window.AegisPKTwin.setProjection(d, { onFrame: onFrame });
-        armIdx = 0; aeSelected = null; selectArm(0);
-        renderAE();
-        $("pkt-load").style.display = "none";
+        // Open on the option that was asked for, else the recommended one, else
+        // the first path that actually administers something.
+        var want = (opts.option && d.options.some(function (o) { return o.key === opts.option; }))
+          ? opts.option
+          : (d.recommended
+             || (d.options.filter(function (o) { return o.arms.length; })[0] || d.options[0]).key);
+        selectOption(want);
       })
       .catch(function (e) { fail("projection unavailable", String(e && e.message || e)); });
   }

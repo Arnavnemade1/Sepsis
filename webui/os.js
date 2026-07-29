@@ -336,9 +336,19 @@ function renderWhatif(d) {
     }).join("");
   box.querySelectorAll("canvas[data-traj]").forEach(cv => sparkline(cv, JSON.parse(cv.dataset.traj)));
   box.querySelectorAll(".cand[data-cand]").forEach(el => {
-    const open = () => openWhatifModal(+el.dataset.cand);
-    el.addEventListener("click", open);
-    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    // Tapping a path now opens the treatment twin AT that path: the body
+    // progression, the exposures and that option's upsides/downsides. The old
+    // trajectory modal is still reachable with shift-click for the step-by-step
+    // vitals table, but the default is the thing you actually want to see.
+    const cand = w.candidates[+el.dataset.cand];
+    const go = (e) => {
+      if (e && e.shiftKey) return openWhatifModal(+el.dataset.cand);
+      if (!window.AegisPK) return openWhatifModal(+el.dataset.cand);
+      window.AegisPK.open("session", { name: _lastPatientName || "Monitored patient",
+                                       option: cand && cand.name });
+    };
+    el.addEventListener("click", go);
+    el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(e); } });
   });
 }
 function sparkline(cv, arr) {

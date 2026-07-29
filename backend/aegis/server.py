@@ -1566,6 +1566,70 @@ def pk_bed(bed_id: str, adverse: bool = True, n_points: int = 121) -> Dict[str, 
     return out
 
 
+def _pk_context(bed: Optional[str]):
+    """(base protocol, patient, history, risk level, display name) for a bed, or
+    for the live single-patient session when ``bed`` is omitted."""
+    from backend.aegis.pharmacokinetics import PatientState
+    if bed:
+        if bed not in getattr(cluster, "profiles", {}):
+            return None
+        patient, hist = _pk_patient(bed)
+        prof = cluster.profiles[bed]
+        risk = float(getattr(prof, "fused_risk", 0.0) or 0.0)
+        level = "HIGH" if risk >= 0.70 else "MEDIUM" if risk >= 0.40 else "LOW"
+        return (_pk_protocol(bed), patient, hist, level,
+                getattr(prof, "name", bed))
+    snap = session.snapshot()
+    vitals = snap.get("vitals") or {}
+    hist = (snap.get("patient") or {}).get("clinical_history") or {}
+    proto = dict((snap.get("protocol") or {}).get("protocol") or {})
+    mapv = float(vitals.get("map", 80.0) or 80.0)
+    hr = float(vitals.get("heart_rate", 90.0) or 90.0)
+    level = (snap.get("risk") or {}).get("level", "LOW")
+    if not proto:
+        prof = SimpleNamespace(
+            enterprise={"map": mapv,
+                        "lactate": float(vitals.get("sweat_lactate",
+                                                    vitals.get("lactate", 1.0)) or 1.0)},
+            fused_risk=float((snap.get("risk") or {}).get("ml_probability", 0.0) or 0.0),
+            name="patient", drivers=[], primary_system="")
+        proto = dict(bundle_engine._derive_protocol(prof, hist))
+    patient = PatientState(
+        weight_kg=float(hist.get("weight_kg", 78.0) or 78.0),
+        egfr=25.0 if hist.get("renal_failure") else 90.0,
+        hepatic_factor=0.6 if hist.get("cirrhosis") else 1.0, map_mmhg=mapv,
+        cardiac_output_factor=float(min(1.6, max(0.7, 0.85 + (hr - 80.0) / 200.0))))
+    return (proto, patient, hist, level,
+            (snap.get("patient") or {}).get("name", "Monitored patient"))
+
+
+@app.get("/aegis/pk/options")
+def pk_options(bed: Optional[str] = None, n_points: int = 121) -> Dict[str, Any]:
+    """Several candidate orders, each projected through the body.
+
+    Same candidate names the what-if card already shows, but each one carries a
+    real PBPK projection, its adverse-event profile, a verdict from the same Z3
+    cage the write path uses, and upsides/downsides generated from those numbers.
+    This is what makes the treatment twin a comparison rather than a single
+    scenario."""
+    from backend.aegis.treatment_options import evaluate_options
+    ctx = _pk_context(bed)
+    if ctx is None:
+        return {"status": "error", "detail": f"unknown bed '{bed}'"}
+    proto, patient, hist, level, name = ctx
+    key = "opt|" + (bed or "session") + "|" + _pk_key(proto, patient, True) + f"|{level}"
+    if key in _PK_CACHE:
+        return _PK_CACHE[key]
+    out = evaluate_options(proto, patient, hist, risk_level=level,
+                           n_points=max(41, min(401, n_points)))
+    out["status"] = "ok"
+    out["bed"] = bed
+    out["bed_name"] = name
+    iv = syscalls.interventions.get(bed) if bed else None
+    out["administered"] = bool(iv is not None and iv.treated and iv.protocol)
+    return _pk_store(key, out)
+
+
 @app.get("/aegis/pk/session")
 def pk_session(adverse: bool = True, n_points: int = 121) -> Dict[str, Any]:
     """The same projection for the LIVE single-patient session the clinical console
