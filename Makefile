@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-pk serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -12,6 +12,7 @@ help:
 	@echo "  make verify       Run the full end-to-end verification suite"
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
+	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
@@ -35,6 +36,12 @@ verify-core:
 # alarm) and asserts the honesty machinery catches each one. Complements `verify`.
 verify-integrity:
 	$(PY) verify_integrity.py
+
+# The treatment-projection engine: checks the pharmacology, not the code. Mass
+# balance to machine precision, published Vd/CL/t½ recovered off the simulated
+# curves, and an independent integrator that re-derives the ODEs longhand.
+verify-pk:
+	$(PY) -m backend.aegis.verify_pharmacokinetics
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)
