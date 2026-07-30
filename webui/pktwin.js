@@ -53,6 +53,19 @@ const DRUG_COLOR = {
 const TISSUE = 0x191c20;          // inert tissue — the body when no drug is present
 const INERT = 0x3d4147;           // an organ the model does not simulate
 
+/* The bloodstream is now drawn as blood, and the drug is drawn as something moving
+   THROUGH it. Previously the vessels only existed when a drug was in them, which
+   made the circulation look like a property of the dose rather than of the patient
+   — at t=0 the body had no vasculature at all.
+
+   Arterial red / venous blue is the one colour convention every anatomy text and
+   every clinician already shares, so it costs no learning. Both are deliberately
+   DESATURATED: the saturated end of the warm ramp belongs to the adverse-event
+   rings, and a bloodstream that shouted as loudly as a life-threatening event
+   would wreck that distinction. Blood sits back; the drug moves. */
+const BLOOD_ARTERIAL = 0x8c3a44;
+const BLOOD_VENOUS = 0x3c5570;
+
 /* Which organ mesh shows which PBPK compartment. The backend ships the same map
    (ORGAN_MESH), but the atlas has meshes the model has no compartment for, and
    those must stay honestly dark rather than borrow a neighbour's number. */
@@ -130,6 +143,25 @@ function makeShellMat() {
   });
   return m;
 }
+/* A repeating stripe run along the tube's length. TubeGeometry lays u down the
+   axis, so scrolling this map's offset makes the drug appear to travel — bolus
+   after bolus — instead of the whole vessel brightening at once. Soft-edged on
+   purpose: hard bands read as a barber pole rather than as flow. */
+function flowTexture() {
+  const c = document.createElement("canvas"); c.width = 128; c.height = 1;
+  const ctx = c.getContext("2d");
+  const g = ctx.createLinearGradient(0, 0, 128, 0);
+  g.addColorStop(0.00, "rgba(255,255,255,0.10)");
+  g.addColorStop(0.34, "rgba(255,255,255,0.16)");
+  g.addColorStop(0.52, "rgba(255,255,255,1.00)");
+  g.addColorStop(0.68, "rgba(255,255,255,0.30)");
+  g.addColorStop(1.00, "rgba(255,255,255,0.10)");
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 1);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+
 function glowTexture() {
   const c = document.createElement("canvas"); c.width = c.height = 128;
   const g = c.getContext("2d").createRadialGradient(64, 64, 0, 64, 64, 64);
@@ -163,7 +195,11 @@ function adoptOrgan(key, srcPivot) {
   if (vascular) {
     // ONE material for the whole tree — the vascular mesh is many sub-meshes, and
     // giving each its own material means only the first one ever gets updated.
-    const vm = makeVesselMat(0x5fb3d4);
+    // Blood-coloured at rest like the schematic tree, so the trunk vasculature and
+    // the limb vasculature do not look like two different organs.
+    const vm = makeVesselMat(BLOOD_ARTERIAL);
+    vm.blending = THREE.NormalBlending;
+    vm.opacity = 0.30;
     pivot.traverse((o) => { if (o.isMesh) { o.material = vm; o.frustumCulled = false; } });
     vessels = { pivot, mat: vm };
   } else if (comp) {
@@ -428,11 +464,19 @@ function applyLevels() {
     vesselTree.segs.forEach((sg) => {
       const v = series ? sampleAt(series, times, tHours - sg.delay) : 0;
       const lvl = Math.pow(Math.max(0, Math.min(1, v / armNorm.vessel)), DISPLAY_GAMMA);
+      sg.level = lvl;
+      // The blood layer never goes away — it only brightens where the vessel is
+      // carrying something, so the circulation stays legible at t=0 instead of the
+      // patient appearing to have no vasculature until a drug is given.
+      sg.bloodMat.opacity = (sg.kind === "a" ? 0.62 : 0.48) + 0.18 * lvl;
+      // The drug rides ON the blood in its own colour rather than recolouring it:
+      // at trace levels you see red vessels threaded with cyan, at peak the thread
+      // dominates. Two questions — "where are the vessels" and "how much drug is
+      // in them" — stop competing for one channel.
       ramp(col, lvl, _c2);
-      sg.mat.color.copy(_c2);
-      // Veins sit a touch dimmer than arteries at equal concentration, so the two
-      // limbs of the circuit stay tellable apart when both are loaded.
-      sg.mat.opacity = 0.02 + (sg.kind === "a" ? 0.30 : 0.19) * lvl;
+      sg.flowMat.color.copy(_c2);
+      sg.flowMat.opacity = (sg.kind === "a" ? 0.62 : 0.42) * lvl;
+      sg.flow.visible = lvl > 0.004;
     });
   }
   // The vascular tree carries the plasma channel — this is what makes the bolus
@@ -445,9 +489,13 @@ function applyLevels() {
     const rising = Math.max(0, art - (vesselPrev == null ? art : vesselPrev));
     vesselSurge = Math.max(vesselSurge * 0.90, Math.min(1, rising * 26));
     vesselPrev = art;
+    // Blood at rest, lerping toward the drug hue as the trunk loads. Unlike the
+    // schematic tree this mesh has no usable length-wise UVs, so it cannot carry
+    // the scrolling stripe — it tints instead of flowing.
     ramp(col, Math.min(1, art + 0.5 * vesselSurge), _c2);
-    vessels.mat.color.copy(_c2);
-    vessels.mat.opacity = 0.02 + 0.14 * art + 0.12 * vesselSurge;
+    _c1.setHex(BLOOD_ARTERIAL).lerp(_c2, Math.min(1, 0.35 + 0.65 * art));
+    vessels.mat.color.copy(_c1);
+    vessels.mat.opacity = 0.26 + 0.22 * art + 0.10 * vesselSurge;
   }
   // Muscle, skin, fat and the remainder have no mesh of their own — they are most
   // of the body by mass and hold most of the drug, so the shell carries them.
@@ -562,7 +610,9 @@ function vesselRoutes(B) {
 
 let vesselTree = null;   // { group, segs:[{mesh, mat, delay, t0}] }
 
+let flowTex = null;
 function buildVesselTree(root) {
+  if (!flowTex) flowTex = flowTexture();
   const B = boneMap(root);
   const routes = vesselRoutes(B);
   if (!routes.length) return false;
@@ -580,16 +630,37 @@ function buildVesselTree(root) {
       const len = curve.getLength();
       const geo = new THREE.TubeGeometry(curve, Math.max(20, Math.round(len * 70)),
                                          rt.r * rmul, 6, false);
-      const mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(0x5fb3d4), transparent: true, opacity: 0.05,
-        blending: THREE.AdditiveBlending, depthWrite: false });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.frustumCulled = false;
-      group.add(mesh);
+      // LAYER 1 — the blood itself. Always present, never animated, normal
+      // blending so it reads as a filled vessel rather than a glow.
+      const bloodMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(kind === "a" ? BLOOD_ARTERIAL : BLOOD_VENOUS),
+        transparent: true, opacity: kind === "a" ? 0.62 : 0.48,
+        depthWrite: false });
+      const blood = new THREE.Mesh(geo, bloodMat);
+      blood.frustumCulled = false;
+      group.add(blood);
+
+      // LAYER 2 — the drug moving through it. Same geometry, a hair wider so it
+      // sheathes rather than z-fights, additive and scrolling.
+      const tex = flowTex.clone();
+      tex.needsUpdate = true;
+      // Repeat by LENGTH, so a stripe is the same physical size in a carotid and
+      // in a femoral. A shared repeat would make short vessels look fast.
+      tex.repeat.set(Math.max(2, Math.round(len * 5)), 1);
+      const flowMat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(0x5fb3d4), map: tex, transparent: true,
+        opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false });
+      const flowGeo = new THREE.TubeGeometry(
+        curve, Math.max(20, Math.round(len * 70)), rt.r * rmul * 1.22, 6, false);
+      const flow = new THREE.Mesh(flowGeo, flowMat);
+      flow.frustumCulled = false;
+      group.add(flow);
+
       // Arrival delay from path length at the stated mean velocity. Venous return
       // lags by the same journey again, which is why the veins light second.
       const delay = len / CIRCULATION_M_PER_S / 3600;      // hours
-      segs.push({ mesh, mat, delay: kind === "a" ? delay : delay * 2.1, kind });
+      segs.push({ blood, bloodMat, flow, flowMat, tex, len,
+                  delay: kind === "a" ? delay : delay * 2.1, kind });
     });
   });
   scene.add(group);
@@ -932,6 +1003,19 @@ function animate() {
   const dt = clock.getDelta();
   if (!renderer || !container || !container.offsetParent) return;   // overlay closed
   controls.update();
+  // Scroll the drug stripes along every vessel. Arterial flow runs from the heart
+  // outward and venous flow returns, so the two scroll in OPPOSITE directions —
+  // which is what makes the picture read as a circuit rather than as two pipes
+  // pointing the same way. Speed rises a little with concentration, so a loaded
+  // vessel looks like it is moving more, not merely glowing more.
+  if (vesselTree) {
+    for (let i = 0; i < vesselTree.segs.length; i++) {
+      const sg = vesselTree.segs[i];
+      if (!sg.flow || !sg.flow.visible) continue;
+      const speed = 0.16 + 0.34 * (sg.level || 0);
+      sg.tex.offset.x += dt * speed * (sg.kind === "a" ? -1 : 1);
+    }
+  }
   // The selected adverse event breathes. A static ring gets read as part of the
   // anatomy within a few seconds; a slow pulse stays legible as an ALERT without
   // competing with the drug channel, which never moves on its own.

@@ -161,7 +161,17 @@
   color:var(--faint);pointer-events:none;letter-spacing:.03em}
 
 /* colour scale — brightness is concentration, and the scale says relative to what */
-.pkt-scale{position:absolute;right:14px;bottom:12px;width:150px;pointer-events:none}
+/* Two channels now share this body, so the key names both. Blood is a constant
+   of the patient; the drug is the thing that moves through it. */
+.pkt-scale{position:absolute;right:14px;bottom:12px;width:168px;pointer-events:none}
+.pkt-scale-key{display:flex;flex-direction:column;gap:3px;margin-bottom:7px}
+.pkt-scale-key span{display:flex;align-items:center;gap:6px;font-family:var(--mono);
+  font-size:9.5px;color:var(--dim);letter-spacing:.03em}
+.pkt-scale-key i{width:14px;height:3px;border-radius:2px;flex:0 0 auto}
+.pkt-scale-key .k-art{background:#8c3a44}
+.pkt-scale-key .k-ven{background:#3c5570}
+.pkt-scale-key .k-drug{background:var(--pkt-drug-c);
+  box-shadow:0 0 5px rgba(var(--pkt-drug),.7)}
 .pkt-scale-bar{height:5px;border-radius:3px;
   background:linear-gradient(90deg,rgba(var(--pkt-drug),.06),rgba(var(--pkt-drug),1))}
 .pkt-scale-l{display:flex;justify-content:space-between;margin-top:4px;
