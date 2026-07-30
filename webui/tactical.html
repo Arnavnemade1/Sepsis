@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="tactical.css?v=39" />
-<link rel="stylesheet" href="pktwin.css?v=7" />
+<link rel="stylesheet" href="pktwin.css?v=9" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -315,7 +315,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=8"></script>
-<script type="module" src="pktwin.js?v=15"></script>
+<script type="module" src="pktwin.js?v=16"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -410,6 +410,7 @@
           <div class="pkt-scale-bar"></div>
           <div class="pkt-scale-l"><span>none</span><span id="pkt-scale-hi">peak organ</span></div>
         </div>
+        <div class="pkt-beats" id="pkt-beats"></div>
         <div class="pkt-load" id="pkt-load">
           projecting…
           <i>solving the compartment model and assembling the anatomy</i>
@@ -420,6 +421,7 @@
         <div class="pkt-tabs" id="pkt-tabs">
           <button class="pkt-tab on" data-t="dist">Distribution</button>
           <button class="pkt-tab" data-t="ae">Side effects <i id="pkt-ae-n"></i></button>
+          <button class="pkt-tab" data-t="cmp">Compare</button>
         </div>
 
         <div class="pkt-pane" id="pkt-pane-dist">
@@ -439,6 +441,20 @@
           <div class="pkt-sec-h"><h3>Provenance</h3></div>
           <div class="pkt-note" id="pkt-prov">—</div>
         </section>
+        </div>
+
+        <div class="pkt-pane hidden" id="pkt-pane-cmp">
+          <section class="pkt-sec">
+            <div class="pkt-sec-h"><h3>Difference vs <span id="pkt-cmp-ref">—</span></h3></div>
+            <div id="pkt-cmp-diff"></div>
+          </section>
+          <section class="pkt-sec">
+            <div class="pkt-sec-h"><h3>All paths side by side</h3></div>
+            <div class="pkt-cmp-wrap"><table class="pkt-cmp" id="pkt-cmp-tbl"></table></div>
+          </section>
+          <section class="pkt-sec">
+            <div class="pkt-note" id="pkt-cmp-note"></div>
+          </section>
         </div>
 
         <div class="pkt-pane hidden" id="pkt-pane-ae">
@@ -473,6 +489,7 @@
         <div class="pkt-track-h" id="pkt-track-h"></div>
       </div>
       <span class="pkt-time" id="pkt-time"><b>0:00</b> / —</span>
+      <button class="pkt-btn on" id="pkt-narrate" title="explain what is happening as it plays">◈ explain</button>
       <button class="pkt-btn on" id="pkt-labels-btn" title="anatomical labels">◉ labels</button>
       <button class="pkt-btn" id="pkt-fit" title="switch between the organ view and the whole-body circulation">⤢ torso</button>
       <div class="pkt-rate" id="pkt-rate">
@@ -482,7 +499,7 @@
   </div>
 </div>
 
-<script src="pktwin_ui.js?v=10"></script>
+<script src="pktwin_ui.js?v=12"></script>
 <script src="tactical.js?v=30"></script>
 </body>
 </html>

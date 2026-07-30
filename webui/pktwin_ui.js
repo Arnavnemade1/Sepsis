@@ -173,6 +173,7 @@
   /* Called by the renderer every frame with the levels IT is drawing. */
   function onFrame(t, levels, a) {
     lastLevels = levels;
+    tickBeats(t, a);
     // The on-body labels format with the SAME function as the side rail, and the
     // renderer supplies the value it is currently drawing — so a number on the
     // anatomy and the same number in the list cannot drift apart.
@@ -207,12 +208,14 @@
       + "<br>Brightness is drug concentration, not severity.";
     window.AegisPKTwin.setArm(i);
     window.AegisPKTwin.setTime(0);
+    clearBeats(); beatLast = 0;
     setPlaying(true);
   }
 
   function showPane(which) {
     $("pkt-pane-dist").classList.toggle("hidden", which !== "dist");
     $("pkt-pane-ae").classList.toggle("hidden", which !== "ae");
+    $("pkt-pane-cmp").classList.toggle("hidden", which !== "cmp");
     Array.prototype.forEach.call($("pkt-tabs").querySelectorAll(".pkt-tab"), function (b) {
       b.classList.toggle("on", b.dataset.t === which);
     });
@@ -222,6 +225,113 @@
     var b = $("pkt-play");
     if (on) { window.AegisPKTwin.play(); b.textContent = "❚❚ pause"; b.classList.add("on"); }
     else { window.AegisPKTwin.pause(); b.textContent = "▶ play"; b.classList.remove("on"); }
+  }
+
+  /* ---------------- narration beats ---------------- */
+  /* Cards that surface as the playhead reaches each moment. They STACK: several
+     beats are legitimately true at the same instant, and the backend deliberately
+     does not shift them apart in time (doing so made a card describe a moment the
+     body had already left). Presentation handles the overlap. */
+  var narrateOn = true, beatsFired = {}, beatLast = 0;
+  var BEAT_DWELL = 7000, BEAT_MAX = 2;
+
+  function clearBeats() {
+    beatsFired = {};
+    var h = $("pkt-beats"); if (h) h.innerHTML = "";
+  }
+
+  function beatsFor(a) {
+    var o = options && optKey
+      ? (options.options || []).filter(function (x) { return x.key === optKey; })[0]
+      : null;
+    var n = (o && o.narration) || {};
+    return (a && n[a.drug]) || [];
+  }
+
+  function showBeat(b) {
+    var host = $("pkt-beats"); if (!host || !narrateOn) return;
+    var el = document.createElement("div");
+    el.className = "pkt-beat " + esc(b.kind || "");
+    el.innerHTML = '<div class="pkt-beat-h"><span class="pkt-beat-t">'
+      + esc(b.title) + '</span><span class="pkt-beat-at">' + esc(b.at) + "</span></div>"
+      + '<div class="pkt-beat-b">' + esc(b.body) + "</div>";
+    host.appendChild(el);
+    // Oldest first out — the stack is newest-at-bottom via column-reverse.
+    while (host.children.length > BEAT_MAX) host.removeChild(host.firstChild);
+    setTimeout(function () {
+      if (!el.parentNode) return;
+      el.classList.add("out");
+      setTimeout(function () { el.parentNode && el.parentNode.removeChild(el); }, 320);
+    }, BEAT_DWELL);
+    // Selecting the organ a beat is about points the eye at what it describes.
+    if (b.organ && window.AegisPKTwin.pulseOrgan) window.AegisPKTwin.pulseOrgan(b.organ);
+  }
+
+  /* Fire any beat the playhead has just crossed. Scrubbing BACKWARD re-arms them,
+     so replaying a window shows its explanations again rather than staying silent
+     because they were seen once. */
+  function tickBeats(t, a) {
+    if (!narrateOn || !a) return;
+    var list = beatsFor(a);
+    if (t < beatLast - 1e-9) beatsFired = {};        // scrubbed back — re-arm
+    for (var i = 0; i < list.length; i++) {
+      var b = list[i];
+      if (b.t_h <= t && !beatsFired[i]) { beatsFired[i] = 1; showBeat(b); }
+    }
+    beatLast = t;
+  }
+
+  /* ---------------- the comparison ---------------- */
+  function renderCompare() {
+    var c = options && options.comparison;
+    if (!c || !c.rows) return;
+    $("pkt-cmp-ref").textContent = c.reference_label || "—";
+    $("pkt-cmp-note").textContent = c.honesty || "";
+
+    // The explicit subtraction, selected option first so it reads as "this one
+    // versus the reference" rather than as a list to search.
+    var order = (c.columns || []).slice().sort(function (x, y) {
+      return (x.key === optKey ? -1 : 0) - (y.key === optKey ? -1 : 0);
+    });
+    $("pkt-cmp-diff").innerHTML = '<div class="pkt-diff">' + order.map(function (col) {
+      var d = (c.diff || {})[col.key] || [];
+      var isRef = col.key === c.reference;
+      return '<div class="pkt-diff-o' + (isRef ? " ref" : "") + '">'
+        + '<div class="pkt-diff-n">' + esc(col.label)
+        + (isRef ? "<span>REFERENCE</span>"
+                 : (col.key === optKey ? "<span>SHOWING</span>" : "")) + "</div>"
+        + (isRef ? '<div class="pkt-diff-l"><span class="pkt-diff-i">everything below '
+                   + 'is measured against this path</span></div>'
+                 : '<div class="pkt-diff-l">' + d.map(function (x) {
+                     return '<span class="pkt-diff-i ' + esc(x.dir) + '">'
+                       + esc(x.text) + "</span>"; }).join("") + "</div>")
+        + "</div>";
+    }).join("") + "</div>";
+
+    // …and the full table, so nothing is hidden behind the summary.
+    var head = "<thead><tr><th></th>" + (c.columns || []).map(function (col) {
+      return '<th class="' + (col.key === c.reference ? "ref" : "")
+        + (col.safe ? "" : " ref-bad") + '">' + esc(col.label.split(" ")[0]) + "</th>";
+    }).join("") + "</tr></thead>";
+    var body = "<tbody>" + c.rows.map(function (r) {
+      var vals = (c.columns || []).map(function (col) { return r.cells[col.key]; });
+      var nums = vals.map(function (v) { return v && typeof v.v === "number" ? v.v : null; })
+                     .filter(function (v) { return v !== null; });
+      var lowerBetter = vals.some(function (v) { return v && v.lower_better; });
+      var best = nums.length ? (lowerBetter ? Math.min.apply(null, nums)
+                                            : Math.max.apply(null, nums)) : null;
+      return "<tr><th>" + esc(r.label) + "<em>" + esc(r.note) + "</em></th>"
+        + (c.columns || []).map(function (col) {
+            var v = r.cells[col.key] || {};
+            var cls = [];
+            if (col.key === c.reference) cls.push("is-ref");
+            if (v.bad) cls.push("bad");
+            else if (best !== null && typeof v.v === "number" && v.v === best
+                     && nums.length > 1) cls.push("best");
+            return '<td class="' + cls.join(" ") + '">' + esc(v.text || "—") + "</td>";
+          }).join("") + "</tr>";
+    }).join("") + "</tbody>";
+    $("pkt-cmp-tbl").innerHTML = head + body;
   }
 
   /* ---------------- treatment options ---------------- */
@@ -297,6 +407,8 @@
     try { window.AegisPKTwin.clearRiskFocus(); } catch (e) {}
     renderOptions();
     renderProsCons(o);
+    renderCompare();
+    clearBeats();
     var st = $("pkt-state");
     if (o.safe) {
       st.textContent = data.administered ? "administered"
@@ -472,6 +584,7 @@
     try { window.AegisPKTwin && window.AegisPKTwin.pause(); } catch (e) {}
     try { window.AegisPKTwin && window.AegisPKTwin.clearRiskFocus(); } catch (e) {}
     aeSelected = null; options = null; optKey = null;
+    clearBeats(); beatLast = 0;
     try { window.AegisTwin && window.AegisTwin.setParked && window.AegisTwin.setParked(false); } catch (e) {}
   }
 
@@ -599,6 +712,12 @@
         aeThreshold = +b.dataset.p;
         renderAE();
       });
+    });
+    var nb = $("pkt-narrate");
+    if (nb) nb.addEventListener("click", function () {
+      narrateOn = !nb.classList.contains("on");
+      nb.classList.toggle("on", narrateOn);
+      if (!narrateOn) clearBeats();
     });
     var lb = $("pkt-labels-btn");
     if (lb) lb.addEventListener("click", function () {

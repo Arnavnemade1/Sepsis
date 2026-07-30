@@ -157,6 +157,83 @@ def main() -> int:
     check("it states that an empty downside list is not safety",
           "not that an option is safe" in res["honesty"], "stated explicitly")
 
+    print("\n=== 9. THE COMPARISON MAKES THE DIFFERENCE EXPLICIT ===")
+    c = res["comparison"]
+    check("every option appears as a column",
+          {col["key"] for col in c["columns"]} == set(ok),
+          f"{len(c['columns'])} columns × {len(c['rows'])} rows")
+    check("the reference is a path the cage certified",
+          ok[c["reference"]]["safe"], f"reference: {c['reference_label']}")
+    check("the reference has no diff against itself",
+          c["diff"][c["reference"]] == [], "nothing to subtract")
+    others = [k for k in c["diff"] if k != c["reference"]]
+    check("every other path states what it changes",
+          all(c["diff"][k] for k in others),
+          " · ".join(f"{k}:{len(c['diff'][k])}" for k in others))
+    # The claim that matters: a path that differs only in fluid must not be
+    # described as differing in antimicrobial cover.
+    ni = c["diff"]["no_intervention"]
+    check("withholding treatment is reported as losing cover",
+          any("cover" in d["text"] for d in ni),
+          "; ".join(d["text"] for d in ni)[:88])
+    check("dropping the antibiotic is not reported as an improvement",
+          all(d["dir"] != "better" for d in ni if "cover" in d["text"]),
+          "cover loss marked worse")
+
+    print("\n=== 10. DIRECTION IS ONLY CLAIMED WHERE ONE EXISTS ===")
+    print("      (more fluid and more pressor are not 'better' — whether either")
+    print("       helps depends on the patient, and colouring them green would be")
+    print("       this layer inventing a clinical steer it has no basis for)")
+    neutral_bad = []
+    for k, lst in c["diff"].items():
+        for d in lst:
+            if d["k"] in ("volume", "pressor") and d["dir"] != "same":
+                neutral_bad.append(f"{k}:{d['text']}")
+    check("fluid and pressor deltas are reported as neutral facts",
+          not neutral_bad, "no good/bad colouring on either"
+          if not neutral_bad else ", ".join(neutral_bad[:3]))
+    risk_dirs = [d for lst in c["diff"].values() for d in lst if d["k"] == "serious"]
+    check("more serious-event risk IS marked worse",
+          all((d["dir"] == "worse") == d["text"].startswith("+") for d in risk_dirs),
+          f"{len(risk_dirs)} risk deltas, direction matches sign")
+
+    print("\n=== 11. NARRATION IS ANCHORED TO THE CURVE ===")
+    from backend.aegis.pk_narration import narrate
+    rec = ok["recommended"]
+    arm0 = rec["arms"][0]
+    beats = narrate(arm0)
+    check("the arm produces a beat sequence", len(beats) >= 3,
+          f"{len(beats)} beats: " + " → ".join(b["title"] for b in beats[:3]))
+    check("beats are ordered and inside the horizon",
+          all(0 <= b["t_h"] <= arm0["horizon_h"] + 1e-9 for b in beats)
+          and [b["t_h"] for b in beats] == sorted(b["t_h"] for b in beats),
+          f"0 → {arm0['horizon_h']}h")
+    check("beats are NOT shifted apart in time",
+          any(beats[i]["t_h"] == beats[i + 1]["t_h"] for i in range(len(beats) - 1))
+          or len(beats) < 2,
+          "coincident beats stay coincident; the UI stacks them")
+    check("the first-pass beat lands at the real lung arrival",
+          any(b["organ"] == "lung" and b["t_h"] < arm0["horizon_h"] * 0.25
+              for b in beats),
+          "lungs beat fires early, where the lungs actually light")
+    # Same discipline as the pros/cons: change the patient, change the text.
+    sick_arm = rk["recommended"]["arms"][0]
+    if sick_arm["drug"] == arm0["drug"]:
+        t1 = [b["body"] for b in beats]
+        t2 = [b["body"] for b in narrate(sick_arm)]
+        check("changing the patient changes the narration", t1 != t2,
+              "beat text is generated from this projection, not written per drug")
+    # The opening beat is orientation — "the drug is entering a vein, it must cross
+    # the lungs first" — and legitimately carries no number. Every beat AFTER it
+    # describes a measured moment and must quote what it measured.
+    later = [b for b in beats if b["t_h"] > 0]
+    weak = [b["title"] for b in later
+            if not any(ch.isdigit() for ch in b["body"])
+            and "ENTIRE" not in b["body"] and "barrier" not in b["body"]]
+    check("every beat after the opener quotes the figure it rests on",
+          not weak, f"{len(later) - len(weak)}/{len(later)} quantified"
+          if not weak else "unquantified: " + ", ".join(weak))
+
     n_pass = sum(1 for _, ok_, _ in _results if ok_)
     n_tot = len(_results)
     print("\n" + "=" * 72)

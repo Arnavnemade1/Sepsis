@@ -101,6 +101,72 @@
 .pkt-opt-m b{color:var(--watch-ink);font-weight:600;font-variant-numeric:tabular-nums}
 .pkt-opt-m i{font-style:normal;color:var(--ok-ink)}
 
+/* ---- narration beats ----
+   Cards that surface over the body as the simulation reaches each moment. They
+   STACK rather than queue: several beats are legitimately true at the same
+   instant (at the peak, plasma maximum and hottest organ coincide), and shifting
+   them apart in time would have a card describe a moment the body has left. */
+/* Centred along the bottom, clear of BOTH label columns — the first placement was
+   bottom-left and sat straight on top of the left-hand organ labels. Max two
+   cards: three filled a third of the stage and buried the body they describe. */
+.pkt-beats{position:absolute;left:50%;transform:translateX(-50%);bottom:42px;
+  width:min(430px,64%);
+  display:flex;flex-direction:column-reverse;gap:7px;pointer-events:none;z-index:5}
+.pkt-beat{--bc:var(--pkt-drug);
+  background:linear-gradient(135deg,rgba(9,13,19,.985),rgba(6,9,14,.975));
+  border:1px solid rgba(var(--bc),.38);border-left:2px solid rgb(var(--bc));
+  border-radius:var(--r-sm);padding:9px 12px 10px;
+  box-shadow:0 18px 40px -12px rgba(0,0,0,.95),0 0 0 1px rgba(0,0,0,.5),
+             inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter:blur(6px);
+  opacity:0;transform:translateY(10px) scale(.985);
+  animation:pktBeatIn .34s cubic-bezier(.2,.9,.25,1) forwards}
+.pkt-beat.out{animation:pktBeatOut .30s ease forwards}
+@keyframes pktBeatIn{to{opacity:1;transform:none}}
+@keyframes pktBeatOut{to{opacity:0;transform:translateY(-6px) scale(.99)}}
+.pkt-beat-h{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.pkt-beat-t{font-size:12px;font-weight:600;color:var(--ink);line-height:1.25;
+  flex:1 1 auto;min-width:0}
+.pkt-beat-at{font-family:var(--mono);font-size:9.5px;color:rgb(var(--bc));
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.pkt-beat-b{font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--muted)}
+.pkt-beat-b b{color:var(--muted);font-weight:600}
+/* kind accents — arrival/peak ride the drug hue, a missed target goes amber */
+.pkt-beat.warn{--bc:var(--med-rgb)}
+.pkt-beat.target{--bc:var(--low-rgb)}
+.pkt-beat.elimination{--bc:var(--nodata-rgb)}
+.pkt-beat.elimination .pkt-beat-at{color:var(--muted)}
+
+/* ---- compare table ---- */
+.pkt-cmp-wrap{overflow-x:auto;margin:0 -4px;padding:0 4px}
+.pkt-cmp{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:9.5px}
+.pkt-cmp th,.pkt-cmp td{padding:5px 6px;text-align:left;vertical-align:top;
+  border-bottom:1px solid var(--hair-soft);white-space:nowrap}
+.pkt-cmp thead th{color:var(--faint);font-weight:600;letter-spacing:.05em;
+  text-transform:uppercase;font-size:8.5px;position:sticky;top:0;background:var(--s1)}
+.pkt-cmp thead th.ref{color:var(--pkt-drug-c)}
+.pkt-cmp thead th.ref-bad{color:var(--crit-ink)}
+.pkt-cmp tbody th{color:var(--muted);font-weight:600;white-space:normal;min-width:88px}
+.pkt-cmp tbody th em{display:block;font-style:normal;color:var(--faint);font-size:8.5px;
+  font-weight:400;margin-top:1px;line-height:1.4}
+.pkt-cmp td{color:var(--dim);font-variant-numeric:tabular-nums}
+.pkt-cmp td.best{color:var(--ok-ink)}
+.pkt-cmp td.bad{color:var(--crit-ink)}
+.pkt-cmp td.is-ref{background:rgba(var(--pkt-drug),.07)}
+
+/* the explicit subtraction — what changes vs the reference path */
+.pkt-diff{display:flex;flex-direction:column;gap:8px}
+.pkt-diff-o{border:1px solid var(--hair-soft);border-radius:var(--r-sm);padding:8px 10px}
+.pkt-diff-o.ref{border-color:rgba(var(--pkt-drug),.4);background:rgba(var(--pkt-drug),.06)}
+.pkt-diff-n{font-size:11.5px;font-weight:600;color:var(--ink);margin-bottom:5px}
+.pkt-diff-n span{font-family:var(--mono);font-size:9px;color:var(--pkt-drug-c);
+  margin-left:6px;letter-spacing:.06em}
+.pkt-diff-l{display:flex;flex-wrap:wrap;gap:4px}
+.pkt-diff-i{font-family:var(--mono);font-size:9.5px;padding:2px 6px;border-radius:3px;
+  border:1px solid var(--hair);color:var(--dim);white-space:nowrap}
+.pkt-diff-i.better{color:var(--ok-ink);border-color:rgba(var(--low-rgb),.4)}
+.pkt-diff-i.worse{color:var(--watch-ink);border-color:rgba(var(--med-rgb),.4)}
+
 /* ---- upsides / downsides ---- */
 .pkt-pc{display:flex;flex-direction:column;gap:5px}
 .pkt-pc-i{display:grid;grid-template-columns:12px 1fr;gap:6px;

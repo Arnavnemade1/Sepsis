@@ -273,8 +273,12 @@ def evaluate_options(base_protocol: Dict[str, Any], patient: PatientState,
     rec = next((o["key"] for o in out if o["key"] == "recommended" and o["safe"]), None)
     if rec is None:
         rec = next((o["key"] for o in out if o["safe"]), None)
+    from backend.aegis.pk_narration import narrate_arms
+    for o in out:
+        o["narration"] = narrate_arms(o["arms"]) if o["arms"] else {}
     return {
         "options": out, "recommended": rec,
+        "comparison": compare(out, rec),
         "patient": patient.to_dict(), "risk_level": risk_level,
         "base_protocol": dict(base_protocol),
         "honesty": (
@@ -283,6 +287,140 @@ def evaluate_options(base_protocol: Dict[str, Any], patient: PatientState,
             "from those numbers against published targets — they are not a "
             "clinical recommendation, and an empty downside list means nothing "
             "crossed a threshold, not that an option is safe."),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# The comparison. Options side by side, on the axes that actually differ.
+# --------------------------------------------------------------------------- #
+COMPARE_ROWS = [
+    ("cover", "Antimicrobial cover", "the drug and whether it hits its target"),
+    ("target", "%fT>MIC", "time free drug spends above the breakpoint"),
+    ("exposure", "Peak plasma", "highest concentration the body sees"),
+    ("volume", "Volume given", "crystalloid over the first hour"),
+    ("pressor", "Pressor support", "norepinephrine rate"),
+    ("serious", "P(any serious event)", "aggregate over catalogued serious events"),
+    ("worst", "Largest single risk", "the highest-probability serious event"),
+    ("safety", "Safety cage", "the same Z3 gate the write path uses"),
+]
+
+
+def compare(options: List[Dict[str, Any]], reference: Optional[str] = None
+            ) -> Dict[str, Any]:
+    """Build the side-by-side table, plus an explicit DIFF against a reference.
+
+    A rail of options each described on its own terms still leaves the reader
+    doing the subtraction. This does the subtraction: for every option it states
+    what changes relative to the reference path, in the units the change is
+    actually in — 5 mL/kg/h more fluid, 8 points more AKI, cover unchanged.
+    """
+    ref = None
+    for o in options:
+        if o["key"] == reference:
+            ref = o
+    if ref is None:
+        ref = next((o for o in options if o["arms"]), options[0] if options else None)
+    if ref is None:
+        return {"rows": [], "columns": [], "reference": None}
+
+    def cell(o: Dict[str, Any]) -> Dict[str, Any]:
+        abx = next((a for a in o["arms"] if a["drug_class"] == "antibiotic"), None)
+        ne = next((a for a in o["arms"] if a["drug_class"] == "vasopressor"), None)
+        fl = next((a for a in o["arms"] if a["drug_class"] == "fluid"), None)
+        ev = ((o.get("adverse") or {}).get("events") or [])
+        serious = [e for e in ev
+                   if SEVERITY_RANK[e["severity"]] >= SEVERITY_RANK["severe"]]
+        worst = max(serious, key=lambda e: e["probability"]) if serious else None
+        return {
+            "cover": {"text": abx["label"] if abx else "none",
+                      "v": 1.0 if abx else 0.0,
+                      "bad": abx is None},
+            "target": {"text": (f"{abx['metrics']['pct_ft_above_mic']:.0f}%"
+                                if abx and abx["metrics"].get("pct_ft_above_mic") is not None
+                                else "—"),
+                       "v": (abx["metrics"].get("pct_ft_above_mic")
+                             if abx else None)},
+            "exposure": {"text": (f"{abx['metrics']['cmax']:.0f} {abx['unit']}"
+                                  if abx else "—"),
+                         "v": abx["metrics"]["cmax"] if abx else None},
+            "volume": {"text": (f"{fl['metrics']['infused_ml']:.0f} mL" if fl else "none"),
+                       "v": fl["metrics"]["infused_ml"] if fl else 0.0},
+            "pressor": {"text": (f"{o['protocol']['vasopressor_dose']:.2f} mcg/kg/min"
+                                 if ne else "none"),
+                        "v": float(o["protocol"].get("vasopressor_dose", 0) or 0)},
+            "serious": {"text": f"{o['p_any_serious']*100:.0f}%",
+                        "v": o["p_any_serious"], "lower_better": True},
+            "worst": {"text": (f"{worst['label']} {worst['probability']*100:.0f}%"
+                               if worst else "none catalogued"),
+                      "v": worst["probability"] if worst else 0.0,
+                      "lower_better": True},
+            "safety": {"text": "certified" if o["safe"] else "REFUSED",
+                       "v": 1.0 if o["safe"] else 0.0, "bad": not o["safe"]},
+        }
+
+    cells = {o["key"]: cell(o) for o in options}
+    rc = cells[ref["key"]]
+
+    def diff_for(o: Dict[str, Any]) -> List[Dict[str, str]]:
+        """What changes versus the reference, in the change's own units."""
+        if o["key"] == ref["key"]:
+            return []
+        c = cells[o["key"]]
+        out: List[Dict[str, str]] = []
+        if bool(c["cover"]["bad"]) != bool(rc["cover"]["bad"]):
+            out.append({"k": "cover", "dir": "worse" if c["cover"]["bad"] else "better",
+                        "text": ("loses antimicrobial cover" if c["cover"]["bad"]
+                                 else "adds antimicrobial cover")})
+        elif c["cover"]["text"] != rc["cover"]["text"]:
+            out.append({"k": "cover", "dir": "same",
+                        "text": f"{rc['cover']['text']} → {c['cover']['text']}"})
+        # Direction is only claimed where one genuinely exists. More antimicrobial
+        # target attainment is better and more serious-event risk is worse, so those
+        # get a good/bad reading. MORE FLUID AND MORE PRESSOR ARE NOT BETTER OR
+        # WORSE — whether either helps depends on the patient in front of you, and
+        # colouring "+312 mL" green would be this layer inventing a clinical steer
+        # it has no basis for. Those changes are reported as neutral facts.
+        for key, unit, fmt, direction in (
+                ("target", " pts %fT>MIC", "{:+.0f}", "higher_better"),
+                ("volume", " mL fluid", "{:+.0f}", "neutral"),
+                ("pressor", " mcg/kg/min pressor", "{:+.2f}", "neutral"),
+                ("serious", " pts serious risk", "{:+.0f}", "lower_better")):
+            a_, b_ = c[key]["v"], rc[key]["v"]
+            if a_ is None or b_ is None:
+                continue
+            d = a_ - b_
+            if key == "serious":
+                d *= 100.0
+            if abs(d) < (0.005 if key == "pressor" else 0.5):
+                continue
+            if direction == "neutral":
+                dirn = "same"
+            elif direction == "lower_better":
+                dirn = "better" if d < 0 else "worse"
+            else:
+                dirn = "better" if d > 0 else "worse"
+            out.append({"k": key, "dir": dirn, "text": fmt.format(d) + unit})
+        if o["safe"] != ref["safe"]:
+            out.append({"k": "safety", "dir": "worse" if not o["safe"] else "better",
+                        "text": "refused by the safety cage" if not o["safe"]
+                                else "passes the safety cage"})
+        if not out:
+            out.append({"k": "none", "dir": "same",
+                        "text": "no material difference on these axes"})
+        return out
+
+    return {
+        "reference": ref["key"],
+        "reference_label": ref["label"],
+        "columns": [{"key": o["key"], "label": o["label"], "safe": o["safe"]}
+                    for o in options],
+        "rows": [{"key": k, "label": lab, "note": note,
+                  "cells": {o["key"]: cells[o["key"]][k] for o in options}}
+                 for k, lab, note in COMPARE_ROWS],
+        "diff": {o["key"]: diff_for(o) for o in options},
+        "honesty": ("Differences are computed between projections, not between "
+                    "outcomes. Two options differing by 8 points of projected AKI "
+                    "risk is a statement about modelled exposure, not a trial."),
     }
 
 

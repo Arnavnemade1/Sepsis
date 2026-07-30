@@ -848,6 +848,17 @@ function fitToBody() {
   camera.updateProjectionMatrix(); controls.update();
 }
 
+/* A narration beat names an organ; this points the eye at it. Reuses the same
+   arrival-flash channel the drug already uses, so a beat cannot introduce a
+   visual state the projection could not produce on its own. */
+function pulseOrgan(comp) {
+  for (const k in organs) {
+    const o = organs[k];
+    if (o.comp === comp) o.flash = 1.0;
+  }
+  applyLevels();
+}
+
 function setLabels(on) { labelsOn = !!on; updateLabels(); }
 function setLabelFormat(fn) { labelFmt = fn; }
 
@@ -1094,6 +1105,7 @@ function state() {
 window.AegisPKTwin = {
   mount, setProjection, setArm, setTime, play, pause, setRate, resize, dispose,
   setLabels, setLabelFormat, fitToAtlas, fitToBody, setRiskFocus, clearRiskFocus,
+  pulseOrgan,
   hasVessels: () => !!vesselTree, VESSEL_SOURCE,
   state, levelsNow, isPlaying: () => playing, currentArm: () => arm,
   DRUG_COLOR, UNMODELLED: UNMODELLED_LABEL,
