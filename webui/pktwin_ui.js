@@ -287,6 +287,10 @@
     if (!c || !c.rows) return;
     $("pkt-cmp-ref").textContent = c.reference_label || "—";
     $("pkt-cmp-note").textContent = c.honesty || "";
+    // The headline leads, because "where do these actually differ" is the question
+    // and a table of near-identical columns answers it badly on its own.
+    var hl = $("pkt-cmp-head");
+    if (hl) hl.textContent = c.headline || "";
 
     // The explicit subtraction, selected option first so it reads as "this one
     // versus the reference" rather than as a list to search.
@@ -296,6 +300,14 @@
     $("pkt-cmp-diff").innerHTML = '<div class="pkt-diff">' + order.map(function (col) {
       var d = (c.diff || {})[col.key] || [];
       var isRef = col.key === c.reference;
+      // The haemodynamic state this option creates — the reason two paths giving
+      // the same antibiotic can still produce different (or identical) exposures.
+      var opt = (options.options || []).filter(function (x) { return x.key === col.key; })[0];
+      var pu = opt && opt.patient_under;
+      var hemo = pu ? '<div class="pkt-diff-h">MAP ' + Math.round(pu.map_mmhg) + " mmHg"
+          + (pu.vd_expansion > 1.001 ? " · Vd ×" + pu.vd_expansion.toFixed(2) : "")
+          + (pu.shock_index > 0 ? " · shock " + pu.shock_index.toFixed(2) : "")
+          + "</div>" : "";
       return '<div class="pkt-diff-o' + (isRef ? " ref" : "") + '">'
         + '<div class="pkt-diff-n">' + esc(col.label)
         + (isRef ? "<span>REFERENCE</span>"
@@ -305,6 +317,7 @@
                  : '<div class="pkt-diff-l">' + d.map(function (x) {
                      return '<span class="pkt-diff-i ' + esc(x.dir) + '">'
                        + esc(x.text) + "</span>"; }).join("") + "</div>")
+        + hemo
         + "</div>";
     }).join("") + "</div>";
 

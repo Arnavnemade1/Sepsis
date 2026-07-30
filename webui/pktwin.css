@@ -154,6 +154,14 @@
 .pkt-cmp td.bad{color:var(--crit-ink)}
 .pkt-cmp td.is-ref{background:rgba(var(--pkt-drug),.07)}
 
+/* The headline answer: where these paths actually diverge. Leads the pane because
+   a table of near-identical columns answers that question badly on its own. */
+.pkt-cmp-head{font-family:var(--mono);font-size:10.5px;line-height:1.6;color:var(--muted);
+  background:rgba(var(--pkt-drug),.07);border:1px solid rgba(var(--pkt-drug),.22);
+  border-radius:var(--r-sm);padding:8px 10px;margin-bottom:10px}
+.pkt-diff-h{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:5px;
+  padding-top:5px;border-top:1px solid var(--hair-soft);letter-spacing:.03em}
+
 /* the explicit subtraction — what changes vs the reference path */
 .pkt-diff{display:flex;flex-direction:column;gap:8px}
 .pkt-diff-o{border:1px solid var(--hair-soft);border-radius:var(--r-sm);padding:8px 10px}

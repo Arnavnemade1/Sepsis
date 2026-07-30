@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="tactical.css?v=39" />
-<link rel="stylesheet" href="pktwin.css?v=9" />
+<link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
 <canvas id="ambient"></canvas>
@@ -315,7 +315,7 @@
 { "imports": { "three": "./vendor/three/three.module.js" } }
 </script>
 <script type="module" src="twin3d.js?v=8"></script>
-<script type="module" src="pktwin.js?v=16"></script>
+<script type="module" src="pktwin.js?v=17"></script>
 <!-- ============ COMMAND CONSOLE ============ -->
 <div class="cmd" id="cmd" aria-hidden="true">
   <div class="cmd-frame term">
@@ -446,6 +446,7 @@
         <div class="pkt-pane hidden" id="pkt-pane-cmp">
           <section class="pkt-sec">
             <div class="pkt-sec-h"><h3>Difference vs <span id="pkt-cmp-ref">—</span></h3></div>
+            <div class="pkt-cmp-head" id="pkt-cmp-head"></div>
             <div id="pkt-cmp-diff"></div>
           </section>
           <section class="pkt-sec">
@@ -499,7 +500,7 @@
   </div>
 </div>
 
-<script src="pktwin_ui.js?v=12"></script>
+<script src="pktwin_ui.js?v=13"></script>
 <script src="tactical.js?v=30"></script>
 </body>
 </html>

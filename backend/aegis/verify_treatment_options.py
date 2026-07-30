@@ -197,7 +197,93 @@ def main() -> int:
           all((d["dir"] == "worse") == d["text"].startswith("+") for d in risk_dirs),
           f"{len(risk_dirs)} risk deltas, direction matches sign")
 
-    print("\n=== 11. NARRATION IS ANCHORED TO THE CURVE ===")
+    print("\n=== 11. OPTIONS ARE NOT THE SAME SIMULATION ===")
+    print("      (they were: every arm was solved in the same baseline patient, so")
+    print("       the antibiotic curve came out byte-identical across all four paths")
+    print("       that give one, and four of five options rendered the same body)")
+    import hashlib as _h, json as _j
+    curves, metrics = {}, {}
+    for k, o in ok.items():
+        ab = [x for x in o["arms"] if x["drug_class"] == "antibiotic"]
+        if not ab:
+            continue
+        curves[k] = _h.sha256(_j.dumps(ab[0]["organs"], sort_keys=True).encode()).hexdigest()
+        metrics[k] = ab[0]["metrics"]
+    check("more than one path gives an antibiotic", len(curves) >= 3,
+          f"{len(curves)} antibiotic-bearing paths")
+    # NOT "every path must differ from every other". Two paths that differ only in
+    # a way this drug's kinetics do not depend on SHOULD come out identical — a
+    # pressor cannot change an antibiotic's disposition in a patient who is not
+    # shocked, because there is no redistribution to reverse. Demanding difference
+    # everywhere would be demanding the model invent one. What must hold is that
+    # where a coupling exists, it shows up.
+    check("paths differing in fluid volume produce different curves",
+          curves.get("antibiotics_only") != curves.get("standard_bundle"),
+          f"0 mL/kg/h vs {ok['standard_bundle']['protocol']['fluid_rate']:.0f} "
+          f"mL/kg/h → distinct curves")
+    check("more than one distinct curve across the option set",
+          len(set(curves.values())) >= 2,
+          f"{len(set(curves.values()))} distinct curves from {len(curves)} paths")
+
+    # The coupling that only exists in shock: give the SAME antibiotic to a
+    # hypotensive patient with and without a pressor and the curves must diverge.
+    shk = PatientState(weight_kg=78.0, egfr=90.0, map_mmhg=52.0)
+    shock_res = by_key(evaluate_options(
+        {"fluid_rate": 0.0, "vasopressor_dose": 0.0, "antibiotic_code": 3},
+        shk, {}, risk_level="HIGH"))
+    def curve_of(o):
+        ab = [x for x in o["arms"] if x["drug_class"] == "antibiotic"]
+        return _h.sha256(_j.dumps(ab[0]["organs"], sort_keys=True).encode()).hexdigest() if ab else None
+    check("in SHOCK, adding a pressor changes the antibiotic's disposition",
+          curve_of(shock_res["antibiotics_only"]) != curve_of(shock_res["vasopressor_forward"]),
+          "MAP 52 → pressor lifts the splanchnic/renal shunt, so delivery changes")
+    check("out of shock, a pressor correctly changes NOTHING for the antibiotic",
+          curves.get("recommended") == curves.get("standard_bundle"),
+          "MAP 78 with and without a pressor: identical, because there is no "
+          "redistribution to reverse — the model does not invent a difference")
+    # And the reason they differ has to be the modelled coupling, not noise.
+    from backend.aegis.treatment_options import patient_under
+    fl = patient_under({"fluid_rate": 30.0, "vasopressor_dose": 0.0}, healthy)
+    dry = patient_under({"fluid_rate": 0.0, "vasopressor_dose": 0.0}, healthy)
+    check("crystalloid expands the volume of distribution",
+          fl.vd_expansion > dry.vd_expansion + 0.05,
+          f"Vd ×{dry.vd_expansion:.3f} dry → ×{fl.vd_expansion:.3f} at 30 mL/kg/h")
+    shocked = PatientState(weight_kg=78.0, egfr=90.0, map_mmhg=52.0)
+    pressed = patient_under({"fluid_rate": 0.0, "vasopressor_dose": 0.12}, shocked)
+    check("a pressor raises MAP and lifts the shock redistribution",
+          pressed.map_mmhg > shocked.map_mmhg
+          and pressed.shock_index() < shocked.shock_index(),
+          f"MAP {shocked.map_mmhg:.0f}→{pressed.map_mmhg:.0f}, shock "
+          f"{shocked.shock_index():.2f}→{pressed.shock_index():.2f}")
+    check("a pressor does NOT also credit the patient with better kidneys",
+          pressed.egfr == shocked.egfr,
+          "renal perfusion is owned by the flow model; crediting eGFR too would "
+          "count the same recovery twice")
+
+    print("\n=== 12. THE COMPARISON SAYS WHERE THEY DIVERGE, HONESTLY ===")
+    div = {d["k"]: d["level"] for d in c["divergence"]}
+    check("divergence is reported for every axis that carries a number",
+          len(div) >= 6 and set(div) >= {"cover", "volume", "pressor", "serious"},
+          f"{len(div)}/{len(c['rows'])} axes: "
+          + " · ".join(f"{k}:{v}" for k, v in list(div.items())[:4]) + " …")
+    check("axes that genuinely differ are marked major",
+          div.get("volume") == "major" or div.get("pressor") == "major",
+          "volume/pressor differ across the option set")
+    # The load-bearing honesty check: if the antibiotic exposure really is nearly
+    # identical across paths, the summary must SAY so rather than implying a
+    # difference the model did not find.
+    cm = [m["cmax"] for m in metrics.values()]
+    near_identical = (max(cm) - min(cm)) / max(cm) < 0.02
+    if near_identical:
+        check("near-identical antibiotic exposure is disclosed, not implied away",
+              div.get("exposure") == "none" and "identical" in c["headline"],
+              c["headline"][:96])
+    else:
+        check("differing antibiotic exposure is not called identical",
+              div.get("exposure") != "none",
+              f"Cmax spread {(max(cm)-min(cm))/max(cm)*100:.1f}%")
+
+    print("\n=== 13. NARRATION IS ANCHORED TO THE CURVE ===")
     from backend.aegis.pk_narration import narrate
     rec = ok["recommended"]
     arm0 = rec["arms"][0]

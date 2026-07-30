@@ -96,6 +96,60 @@ def build_option_set(base: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------- #
+# The haemodynamic consequence of an option, fed back into its own PK.
+# --------------------------------------------------------------------------- #
+# Coefficients shared with backend/aegis/physiology.py so the what-if projection
+# and this one cannot disagree about what a pressor or a fluid bolus does:
+#   MAP = base + 0.8·(mL/kg/h crystalloid) + 130·(mcg/kg/min norepinephrine)
+MAP_PER_FLUID = 0.8
+MAP_PER_VASO = 130.0
+
+
+def patient_under(protocol: Dict[str, Any], base: PatientState) -> PatientState:
+    """The patient state an option PRODUCES — not the one it starts from.
+
+    This is the fix for a real defect: every option used to be projected into the
+    same baseline patient, so the antibiotic curve came out byte-identical whether
+    you gave it alone, with five litres of crystalloid, or with a pressor running.
+    Four of the five paths rendered the same body, which is exactly what it looked
+    like.
+
+    Treatments are not independent. Two couplings are modelled, both standard:
+
+      * A VASOPRESSOR RAISES MAP, which reverses the shock redistribution the model
+        already applies — renal and splanchnic beds reopen, so a drug cleared
+        renally is cleared faster and reaches the gut and liver differently.
+      * CRYSTALLOID EXPANDS THE VOLUME OF DISTRIBUTION of a hydrophilic drug,
+        because it distributes into the same extracellular water the drug does.
+        This is the documented mechanism of beta-lactam under-exposure after
+        aggressive fluid resuscitation in sepsis.
+
+    What is NOT modelled, and is stated rather than hidden: antibiotics do not
+    feed back on haemodynamics here, and there is no pharmacodynamic interaction
+    between drugs. The couplings run one way, from haemodynamic support into drug
+    kinetics.
+    """
+    fluid = float(protocol.get("fluid_rate", 0.0) or 0.0)
+    vaso = float(protocol.get("vasopressor_dose", 0.0) or 0.0)
+    # MAP the option achieves, capped at a normal ceiling — a pressor titrated to
+    # MAP ≥ 65 restores perfusion, it does not make a patient hypertensive here.
+    new_map = min(95.0, base.map_mmhg + MAP_PER_FLUID * fluid + MAP_PER_VASO * vaso)
+    # Extracellular water gains the retained fraction of one hour of crystalloid.
+    litres = fluid * base.weight_kg / 1000.0
+    ecw = 0.2 * base.weight_kg                      # ~20% of body weight, litres
+    expansion = 1.0 + (litres * 0.75) / max(ecw, 1e-6)
+    # eGFR is deliberately NOT raised when MAP improves. It is tempting — restoring
+    # perfusion does restore filtration — but the PBPK model already routes renal
+    # blood flow off MAP, so crediting the pressor a second time in the clearance
+    # term would count the same recovery twice. Same error as the covariate
+    # double-count in the adverse layer; the flow model owns this pathway.
+    return PatientState(
+        weight_kg=base.weight_kg, egfr=base.egfr, hepatic_factor=base.hepatic_factor,
+        map_mmhg=new_map, cardiac_output_factor=base.cardiac_output_factor,
+        albumin_g_dl=base.albumin_g_dl, vd_expansion=expansion)
+
+
+# --------------------------------------------------------------------------- #
 # Upsides / downsides, generated from the projection.
 # --------------------------------------------------------------------------- #
 def _point(text: str, kind: str, evidence: str = "") -> Dict[str, str]:
@@ -240,8 +294,12 @@ def evaluate_options(base_protocol: Dict[str, Any], patient: PatientState,
         ok, cert = cage.dispatch(PROTOCOL, proto, {
             "risk_level": risk_level, "vitals": {"map": mapv},
             "clinical_history": history})
-        pk = project_protocol(proto, patient, n_points=n_points)
-        adverse = (engine.project(pk["arms"], patient, history)
+        # Project this option in the patient IT produces. Without this every arm
+        # is solved in the same baseline body and the antibiotic curve comes out
+        # identical across every path that gives one.
+        pstate = patient_under(proto, patient)
+        pk = project_protocol(proto, pstate, n_points=n_points)
+        adverse = (engine.project(pk["arms"], pstate, history)
                    if pk["arms"] else None)
         up, down = _pk_points(pk["arms"], proto, risk_level)
         rup, rdown = _risk_points(adverse)
@@ -264,6 +322,9 @@ def evaluate_options(base_protocol: Dict[str, Any], patient: PatientState,
             "upsides": up, "downsides": down,
             "n_serious": (adverse or {}).get("summary", {}).get("n_serious", 0),
             "p_any_serious": (adverse or {}).get("summary", {}).get("p_any_serious", 0.0),
+            # The haemodynamic state this option creates, so the UI can show WHY
+            # two paths giving the same antibiotic produce different exposures.
+            "patient_under": pstate.to_dict(),
         })
 
     # The recommended option is the certified one when the cage allows it. This
@@ -409,9 +470,52 @@ def compare(options: List[Dict[str, Any]], reference: Optional[str] = None
                         "text": "no material difference on these axes"})
         return out
 
+    # Where do the options ACTUALLY diverge? Stating this is the difference between
+    # a comparison and a table that merely looks like one. Four paths giving the
+    # same antibiotic at the same dose produce nearly the same antibiotic curve —
+    # fluid flattens the peak a little, a pressor changes how fast tissue
+    # equilibrates but not the total, because AUC is dose/clearance and clearance
+    # is not flow-limited for these drugs. Saying so is more useful than implying a
+    # difference the model did not find.
+    def spread(key: str) -> Optional[float]:
+        vals = [cells[o["key"]][key]["v"] for o in options
+                if isinstance(cells[o["key"]][key]["v"], (int, float))
+                and cells[o["key"]][key]["v"] is not None]
+        vals = [v for v in vals if v is not None]
+        if len(vals) < 2:
+            return None
+        lo, hi = min(vals), max(vals)
+        if hi == 0:
+            return 0.0
+        return (hi - lo) / abs(hi)
+
+    diverge: List[Dict[str, str]] = []
+    for key, lab, _n in COMPARE_ROWS:
+        sp = spread(key)
+        if sp is None:
+            continue
+        if sp >= 0.15:
+            diverge.append({"k": key, "level": "major", "text": lab})
+        elif sp >= 0.02:
+            diverge.append({"k": key, "level": "minor", "text": lab})
+        else:
+            diverge.append({"k": key, "level": "none", "text": lab})
+    major = [d["text"] for d in diverge if d["level"] == "major"]
+    same = [d["text"] for d in diverge if d["level"] == "none"]
+    if major:
+        headline = ("These paths differ mainly in " +
+                    ", ".join(m.lower() for m in major[:3]) + ".")
+    else:
+        headline = "These paths are close on every axis measured here."
+    if same:
+        headline += (" They are effectively identical on " +
+                     ", ".join(s.lower() for s in same[:3]) + ".")
+
     return {
         "reference": ref["key"],
         "reference_label": ref["label"],
+        "divergence": diverge,
+        "headline": headline,
         "columns": [{"key": o["key"], "label": o["label"], "safe": o["safe"]}
                     for o in options],
         "rows": [{"key": k, "label": lab, "note": note,

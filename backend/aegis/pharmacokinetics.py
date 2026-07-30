@@ -294,6 +294,14 @@ class PatientState:
     map_mmhg: float = 75.0             # drives shock flow redistribution
     cardiac_output_factor: float = 1.0 # sepsis is often hyperdynamic
     albumin_g_dl: float = 3.5
+    # Multiplier on the volume of distribution. Resuscitation fluid does not just
+    # sit alongside a drug — crystalloid distributes into extracellular water,
+    # which IS the distribution volume of a hydrophilic antibiotic, so loading a
+    # patient dilutes the same dose into a larger space. This is the mechanism
+    # behind the well-documented beta-lactam under-exposure seen after aggressive
+    # fluid resuscitation in sepsis (Roberts et al., Clin Infect Dis 58:1072, the
+    # DALI study). Default 1.0 = no load.
+    vd_expansion: float = 1.0
 
     def shock_index(self) -> float:
         """0 at MAP ≥ 65, saturating to 1 by MAP 40."""
@@ -306,6 +314,7 @@ class PatientState:
                 "hepatic_factor": round(self.hepatic_factor, 2),
                 "map_mmhg": round(self.map_mmhg, 1),
                 "cardiac_output_factor": round(self.cardiac_output_factor, 2),
+                "vd_expansion": round(self.vd_expansion, 3),
                 "shock_index": round(self.shock_index(), 3)}
 
 
@@ -391,7 +400,23 @@ class PBPKModel:
         steady-state Vd equals the published Vd. The composite volume of
         distribution is pinned to the literature, not tuned."""
         bw = self.patient.weight_kg
-        vd_target = spec.vd_l_per_kg * bw
+        # Fluid loading expands the space a hydrophilic drug distributes into. A
+        # lipophilic drug already has a Vd many times extracellular water, so the
+        # same litre of crystalloid barely moves it — the expansion is scaled by
+        # how extracellular the drug is, rather than applied flat.
+        exp = float(self.patient.vd_expansion)
+        if exp != 1.0:
+            # How much of this drug's distribution volume behaves like extracellular
+            # water — that is the fraction fluid loading can dilute. The first
+            # version was a linear ramp hitting ZERO at Vd 0.7 L/kg, which is
+            # vancomycin's exact value: a hydrophilic glycopeptide with well
+            # documented Vd expansion in sepsis got no coupling at all. A reciprocal
+            # keeps it monotone and non-zero across the whole library — beta-lactams
+            # (~0.25 L/kg) fully extracellular, vancomycin most of the way, a
+            # lipophilic fluoroquinolone (1.25 L/kg) largely tissue-bound.
+            extracellular = max(0.15, min(1.0, 0.55 / max(spec.vd_l_per_kg, 1e-6)))
+            exp = 1.0 + (exp - 1.0) * extracellular
+        vd_target = spec.vd_l_per_kg * bw * exp
         shape_volume = sum(self.v[t] * spec.kp_rel.get(t, 0.5) for t in TISSUES)
         shape_volume += self.v_lung * spec.kp_rel.get("lung", 0.5)
         scale = (vd_target - self.v_blood) / shape_volume
