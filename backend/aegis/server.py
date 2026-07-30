@@ -231,6 +231,7 @@ from backend.aegis.apps.radar_app import RadarApp
 from backend.aegis.apps.resonance_app import ResonanceApp
 from backend.aegis.apps.triage_app import TriageApp
 from backend.aegis.initd import ServiceManager
+from backend.aegis.z3lock import PROVER as _PROVER, ProverUnavailable
 from backend.aegis.kernel.ebpf import Verifier as _EbpfVerifier
 from backend.aegis.kernel.ebpfdrv import DEFAULT_HELPERS as _HELPERS
 from backend.aegis.pkg import AppPackage, PackageRegistry
@@ -483,7 +484,19 @@ async def _drive_loop() -> None:
                 snap = await asyncio.to_thread(session.tick, vitals, source="simulator")
                 _apply_treatment_from(snap)
                 await _broadcast(snap)
+        except ProverUnavailable as exc:
+            # The safety prover is known-corrupted. Ticking on would keep asking a
+            # broken prover to certify treatments, which is the one thing this loop
+            # must not do — so it stops driving and leaves the wing read-only. The
+            # escalation itself (fail-closed, /aegis/health, process exit) belongs
+            # to z3lock; here we just stop generating work for a prover we do not
+            # trust. Restarting the process is the only way back.
+            print(f"[aegis] drive loop HALTED — {exc}", flush=True)
+            return
         except Exception as exc:  # pragma: no cover
+            # An ordinary transient failure: log and keep ticking. Z3 CONTEXT
+            # corruption is not this — it arrives as ProverUnavailable above, after
+            # z3lock has already escalated it.
             print(f"[aegis] drive loop error: {exc}")
         await asyncio.sleep(TICK_SECONDS)
 
@@ -517,11 +530,36 @@ async def _startup() -> None:
 # --- REST ------------------------------------------------------------------- #
 @app.get("/aegis/health")
 def health() -> Dict[str, Any]:
-    return {"status": "ok", "source": session.source,
+    # The prover's state is part of health, not a log line. If the shared Z3
+    # context is corrupted the OS can still serve reads, but it can no longer
+    # certify anything — and a monitor that only ever sees "ok" would never learn
+    # that the safety gate has stopped issuing verdicts.
+    prover = _PROVER.status()
+    return {"status": "ok" if prover["healthy"] else "degraded",
+            "source": session.source,
             "mode": "live" if _live_mode() else "demo",
             "persistence": bool(_db is not None and getattr(_db, "use_supabase", False)),
             "model_loaded": session.core.model is not None,
+            "prover": {"healthy": prover["healthy"],
+                       "fail_closed": prover["fail_closed"],
+                       "failures": prover["failures"],
+                       "last_error": prover["last_error"]},
             "schema_version": session.snapshot()["schema_version"]}
+
+
+@app.get("/aegis/health/prover")
+def health_prover() -> Dict[str, Any]:
+    """Full detail on the shared Z3 context, including the recent failure log.
+
+    Separate from /aegis/health because the failure log is the thing you want when
+    diagnosing, and noise in a liveness probe is the thing you do not."""
+    st = _PROVER.status()
+    st["note"] = (
+        "A corrupted Z3 context cannot be repaired in-process. While unhealthy the "
+        "safety cage fails CLOSED — no protocol is certified — and the simulator "
+        "drive loop halts rather than keep asking a prover it does not trust. "
+        "Recovery is a process restart.")
+    return st
 
 
 @app.get("/aegis/snapshot")

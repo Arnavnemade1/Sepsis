@@ -54,6 +54,16 @@ Z3_MODULES = [
 BUILDERS = {"Solver", "Optimize", "Real", "Bool", "Int", "Const", "Function"}
 
 
+def _raises(fn, exc_type) -> bool:
+    try:
+        fn()
+    except exc_type:
+        return True
+    except Exception:                                     # noqa: BLE001
+        return False
+    return False
+
+
 def check(name: str, ok: bool, detail: str = "") -> bool:
     _results.append((name, bool(ok), detail))
     print(f"  [{PASS if ok else FAIL}] {name}" + (f" — {detail}" if detail else ""))
@@ -196,6 +206,69 @@ def main() -> int:
     check("a penicillin-allergic pip-tazo order is still refused after the storm",
           not bad_ok and "Allergy" in bad_msg,
           bad_msg.split(":")[-1].strip()[:76])
+
+    # ---------------------------------------------------------------- #
+    print("\n=== 4. A CORRUPTED PROVER ESCALATES INSTEAD OF CARRYING ON ===")
+    print("      (the production failure kept ticking: a broken prover was asked to")
+    print("       certify treatments over and over, and logged a line each time)")
+    from backend.aegis import z3lock
+    from backend.aegis.z3lock import ProverUnavailable
+
+    # Never let the check exit the process it is running in.
+    saved_exit, saved_healthy = z3lock._EXIT_ENABLED, z3lock.PROVER.healthy
+    saved_err = z3lock.PROVER.last_error
+    z3lock._EXIT_ENABLED = False
+    try:
+        # Real Z3Exception instances — constructing one is inert, it does not touch
+        # the context. The distinction being tested is real: asking for a model
+        # after an unsat result raises Z3Exception too, and that is a caller bug,
+        # not a poisoned context, so it must NOT take the process down.
+        from z3.z3types import Z3Exception
+        corrupting = [Z3Exception("b'unreachable'"),
+                      Z3Exception("ast is not an expression"),
+                      Z3Exception("sort mismatch")]
+        benign = [Z3Exception("model is not available"),
+                  Z3Exception("Symbolic expressions cannot be cast to concrete "
+                              "Boolean values"),
+                  ValueError("bad input")]
+        check("context corruption is told apart from an ordinary modelling error",
+              all(z3lock._is_z3_corruption(e) for e in corrupting)
+              and not any(z3lock._is_z3_corruption(e) for e in benign),
+              f"{len(corrupting)} escalate, {len(benign)} do not "
+              "(a missing model is a caller bug, not a broken context)")
+
+        z3lock.PROVER.healthy = False
+        z3lock.PROVER.last_error = "Z3Exception: b'unreachable'"
+
+        # THE load-bearing property: a prover we do not trust must never be able to
+        # say yes. Not for a safe protocol, not for any protocol.
+        cage2 = NeuroSymbolicRuntime()
+        safe_proto = {"fluid_rate": 2.0, "vasopressor_dose": 0.0, "antibiotic_code": 3}
+        ok2, cert2 = cage2.dispatch(PROTOCOL, safe_proto,
+                                    {"risk_level": "HIGH", "vitals": {"map": 70.0},
+                                     "clinical_history": {}})
+        check("a poisoned prover cannot certify even a SAFE protocol",
+              ok2 is False and cert2.z3_status == "unavailable",
+              f"ok={ok2} status={cert2.z3_status}")
+        check("the refusal names the cause rather than looking like an outage",
+              "Prover_Context_Corrupted" in cert2.violations
+              and "PROVER UNAVAILABLE" in cert2.message,
+              cert2.message[:74])
+        check("the guard refuses to solve at all while unhealthy",
+              _raises(lambda: ProtocolVerifier().verify_protocol(
+                  hist, vitals, "HIGH", proto), ProverUnavailable),
+              "verify_protocol raises ProverUnavailable instead of returning a verdict")
+        st = z3lock.PROVER.status()
+        check("health reports degraded and fail-closed",
+              st["healthy"] is False and st["fail_closed"] is True,
+              f"failures={st['failures']} last={str(st['last_error'])[:40]}")
+    finally:
+        z3lock._EXIT_ENABLED = saved_exit
+        z3lock.PROVER.healthy = saved_healthy
+        z3lock.PROVER.last_error = saved_err
+
+    check("the prover is healthy again after the simulated fault is cleared",
+          z3lock.prover_healthy(), "test state restored")
 
     n_pass = sum(1 for _, ok_, _ in _results if ok_)
     n_tot = len(_results)

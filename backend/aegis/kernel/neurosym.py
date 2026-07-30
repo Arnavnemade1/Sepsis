@@ -42,7 +42,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from backend.aegis.z3lock import z3_guarded as _z3_guarded
+from backend.aegis.z3lock import ProverUnavailable, z3_guarded as _z3_guarded
 
 from z3 import (And, Bool, BoolVal, If, Implies, Int, Not, Or, Real, RealVal,
                 Solver, sat, unsat)
@@ -121,8 +121,30 @@ class NeuroSymbolicRuntime:
 
     def dispatch(self, egress: str, payload: Dict[str, Any],
                  context: Dict[str, Any]) -> Tuple[bool, SafetyCertificate]:
-        """Certify and gate. Returns (allowed, certificate). Unsafe -> quarantine."""
-        cert = self.certify(egress, payload, context)
+        """Certify and gate. Returns (allowed, certificate). Unsafe -> quarantine.
+
+        This is also the FAIL-CLOSED boundary for a corrupted prover. If the shared
+        Z3 context has been poisoned, the guard raises rather than solving on it,
+        and that has to become "not certified" here — not a 500 propagating up
+        through the bundle engine and the syscall gate. An exception that escapes
+        looks like an outage; a refusal is what it actually is, and the caller
+        already knows how to handle a refusal.
+
+        The distinction matters at the trap gate: `treat` maps an uncertified
+        protocol to EPERM and changes nothing, which is exactly right when the
+        prover cannot be trusted. It must never be possible for a broken prover to
+        produce `ok=True`."""
+        try:
+            cert = self.certify(egress, payload, context)
+        except ProverUnavailable as exc:
+            cert = SafetyCertificate(
+                False, egress, "unavailable",
+                f"PROVER UNAVAILABLE — refusing to certify: {exc}",
+                ["Prover_Context_Corrupted"])
+            self.blocked += 1
+            self.quarantine = (self.quarantine + [cert])[-128:]
+            self.recent = (self.recent + [cert])[-64:]
+            return False, cert
         if cert.ok:
             self.certified += 1
         else:
