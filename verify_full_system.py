@@ -445,6 +445,56 @@ def test_treatment_projection() -> None:
         f"exposure-response — this order contains neither anchored drug)")
 
 
+def test_z3_concurrency() -> None:
+    print("[20] Z3 concurrency — every prover entry point guarded, context survives")
+    import queue as _q, threading as _t
+    from backend.core.verifier import ProtocolVerifier
+    from backend.aegis.kernel.neurosym import PROTOCOL, NeuroSymbolicRuntime
+
+    assert hasattr(ProtocolVerifier.verify_protocol, "__wrapped__"), \
+        "verify_protocol must hold the Z3 lock — callers cannot be trusted to"
+    assert hasattr(ProtocolVerifier.safety_model, "__wrapped__"), \
+        "safety_model must hold the Z3 lock (it hands Z3 terms to proof export)"
+
+    hist = {"chf": True, "penicillin_allergy": True}
+    vit = {"map": 58.0, "systolic_bp": 84.0, "diastolic_bp": 45.0}
+    proto = {"fluid_rate": 4.0, "vasopressor_dose": 0.12, "antibiotic_code": 3}
+    errs: "_q.Queue[str]" = _q.Queue()
+
+    def direct():
+        try:
+            pv = ProtocolVerifier()
+            for _ in range(8):
+                pv.verify_protocol(hist, vit, "HIGH", proto)
+        except Exception as e:                     # noqa: BLE001
+            errs.put(f"direct: {type(e).__name__}: {e}")
+
+    def caged():
+        try:
+            cage = NeuroSymbolicRuntime()
+            for _ in range(8):
+                cage.dispatch(PROTOCOL, proto, {"risk_level": "HIGH", "vitals": vit,
+                                                "clinical_history": hist})
+        except Exception as e:                     # noqa: BLE001
+            errs.put(f"cage: {type(e).__name__}: {e}")
+
+    ts = [_t.Thread(target=direct if i % 2 else caged) for i in range(6)]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(timeout=90)
+    bad = []
+    while not errs.empty():
+        bad.append(errs.get())
+    assert not bad, f"Z3 context corrupted under concurrency: {bad[:2]}"
+    # And the prover still reaches the right verdict after the storm.
+    ok, msg, _ = ProtocolVerifier().verify_protocol(
+        {"penicillin_allergy": True}, {"map": 75.0}, "HIGH",
+        {"fluid_rate": 2.0, "vasopressor_dose": 0.0, "antibiotic_code": 1})
+    assert not ok and "Allergy" in msg, "allergy guard lost after concurrent load"
+    _ok("6 threads x 8 verifications, no context corruption; allergy guard intact")
+
+
 def main() -> int:
     print("=" * 64)
     print("AEGIS-OS — END-TO-END VERIFICATION")
@@ -454,7 +504,8 @@ def main() -> int:
              test_hrv_features_real, test_ppg_ecg_agreement, test_hrv_sepsis_pipeline,
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
-             test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection]
+             test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection,
+             test_z3_concurrency]
     failed = 0
     for t in tests:
         try:

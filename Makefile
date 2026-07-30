@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api verify-opts serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api verify-opts verify-z3 serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -16,6 +16,7 @@ help:
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
 	@echo "  make verify-opts  Treatment options: reasons traceable to numbers, cage refusals shown"
+	@echo "  make verify-z3    Z3 concurrency: every entry point guarded, no context corruption"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
@@ -63,6 +64,12 @@ verify-pk-api:
 # cage refuses is labelled refused with the cage's own words rather than hidden.
 verify-opts:
 	$(PY) -m backend.aegis.verify_treatment_options
+
+# The z3-solver bindings share one non-thread-safe global context. This walks the
+# AST for any PUBLIC function that builds Z3 terms without the lock, then hammers
+# the previously-unguarded paths from 8 threads to prove the context survives.
+verify-z3:
+	$(PY) -m backend.aegis.verify_z3_safety
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)

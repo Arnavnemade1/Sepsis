@@ -2,6 +2,17 @@ from dataclasses import dataclass
 from typing import Dict, Any, List, Tuple
 from z3 import *
 
+# The Z3 lock lives ON THE RESOURCE, not on each consumer. It used to be applied
+# only by callers (the neurosymbolic cage guarded `certify`), which meant any path
+# that reached this verifier directly ran unguarded — and two of them did: the
+# what-if scheduler and AegisCore's protocol synthesis, the latter on the simulator
+# drive loop. A background thread building Z3 while a request thread solved on the
+# same global context corrupts it, which surfaces as `Z3Exception: unreachable` and
+# an `ast is not an expression` crash inside a finalizer. Guarding here makes it
+# impossible for a caller to forget; the lock is re-entrant, so an already-guarded
+# caller nesting into it is free.
+from backend.aegis.z3lock import z3_guarded
+
 
 @dataclass
 class SafetyConstraint:
@@ -35,6 +46,7 @@ class ProtocolVerifier:
     # context plus the named invariants. Both the live verifier and the portable
     # proof-export path consume THIS, so they can never drift apart.
     # ------------------------------------------------------------------ #
+    @z3_guarded
     def safety_model(
         self,
         clinical_history: Dict[str, Any],
@@ -106,6 +118,7 @@ class ProtocolVerifier:
                 "is_sepsis_high": is_sepsis_high, "map": map_val}
         return bindings, constraints, vars
 
+    @z3_guarded
     def verify_protocol(
         self,
         clinical_history: Dict[str, Any],
