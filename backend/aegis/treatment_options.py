@@ -52,6 +52,7 @@ OPTION_LABEL = {
     "antibiotics_only": "Antibiotics only",
     "standard_bundle": "Standard bundle",
     "vasopressor_forward": "Vasopressor forward",
+    "extended_infusion": "Extended infusion",
     "recommended": "Recommended",
 }
 OPTION_NOTE = {
@@ -59,10 +60,38 @@ OPTION_NOTE = {
     "antibiotics_only": "Source control without haemodynamic support.",
     "standard_bundle": "Guideline crystalloid + broad-spectrum cover.",
     "vasopressor_forward": "Earlier pressor support, less volume.",
+    "extended_infusion": "Same dose and same bundle — run over 4 h instead of 30 min.",
     "recommended": "What this patient's certified protocol actually orders.",
 }
-OPTION_ORDER = ["recommended", "standard_bundle", "antibiotics_only",
-                "vasopressor_forward", "no_intervention"]
+OPTION_ORDER = ["recommended", "extended_infusion", "standard_bundle",
+                "antibiotics_only", "vasopressor_forward", "no_intervention"]
+
+# A beta-lactam given over four hours instead of thirty minutes is the same total
+# dose with a different exposure shape: lower peak, far more time above the MIC.
+# For a time-dependent antibiotic that is the property that kills bacteria, so it
+# is a live clinical strategy rather than a modelling curiosity — and it is the
+# option that makes the comparison mean something, because every other path gives
+# the same drug at the same rate and therefore lands almost the same curve.
+EXTENDED_INFUSION_MIN = 240.0
+
+
+def supports_extended_infusion(abx_code: int) -> bool:
+    """Is prolonged infusion a real lever for this antibiotic?
+
+    Only for TIME-DEPENDENT agents with a short half-life — the beta-lactams,
+    whose killing tracks the fraction of the interval spent above the MIC.
+    Stretching the infusion trades peak for exactly that fraction, which is why
+    prolonged-infusion piperacillin and meropenem are an actual ICU strategy.
+
+    It is deliberately NOT offered for vancomycin or a fluoroquinolone. Vancomycin
+    is driven by AUC24, which prolonging barely moves, and a fluoroquinolone is
+    concentration-dependent — flattening its peak makes it WORSE. Presenting the
+    option there would imply a lever that does not exist, which is a more expensive
+    kind of wrong than not offering it.
+    """
+    drug = ANTIBIOTIC_CODE_TO_DRUG.get(int(abx_code or 0))
+    spec = DRUGS.get(drug or "")
+    return bool(spec and spec.mic_mg_l and spec.t_half_h <= 3.0)
 
 
 def build_option_set(base: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -81,7 +110,7 @@ def build_option_set(base: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     # If the certified order carries no antibiotic, the alternatives still need one
     # to be meaningful comparisons; cefepime is the penicillin-sparing default.
     abx_alt = abx or 3
-    return {
+    opts: Dict[str, Dict[str, Any]] = {
         "no_intervention": {"fluid_rate": 0.0, "vasopressor_dose": 0.0,
                             "antibiotic_code": 0},
         "antibiotics_only": {"fluid_rate": 0.0, "vasopressor_dose": 0.0,
@@ -93,6 +122,12 @@ def build_option_set(base: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                                 "antibiotic_code": abx_alt},
         "recommended": dict(base),
     }
+    # Same bundle as the certified order, delivered slowly — only where that is a
+    # real lever for the drug in question.
+    if supports_extended_infusion(abx_alt):
+        opts["extended_infusion"] = dict(base, antibiotic_code=abx_alt,
+                                         infusion_min=EXTENDED_INFUSION_MIN)
+    return opts
 
 
 # --------------------------------------------------------------------------- #

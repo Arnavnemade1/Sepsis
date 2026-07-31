@@ -148,15 +148,30 @@ function makeShellMat() {
    after bolus — instead of the whole vessel brightening at once. Soft-edged on
    purpose: hard bands read as a barber pole rather than as flow. */
 function flowTexture() {
-  const c = document.createElement("canvas"); c.width = 128; c.height = 1;
+  // A train of discrete PACKETS, not one soft blob. The first version was a
+  // single wide gradient, which scrolled but read as a vessel gently brightening
+  // rather than as something travelling through it. Boluses with a sharp leading
+  // head and a fading tail, separated by near-dark gaps, are what the eye resolves
+  // as motion — and it is closer to the truth, since drug arrives in the pulsatile
+  // bolus a heartbeat delivers rather than as a smooth ribbon.
+  const W = 256;
+  const c = document.createElement("canvas"); c.width = W; c.height = 1;
   const ctx = c.getContext("2d");
-  const g = ctx.createLinearGradient(0, 0, 128, 0);
-  g.addColorStop(0.00, "rgba(255,255,255,0.10)");
-  g.addColorStop(0.34, "rgba(255,255,255,0.16)");
-  g.addColorStop(0.52, "rgba(255,255,255,1.00)");
-  g.addColorStop(0.68, "rgba(255,255,255,0.30)");
-  g.addColorStop(1.00, "rgba(255,255,255,0.10)");
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 1);
+  ctx.fillStyle = "rgba(255,255,255,0.05)";      // the gap: not black, still blood
+  ctx.fillRect(0, 0, W, 1);
+  const PACKETS = 3, span = W / PACKETS;
+  for (let p = 0; p < PACKETS; p++) {
+    const x0 = p * span;
+    const g = ctx.createLinearGradient(x0, 0, x0 + span, 0);
+    g.addColorStop(0.00, "rgba(255,255,255,0.04)");
+    g.addColorStop(0.30, "rgba(255,255,255,0.10)");
+    g.addColorStop(0.44, "rgba(255,255,255,0.95)");   // sharp head
+    g.addColorStop(0.50, "rgba(255,255,255,1.00)");
+    g.addColorStop(0.62, "rgba(255,255,255,0.55)");   // tail
+    g.addColorStop(0.82, "rgba(255,255,255,0.14)");
+    g.addColorStop(1.00, "rgba(255,255,255,0.04)");
+    ctx.fillStyle = g; ctx.fillRect(x0, 0, span, 1);
+  }
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
@@ -475,7 +490,7 @@ function applyLevels() {
       // in them" — stop competing for one channel.
       ramp(col, lvl, _c2);
       sg.flowMat.color.copy(_c2);
-      sg.flowMat.opacity = (sg.kind === "a" ? 0.62 : 0.42) * lvl;
+      sg.flowMat.opacity = (sg.kind === "a" ? 0.95 : 0.62) * lvl;
       sg.flow.visible = lvl > 0.004;
     });
   }
@@ -646,7 +661,7 @@ function buildVesselTree(root) {
       tex.needsUpdate = true;
       // Repeat by LENGTH, so a stripe is the same physical size in a carotid and
       // in a femoral. A shared repeat would make short vessels look fast.
-      tex.repeat.set(Math.max(2, Math.round(len * 5)), 1);
+      tex.repeat.set(Math.max(3, Math.round(len * 7)), 1);
       const flowMat = new THREE.MeshBasicMaterial({
         color: new THREE.Color(0x5fb3d4), map: tex, transparent: true,
         opacity: 0.0, blending: THREE.AdditiveBlending, depthWrite: false });
@@ -1023,7 +1038,11 @@ function animate() {
     for (let i = 0; i < vesselTree.segs.length; i++) {
       const sg = vesselTree.segs[i];
       if (!sg.flow || !sg.flow.visible) continue;
-      const speed = 0.16 + 0.34 * (sg.level || 0);
+      // Arterial flow is faster than venous return, which is true and also reads
+      // correctly: the outbound side looks driven, the return side looks like it
+      // is draining. Speed scales with load so a vessel carrying more drug looks
+      // like it is moving more, not merely glowing more.
+      const speed = (sg.kind === "a" ? 0.42 : 0.26) + 0.55 * (sg.level || 0);
       sg.tex.offset.x += dt * speed * (sg.kind === "a" ? -1 : 1);
     }
   }

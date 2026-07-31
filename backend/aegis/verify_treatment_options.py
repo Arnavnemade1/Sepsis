@@ -48,10 +48,16 @@ def main() -> int:
     print("\n=== 1. THE OPTION SET ===")
     res = evaluate_options(base, healthy, {}, risk_level="HIGH")
     ok = by_key(res)
-    check("all five candidate paths are returned",
-          set(ok) == set(OPTION_ORDER), ", ".join(o["label"] for o in res["options"]))
-    check("the names match the what-if card's candidates",
-          set(ok) == set(OPTION_LABEL), "no divergent vocabulary between the views")
+    # The set is no longer a fixed five: extended infusion is offered only where
+    # the pharmacology supports it (see 11b). What must always hold is that the
+    # CORE paths are present and that nothing appears under an invented name.
+    CORE = {"recommended", "standard_bundle", "antibiotics_only",
+            "vasopressor_forward", "no_intervention"}
+    check("every core candidate path is returned",
+          CORE <= set(ok), ", ".join(o["label"] for o in res["options"]))
+    check("no path appears under a name the what-if card does not know",
+          set(ok) <= set(OPTION_LABEL) and set(ok) <= set(OPTION_ORDER),
+          "no divergent vocabulary between the views")
     check("the recommended path is the patient's certified order",
           ok["recommended"]["protocol"] == base, f"{ok['recommended']['protocol']}")
     check("every option carries a Z3 verdict from the real cage",
@@ -259,6 +265,64 @@ def main() -> int:
           pressed.egfr == shocked.egfr,
           "renal perfusion is owned by the flow model; crediting eGFR too would "
           "count the same recovery twice")
+
+    print("\n=== 11b. AT LEAST ONE PATH IS PHARMACOLOGICALLY DISTINCT ===")
+    print("      (haemodynamic variation alone left four paths giving the same drug")
+    print("       at the same rate, so their curves landed within ~1% of each other")
+    print("       — a comparison in name only)")
+    from backend.aegis.treatment_options import supports_extended_infusion
+    # The base order in this suite is VANCOMYCIN, and prolonged infusion is not a
+    # real lever for it — AUC24 drives vancomycin, and stretching the infusion
+    # barely moves that. It is also actively wrong for a fluoroquinolone, which is
+    # concentration-dependent. Offering the option there would imply a lever that
+    # does not exist, so the option is gated on the pharmacology.
+    check("extended infusion is offered for time-dependent beta-lactams",
+          all(supports_extended_infusion(c) for c in (1, 3, 4)),
+          "pip-tazo, cefepime, meropenem — killing tracks time above MIC")
+    check("…and withheld where it would mislead",
+          not supports_extended_infusion(2) and not supports_extended_infusion(5),
+          "vancomycin is AUC-driven; a fluoroquinolone is concentration-dependent, "
+          "so flattening its peak would make it worse")
+    check("the vancomycin option set therefore omits it",
+          "extended_infusion" not in ok,
+          "no phantom lever on a drug it does not apply to")
+
+    # Now exercise it where it IS real.
+    beta = by_key(evaluate_options(
+        {"fluid_rate": 1.0, "vasopressor_dose": 0.0, "antibiotic_code": 3},
+        healthy, {}, risk_level="HIGH"))
+    ext = beta.get("extended_infusion")
+    check("a beta-lactam order does offer it", ext is not None and bool(ext["arms"]),
+          "cefepime: same dose over 4 h instead of 30 min")
+    if ext:
+        e_ab = [x for x in ext["arms"] if x["drug_class"] == "antibiotic"][0]
+        r_ab = [x for x in beta["antibiotics_only"]["arms"]
+                if x["drug_class"] == "antibiotic"][0]
+        # Prolonged infusion trades peak for time above MIC. Both directions must
+        # hold — a lower peak alone could just be a smaller dose.
+        check("extended infusion lowers the peak substantially",
+              e_ab["metrics"]["cmax"] < r_ab["metrics"]["cmax"] * 0.75,
+              f"Cmax {r_ab['metrics']['cmax']:.0f} → {e_ab['metrics']['cmax']:.0f} "
+              f"{e_ab['unit']}")
+        if e_ab["metrics"].get("pct_ft_above_mic") is not None:
+            check("…and raises time above MIC, which is what kills bacteria",
+                  e_ab["metrics"]["pct_ft_above_mic"] >
+                  r_ab["metrics"]["pct_ft_above_mic"],
+                  f"%fT>MIC {r_ab['metrics']['pct_ft_above_mic']:.0f}% → "
+                  f"{e_ab['metrics']['pct_ft_above_mic']:.0f}%")
+        check("the same total dose is given either way",
+              abs(e_ab["metrics"]["dose_total_mg"]
+                  - r_ab["metrics"]["dose_total_mg"]) < 1.0,
+              f"{e_ab['metrics']['dose_total_mg']:.0f} mg both — the difference is "
+              "delivery, not quantity")
+        # And the whole point: the option set must now span a real range.
+        cm_all = [x["metrics"]["cmax"] for o in beta.values()
+                  for x in o["arms"] if x["drug_class"] == "antibiotic"]
+        spread = (max(cm_all) - min(cm_all)) / max(cm_all)
+        check("peak exposure now spans a clinically meaningful range",
+              spread > 0.20,
+              f"{min(cm_all):.0f}–{max(cm_all):.0f} across the option set "
+              f"({spread*100:.0f}% spread)")
 
     print("\n=== 12. THE COMPARISON SAYS WHERE THEY DIVERGE, HONESTLY ===")
     div = {d["k"]: d["level"] for d in c["divergence"]}

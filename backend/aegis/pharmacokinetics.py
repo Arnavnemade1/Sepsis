@@ -962,7 +962,22 @@ def project_protocol(protocol: Dict[str, Any], patient: PatientState,
     code = int(protocol.get("antibiotic_code", 0) or 0)
     drug = ANTIBIOTIC_CODE_TO_DRUG.get(code)
     if drug:
-        arms.append(model.project(drug, n_points=n_points).to_dict())
+        # HOW a beta-lactam is given changes its exposure profile as much as how
+        # much is given. A protocol may therefore override the infusion duration:
+        # the same total dose run over four hours instead of thirty minutes trades
+        # peak concentration for time above MIC, which for a time-dependent
+        # antibiotic is the property that kills bacteria. Prolonged infusion is a
+        # live clinical strategy, not a modelling flourish.
+        reg = None
+        inf_min = protocol.get("infusion_min")
+        if inf_min:
+            base_reg = DRUGS[drug].regimen
+            reg = Regimen(dose_mg=base_reg.dose_mg, dose_per_kg=base_reg.dose_per_kg,
+                          infusion_min=float(inf_min), interval_h=base_reg.interval_h,
+                          n_doses=base_reg.n_doses,
+                          label=(f"{base_reg.label.split(' (')[0]} — "
+                                 f"{float(inf_min)/60:.0f} h extended infusion"))
+        arms.append(model.project(drug, regimen=reg, n_points=n_points).to_dict())
 
     vaso = float(protocol.get("vasopressor_dose", 0.0) or 0.0)
     if vaso > 0:
