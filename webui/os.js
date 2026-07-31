@@ -299,6 +299,13 @@ function renderAgents(d) {
 
 /* ---------------- WHAT-IF ---------------- */
 let _whatifState = null;   // {whatif, vitals, risk} kept for the drill-down modal
+/* One of the candidates is literally keyed "recommended" (the optimiser's evolved
+   protocol) while whatif.recommended names whichever candidate scored highest —
+   so the list could show a row called "recommended" that was NOT the recommended
+   one. The key stays as-is because the PK session looks options up by it; only the
+   label changes, and the actual pick is marked with a badge instead of a word. */
+const CAND_LABEL = { recommended: "optimiser path" };
+function candLabel(n) { return CAND_LABEL[n] || n.replace(/_/g, " "); }
 function renderWhatif(d) {
   const w = d.whatif;
   const box = $("#whatif-list");
@@ -317,20 +324,29 @@ function renderWhatif(d) {
   const order = w.candidates.map((c, i) => ({ c, i })).sort((a, b) => {
     if ((a.c.name === w.recommended) !== (b.c.name === w.recommended)) return a.c.name === w.recommended ? -1 : 1;
     if (a.c.safe !== b.c.safe) return a.c.safe ? -1 : 1;
-    return num(a.c.summary?.final_risk) - num(b.c.summary?.final_risk);
+    return num(a.c.summary?.mean_risk) - num(b.c.summary?.mean_risk);
   });
+  // These rows used to show final_risk, which is the ONE number every intervention
+  // converges on — antibiotics-only and the full bundle both end near 5%, so four
+  // distinct paths printed an identical figure and looked like the same simulation.
+  // What separates them is the burden carried across the horizon (mean risk) and how
+  // far the pressure is allowed to fall on the way (MAP nadir). Sort and display on
+  // those; the endpoint is still in the modal for anyone who wants it.
   box.innerHTML =
-    `<div class="whatif-hint">${w.candidates.length} paths · ${w.horizon_steps || "—"}-step horizon · <b>tap a row for the full projection</b></div>` +
+    `<div class="whatif-hint">${w.candidates.length} paths · ${w.horizon_steps || "—"}-step horizon · mean risk over the horizon, and the MAP nadir on the way · <b>tap a row for the full projection</b></div>` +
     order.map(({ c, i }) => {
       const best = c.name === w.recommended, s = c.summary || {};
-      const fr = num(s.final_risk), delta = fr - curRisk;
+      const mr = num(s.mean_risk), delta = mr - curRisk;
       const dCls = delta < -0.001 ? "down" : delta > 0.001 ? "up" : "flat";
       const dTxt = delta < -0.001 ? `▼${Math.abs(delta*100)|0}` : delta > 0.001 ? `▲${(delta*100)|0}` : "◦";
+      const nadir = s.min_map;
+      const nCls = nadir == null ? "" : nadir < 65 ? " low" : "";
       return `<div class="cand ${best ? "best" : ""} ${c.safe ? "" : "unsafe"}" data-cand="${i}" role="button" tabindex="0">
       <span class="cand-dot ${c.safe ? (best ? "rec" : "safe") : "no"}"></span>
-      <span class="cand-name">${c.name.replace(/_/g, " ")}</span>
+      <span class="cand-name" title="${candLabel(c.name)}${best ? " — highest-scoring safe path" : ""}">${candLabel(c.name)}</span>
       <span class="cand-spark"><canvas data-traj='${JSON.stringify((c.trajectory||[]).map(t=>t.projected_risk))}'></canvas></span>
-      <span class="cand-risk"><span class="cand-delta ${dCls}">${dTxt}</span><b>${(fr*100)|0}%</b></span>
+      ${nadir == null ? "" : `<span class="cand-nadir${nCls}" title="lowest mean arterial pressure reached on this path">${Math.round(nadir)}</span>`}
+      <span class="cand-risk" title="mean projected risk across the horizon"><span class="cand-delta ${dCls}">${dTxt}</span><b>${(mr*100)|0}%</b></span>
       <span class="cand-chev">›</span>
     </div>`;
     }).join("");
@@ -447,7 +463,7 @@ function whatifModalHTML(c, st) {
       <div class="wm-head-l">
         <span class="wm-sigil">⑂</span>
         <div>
-          <div class="wm-title">${c.name.replace(/_/g, " ")}</div>
+          <div class="wm-title">${candLabel(c.name)}</div>
           <div class="wm-sub">projected treatment twin · ${st.whatif.horizon_steps || traj.length} steps · severity ${st.whatif.severity ?? "—"}</div>
         </div>
       </div>

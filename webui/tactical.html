@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=42" />
+<link rel="stylesheet" href="tactical.css?v=50" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -148,6 +148,23 @@
         <section class="sh-card">
           <div class="sh-card-h"><h2>Where it falls short</h2><span id="sh-gap-meta"></span></div>
           <div id="sh-gaps" class="sh-list"></div>
+        </section>
+        <section class="sh-card sh-card-wide">
+          <div class="sh-card-h"><h2>Generalisation</h2>
+            <span>the number that predicts whether it survives deployment</span></div>
+          <div id="sh-gen" class="sh-gen"></div>
+        </section>
+        <section class="sh-card">
+          <div class="sh-card-h"><h2>How it got here</h2>
+            <span>every rung measured the same way</span></div>
+          <div id="sh-ladder" class="sh-ladder"></div>
+          <p class="sh-note">The hyperdimensional encoder is not a rung here. It scores
+            0.696, but on an internal split &mdash; ranking it against cross-hospital
+            numbers would show it winning something it was never measured on.</p>
+        </section>
+        <section class="sh-card">
+          <div class="sh-card-h"><h2>Last improvement run</h2><span id="sh-imp-meta"></span></div>
+          <div id="sh-improve"></div>
         </section>
         <section class="sh-card sh-card-wide">
           <div class="sh-card-h"><h2>Subsystem status</h2><span>live</span></div>
@@ -469,6 +486,6 @@
 </div>
 
 <script src="pktwin_ui.js?v=13"></script>
-<script src="tactical.js?v=33"></script>
+<script src="tactical.js?v=37"></script>
 </body>
 </html>

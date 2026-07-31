@@ -155,8 +155,31 @@ function bedCellHTML(b){
     '<span class="bed-risk">P <b>0.00</b><i class="bed-trend"></i></span></div>'+
     '<div class="bed-sys">—</div>'+
     '<div class="bed-driver"></div>'+
+    '<div class="bed-spark"><svg viewBox="0 0 100 100" preserveAspectRatio="none">'+
+      '<line class="sp-thr" x1="0" y1="30" x2="100" y2="30"/>'+
+      '<path class="sp-fill"/><path class="sp-line"/></svg>'+
+      '<em class="sp-k">risk trajectory · last <b>0</b> ticks</em>'+
+      '<em class="sp-thrk">critical 0.70</em></div>'+
     '<div class="bed-vitals"></div>'+
     '<div class="bed-bar"><i></i></div>';
+}
+/* The focus card is two rows tall, and until now the extra height was dead space
+   with the vitals shoved to the bottom by margin-top:auto. The card that earns
+   twice the area should show the one thing the small cards cannot: where the risk
+   has been going, not just where it is. riskHist already keeps 24 live samples. */
+function drawSpark(el,id){
+  var h=riskHist[id]||[], svg=el.querySelector(".bed-spark");
+  if(!svg) return;
+  var k=svg.querySelector(".sp-k b"); if(k) k.textContent=h.length;
+  var line=svg.querySelector(".sp-line"), fill=svg.querySelector(".sp-fill");
+  if(h.length<2){ line.setAttribute("d",""); fill.setAttribute("d",""); return; }
+  var n=h.length, d="";
+  for(var i=0;i<n;i++){
+    var x=(i/(n-1))*100, y=100-clamp(h[i],0,1)*100;
+    d+=(i?" L":"M")+x.toFixed(2)+" "+y.toFixed(2);
+  }
+  line.setAttribute("d",d);
+  fill.setAttribute("d",d+" L100 100 L0 100 Z");
 }
 function updateBed(el,b,isFocus){
   var tier=tierOf(b.fused_risk), en=b.enterprise, ed=b.edge;
@@ -184,6 +207,7 @@ function updateBed(el,b,isFocus){
     vital("WBC",en.wbc,1)+vital("HRV",ed.hrv_ms,0);
   el.querySelector(".bed-vitals").innerHTML=isFocus?full:compact;
   el.querySelector(".bed-bar i").style.width=clamp(b.fused_risk*100,2,100)+"%";
+  if(isFocus) drawSpark(el,b.bed_id);
 }
 function renderGrid(beds){
   var host=$("opgrid"); if(!host||!beds) return;
@@ -1667,6 +1691,51 @@ function renderHealth(d){
   $("sh-str-meta").textContent=(d.strengths||[]).length+" findings";
   $("sh-gap-meta").textContent=(d.gaps||[]).length+" findings";
 
+  // ---- generalisation: internal vs external, side by side ----
+  var g=d.generalization;
+  if(g){
+    var f=function(v){ return Math.max(0,Math.min(1,(v-0.5)/0.5))*100; };
+    $("sh-gen").innerHTML=
+      '<div class="sh-gen-row"><span class="sh-gen-k">Inside the training hospital</span>'+
+        '<span class="sh-gen-track"><i style="width:'+f(g.internal_auroc).toFixed(1)+'%"></i></span>'+
+        '<b>'+g.internal_auroc.toFixed(3)+'</b></div>'+
+      '<div class="sh-gen-row ext"><span class="sh-gen-k">A hospital it has never seen</span>'+
+        '<span class="sh-gen-track"><i style="width:'+f(g.external_auroc).toFixed(1)+'%"></i></span>'+
+        '<b>'+g.external_auroc.toFixed(3)+'</b></div>'+
+      '<div class="sh-gen-note"><b>−'+g.gap.toFixed(3)+' AUROC</b> is what moving hospital '+
+        'costs. '+esc(g.note)+'. The upper bar is the figure a paper would quote; the '+
+        'lower one is what a new ICU would actually get.</div>';
+  }
+
+  // ---- the ladder: every model on the same protocol ----
+  var lad=d.ladder||[];
+  if(lad.length){
+    var floor=lad[0].auroc;
+    $("sh-ladder").innerHTML=lad.map(function(x,i){
+      var w=Math.max(0,Math.min(1,(x.auroc-0.5)/0.5))*100;
+      var dv=x.auroc-floor;
+      return '<div class="sh-rung'+(x.production?" on":"")+'">'+
+        '<div class="sh-rung-t"><span>'+esc(x.name)+'</span>'+
+          (x.production?'<em>production</em>':'')+
+          (i&&dv>0?'<u>+'+dv.toFixed(3)+'</u>':'')+
+          '<b>'+x.auroc.toFixed(3)+'</b></div>'+
+        '<div class="sh-rung-bar"><i style="width:'+w.toFixed(1)+'%"></i></div>'+
+        '<span class="sh-rung-s">'+esc(x.scope)+' · '+esc(x.note)+'</span></div>';
+    }).join("");
+  }
+
+  // ---- improvement attempts, including the ones that failed ----
+  var imp=d.improvement;
+  if(imp){
+    $("sh-imp-meta").textContent=imp.trials+" mutations tried";
+    $("sh-improve").innerHTML=
+      '<div class="sh-imp-n"><b>'+imp.accepted+'</b> of '+imp.trials+' accepted</div>'+
+      '<div class="sh-imp-v">'+esc(imp.verdict||"")+'</div>'+
+      '<div class="sh-imp-s">A search that promotes nothing is the gate working, not '+
+      'a gap in it — every candidate was measured on locked patients the search never '+
+      'saw, and none beat the shipped configuration.</div>';
+  }
+
   // ---- live subsystem state ----
   $("sh-subsystems").innerHTML=(d.subsystems||[]).map(function(sub){
     return '<div class="sh-sub'+(sub.ok?"":" bad")+'"><i></i><div>'+
@@ -1702,11 +1771,14 @@ function renderHealth(d){
     }).join("");
   }
 
-  var ev=d.evaluation||{};
-  $("sh-foot").textContent=(d.honesty||"")+
-    (ev.protocol?"  Protocol: "+ev.protocol+".":"")+
-    (ev.generated?"  Last run "+ev.generated+".":"")+
-    (ev.bootstrap?"  Intervals from "+ev.bootstrap+" bootstrap resamples.":"");
+  // The honesty paragraph already states the protocol in prose; repeating ev.protocol
+  // after it said the same thing twice. Provenance only on the second line.
+  var ev=d.evaluation||{}, prov=[];
+  if(ev.generated) prov.push("last run "+ev.generated);
+  if(ev.bootstrap) prov.push(ev.bootstrap+" bootstrap resamples");
+  if(d.model_id) prov.push(d.model_id);
+  $("sh-foot").innerHTML=esc(d.honesty||"")+
+    (prov.length?'<i>'+esc(prov.join("  ·  "))+'</i>':'');
 }
 
 /* ============================================================

@@ -41,6 +41,10 @@ _ART = os.path.join(_ROOT, "artifacts")
 PRODUCTION = "stacked"
 BASELINE = "gbm"
 
+# Computed once per report and read by the findings pass, which needs it but is
+# called before the payload is assembled.
+_gen_cache: Dict[str, Any] = {}
+
 
 def _load(name: str) -> Optional[Dict[str, Any]]:
     try:
@@ -179,12 +183,96 @@ def _findings(prod: Dict[str, Any], base: Dict[str, Any],
                      "detail": f"{prod['false_alarm_rate']*100:.0f}% vs "
                                f"{base['false_alarm_rate']*100:.0f}% — the "
                                "ensemble buys specificity, not just AUROC"})
+    gen = _gen_cache.get("g")
+    if gen and gen["gap"] > 0.05:
+        bad.append({"title": f"Loses {gen['gap']:.3f} AUROC moving to a new hospital",
+                    "detail": f"{gen['internal_auroc']:.3f} inside the training site "
+                              f"against {gen['external_auroc']:.3f} across sites — "
+                              "the internal figure is the one a paper would quote, "
+                              "and it is not the one a new ICU would get"})
     if op and op.get("oof_false_alarm_rate") is not None:
         good.append({"title": "Alarm thresholds derived from data, not chosen",
                      "detail": f"tuned out-of-fold to hold false alarms under "
                                f"{op.get('max_false_alarm_rate', 0.15)*100:.0f}% "
                                f"(achieved {op['oof_false_alarm_rate']*100:.1f}%)"})
     return good, bad
+
+
+def _generalization(rig: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Internal split vs external hospital — the number that actually predicts
+    whether a clinical model survives deployment.
+
+    A model tuned and tested inside one site flatters itself. The distance between
+    that figure and the cross-hospital one is the validation gap, and it is the
+    single most common reason a published AUROC does not reproduce at the bedside.
+    Showing both side by side is the least flattering and most useful thing this
+    page does — the internal number is the one a paper would quote.
+    """
+    comp = _load("compare_wearable.json")
+    if not comp:
+        return None
+    internal = comp.get(BASELINE) or {}
+    ext = _pooled(rig, BASELINE)
+    if not internal.get("auroc") or not ext.get("auroc"):
+        return None
+    gap = internal["auroc"] - ext["auroc"]
+    return {
+        "internal_auroc": round(float(internal["auroc"]), 4),
+        "external_auroc": ext["auroc"],
+        "gap": round(gap, 4),
+        "model": BASELINE,
+        "note": ("measured on the same model, same features — the only difference "
+                 "is whether the test patients came from the training hospital"),
+    }
+
+
+def _ladder(rig: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every model on the SAME cross-hospital protocol, worst to best.
+
+    This is what "where it improves" looks like when there is no time series to
+    plot: the ladder the production model had to climb, each rung measured the
+    same way.
+    """
+    # SAME PROTOCOL ONLY. The hyperdimensional encoder was measured on an internal
+    # split (0.696) and the gradient-boosting baseline across hospitals (0.661);
+    # putting both in one ranked bar chart would show HDC winning, which is not a
+    # thing this evaluation says. Two rungs measured identically beat three that
+    # cannot be compared — a ladder whose rungs mean different things is a false
+    # comparison however carefully the scope is labelled underneath.
+    out: List[Dict[str, Any]] = []
+    for key, label in ((BASELINE, "Gradient boosting"),
+                       (PRODUCTION, "Stacked ensemble")):
+        p = _pooled(rig, key)
+        if p.get("auroc"):
+            out.append({"name": label, "key": key, "auroc": p["auroc"],
+                        "scope": "cross-hospital, both directions",
+                        "note": ("the baseline it has to beat" if key == BASELINE
+                                 else "in production"),
+                        "production": key == PRODUCTION})
+    return out
+
+
+def _improvement() -> Optional[Dict[str, Any]]:
+    """The record of attempts to make it better — including the failures.
+
+    A page that only showed successful improvements would imply the model has been
+    getting steadily better. It has not: the last automated search ran sixteen
+    mutations against a locked gate and promoted none of them. That is the honest
+    state, and the refusal is the machinery working rather than a gap in it.
+    """
+    led = _load("self_improve_ledger.json")
+    if not led:
+        return None
+    trials = led.get("trials") or []
+    accepted = [t for t in trials if t.get("accepted")]
+    return {
+        "trials": len(trials),
+        "accepted": len(accepted),
+        "promoted": bool(led.get("promoted")),
+        "baseline_auroc": round(float(led.get("baseline_search_auroc", 0)), 4),
+        "champion_auroc": round(float(led.get("champion_search_auroc", 0)), 4),
+        "verdict": led.get("verdict"),
+    }
 
 
 def report() -> Dict[str, Any]:
@@ -198,6 +286,7 @@ def report() -> Dict[str, Any]:
 
     prod = _pooled(rig, PRODUCTION)
     base = _pooled(rig, BASELINE)
+    _gen_cache["g"] = _generalization(rig)
     good, bad = _findings(prod, base, op)
     meta = rig.get("meta") or {}
 
@@ -223,6 +312,9 @@ def report() -> Dict[str, Any]:
             "ece": prod.get("ece"), "utility": prod.get("utility"),
         },
         "directions": prod.get("directions", []),
+        "ladder": _ladder(rig),
+        "generalization": _generalization(rig),
+        "improvement": _improvement(),
         "strengths": good,
         "gaps": bad,
         "evaluation": {

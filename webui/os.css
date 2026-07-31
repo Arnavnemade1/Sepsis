@@ -542,6 +542,13 @@ b{color:var(--ink)}
 .cand-delta.down{color:var(--ok)}
 .cand-delta.up{color:var(--crit)}
 .cand-delta.flat{color:var(--dim)}
+/* MAP nadir — the second axis these paths actually differ on. Amber below 65,
+   the threshold the protocol itself treats as the floor. */
+.cand-nadir{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:var(--dim);
+  border:1px solid var(--line);border-radius:5px;padding:1px 5px;letter-spacing:.02em;
+  font-variant-numeric:tabular-nums}
+.cand-nadir::after{content:" MAP";font-size:8.5px;letter-spacing:.06em;opacity:.65}
+.cand-nadir.low{color:var(--med);border-color:rgba(var(--med-rgb),.32)}
 .cand-chev{flex:0 0 auto;color:var(--dim);font-size:17px;line-height:1;transition:.2s}
 
 /* ===================== WHAT-IF PROJECTION MODAL ===================== */

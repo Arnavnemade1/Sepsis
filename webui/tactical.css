@@ -198,7 +198,11 @@ b{font-weight:700}
    and when the floors cannot be met the board scrolls instead of overlapping itself. */
 .board{flex:1 1 auto;min-height:0;display:grid;gap:12px;padding:12px 20px;overflow-y:auto;overflow-x:hidden;
   grid-template-columns:1fr 1fr 1fr;
-  grid-template-rows:minmax(230px,1.34fr) minmax(190px,1fr);
+  /* The ops row must never be a fraction of a bed row high. Three 116px rows plus
+     the grid's own gaps and padding is 376, plus the 41px card header = 417. Below
+     that the third row of beds gets sliced and the panel reads as broken rather
+     than scrolled — and the row height was drifting with the terminal below it. */
+  grid-template-rows:minmax(417px,1.34fr) minmax(190px,1fr);
   grid-template-areas:"ops ops ops" "learn learn blind"}
 .board::-webkit-scrollbar{width:8px}
 .board::-webkit-scrollbar-track{background:transparent}
@@ -214,8 +218,14 @@ b{font-weight:700}
    line-height and painted over one another. That is the "text floating outside the
    box". A minimum row height plus non-shrinking children fixes it at the cause;
    the grid scrolls if the panel is genuinely too short. */
-.opgrid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);
-  grid-auto-rows:minmax(118px,1fr);grid-auto-flow:row dense;gap:6px;padding:8px;
+/* Row minimum is sized to a watch/critical card — top + system + DRIVER + vitals +
+   bar. A stable card is one line shorter; sizing to it clipped the risk bar off
+   every alarming bed, which are the ones anybody is looking at.
+   Five columns, not four. The focus bed spans 2x2, so a 12-bed cohort needs
+   4 + 11 = 15 cells — which is exactly three rows of five, and was four ragged
+   rows of four with the last one sliced in half by the panel edge. */
+.opgrid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(5,1fr);
+  grid-auto-rows:minmax(116px,1fr);grid-auto-flow:row dense;gap:6px;padding:8px;
   overflow-y:auto}
 .bed{position:relative;min-width:0;min-height:0;border:1px solid var(--hair);border-radius:var(--r-sm);cursor:pointer;
   background:linear-gradient(165deg,rgba(160,180,230,.05),rgba(255,255,255,.008));
@@ -233,6 +243,23 @@ b{font-weight:700}
 .bed.critical:hover{border-color:rgba(var(--high-rgb),.75)}
 .bed.focus{grid-column:span 2;grid-row:span 2;
   box-shadow:inset 0 0 0 1px rgba(var(--high-rgb),.18),0 18px 50px -24px rgba(var(--high-rgb),.65)}
+/* Risk trajectory — only the focus card is tall enough to carry it, and only the
+   focus card has the dead space that made it necessary. Threshold drawn at 0.70
+   so the line is read against the number that actually triggers, not against 1.0. */
+.bed-spark{display:none}
+.bed.focus .bed-spark{display:block;position:relative;flex:1 1 auto;min-height:0;
+  margin:5px 0 2px}
+.bed-spark svg{width:100%;height:100%;display:block;overflow:visible}
+.bed-spark .sp-thr{stroke:rgba(var(--high-rgb),.35);stroke-width:1;stroke-dasharray:3 4;
+  vector-effect:non-scaling-stroke}
+.bed-spark .sp-line{fill:none;stroke:var(--crit);stroke-width:1.6;stroke-linejoin:round;
+  stroke-linecap:round;vector-effect:non-scaling-stroke}
+.bed-spark .sp-fill{fill:rgba(var(--high-rgb),.10);stroke:none}
+.bed-spark em{position:absolute;font-style:normal;font-family:var(--mono);font-size:9px;
+  letter-spacing:.05em;color:var(--faint);pointer-events:none}
+.bed-spark .sp-k{left:0;bottom:-2px}
+.bed-spark .sp-k b{color:var(--dim);font-weight:400}
+.bed-spark .sp-thrk{right:1px;top:calc(30% - 13px);color:rgba(var(--high-rgb),.55)}
 .bed-top{display:flex;align-items:center;gap:8px}
 .bed-tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;color:var(--dim);
   background:rgba(255,255,255,.05);padding:2px 6px;border-radius:var(--r-xs);flex:0 0 auto}
@@ -1220,9 +1247,56 @@ b{font-weight:700}
 
 .sh-foot{font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--faint);
   margin-top:26px;max-width:96ch}
+.sh-foot i{display:block;font-style:normal;margin-top:7px;color:var(--dim);font-size:9.5px;
+  letter-spacing:.04em}
 
+@media (max-width:1500px){ .opgrid{grid-template-columns:repeat(4,1fr)} }
+@media (max-width:1150px){ .opgrid{grid-template-columns:repeat(3,1fr)} }
 @media (max-width:1000px){
   .sh-hero,.sh-grid{grid-template-columns:1fr}
   .sh-card-wide{grid-column:auto}
   .sh-row{grid-template-columns:110px 1fr 78px}
+  .sh-gen-row{grid-template-columns:1fr 88px}
+  .sh-gen-row .sh-gen-k{grid-column:1/-1;margin-bottom:-4px}
 }
+
+/* ---- generalisation: the validation gap, drawn as a gap ---- */
+.sh-gen{display:flex;flex-direction:column;gap:10px}
+.sh-gen-row{display:grid;grid-template-columns:212px 1fr 58px;gap:14px;align-items:center}
+.sh-gen-k{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.sh-gen-track{height:9px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
+.sh-gen-track i{display:block;height:100%;border-radius:5px;
+  background:linear-gradient(90deg,rgba(122,162,247,.4),var(--accent))}
+.sh-gen-row.ext .sh-gen-track i{background:linear-gradient(90deg,rgba(226,163,60,.4),var(--watch))}
+.sh-gen-row b{text-align:right;font-family:var(--mono);font-size:14px;font-weight:600;
+  color:var(--ink);font-variant-numeric:tabular-nums}
+.sh-gen-row.ext b{color:var(--watch-ink)}
+.sh-gen-note{font-family:var(--mono);font-size:10.5px;line-height:1.65;color:var(--dim);
+  margin-top:4px;padding-top:11px;border-top:1px solid var(--hair-soft)}
+.sh-gen-note b{color:var(--watch-ink);font-weight:600}
+
+/* ---- the ladder ---- */
+.sh-ladder{display:flex;flex-direction:column;gap:13px}
+.sh-rung-t{display:flex;align-items:baseline;gap:8px;font-size:12px;color:var(--muted)}
+.sh-rung-t b{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.sh-rung-t u{text-decoration:none;font-family:var(--mono);font-size:10px;
+  color:var(--accent);font-variant-numeric:tabular-nums}
+.sh-rung-t em{font-style:normal;font-family:var(--mono);font-size:8.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:#08111a;background:var(--accent);border-radius:3px;padding:1px 5px}
+.sh-rung.on .sh-rung-t span{color:var(--ink);font-weight:600}
+.sh-rung-bar{height:5px;border-radius:3px;background:rgba(255,255,255,.05);margin:6px 0 4px;
+  overflow:hidden}
+.sh-rung-bar i{display:block;height:100%;border-radius:3px;background:rgba(255,255,255,.18)}
+.sh-rung.on .sh-rung-bar i{background:linear-gradient(90deg,rgba(122,162,247,.5),var(--accent))}
+.sh-rung-s{font-family:var(--mono);font-size:9.5px;color:var(--faint);line-height:1.5}
+
+/* ---- improvement run ---- */
+.sh-imp-n{font-family:var(--mono);font-size:12px;color:var(--muted);margin-bottom:8px}
+.sh-imp-n b{font-size:26px;font-weight:600;color:var(--ink);letter-spacing:-.02em;
+  margin-right:4px;font-variant-numeric:tabular-nums}
+.sh-imp-v{font-size:12px;color:var(--ink);line-height:1.55;margin-bottom:9px}
+.sh-imp-s{font-family:var(--mono);font-size:10px;line-height:1.6;color:var(--faint)}
+
+.sh-note{font-family:var(--mono);font-size:10px;line-height:1.65;color:var(--faint);
+  margin:13px 0 0;padding-top:11px;border-top:1px solid var(--hair-soft)}
