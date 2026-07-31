@@ -208,20 +208,15 @@
       <button class="dock-btn warn" data-stage="SEPSIS">Induce Sepsis</button>
       <button class="dock-btn" data-stage="RECOVERING">Recover</button>
     </div>
+    <!-- Seven subsystem launchers used to sit here. Each opened a panel that
+         demonstrated an internal layer rather than answering a question anyone has
+         at a bedside, and together they were most of the chrome on the screen. The
+         subsystems still run and are still reachable from the console; they are no
+         longer competing with the patient for attention. -->
     <div class="dock-grp dock-grp-apps">
       <span class="dock-label">patient</span>
       <button class="dock-btn accent" id="launch-camera">◉ Optical</button>
       <button class="dock-btn" id="launch-story">◔ Clinical Story <span id="story-count" class="story-pill">0</span></button>
-      <button class="dock-btn" id="launch-consensus">⚖ Consensus</button>
-      <button class="dock-btn" id="launch-pharma">⚕ Pharmacopoeia</button>
-      <button class="dock-btn" id="launch-identity">⊚ Identity</button>
-    </div>
-    <div class="dock-grp dock-grp-apps">
-      <span class="dock-label">system</span>
-      <button class="dock-btn" id="launch-orch">⬡ Orchestrator</button>
-      <button class="dock-btn" id="launch-fed">⇄ Federation</button>
-      <button class="dock-btn" id="launch-rbac">⬚ Access Control</button>
-      <button class="dock-btn" id="launch-dsl">§ Safety Policy</button>
     </div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>

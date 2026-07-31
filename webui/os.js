@@ -690,9 +690,21 @@ function renderProto(d) {
     <div class="proof ${safe ? "" : "bad"}"><i>${safe ? "✓" : "✕"}</i>
       Z3 ${v?.z3_status || "—"} · ${safe ? "mathematically certified safe" : (v?.message || "rejected")}</div>
     ${portableProofLine(v?.portable_proof)}
-    ${(safe && !advisory) ? `<button class="dock-btn accent pulse-button" onclick="window.AegisTwin.triggerInfusion('fluids'); setTimeout(() => window.AegisTwin.triggerInfusion('antibiotic'), 1200); setTimeout(() => window.AegisTwin.triggerInfusion('vasopressor'), 2400);" style="width:100%;margin-top:8px;animation: pulse 2s infinite;cursor:pointer;background:#00d8ff;color:#0b1020;font-weight:bold;border:none;border-radius:4px;padding:8px 0;box-shadow: 0 0 10px rgba(0,216,255,0.4);">▲ APPROVE & INFUSE PROTOCOL</button>` : ""}
+    ${(safe && !advisory) ? `<button class="proto-project" id="proto-project">◎ Project this treatment through the body</button>` : ""}
     ${narr(d)}`;
   wireProofVerify();
+  // "APPROVE & INFUSE PROTOCOL" used to sit here. It dispatched nothing: no
+  // syscall, no audit entry, no order — it played a 3-D infusion animation. On a
+  // screen whose entire claim is that orders are formally verified before they go
+  // anywhere, a pulsing button that reads as "give this drug" and does not is the
+  // most expensive possible lie. Replaced with the action it can honestly offer:
+  // inspecting where the treatment would go. Dispatching remains the console's
+  // audited `treat` syscall, which is the only path that changes a patient.
+  const pb = $("#proto-project");
+  if (pb) pb.addEventListener("click", () => {
+    if (window.AegisPK) window.AegisPK.open("session",
+      { name: _lastPatientName || "Monitored patient" });
+  });
 }
 
 /* Compact portable-proof affordance for the live core-cage decision. */

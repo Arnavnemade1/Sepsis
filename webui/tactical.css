@@ -208,8 +208,15 @@ b{font-weight:700}
 .span-ops{grid-area:ops}.span-learn{grid-area:learn}.span-blind{grid-area:blind}
 
 /* ---------------- OPERATIONS GRID ---------------- */
+/* Rows get a floor. With `1fr` alone, twelve beds in a fixed-height panel gave
+   each card ~100px — less than its own content needs — and because the card is a
+   flex column whose children could shrink, the text lines compressed below their
+   line-height and painted over one another. That is the "text floating outside the
+   box". A minimum row height plus non-shrinking children fixes it at the cause;
+   the grid scrolls if the panel is genuinely too short. */
 .opgrid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);
-  grid-auto-rows:1fr;grid-auto-flow:row dense;gap:6px;padding:8px}
+  grid-auto-rows:minmax(118px,1fr);grid-auto-flow:row dense;gap:6px;padding:8px;
+  overflow-y:auto}
 .bed{position:relative;min-width:0;min-height:0;border:1px solid var(--hair);border-radius:var(--r-sm);cursor:pointer;
   background:linear-gradient(165deg,rgba(160,180,230,.05),rgba(255,255,255,.008));
   padding:9px 11px;display:flex;flex-direction:column;gap:5px;overflow:hidden;
@@ -236,12 +243,23 @@ b{font-weight:700}
 .bed-trend{font-style:normal;font-size:11.5px}
 .bed-trend.up{color:var(--crit)}.bed-trend.down{color:var(--ok)}.bed-trend.flat{color:var(--dim)}
 .bed.critical .bed-risk b{color:var(--crit)}
-.bed-sys{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase}
+.bed-top,.bed-sys,.bed-driver,.bed-vitals,.bed-bar{flex:0 0 auto}
+.bed-sys{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.02em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;
+  line-height:1.45}
 .bed.critical .bed-sys{color:var(--crit)}.bed.watch .bed-sys{color:var(--watch)}
-.bed-driver{font-family:var(--mono);font-size:11.5px;color:var(--crit);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:0;opacity:0;transition:.3s}
-.bed.watch .bed-driver,.bed.critical .bed-driver{height:auto;opacity:.92}.bed.watch .bed-driver{color:var(--watch)}
-.bed-vitals{display:flex;flex-wrap:wrap;gap:2px 12px;font-family:var(--mono);font-size:12px;line-height:1.5;
-  color:var(--muted);margin-top:auto;padding-top:3px;font-variant-numeric:tabular-nums}
+/* The collapsed state was `height:0` with the element still laying out its text —
+   the glyphs painted straight over the vitals line underneath, which is the
+   stray text that appeared to float outside the card. `height:0 → auto` cannot
+   transition either, so the animation never ran. max-height clips AND animates. */
+.bed-driver{font-family:var(--mono);font-size:11.5px;color:var(--crit);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-height:0;opacity:0;line-height:1.45;
+  transition:max-height .3s ease,opacity .3s ease}
+.bed.watch .bed-driver,.bed.critical .bed-driver{max-height:1.5em;opacity:.92}
+.bed.watch .bed-driver{color:var(--watch)}
+.bed-vitals{display:flex;flex-wrap:nowrap;gap:2px 12px;font-family:var(--mono);font-size:12px;line-height:1.5;
+  color:var(--muted);margin-top:auto;padding-top:3px;font-variant-numeric:tabular-nums;
+  overflow:hidden}
 .bed-vitals i{color:var(--dim);font-style:normal}
 .bed.focus .bed-vitals{font-size:13.5px;gap:6px 18px}
 .bed-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.07);overflow:hidden;flex:0 0 auto}
@@ -1091,4 +1109,120 @@ b{font-weight:700}
   .cl-main .cl-card:not(.cl-twin){flex:0 0 auto;min-height:260px}
   .cl-main .cl-card:not(.cl-twin) .card-body{flex:1 1 auto;min-height:0;position:relative}
   .twin-legend{position:static;width:auto;flex-direction:row;flex-wrap:wrap;margin-top:8px}
+}
+
+
+/* ============================================================
+   SYSTEM HEALTH
+   The old Validation page was six dark instrument panels. This one answers three
+   questions in order — how good is it, what does it do well, where does it fall
+   short — and gets out of the way. Lighter surfaces, generous whitespace, one
+   accent, numbers doing the talking. It is the page someone judges the project by,
+   so it reads as a product rather than as a readout.
+   ============================================================ */
+.view-val{overflow-y:auto}
+.sh{max-width:1180px;margin:0 auto;padding:38px 34px 60px}
+
+.sh-head{display:flex;align-items:flex-start;gap:24px;margin-bottom:30px}
+.sh-head h1{font-size:29px;font-weight:600;letter-spacing:-.02em;color:var(--ink);margin:0 0 7px}
+.sh-head p{font-size:13.5px;line-height:1.65;color:var(--dim);margin:0;max-width:62ch}
+.sh-status{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto;
+  font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--muted);border:1px solid var(--hair);border-radius:999px;padding:7px 14px;
+  background:rgba(255,255,255,.02)}
+.sh-status i{width:7px;height:7px;border-radius:50%;background:var(--dim)}
+.sh-status.ok i{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--low-rgb),.16)}
+.sh-status.warn i{background:var(--watch);box-shadow:0 0 0 3px rgba(var(--med-rgb),.16)}
+.sh-status.bad i{background:var(--crit);box-shadow:0 0 0 3px rgba(var(--high-rgb),.16)}
+.sh-status.ok{color:var(--ok-ink)}.sh-status.warn{color:var(--watch-ink)}
+.sh-status.bad{color:var(--crit-ink)}
+
+/* ---- hero: the one number that matters, and its context ---- */
+.sh-hero{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;
+  margin-bottom:16px}
+.sh-hero-main{border:1px solid var(--hair);border-radius:14px;padding:24px 26px 22px;
+  background:linear-gradient(160deg,rgba(122,162,247,.07),rgba(255,255,255,.012))}
+.sh-k{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:10px}
+.sh-auroc{display:flex;align-items:baseline;gap:11px}
+.sh-auroc b{font-size:58px;font-weight:600;letter-spacing:-.035em;color:var(--ink);
+  line-height:1;font-variant-numeric:tabular-nums}
+.sh-auroc em{font-style:normal;font-family:var(--mono);font-size:12px;color:var(--dim)}
+.sh-delta{font-family:var(--mono);font-size:11.5px;margin-top:9px;color:var(--dim)}
+.sh-delta b{font-weight:600}
+.sh-delta.up b{color:var(--ok-ink)}.sh-delta.down b{color:var(--watch-ink)}
+/* the bar is anchored at chance, not at zero — an AUROC of 0.5 is worth nothing,
+   so a bar that started at 0 would make a useless model look half full */
+.sh-bar{position:relative;height:6px;border-radius:4px;background:rgba(255,255,255,.06);
+  margin-top:18px;overflow:visible}
+.sh-bar i{position:absolute;left:0;top:0;height:100%;border-radius:4px;
+  background:linear-gradient(90deg,rgba(122,162,247,.55),var(--accent));
+  transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.sh-bar u{position:absolute;top:-4px;width:2px;height:14px;background:var(--muted);
+  border-radius:2px;opacity:.65}
+.sh-scale{display:flex;justify-content:space-between;margin-top:7px;
+  font-family:var(--mono);font-size:9.5px;color:var(--faint);letter-spacing:.04em}
+
+.sh-hero-side{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-content:start}
+.sh-stat{border:1px solid var(--hair);border-radius:12px;padding:15px 16px;
+  background:rgba(255,255,255,.015)}
+.sh-stat span{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+.sh-stat b{display:block;font-size:23px;font-weight:600;color:var(--ink);
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.sh-stat b em{font-style:normal;font-size:12px;color:var(--dim);margin-left:3px}
+.sh-stat i{display:block;font-style:normal;font-family:var(--mono);font-size:10px;
+  color:var(--faint);margin-top:5px;line-height:1.45}
+
+/* ---- cards ---- */
+.sh-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.sh-card{border:1px solid var(--hair);border-radius:14px;padding:20px 22px;
+  background:rgba(255,255,255,.012)}
+.sh-card-wide{grid-column:1/-1}
+.sh-card-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.sh-card-h h2{font-size:14px;font-weight:600;color:var(--ink);margin:0;letter-spacing:-.01em}
+.sh-card-h span{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--faint);
+  letter-spacing:.05em}
+
+.sh-list{display:flex;flex-direction:column;gap:11px}
+.sh-item{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:start}
+.sh-item>i{font-style:normal;font-size:13px;line-height:1.35;flex:0 0 auto}
+.sh-item.good>i{color:var(--ok-ink)}
+.sh-item.bad>i{color:var(--watch-ink)}
+.sh-item-t{font-size:12.5px;color:var(--ink);line-height:1.45}
+.sh-item-s{font-family:var(--mono);font-size:10.5px;color:var(--dim);line-height:1.55;
+  margin-top:3px;display:block}
+.sh-empty{font-family:var(--mono);font-size:11px;color:var(--faint);line-height:1.6}
+
+/* ---- subsystems ---- */
+.sh-subs{display:grid;grid-template-columns:repeat(auto-fill,minmax(186px,1fr));gap:10px}
+.sh-sub{display:flex;align-items:center;gap:9px;border:1px solid var(--hair);
+  border-radius:10px;padding:11px 13px;background:rgba(255,255,255,.012)}
+.sh-sub i{width:7px;height:7px;border-radius:50%;flex:0 0 auto;background:var(--ok)}
+.sh-sub.warn i{background:var(--watch)}.sh-sub.bad i{background:var(--crit)}
+.sh-sub-n{font-size:12px;color:var(--ink);line-height:1.3}
+.sh-sub-s{display:block;font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:2px}
+
+/* ---- cohort strip ---- */
+.sh-cohort{display:flex;flex-direction:column;gap:6px}
+.sh-row{display:grid;grid-template-columns:150px 1fr 92px;gap:12px;align-items:center;
+  font-family:var(--mono);font-size:11px}
+.sh-row-n{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-row-n em{font-style:normal;color:var(--faint);margin-left:6px;font-size:9.5px}
+.sh-track{position:relative;height:16px;border-radius:4px;background:rgba(255,255,255,.035)}
+.sh-track b{position:absolute;top:3px;height:10px;border-radius:3px;
+  background:linear-gradient(90deg,rgba(64,184,128,.35),rgba(64,184,128,.75))}
+.sh-track u{position:absolute;top:0;width:2px;height:16px;background:var(--crit);opacity:.8}
+.sh-track.miss b{background:rgba(255,255,255,.08)}
+.sh-row-v{text-align:right;color:var(--ok-ink);white-space:nowrap}
+.sh-row-v.none{color:var(--faint)}
+.sh-row-v.fp{color:var(--watch-ink)}
+
+.sh-foot{font-family:var(--mono);font-size:10.5px;line-height:1.7;color:var(--faint);
+  margin-top:26px;max-width:96ch}
+
+@media (max-width:1000px){
+  .sh-hero,.sh-grid{grid-template-columns:1fr}
+  .sh-card-wide{grid-column:auto}
+  .sh-row{grid-template-columns:110px 1fr 78px}
 }

@@ -547,6 +547,38 @@ def health() -> Dict[str, Any]:
             "schema_version": session.snapshot()["schema_version"]}
 
 
+@app.get("/aegis/health/system")
+def health_system() -> Dict[str, Any]:
+    """How well the detector actually performs, and where it falls short.
+
+    Reads the cross-hospital evaluation artefact rather than measuring anything
+    live: the demo cohort is twelve stays, which cannot support an AUROC. Strengths
+    and gaps are derived from those numbers, so the page cannot drift into being a
+    brochure."""
+    from backend.aegis.system_health import report
+    out = report()
+    # The live half: subsystem state the artefact cannot know about.
+    prover = _PROVER.status()
+    out["subsystems"] = [
+        {"name": "Detector", "ok": session.core.model is not None,
+         "note": ("stacked ensemble loaded" if session.core.model is not None
+                  else "no model artefact — running on rules only")},
+        {"name": "Safety prover", "ok": prover["healthy"],
+         "note": ("Z3 context healthy" if prover["healthy"]
+                  else "CORRUPTED — failing closed, nothing is being certified")},
+        {"name": "Data source", "ok": True,
+         "note": f"{session.source} · {'live' if _live_mode() else 'demo'}"},
+        {"name": "Persistence", "ok": bool(_db is not None and getattr(_db, "use_supabase", False)),
+         "note": ("Supabase connected" if (_db is not None and getattr(_db, "use_supabase", False))
+                  else "local only — nothing is being retained")},
+    ]
+    try:
+        out["cohort"] = cluster.validation(alarm=0.70) if hasattr(cluster, "validation") else None
+    except Exception:
+        out["cohort"] = None
+    return out
+
+
 @app.get("/aegis/health/prover")
 def health_prover() -> Dict[str, Any]:
     """Full detail on the shared Z3 context, including the recent failure log.

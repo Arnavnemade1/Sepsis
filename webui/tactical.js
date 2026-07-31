@@ -45,8 +45,14 @@ function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,h/2,w/2); ctx.beginPath();
   ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
 /* ---------- high-DPI canvas ---------- */
-function Surface(id){ this.cv=$(id); this.ctx=this.cv.getContext("2d"); this.w=0; this.h=0; this.dpr=1; }
+/* Tolerate a canvas that is not on this page. It used to dereference straight
+   into getContext, so deleting a view took `setup()` down with it — and because
+   setup registers every listener, the whole cockpit went inert with no error
+   anyone would notice. A panel that no longer exists should cost nothing. */
+function Surface(id){ this.cv=$(id); this.ctx=this.cv?this.cv.getContext("2d"):null;
+  this.w=0; this.h=0; this.dpr=1; }
 Surface.prototype.fit=function(){
+  if(!this.cv) return;
   var r=this.cv.parentNode.getBoundingClientRect();
   var dpr=Math.min(window.devicePixelRatio||1, 2.5);
   var w=Math.max(1,Math.round(r.width)), h=Math.max(1,Math.round(r.height));
@@ -103,8 +109,8 @@ function ingest(snap){
   renderTerminal(snap.bundle);   // Module C — stream the certified Hour-1 bundle
   renderDevicePlane(snap.kernel_devices);   // Aegis-eBPF verified device plane (input safety)
   renderServicePlane(snap.services, snap.packages);   // aegisd managed app/service plane
-  renderKernelTelemetry(snap);                        // live OS internals in the Kernel view
-  if(currentView==="roster") renderRoster();
+  // (the Kernel view was removed — its internals are reachable from the console)
+  
 }
 
 function ease(){
@@ -1107,6 +1113,8 @@ function streamLines(lines){
     termTimer=setTimeout(step, L[0]==="notetext"?240:92);
   })();
 }
+var termAt=0;
+var TERM_DWELL_MS=15000;      // minimum time a streamed block stays put
 function renderTerminal(bundle){
   var term=$("terminal");
   if(!bundle){ if(termKey!==null){ term.classList.remove("active");
@@ -1115,8 +1123,25 @@ function renderTerminal(bundle){
       termKey=null; if(termTimer){ clearTimeout(termTimer); termTimer=null; } } return; }
   term.classList.add("active");
   $("term-sub").textContent="active focus · "+bundle.name;
-  if(bundle.bed_id===termKey) return;          // already streamed for this bed
-  termKey=bundle.bed_id; streamLines(buildTermLines(bundle));
+
+  /* Two reasons this used to wipe and re-type constantly, which is what made the
+     text look like it was jumping around the panel:
+
+       1. it keyed on bed_id alone, so re-focusing the SAME bed with an unchanged
+          bundle restarted the whole typewriter, and
+       2. the focus bed is whichever is riskiest, and two beds whose risks cross
+          swap it back and forth every poll — each swap wiping a block mid-stream.
+
+     Now it keys on the CONTENT, and a block that has just been laid down is left
+     alone for a dwell period unless what it says has actually changed. A terminal
+     that re-types the same certified bundle every four seconds is not conveying
+     anything; it is just moving. */
+  var lines=buildTermLines(bundle);
+  var key=bundle.bed_id+"|"+lines.map(function(L){return L[1];}).join("\u0001");
+  if(key===termKey) return;
+  var now=Date.now();
+  if(termKey!==null && (now-termAt)<TERM_DWELL_MS && termTimer===null) return;
+  termKey=key; termAt=now; streamLines(lines);
 }
 
 /* ============================================================
@@ -1327,10 +1352,10 @@ function runBoot(){ var log=$("boot-log"), fill=$("boot-fill"); if(!log) return;
    ============================================================ */
 var currentView="ops";
 function setView(name){ currentView=name;
-  ["ops","val","roster","devices","kernel"].forEach(function(v){ $("view-"+v).classList.toggle("active",v===name); });
+  ["ops","val","devices"].forEach(function(v){ var el=$("view-"+v); if(el) el.classList.toggle("active",v===name); });
   [].forEach.call(document.querySelectorAll(".tab"),function(t){ t.classList.toggle("active",t.dataset.view===name); });
   if(name==="val") loadValidation();
-  if(name==="roster") renderRoster();
+  
   if(name==="devices") startDevices(); else stopDevices();
 }
 
@@ -1568,26 +1593,122 @@ function wizPair(id){
 var valData=null;
 function kpiHTML(cls,k,v,unit,s){ return '<div class="kpi'+(cls?" "+cls:"")+'"><div class="k">'+k+
   '</div><div class="v" data-count="'+v+'">0<small>'+unit+'</small></div><div class="s">'+s+'</div></div>'; }
-function loadValidation(){ fetch(window.AEGIS.http("/aegis/cohort/validation")).then(function(r){return r.json();})
-  .then(function(d){ if(d&&d.summary){ valData=d; renderValidation(d); } }).catch(function(){}); }
-function renderValidation(d){ var s=d.summary;
-  $("val-kpis").innerHTML=
-    kpiHTML("good","Detection rate",Math.round(s.detection_rate*100),"%",s.n_detected+" / "+s.n_septic+" septic stays")+
-    kpiHTML("lead","Mean lead time",s.mean_lead_h,"h","before labelled onset")+
-    kpiHTML("lead","Max lead time",s.max_lead_h,"h","earliest flagged")+
-    kpiHTML("","Cohort size",s.n,"","monitored real stays")+
-    kpiHTML("warn","False positive",Math.round(s.fp_rate*100),"%","of stable patients");
-  var rows='<div class="vrow hdr"><span>Patient</span><span>Onset</span><span>First alarm</span><span>Result</span></div>';
-  d.patients.slice().sort(function(a,b){return (b.lead==null?-99:b.lead)-(a.lead==null?-99:a.lead);}).forEach(function(r){
-    var dot=!r.septic?C.dim:(r.first_alarm!=null&&(r.onset_hour==null||r.first_alarm<=r.onset_hour))?C.ok:C.crit;
-    var res=!r.septic?(r.first_alarm!=null?'<span class="tag-na">stable · alarmed</span>':'<span class="tag-na">stable</span>')
-      :(r.lead!=null&&r.lead>=0?'<span class="tag-pos">+'+r.lead+' h early</span>':'<span class="tag-miss">missed</span>');
-    rows+='<div class="vrow"><span class="nm" data-id="'+r.bed_id+'"><i style="background:'+dot+'"></i>'+r.name+'</span>'+
-      '<span class="mono">'+(r.onset_hour!=null?'h'+r.onset_hour:'—')+'</span>'+
-      '<span class="mono">'+(r.first_alarm!=null?'h'+r.first_alarm:'—')+'</span><span class="mono">'+res+'</span></div>'; });
-  $("val-table").innerHTML=rows;
-  requestAnimationFrame(animateCounts);
+/* ============================================================
+   SYSTEM HEALTH
+   Replaces the old Validation page. Same question, answered properly: how good is
+   this detector, what does it do well, and where does it fall short — read from
+   the CROSS-HOSPITAL evaluation artefact rather than from the twelve-patient demo
+   cohort, which cannot support an AUROC.
+   ============================================================ */
+function loadValidation(){
+  fetch(window.AEGIS.http("/aegis/health/system")).then(function(r){return r.json();})
+    .then(function(d){ valData=d; renderHealth(d); }).catch(function(){
+      var st=$("sh-status"); if(st){ st.className="sh-status bad";
+        st.innerHTML='<i></i><span>unreachable</span>'; } });
 }
+function pctTxt(v){ return v==null?"—":Math.round(v*100)+"%"; }
+
+function renderHealth(d){
+  if(!d || d.status!=="ok"){
+    var st0=$("sh-status"); if(st0){ st0.className="sh-status warn";
+      st0.innerHTML='<i></i><span>no evaluation</span>'; }
+    $("sh-strengths").innerHTML='<div class="sh-empty">'+esc((d&&d.note)||
+      "No cross-hospital evaluation artefact found.")+'</div>';
+    return;
+  }
+  var h=d.headline, m=d.metrics||{};
+
+  // ---- status chip: the grade the numbers earn, not a fixed "operational" ----
+  var grade=d.grade||"fair";
+  var cls=grade==="healthy"?"ok":grade==="fair"?"warn":"bad";
+  $("sh-status").className="sh-status "+cls;
+  $("sh-status").innerHTML='<i></i><span>'+esc(grade)+' · externally validated</span>';
+
+  // ---- hero ----
+  $("sh-auroc").textContent=(h.auroc!=null?h.auroc.toFixed(3):"—");
+  $("sh-auroc-ci").textContent=(h.auroc_lo!=null
+    ? "95% CI "+h.auroc_lo.toFixed(3)+"–"+h.auroc_hi.toFixed(3) : "");
+  var dEl=$("sh-auroc-delta");
+  if(h.delta!=null){
+    dEl.className="sh-delta "+(h.delta>0?"up":"down");
+    dEl.innerHTML='<b>'+(h.delta>0?"+":"")+h.delta.toFixed(3)+'</b> vs the '+
+      esc(h.baseline)+' baseline ('+h.baseline_auroc.toFixed(3)+')';
+  } else dEl.textContent="";
+  // The bar starts at chance. An AUROC of 0.5 is worth nothing, so a bar anchored
+  // at zero would render a useless model as half full.
+  var frac=Math.max(0,Math.min(1,((h.auroc||0.5)-0.5)/0.5));
+  $("sh-auroc-bar").style.width=(frac*100).toFixed(1)+"%";
+  var refFrac=Math.max(0,Math.min(1,((h.baseline_auroc||0.5)-0.5)/0.5));
+  $("sh-auroc-ref").style.left=(refFrac*100).toFixed(1)+"%";
+  $("sh-auroc-ref").title="baseline "+(h.baseline_auroc||0).toFixed(3);
+
+  $("sh-hero-side").innerHTML=[
+    ["Detection rate", pctTxt(m.detection_rate), "of septic stays caught"],
+    ["False alarms", pctTxt(m.false_alarm_rate), "of stable stays alarmed"],
+    ["Median lead", (m.median_lead_hours!=null?m.median_lead_hours+"<em>h</em>":"—"),
+     "before labelled onset"],
+    ["Calibration", (m.ece!=null?m.ece.toFixed(3):"—"), "expected calibration error"]
+  ].map(function(x){
+    return '<div class="sh-stat"><span>'+x[0]+'</span><b>'+x[1]+'</b><i>'+x[2]+'</i></div>';
+  }).join("");
+
+  // ---- strengths / gaps, both generated from the evaluation ----
+  function items(list,kind){
+    if(!list||!list.length) return '<div class="sh-empty">Nothing crossed a '+
+      'reporting threshold.</div>';
+    return list.map(function(f){
+      return '<div class="sh-item '+kind+'"><i>'+(kind==="good"?"↑":"↓")+'</i><div>'+
+        '<div class="sh-item-t">'+esc(f.title)+'</div>'+
+        '<span class="sh-item-s">'+esc(f.detail)+'</span></div></div>';
+    }).join("");
+  }
+  $("sh-strengths").innerHTML=items(d.strengths,"good");
+  $("sh-gaps").innerHTML=items(d.gaps,"bad");
+  $("sh-str-meta").textContent=(d.strengths||[]).length+" findings";
+  $("sh-gap-meta").textContent=(d.gaps||[]).length+" findings";
+
+  // ---- live subsystem state ----
+  $("sh-subsystems").innerHTML=(d.subsystems||[]).map(function(sub){
+    return '<div class="sh-sub'+(sub.ok?"":" bad")+'"><i></i><div>'+
+      '<div class="sh-sub-n">'+esc(sub.name)+'</div>'+
+      '<span class="sh-sub-s">'+esc(sub.note)+'</span></div></div>';
+  }).join("");
+
+  // ---- the demo cohort, labelled as what it is ----
+  var c=d.cohort;
+  if(c&&c.patients){
+    var maxH=Math.max.apply(null,c.patients.map(function(p){
+      return Math.max(p.onset_hour||0,p.first_alarm||0,1); }));
+    $("sh-cohort-meta").textContent=c.summary.n+" demo stays · illustrative only, "+
+      "not the source of the numbers above";
+    $("sh-cohort").innerHTML=c.patients.slice().sort(function(a,b){
+      return (b.lead==null?-99:b.lead)-(a.lead==null?-99:a.lead); }).map(function(p){
+      var alarm=p.first_alarm, onset=p.onset_hour;
+      var caught=p.septic&&alarm!=null&&(onset==null||alarm<=onset);
+      var v=!p.septic?(alarm!=null?'<span class="sh-row-v fp">false alarm</span>'
+                                  :'<span class="sh-row-v none">stable</span>')
+            :(p.lead!=null&&p.lead>=0?'<span class="sh-row-v">+'+p.lead+' h early</span>'
+                                     :'<span class="sh-row-v none">missed</span>');
+      var bar='';
+      if(alarm!=null){
+        var x0=100*Math.min(alarm,onset==null?alarm:onset)/maxH;
+        var x1=100*(onset==null?alarm:Math.max(alarm,onset))/maxH;
+        bar='<b style="left:'+x0.toFixed(1)+'%;width:'+Math.max(1,x1-x0).toFixed(1)+'%"></b>';
+      }
+      var onsetMark=onset!=null?'<u style="left:'+(100*onset/maxH).toFixed(1)+'%"></u>':'';
+      return '<div class="sh-row"><span class="sh-row-n">'+esc(p.name)+
+        (p.septic?'<em>septic</em>':'')+'</span>'+
+        '<span class="sh-track'+(caught?"":" miss")+'">'+bar+onsetMark+'</span>'+v+'</div>';
+    }).join("");
+  }
+
+  var ev=d.evaluation||{};
+  $("sh-foot").textContent=(d.honesty||"")+
+    (ev.protocol?"  Protocol: "+ev.protocol+".":"")+
+    (ev.generated?"  Last run "+ev.generated+".":"")+
+    (ev.bootstrap?"  Intervals from "+ev.bootstrap+" bootstrap resamples.":"");
+}
+
 /* ============================================================
    PANEL — Per-Patient Baseline Learning
    Each bed's deviation from ITS OWN learned baseline (σ), ranked.
@@ -2289,7 +2410,6 @@ function setup(){
   ambientInit(); runBoot();
   surf.learn=new Surface("cv-learn"); surf.blind=new Surface("cv-blind");
   surf.dosRisk=new Surface("cv-dos-risk");
-  surf.leadhist=new Surface("cv-leadhist"); surf.sweep=new Surface("cv-sweep");
   $("opgrid").addEventListener("click",function(e){ var bed=e.target.closest(".bed"); if(bed) openDossier(bed.dataset.id); });
   var spp=$("sp-pkgs"); if(spp) spp.addEventListener("click",function(e){ var p=e.target.closest("[data-install]"); if(p) installPkg(p.dataset.install); });
   $("dossier").addEventListener("click",function(e){ var b=e.target.closest(".dos-act");
@@ -2297,11 +2417,10 @@ function setup(){
   $("dos-close").addEventListener("click",closeDossier);
   document.addEventListener("keydown",function(e){ if(e.key==="Escape") closeDossier(); });
   $("tabs").addEventListener("click",function(e){ var t=e.target.closest(".tab"); if(t) setView(t.dataset.view); });
-  $("roster-list").addEventListener("click",function(e){ var c=e.target.closest(".pcard"); if(c) openDossier(c.dataset.id); });
-  $("view-val").addEventListener("click",function(e){ var n=e.target.closest(".nm"); if(n&&n.dataset.id) openDossier(n.dataset.id); });
-  $("roster-search").addEventListener("input",function(e){ rosterQuery=e.target.value; renderRoster(); });
-  $("roster-filters").addEventListener("click",function(e){ var b=e.target.closest(".rf"); if(!b) return;
-    rosterFilter=b.dataset.f; [].forEach.call(this.children,function(x){x.classList.toggle("active",x===b);}); renderRoster(); });
+  // The Roster view was removed: it listed the same twelve patients the
+  // Operations grid already shows, filtered four ways nobody used. Its listeners
+  // are gone with it; `roster` in the console still prints the list.
+
   window.addEventListener("resize",ambientFit);
   // devices hub
   $("dev-pair-btn").addEventListener("click",openWizard);
@@ -2319,8 +2438,8 @@ function loop(){ frame++;
   if(target) ease();
   if(currentView==="ops"){ surf.learn.fit(); surf.blind.fit();
     drawLearn(surf.learn); drawBlind(surf.blind);
-  } else if(currentView==="val"){ surf.leadhist.fit(); drawLeadHist(surf.leadhist);
-    surf.sweep.fit(); drawSweep(surf.sweep); }
+  }
+  // System Health is plain DOM — no canvas to fit or redraw on the animation tick.
   else if(currentView==="devices"){ drawDeviceSparks(); if(selectedDevice) drawDrawerTrace(); }
   if(selectedBed){ surf.dosRisk.fit(); drawRiskTimeline(surf.dosRisk); }
   if((spineTick++ %6)===0) renderSpine();
