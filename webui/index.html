@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=47" />
+<link rel="stylesheet" href="os.css?v=53" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -80,6 +80,7 @@
     </section>
 
     <!-- RISK CORE -->
+    <div class="col-left">
     <section class="win win-risk" data-win="risk">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
         <span class="win-title">SEPSIS RISK CORE</span></div>
@@ -133,6 +134,44 @@
       </div>
     </section>
 
+
+    <!-- AUX: optical feed, observations and kernel layers share one slot. All three
+         were permanent panels averaging 18% used height; the kernel in particular is
+         system internals competing with clinical state for the same eye. -->
+    <section class="win win-aux" data-win="aux">
+      <div class="win-bar"><span class="dots"></span>
+        <div class="win-tabs" role="tablist">
+          <button class="win-tab on" role="tab" data-pane="pane-cam">Optical</button>
+          <button class="win-tab" role="tab" data-pane="pane-notes">Observations</button>
+          <button class="win-tab" role="tab" data-pane="pane-sys">Kernel</button>
+        </div>
+        <span class="win-tag" id="mini-posture">—</span></div>
+      <div class="win-body aux-body">
+       <div class="pane on cam-mini-body cam-needs-feed" id="pane-cam">
+        <div class="mini-stage">
+          <video id="mini-video" autoplay playsinline muted></video>
+          <canvas id="mini-overlay"></canvas>
+          <div class="mini-off cam-needs-feed">
+            <div class="mini-off-ring"></div>
+            <button class="dock-btn accent" id="mini-enable">enable camera</button>
+          </div>
+          <div class="mini-readout cam-needs-feed">
+            <span>HR <b id="mini-hr">—</b></span><span>RR <b id="mini-rr">—</b></span>
+            <span>Q <b id="mini-q">—</b></span><span class="mini-sig">◉ <b id="mini-signs">0</b></span>
+          </div>
+          <button class="mini-expand cam-needs-feed" id="mini-expand" title="open full module">⤢</button>
+        </div>
+       </div>
+       <div class="pane notes-body" id="pane-notes">
+         <div class="notes-impression" id="notes-impression">Awaiting optical analysis…</div>
+         <div class="notes-log" id="notes-log"></div>
+       </div>
+       <div class="pane" id="pane-sys"><div id="layers" class="layers"></div></div>
+      </div>
+    </section>
+    </div><!-- /col-left -->
+
+    <div class="col-right">
     <!-- REASONING -->
     <section class="win win-agents" data-win="agents">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
@@ -169,40 +208,7 @@
       </div>
     </section>
 
-    <!-- AUX: optical feed, observations and kernel layers share one slot. All three
-         were permanent panels averaging 18% used height; the kernel in particular is
-         system internals competing with clinical state for the same eye. -->
-    <section class="win win-aux" data-win="aux">
-      <div class="win-bar"><span class="dots"></span>
-        <div class="win-tabs" role="tablist">
-          <button class="win-tab on" role="tab" data-pane="pane-cam">Optical</button>
-          <button class="win-tab" role="tab" data-pane="pane-notes">Observations</button>
-          <button class="win-tab" role="tab" data-pane="pane-sys">Kernel</button>
-        </div>
-        <span class="win-tag" id="mini-posture">—</span></div>
-      <div class="win-body aux-body">
-       <div class="pane on cam-mini-body" id="pane-cam">
-        <div class="mini-stage">
-          <video id="mini-video" autoplay playsinline muted></video>
-          <canvas id="mini-overlay"></canvas>
-          <div class="mini-off cam-needs-feed">
-            <div class="mini-off-ring"></div>
-            <button class="dock-btn accent" id="mini-enable">enable camera</button>
-          </div>
-          <div class="mini-readout cam-needs-feed">
-            <span>HR <b id="mini-hr">—</b></span><span>RR <b id="mini-rr">—</b></span>
-            <span>Q <b id="mini-q">—</b></span><span class="mini-sig">◉ <b id="mini-signs">0</b></span>
-          </div>
-          <button class="mini-expand cam-needs-feed" id="mini-expand" title="open full module">⤢</button>
-        </div>
-       </div>
-       <div class="pane notes-body" id="pane-notes">
-         <div class="notes-impression" id="notes-impression">Awaiting optical analysis…</div>
-         <div class="notes-log" id="notes-log"></div>
-       </div>
-       <div class="pane" id="pane-sys"><div id="layers" class="layers"></div></div>
-      </div>
-    </section>
+    </div><!-- /col-right -->
   </main>
 
   <!-- dock -->
@@ -1002,6 +1008,6 @@
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=12"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=46"></script>
+<script src="os.js?v=48"></script>
 </body>
 </html>

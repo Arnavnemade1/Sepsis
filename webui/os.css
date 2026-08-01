@@ -222,32 +222,47 @@ b{color:var(--ink)}
    `overflow-y:auto` — SCROLL, never `hidden`: the old note below is right that a
    cropping body is a bug, but a bounded body with a real scrollbar is not a crop,
    and it is what keeps the fold honest. */
+/* Three flex COLUMNS, not a row/column grid. Grid rows made every panel in a row
+   the same height whether it had content or not — so a panel that shrank (the
+   optical feed with no camera attached) could not give its height to anything; the
+   row was `1fr` and the box stayed tall around empty space. As stacks, each column
+   decides internally who absorbs slack, and the answer is the panel whose content
+   actually improves with height. */
 .desk{flex:1;display:grid;gap:12px;padding:14px;min-height:0;overflow:hidden;
   grid-template-columns:minmax(300px,340px) minmax(0,1fr) minmax(340px,400px);
-  grid-template-rows:auto auto minmax(0,1fr);
-  grid-template-areas:
-    "risk   twin  agents"
-    "vitals twin  agents"
-    "aux    twin  act";}
+  grid-template-rows:minmax(0,1fr);
+  grid-template-areas:"left twin right";}
+.col-left{grid-area:left}.col-right{grid-area:right}
+.col-left,.col-right{display:flex;flex-direction:column;gap:12px;min-height:0}
+/* Risk is fixed — it is one gauge and three chips and gains nothing from more room.
+   Telemetry takes the slack: its two traces are the one thing here that genuinely
+   reads better taller. Reasoning does the same job on the right. */
+.win-risk{flex:0 0 auto}
+.win-vitals{flex:1 1 auto;min-height:190px}
+.win-aux{flex:1 1 auto;min-height:150px}
+.win-agents{flex:1 1 auto;min-height:240px}
+.win-act{flex:0 1 auto;min-height:250px}
 .desk::-webkit-scrollbar{width:9px}
 .desk::-webkit-scrollbar-track{background:transparent}
 .desk::-webkit-scrollbar-thumb{background:linear-gradient(rgba(var(--accent-rgb),.26),rgba(var(--accent-rgb),.1));
   border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .desk::-webkit-scrollbar-thumb:hover{background:rgba(var(--accent-rgb),.4)}
-.win-twin{grid-area:twin}.win-risk{grid-area:risk}.win-vitals{grid-area:vitals}
-.win-agents{grid-area:agents}.win-act{grid-area:act}.win-aux{grid-area:aux}
+.win-twin{grid-area:twin}
 @media(max-width:1240px){.desk{grid-template-columns:minmax(280px,320px) minmax(0,1fr);
-  grid-template-rows:auto auto minmax(0,1fr);
-  grid-template-areas:"risk twin" "vitals twin" "aux twin" "agents act";}}
+  grid-template-rows:minmax(0,1fr) auto;
+  grid-template-areas:"left twin" "right right";}
+  .col-right{flex-direction:row;max-height:320px}
+  .col-right > .win{flex:1 1 0;min-width:0}}
 /* Below a laptop width the three-column instrument stops being an instrument: at
    900px the columns are too narrow to hold a reading and its unit on one line. One
    column, full width, in clinical priority order — risk first, then the twin. */
 /* Below a laptop the one-screen rule stops being winnable: a single column cannot
    hold six panels at a readable size. Here the desk goes back to scrolling, which is
    the right answer on a phone and the wrong one on a desktop. */
-@media(max-width:900px){.desk{grid-template-columns:1fr;grid-template-rows:repeat(6,auto);
+@media(max-width:900px){.desk{grid-template-columns:1fr;grid-template-rows:auto auto auto;
   overflow-y:auto;align-content:start;
-  grid-template-areas:"risk" "vitals" "twin" "agents" "act" "aux";}
+  grid-template-areas:"left" "twin" "right";}
+  .col-right{flex-direction:column;max-height:none}
   .agents-body,.act-body,.aux-body{overflow-y:visible}}
 
 /* PANELS — flat instrument plates.
@@ -459,21 +474,23 @@ b{color:var(--ink)}
 
 /* ===================== VITALS ===================== */
 .vitals-body{display:flex;flex-direction:column;gap:6px;min-height:0}
-.trace-row{display:flex;gap:7px;flex:0 0 auto}
+.vital-grid{flex:0 1 auto;min-height:0}
+.trace-row{display:flex;gap:7px;flex:1 1 auto;min-height:100px;max-height:190px}
 /* The label used to be positioned ON the waveform, in a 30px-tall box: the reading and
    the trace it belongs to were literally overlapping, and each made the other harder
    to read. The label now gets its own strip at the top and the sweep gets the rest —
    at 54px it is tall enough for a QRS complex to have a shape. */
-.trace{position:relative;flex:1;min-width:0;padding-top:22px;background:var(--bg);
-  border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden}
-.trace canvas{display:block;width:100%}
-#ecg{height:54px}#ppg{height:54px}
+.trace{position:relative;flex:1 1 0;min-width:0;min-height:0;padding-top:22px;background:var(--bg);
+  border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;display:flex}
+.trace canvas{display:block;width:100%;flex:1 1 auto;min-height:0}
+#ecg,#ppg{height:auto;min-height:54px}
 .trace-tag{position:absolute;top:0;left:0;right:0;height:22px;display:flex;align-items:center;gap:4px;
   padding:0 9px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.3px;
   border-bottom:1px solid var(--line-soft);background:var(--s2)}
 .trace-tag b{color:var(--ink);font-weight:500}
-.vital-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:0}
-.vchip{display:flex;flex-direction:column;gap:0;padding:4px 8px;border-radius:var(--r-sm);
+.vital-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(52px,80px);gap:5px;margin-top:0}
+.vchip{display:flex;flex-direction:column;gap:0;justify-content:center;min-height:0;
+  padding:7px 9px;border-radius:var(--r-sm);
   background:rgba(255,255,255,.018);border:1px solid var(--line);font-family:var(--sans);transition:.25s}
 .vchip:hover{border-color:rgba(255,255,255,.2)}
 .vchip .vk{font-size:10.5px;font-weight:600;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
@@ -1933,3 +1950,35 @@ b.sm{font-size:12px}
   .twin-stage{min-height:420px;max-height:520px}
   .twin-body{min-height:auto}
 }
+
+/* ============================================================
+   OPTICAL FEED — collapsed when no camera is attached
+   The stage reserved a full video area whether or not a stream existed, which was
+   ~140px of the desk held open for a device that is off by default: the single
+   largest block of dead space left after the one-screen rebuild. With no feed it
+   becomes a one-line prompt and the panel shrinks to it; Live Telemetry above is
+   flex:1 and takes the room, so its traces get taller instead. Attaching a camera
+   restores the full stage.
+   ============================================================ */
+/* .compact is set by syncAuxCompact() in os.js: the optical tab is showing AND no
+   stream is attached. A class beats a :has() chain here — the condition depends on
+   which tab is active, which is JS state anyway. */
+.cam-mini-body{min-height:0}
+/* a live stage needs real room; without a floor it collapsed to the panel minimum */
+.cam-mini-body.feed-on{min-height:200px}
+.win-aux{min-height:0}
+.win-aux.compact{flex:0 0 auto;min-height:0}
+.win-aux.compact .aux-body{overflow-y:visible}
+.cam-mini-body:not(.feed-on) .mini-stage{position:relative;inset:auto;height:auto}
+.cam-mini-body:not(.feed-on) .mini-off{position:relative;inset:auto;flex-direction:row;
+  align-items:center;justify-content:flex-start;gap:10px;padding:12px 14px;background:none}
+.cam-mini-body:not(.feed-on) .mini-off::before{content:"no camera attached";
+  font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.02em;
+  margin-right:auto;white-space:nowrap}
+.cam-mini-body:not(.feed-on) .mini-off-ring{width:16px;height:16px;border-width:1.5px;
+  flex:0 0 auto;order:2}
+.cam-mini-body:not(.feed-on) #mini-enable{order:3;flex:0 0 auto}
+/* nothing to paint into these yet, and an absolutely-positioned video would still
+   hold the old stage height open */
+.cam-mini-body:not(.feed-on) #mini-video,
+.cam-mini-body:not(.feed-on) #mini-overlay{display:none}

@@ -98,11 +98,46 @@ function initWinTabs() {
       tabs.forEach(t => t.classList.toggle("on", t === tab));
       body.querySelectorAll(":scope > .pane").forEach(p =>
         p.classList.toggle("on", p.id === tab.dataset.pane));
+      syncAuxCompact();
       window.dispatchEvent(new Event("resize"));
     }));
   });
 }
+/* The optical stage held a full video area open whether or not a camera existed.
+   Collapse it when the optical tab is showing and no stream is attached — the
+   telemetry panel above is flex:1 and takes the reclaimed height. camera.js stamps
+   .feed-on onto every .cam-needs-feed element (the pane included) the moment a
+   stream starts, so watching that class keeps this decoupled from the camera code. */
+function syncAuxCompact() {
+  const aux = document.querySelector(".win-aux"), cam = document.getElementById("pane-cam");
+  if (!aux || !cam) return;
+  aux.classList.toggle("compact", cam.classList.contains("on") && !cam.classList.contains("feed-on"));
+}
+function watchCameraFeed() {
+  const cam = document.getElementById("pane-cam");
+  if (!cam) return;
+  let wasOn = cam.classList.contains("feed-on");
+  new MutationObserver(() => {
+    const isOn = cam.classList.contains("feed-on");
+    if (isOn && !wasOn) document.querySelector('[data-pane="pane-cam"]')?.click();
+    wasOn = isOn;
+    syncAuxCompact();
+  }).observe(cam, { attributes: true, attributeFilter: ["class"] });
+}
+/* With no camera attached the optical pane is a one-line prompt, so opening the aux
+   slot on it would leave the panel mostly empty. Open on Observations instead — it
+   always has content — and hand the slot back to Optical the moment a stream starts.
+   The camera is opt-in, so this is the normal case, not the edge case. */
+function pickAuxDefault() {
+  const cam = document.getElementById("pane-cam");
+  if (!cam || cam.classList.contains("feed-on")) return;
+  const tab = document.querySelector('[data-pane="pane-notes"]');
+  if (tab) tab.click();
+}
 initWinTabs();
+watchCameraFeed();
+pickAuxDefault();
+syncAuxCompact();
 document.addEventListener("aegis:patient", e => applyPatient(e.detail));
 // Pause the live feed on hidden tabs (saves continuous backend egress), resume on return.
 document.addEventListener("visibilitychange", () => {
