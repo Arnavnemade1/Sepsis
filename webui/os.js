@@ -86,6 +86,23 @@ async function loadBedDesktop(bed) {
     if (d && !d.status) render(d);
   } catch (e) {}
 }
+/* Tabbed panel slots (aux: optical/observations/kernel — act: treatment/protocol).
+   Panes are display:none when inactive, so anything that measured itself while
+   hidden has a zero-sized box; a resize event on activation lets the canvas and
+   3D fitters recompute rather than drawing into a 0x0 backing store. */
+function initWinTabs() {
+  document.querySelectorAll(".win-tabs").forEach(strip => {
+    const tabs = [...strip.querySelectorAll(".win-tab")];
+    tabs.forEach(tab => tab.addEventListener("click", () => {
+      const body = strip.closest(".win").querySelector(".win-body");
+      tabs.forEach(t => t.classList.toggle("on", t === tab));
+      body.querySelectorAll(":scope > .pane").forEach(p =>
+        p.classList.toggle("on", p.id === tab.dataset.pane));
+      window.dispatchEvent(new Event("resize"));
+    }));
+  });
+}
+initWinTabs();
 document.addEventListener("aegis:patient", e => applyPatient(e.detail));
 // Pause the live feed on hidden tabs (saves continuous backend egress), resume on return.
 document.addEventListener("visibilitychange", () => {

@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=40" />
+<link rel="stylesheet" href="os.css?v=47" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -83,29 +83,36 @@
     <section class="win win-risk" data-win="risk">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
         <span class="win-title">SEPSIS RISK CORE</span></div>
+      <!-- The three score chips used to live INSIDE .risk-side, which is the 172px
+           column left over after a 120px gauge. They need 205px, so the panel
+           overflowed its own box by 17px and the "signal" chip was clipped — on the
+           one panel the product exists to show. They are now their own full-width
+           row under the gauge, where they have 306px to sit in. -->
       <div class="win-body risk-body">
-        <div class="risk-gauge" id="risk-gauge">
-          <svg viewBox="0 0 120 120" id="risk-arc"></svg>
-          <div class="risk-readout">
-            <div class="risk-prob" id="risk-prob"><span class="rp-int">0</span><span class="rp-dec">%</span></div>
-            <div class="risk-cap">P(sepsis)</div>
+        <div class="risk-head">
+          <div class="risk-gauge" id="risk-gauge">
+            <svg viewBox="0 0 120 120" id="risk-arc"></svg>
+            <div class="risk-readout">
+              <div class="risk-prob" id="risk-prob"><span class="rp-int">0</span><span class="rp-dec">%</span></div>
+              <div class="risk-cap">P(sepsis)</div>
+            </div>
+          </div>
+          <div class="risk-side">
+            <div class="risk-tierline">
+              <span class="risk-eyebrow">calibrated risk</span>
+              <span class="risk-tier-badge" id="risk-tier-badge">LOW</span>
+            </div>
+            <div class="risk-bands" id="risk-bands">
+              <span class="rb-seg" data-t="LOW">LOW</span>
+              <span class="rb-seg" data-t="MEDIUM">MED</span>
+              <span class="rb-seg" data-t="HIGH">HIGH</span>
+            </div>
           </div>
         </div>
-        <div class="risk-side">
-          <div class="risk-tierline">
-            <span class="risk-eyebrow">calibrated risk</span>
-            <span class="risk-tier-badge" id="risk-tier-badge">LOW</span>
-          </div>
-          <div class="risk-bands" id="risk-bands">
-            <span class="rb-seg" data-t="LOW">LOW</span>
-            <span class="rb-seg" data-t="MEDIUM">MED</span>
-            <span class="rb-seg" data-t="HIGH">HIGH</span>
-          </div>
-          <div class="risk-scores">
-            <div class="rsc"><span class="rsc-v" id="rs-sirs">0</span><span class="rsc-k">SIRS /4</span></div>
-            <div class="rsc"><span class="rsc-v" id="rs-qsofa">0</span><span class="rsc-k">qSOFA /3</span></div>
-            <div class="rsc"><span class="rsc-v" id="rs-sq">0%</span><span class="rsc-k">signal</span></div>
-          </div>
+        <div class="risk-scores">
+          <div class="rsc"><span class="rsc-v" id="rs-sirs">0</span><span class="rsc-k">SIRS /4</span></div>
+          <div class="rsc"><span class="rsc-v" id="rs-qsofa">0</span><span class="rsc-k">qSOFA /3</span></div>
+          <div class="rsc"><span class="rsc-v" id="rs-sq">0%</span><span class="rsc-k">signal</span></div>
         </div>
       </div>
     </section>
@@ -137,11 +144,17 @@
       </div>
     </section>
 
-    <!-- WHAT-IF -->
-    <section class="win win-whatif" data-win="whatif">
+    <!-- ACTION: treatment paths + protocol share one slot. Two panels that both
+         answer "what do we do" competed for permanent space and left 30% and 12%
+         of themselves empty; tabbed, each gets the full height it needs. -->
+    <section class="win win-act" data-win="act">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">WHAT-IF TREATMENT TWIN</span></div>
-      <div class="win-body whatif-body">
+        <div class="win-tabs" role="tablist">
+          <button class="win-tab on" role="tab" data-pane="pane-whatif">Treatment</button>
+          <button class="win-tab" role="tab" data-pane="pane-proto">Protocol &amp; proof</button>
+        </div></div>
+      <div class="win-body act-body">
+       <div class="pane on" id="pane-whatif">
         <button class="whatif-pk" id="whatif-pk">
           <span class="whatif-pk-ic">◎</span>
           <span class="whatif-pk-t">Project treatment through the body</span>
@@ -149,22 +162,26 @@
           <span class="whatif-pk-chev">›</span>
         </button>
         <div id="whatif-list" class="whatif-list">
-        <div class="muted">No active projection. Engages on HIGH risk.</div></div></div>
-    </section>
-
-    <!-- PROTOCOL + PROOF -->
-    <section class="win win-proto" data-win="proto">
-      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">PROTOCOL · Z3 PROOF · NARRATIVE</span></div>
-      <div class="win-body proto-body"><div id="proto" class="proto">
+        <div class="muted">No active projection. Engages on HIGH risk.</div></div>
+       </div>
+       <div class="pane" id="pane-proto"><div id="proto" class="proto">
         <div class="muted">Awaiting high-risk synthesis…</div></div></div>
+      </div>
     </section>
 
-    <!-- MINI OPTICAL FEED -->
-    <section class="win win-camera" data-win="camera">
-      <div class="win-bar"><span class="dots"></span><span class="win-title">OPTICAL FEED</span>
+    <!-- AUX: optical feed, observations and kernel layers share one slot. All three
+         were permanent panels averaging 18% used height; the kernel in particular is
+         system internals competing with clinical state for the same eye. -->
+    <section class="win win-aux" data-win="aux">
+      <div class="win-bar"><span class="dots"></span>
+        <div class="win-tabs" role="tablist">
+          <button class="win-tab on" role="tab" data-pane="pane-cam">Optical</button>
+          <button class="win-tab" role="tab" data-pane="pane-notes">Observations</button>
+          <button class="win-tab" role="tab" data-pane="pane-sys">Kernel</button>
+        </div>
         <span class="win-tag" id="mini-posture">—</span></div>
-      <div class="win-body cam-mini-body">
+      <div class="win-body aux-body">
+       <div class="pane on cam-mini-body" id="pane-cam">
         <div class="mini-stage">
           <video id="mini-video" autoplay playsinline muted></video>
           <canvas id="mini-overlay"></canvas>
@@ -178,24 +195,13 @@
           </div>
           <button class="mini-expand cam-needs-feed" id="mini-expand" title="open full module">⤢</button>
         </div>
+       </div>
+       <div class="pane notes-body" id="pane-notes">
+         <div class="notes-impression" id="notes-impression">Awaiting optical analysis…</div>
+         <div class="notes-log" id="notes-log"></div>
+       </div>
+       <div class="pane" id="pane-sys"><div id="layers" class="layers"></div></div>
       </div>
-    </section>
-
-    <!-- CLINICAL OBSERVATIONS (auto-written from the footage) -->
-    <section class="win win-notes" data-win="notes">
-      <div class="win-bar"><span class="dots"></span><span class="win-title">CLINICAL OBSERVATIONS</span>
-        <span class="win-tag" id="notes-state">monitoring</span></div>
-      <div class="win-body notes-body">
-        <div class="notes-impression" id="notes-impression">Awaiting optical analysis…</div>
-        <div class="notes-log" id="notes-log"></div>
-      </div>
-    </section>
-
-    <!-- SYSTEM LAYERS -->
-    <section class="win win-sys" data-win="sys">
-      <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">KERNEL · 8 LAYERS</span></div>
-      <div class="win-body"><div id="layers" class="layers"></div></div>
     </section>
   </main>
 
@@ -996,6 +1002,6 @@
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=12"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=45"></script>
+<script src="os.js?v=46"></script>
 </body>
 </html>

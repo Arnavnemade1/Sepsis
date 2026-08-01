@@ -209,35 +209,46 @@ b{color:var(--ink)}
    shows. The desk itself is the single scroll surface, which is the one scrollbar a
    reader can actually find. The only exception is a genuinely unbounded feed (the
    observations log), which is capped explicitly and visibly rather than by accident. */
-.desk{flex:1;display:grid;gap:13px;padding:15px;min-height:0;overflow-y:auto;overflow-x:hidden;
-  grid-template-columns:344px 1fr 392px;
-  grid-template-rows:auto auto auto auto;
-  align-content:start;
+/* ONE SCREEN. The previous desk was `auto` rows that grew to their content and let
+   the page scroll: 1578px of desk in a 1000px viewport, so 58% of the instrument —
+   including every treatment path — sat below the fold on first paint. It was not
+   short of room. Measured, 766px of that height was EMPTY: four panels were running
+   30-50% dead space (vitals 50%, kernel 40%, reasoning 34%) while the risk core, the
+   one number the whole product exists to show, overflowed its own box by 13px.
+   Real content totals ~812px, which fits.
+
+   So the desk is now bounded to the viewport and the rows are sized from measured
+   content, not guesses. The bodies that can outgrow their row scroll with
+   `overflow-y:auto` — SCROLL, never `hidden`: the old note below is right that a
+   cropping body is a bug, but a bounded body with a real scrollbar is not a crop,
+   and it is what keeps the fold honest. */
+.desk{flex:1;display:grid;gap:12px;padding:14px;min-height:0;overflow:hidden;
+  grid-template-columns:minmax(300px,340px) minmax(0,1fr) minmax(340px,400px);
+  grid-template-rows:auto auto minmax(0,1fr);
   grid-template-areas:
     "risk   twin  agents"
     "vitals twin  agents"
-    "camera twin  whatif"
-    "sys    proto notes";}
+    "aux    twin  act";}
 .desk::-webkit-scrollbar{width:9px}
 .desk::-webkit-scrollbar-track{background:transparent}
 .desk::-webkit-scrollbar-thumb{background:linear-gradient(rgba(var(--accent-rgb),.26),rgba(var(--accent-rgb),.1));
   border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .desk::-webkit-scrollbar-thumb:hover{background:rgba(var(--accent-rgb),.4)}
 .win-twin{grid-area:twin}.win-risk{grid-area:risk}.win-vitals{grid-area:vitals}
-.win-agents{grid-area:agents;display:flex}.win-whatif{grid-area:whatif}
-.win-proto{grid-area:proto;display:flex}.win-sys{grid-area:sys;display:flex}
-.win-camera{grid-area:camera;display:flex}.win-notes{grid-area:notes;display:flex}
-@media(max-width:1240px){.desk{grid-template-columns:300px 1fr;grid-template-rows:repeat(6,auto);
-  grid-template-areas:"risk twin" "vitals twin" "camera twin" "agents agents" "whatif proto" "sys notes";}}
+.win-agents{grid-area:agents}.win-act{grid-area:act}.win-aux{grid-area:aux}
+@media(max-width:1240px){.desk{grid-template-columns:minmax(280px,320px) minmax(0,1fr);
+  grid-template-rows:auto auto minmax(0,1fr);
+  grid-template-areas:"risk twin" "vitals twin" "aux twin" "agents act";}}
 /* Below a laptop width the three-column instrument stops being an instrument: at
    900px the columns are too narrow to hold a reading and its unit on one line. One
    column, full width, in clinical priority order — risk first, then the twin. */
-@media(max-width:900px){.desk{grid-template-columns:1fr;grid-template-rows:repeat(9,auto);
-  grid-template-areas:"risk" "vitals" "twin" "agents" "whatif" "proto" "camera" "notes" "sys";}
-  /* In one column the twin has no neighbours to borrow its height from, and an
-     unbounded 3D stage grows into a ~970px column you have to scroll past a pair of
-     legs to get through. Capped to a viewport you can take in at once. */
-  .twin-stage{min-height:420px;max-height:520px}}
+/* Below a laptop the one-screen rule stops being winnable: a single column cannot
+   hold six panels at a readable size. Here the desk goes back to scrolling, which is
+   the right answer on a phone and the wrong one on a desktop. */
+@media(max-width:900px){.desk{grid-template-columns:1fr;grid-template-rows:repeat(6,auto);
+  overflow-y:auto;align-content:start;
+  grid-template-areas:"risk" "vitals" "twin" "agents" "act" "aux";}
+  .agents-body,.act-body,.aux-body{overflow-y:visible}}
 
 /* PANELS — flat instrument plates.
    These are fixed plates in a fixed grid; they do not float, so they cast no shadow
@@ -255,7 +266,7 @@ b{color:var(--ink)}
    Clipping moves to the two children that genuinely need it: the title bar rounds
    its own top corners, and the media stages round their own bottom ones. */
 .win{position:relative;background:var(--s1);border:1px solid var(--line);border-radius:var(--r-lg);
-  overflow:visible;display:flex;flex-direction:column;min-height:auto;
+  overflow:visible;display:flex;flex-direction:column;min-height:0;
   transition:border-color var(--t) var(--ease);
   animation:winIn var(--t-slow) var(--ease) both}
 .win:hover{border-color:var(--line-bright)}
@@ -268,7 +279,7 @@ b{color:var(--ink)}
 /* min-height keeps every card's header on the same baseline: a bar carrying a status
    tag or a button measured 44px while a bare one measured 39px, so headers sat 5px out
    of alignment across the three columns and shifted whenever a panel gained a tag. */
-.win-bar{display:flex;align-items:center;gap:10px;padding:8px 14px;min-height:40px;box-sizing:border-box;
+.win-bar{display:flex;align-items:center;gap:8px;padding:8px 11px;min-height:40px;box-sizing:border-box;
   border-bottom:1px solid var(--line-soft);border-radius:var(--r-lg) var(--r-lg) 0 0;
   background:var(--s2);position:relative;z-index:1}
 /* The header tick is structure, not signal, so it is neutral. It used to be a
@@ -289,13 +300,15 @@ b{color:var(--ink)}
    bar you cannot reconstruct from the body below. */
 .win-title{font-family:var(--sans);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
   color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
-.win-tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;font-weight:400;
-  border:1px solid var(--line-soft);padding:2px 7px;border-radius:var(--r-sm);background:var(--bg);
+.win-tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.02em;font-weight:400;
+  border:1px solid var(--line-soft);padding:2px 6px;border-radius:var(--r-sm);background:var(--bg);
   white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* A panel body does not scroll. It reports its content's real height to the `auto`
    grid row above, and the row grows to fit — so a panel is never smaller than the
    thing it is displaying. `overflow:auto` here is what let panels crop themselves. */
-.win-body{flex:1 0 auto;min-height:auto;overflow:visible;padding:var(--sp-4);position:relative;z-index:1}
+.win-body{flex:1 1 auto;min-height:0;overflow:visible;padding:var(--sp-4);position:relative;z-index:1}
+/* Bodies that share a bounded row scroll inside it rather than pushing the page. */
+.agents-body,.act-body,.aux-body{overflow-y:auto;overscroll-behavior:contain}
 /* The two genuinely unbounded feeds keep an internal scroll, but an EXPLICIT one:
    a stated max-height, so the crop is a design decision instead of an accident. */
 .notes-log{max-height:260px;overflow-y:auto}
@@ -310,11 +323,11 @@ b{color:var(--ink)}
 
 /* ===================== TWIN ===================== */
 .twin-body{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;
-  overflow:hidden;border-radius:0 0 var(--r-lg) var(--r-lg)}
+  min-height:0;overflow:hidden;border-radius:0 0 var(--r-lg) var(--r-lg)}
 /* The two panels whose content is a viewport rather than a document state their own
    height: a 3D stage and a video feed have no intrinsic content height to report to
    an `auto` grid row, and would otherwise collapse to nothing. */
-.twin-stage{flex:1;width:100%;min-height:460px;position:relative;cursor:grab}
+.twin-stage{flex:1 1 auto;width:100%;min-height:300px;position:relative;cursor:grab}
 .twin-stage:active{cursor:grabbing}
 /* focus/status HUD tag on the twin (was unstyled here → cramped "DYSFUNCTIONRESPIRATORY") */
 .twin-hud{position:absolute;left:12px;top:12px;z-index:4;display:none;align-items:center;gap:9px;
@@ -381,8 +394,8 @@ b{color:var(--ink)}
 #organ-blood{fill:none!important}
 .bodyline{fill:none;stroke:rgba(255,255,255,.22);stroke-width:1.4}
 .heartbeat{transform-origin:center;transform-box:fill-box}
-.twin-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;font-size:11.5px;color:var(--muted);
-  font-family:var(--mono);padding-top:8px}
+.twin-legend{flex:0 0 auto;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;
+  font-size:11.5px;color:var(--muted);font-family:var(--mono);padding:8px 8px 10px}
 .twin-legend i.lg{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
 .lg.normal{background:rgba(255,255,255,.3)}.lg.stress{background:var(--stress)}.lg.dysfunction{background:var(--dys)}
 .lg.critical{background:var(--crit)}.lg.unmon{background:var(--unmon)}
@@ -397,7 +410,8 @@ b{color:var(--ink)}
 /* `height:100%` here read its height back from the panel, which now reads ITS height
    from this content — a circular constraint the grid resolves by cropping. Both sides
    of the panel size themselves from what they contain. */
-.risk-body{display:flex;flex-direction:row;align-items:center;gap:14px}
+.risk-body{display:flex;flex-direction:column;gap:13px;justify-content:center}
+.risk-head{display:flex;flex-direction:row;align-items:center;gap:15px}
 /* 92px was sized around a 20px reading. At the readable type scale the number and its
    caption together are ~50px tall, which a 92px ring cannot hold without the figure
    colliding with the arc — and the panel row is content-sized now, so the extra
@@ -435,8 +449,9 @@ b{color:var(--ink)}
 .rb-seg.on[data-t="LOW"]{color:var(--low-ink);border-color:rgba(var(--low-rgb),.45);background:rgba(var(--low-rgb),.12)}
 .rb-seg.on[data-t="MEDIUM"]{color:var(--med-ink);border-color:rgba(var(--med-rgb),.45);background:rgba(var(--med-rgb),.12)}
 .rb-seg.on[data-t="HIGH"]{color:var(--high-ink);border-color:rgba(var(--high-rgb),.5);background:rgba(var(--high-rgb),.14)}
-.risk-scores{display:flex;gap:5px}
-.rsc{flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:5px 7px;border-radius:var(--r-sm);
+.risk-scores{display:flex;gap:6px}
+.rsc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
+  padding:6px 9px;border-radius:var(--r-sm);
   background:var(--bg);border:1px solid var(--line-soft)}
 .rsc-v{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink);line-height:1}
 .rsc-k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
@@ -496,31 +511,36 @@ b{color:var(--ink)}
 .whatif-body{position:relative}
 /* fade at the bottom hints that the ranked path list scrolls */
 .whatif-body::after{content:"";position:absolute;left:0;right:0;bottom:0;height:20px;pointer-events:none;
-  background:linear-gradient(transparent,rgba(17,18,20,.9))}
+  background:linear-gradient(transparent,var(--s1))}
 .proto-project{display:block;width:100%;margin-top:9px;padding:8px 11px;cursor:pointer;
   font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.04em;
-  text-align:left;color:#9fd4e8;background:rgba(95,179,212,.10);
-  border:1px solid rgba(95,179,212,.30);border-radius:6px;transition:.15s}
-.proto-project:hover{color:#e8f6fb;background:rgba(95,179,212,.18);
-  border-color:rgba(95,179,212,.6)}
+  text-align:left;color:var(--accent);background:rgba(var(--accent-rgb),.09);
+  border:1px solid rgba(var(--accent-rgb),.28);border-radius:6px;
+  transition:color var(--t) var(--ease),background var(--t) var(--ease),border-color var(--t) var(--ease)}
+.proto-project:hover{color:var(--ink);background:rgba(var(--accent-rgb),.16);
+  border-color:rgba(var(--accent-rgb),.55)}
 
 .whatif-list{display:flex;flex-direction:column;gap:4px}
 /* The way into the pharmacokinetic twin. It sits ABOVE the candidate paths and is
    always enabled: the what-if list only populates on elevated risk, but "where
    does this drug go" is a fair question about a stable patient too, and burying
    the answer behind a risk gate is what made it hard to find in the first place. */
-.whatif-pk{display:grid;grid-template-columns:auto 1fr auto;grid-template-rows:auto auto;
-  gap:0 10px;width:100%;margin-bottom:10px;padding:10px 12px;cursor:pointer;text-align:left;
-  background:linear-gradient(180deg,rgba(95,179,212,.10),rgba(95,179,212,.04));
-  border:1px solid rgba(95,179,212,.30);border-radius:8px;transition:.15s}
+.whatif-pk{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;
+  align-items:center;gap:1px 11px;width:100%;margin-bottom:10px;padding:11px 13px;
+  cursor:pointer;text-align:left;
+  background:var(--s2);
+  border:1px solid var(--line);border-radius:8px;transition:border-color var(--t) var(--ease)}
+.whatif-pk:hover{border-color:var(--line-bright)}
 .whatif-pk:hover{border-color:rgba(95,179,212,.62);background:linear-gradient(180deg,rgba(95,179,212,.17),rgba(95,179,212,.07))}
-.whatif-pk-ic{grid-row:1/3;align-self:center;font-size:17px;color:#5fb3d4;line-height:1}
-.whatif-pk-t{font-size:12.5px;font-weight:600;color:var(--ink);letter-spacing:.01em}
-.whatif-pk-s{grid-column:2;font-size:10.5px;color:var(--dim);margin-top:2px;line-height:1.35}
-.whatif-pk-chev{grid-row:1/3;align-self:center;color:#5fb3d4;font-size:16px;opacity:.75}
+.whatif-pk-ic{grid-column:1;grid-row:1/3;align-self:center;font-size:17px;color:var(--accent);line-height:1}
+.whatif-pk-t{grid-column:2;grid-row:1;align-self:end;font-size:12.5px;font-weight:600;
+  color:var(--ink);letter-spacing:.01em}
+.whatif-pk-s{grid-column:2;grid-row:2;align-self:start;font-size:10.5px;color:var(--dim);
+  margin-top:2px;line-height:1.35}
+.whatif-pk-chev{grid-column:3;grid-row:1/3;align-self:center;color:var(--accent);font-size:16px;opacity:.75}
 .whatif-hint{font-size:11px;color:var(--dim);letter-spacing:.02em;margin-bottom:2px}
 .whatif-hint b{color:var(--muted);font-weight:600}
-.cand{display:flex;align-items:center;gap:9px;padding:5px 9px;border-radius:8px;border:1px solid var(--line);
+.cand{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);
   background:rgba(255,255,255,.018);cursor:pointer;
   transition:border-color .2s,box-shadow .2s,transform .2s,background .2s}
 .cand[data-cand]:hover{border-color:var(--line-bright);background:rgba(var(--accent-rgb),.06);transform:translateX(2px)}
@@ -533,8 +553,8 @@ b{color:var(--ink)}
 .cand-dot.safe{background:var(--ok)}
 .cand-dot.no{background:var(--crit)}
 .cand-name{font-size:13px;font-weight:600;text-transform:capitalize;color:var(--ink);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 0 33%}
-.cand-spark{flex:1;min-width:0;height:22px;opacity:.9}
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
+.cand-spark{flex:0 1 60px;min-width:36px;height:22px;opacity:.9}
 .cand-spark canvas{width:100%;height:22px;display:block}
 .cand-risk{display:flex;align-items:baseline;gap:5px;flex:0 0 auto;font-family:var(--mono)}
 .cand-risk b{font-size:14.5px;font-weight:700;color:var(--ink)}
@@ -1871,3 +1891,45 @@ b.sm{font-size:12px}
 
 /* — calmer, consistent hover lift on interactive cards/chips — */
 .rbac-cap,.pharma-q,.orch-stratum-card{transition:transform .16s var(--ease,ease),border-color .16s,box-shadow .16s}
+
+
+/* ============================================================
+   TABBED PANELS
+   Two slots each carry more than one panel's worth of content. The tab strip
+   replaces the title in the bar — a panel that can be three things has no single
+   title, and printing one plus three buttons is the clutter this was meant to cut.
+   ============================================================ */
+.win-tabs{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow:hidden}
+.win-tab{font-family:var(--sans);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;
+  font-weight:600;color:var(--faint);background:none;border:0;cursor:pointer;
+  padding:5px 9px;border-radius:var(--r-xs);white-space:nowrap;
+  transition:color var(--t) var(--ease),background var(--t) var(--ease)}
+.win-tab:hover{color:var(--muted);background:rgba(255,255,255,.04)}
+.win-tab.on{color:var(--ink);background:rgba(255,255,255,.07)}
+.win-tab:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
+/* Panes are display-toggled, so an inactive pane costs no layout and no paint.
+   The camera pane is the default so the optical feed initialises exactly as it did
+   when it was its own always-on panel. */
+.pane{display:none}
+.pane.on{display:block}
+.aux-body .pane.on.cam-mini-body{display:flex}
+
+/* ============================================================
+   STACKED LAYOUT OVERRIDES — must live at the END of the file.
+   These were originally written next to the other max-width:900 rules, which sit
+   ABOVE the base .win and .twin-stage declarations. Same specificity, earlier in
+   source order, so the base won and every one of them was a no-op: the twin
+   collapsed to 73px with 260px of its stage clipped inside. Order is the fix.
+   ============================================================ */
+@media(max-width:900px){
+  /* The bounded desktop desk needs min-height:0 so a panel can shrink into its row.
+     Stacked, the rows are `auto` and the DESK scrolls instead — that same zero floor
+     just lets panels collapse. Size to content here. */
+  .win{min-height:auto}
+  .win-body{flex:1 0 auto;min-height:auto}
+  .win-agents,.win-act,.win-aux{min-height:340px}
+  /* In one column the twin has no neighbours to borrow height from, and an unbounded
+     3D stage grows into a ~970px column you scroll past a pair of legs to get through. */
+  .twin-stage{min-height:420px;max-height:520px}
+  .twin-body{min-height:auto}
+}
