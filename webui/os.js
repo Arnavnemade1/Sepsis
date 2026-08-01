@@ -39,12 +39,27 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /* ---------------- WEBSOCKET ---------------- */
 let ws, retry = 0, paused = false;
+/* Render's free tier bills wall-clock hours for as long as anything is talking to
+   the service, and this view holds a socket plus a 4 s bed poll. The visibility
+   handler below covers a backgrounded tab; this covers a tab left open in the
+   FOREGROUND, which otherwise keeps the backend awake all night for nobody.
+   See the same guard in tactical.js. */
+const IDLE_MS = 15 * 60 * 1000;
+let lastInput = 0, idled = false;
+function goIdle() { if (idled || paused) return;
+  idled = true; try { ws && ws.close(); } catch (e) {} setConn(false); }
+function noteInput() { lastInput = performance.now(); if (!idled) return;
+  idled = false; if (document.hidden) return;
+  if (!ws || ws.readyState > 1) connect(); }
+["mousedown","keydown","touchstart","wheel","mousemove"].forEach(ev =>
+  window.addEventListener(ev, noteInput, { passive: true }));
+setInterval(() => { if (performance.now() - lastInput > IDLE_MS) goIdle(); }, 30000);
 function connect() {
-  if (paused || document.hidden) return;   // don't stream to a backgrounded tab
+  if (paused || idled || document.hidden) return;   // backgrounded or idle: stay off
   const url = window.AEGIS.ws();
   ws = new WebSocket(url);
   ws.onopen = () => { retry = 0; setConn(true); };
-  ws.onclose = () => { setConn(false); if (paused || document.hidden) return; retry++; setTimeout(connect, Math.min(5000, 600 * retry)); };
+  ws.onclose = () => { setConn(false); if (paused || idled || document.hidden) return; retry++; setTimeout(connect, Math.min(5000, 600 * retry)); };
   ws.onerror = () => ws.close();
   // Live frames drive the desktop only when viewing the LIVE patient; a selected
   // cohort bed is rendered from its recorded per-bed snapshot instead.
@@ -63,7 +78,7 @@ async function applyPatient(p) {
   viewingBed = p.id;
   await loadBedDesktop(p.id);
   if (bedPollTimer) clearInterval(bedPollTimer);
-  bedPollTimer = setInterval(() => { if (viewingBed) loadBedDesktop(viewingBed); }, 4000);
+  bedPollTimer = setInterval(() => { if (viewingBed && !idled && !document.hidden) loadBedDesktop(viewingBed); }, 4000);
 }
 async function loadBedDesktop(bed) {
   try {
@@ -75,11 +90,13 @@ document.addEventListener("aegis:patient", e => applyPatient(e.detail));
 // Pause the live feed on hidden tabs (saves continuous backend egress), resume on return.
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) { paused = true; try { ws && ws.close(); } catch (e) {} }
-  else { paused = false; if (!ws || ws.readyState > 1) connect(); }
+  else { paused = false; idled = false; lastInput = performance.now();
+         if (!ws || ws.readyState > 1) connect(); }
 });
 function setConn(live) {
   const c = $("#sb-conn"); c.classList.toggle("live", live);
-  c.lastChild.textContent = live ? "linked" : (retry >= 2 ? "waking backend…" : "connecting");
+  c.lastChild.textContent = idled ? "idle · click to resume"
+    : live ? "linked" : (retry >= 2 ? "waking backend…" : "connecting");
 }
 
 /* ---------------- MASTER RENDER ---------------- */

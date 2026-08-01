@@ -1,18 +1,34 @@
 name: keep-warm
 
-# Render's free tier sleeps the backend after ~15 min of inactivity; the first
-# request after that returns a 502 for ~30-60 s while it cold-boots. This pings
-# the health endpoint frequently enough to keep the service awake so users never
-# hit that 502. (GitHub's scheduled cron can lag a few minutes, so we target a
-# short interval; for rock-solid uptime also add an external monitor such as
-# UptimeRobot at a 5-minute interval against /aegis/health.)
+# Render's free tier gives the workspace 750 instance-hours/month and sleeps a
+# service after ~15 min of inactivity. Hours are billed as WALL-CLOCK TIME WHILE
+# AWAKE — not CPU — so the only thing that controls the bill is how many hours a
+# day something is pinging it. Ping frequency is irrelevant to the hour count:
+# every 8 min and every 14 min both keep it awake 24/7 and both cost ~744 h.
+#
+# This used to run "*/8 * * * *" with no window, which is 744 h of a 750 h budget
+# and 5208 Actions runs against a 2000-minute allowance on a private repo. Both
+# ran out. It now warms a fixed daily window instead:
+#
+#   window   8 h/day  ->  ~248 Render h/month   (of 750)
+#   */10     48 runs/day -> ~1488 Actions min/month (of 2000)
+#
+# leaving ~500 h of headroom for real visits, deploys and dev. Outside the window
+# the first request cold-boots for 30-60 s; the frontend already shows a
+# "Waking backend…" state for exactly this. Before a judged demo that falls
+# outside the window, run this manually (Actions -> keep-warm -> Run workflow)
+# about 5 minutes ahead.
+#
+# TO CHANGE THE WINDOW, edit the two cron lines below. They are in UTC.
+# Current setting = 15:00-23:00 America/New_York while EDT (UTC-4).
+# In winter (EST, UTC-5) the same lines land on 14:00-22:00 local.
 
 on:
   schedule:
-    - cron: "*/8 * * * *"      # roughly every 8 minutes
-  workflow_dispatch: {}          # allow manual "Run workflow"
+    - cron: "*/10 19-23 * * *"   # 19:00-23:59 UTC = 15:00-19:59 ET
+    - cron: "*/10 0-2 * * *"     # 00:00-02:59 UTC = 20:00-22:59 ET
+  workflow_dispatch: {}          # on-demand warm before an out-of-window demo
 
-# don't pile up runs if one is slow / the service is waking
 concurrency:
   group: keep-warm
   cancel-in-progress: false
@@ -20,16 +36,21 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 2
     steps:
       - name: Ping backend health (wake + keep warm)
         run: |
           URL="https://sepsis-backend-omd1.onrender.com/aegis/health"
-          # up to 5 tries with backoff so a cold-boot (502) still ends warm
-          for i in 1 2 3 4 5; do
+          # A scheduled run only needs to touch a service that is already awake,
+          # so one quick probe is enough and costs one Actions minute. A manual
+          # run is the "wake it up for a demo" path and is worth waiting out a
+          # full cold boot for, so only that path retries.
+          tries=1
+          [ "${{ github.event_name }}" = "workflow_dispatch" ] && tries=5
+          for i in $(seq 1 $tries); do
             code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 70 "$URL" || echo 000)
             echo "attempt $i -> HTTP $code"
-            if [ "$code" = "200" ]; then exit 0; fi
-            sleep 15
+            [ "$code" = "200" ] && exit 0
+            [ "$i" -lt "$tries" ] && sleep 15
           done
-          echo "backend did not return 200 after retries (it may be mid-deploy)"
+          echo "backend did not return 200 (asleep, or mid-deploy)"

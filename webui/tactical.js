@@ -280,7 +280,7 @@ function openDossier(id){
   if(latestBeds[id]) updateDossier(latestBeds[id]);
   fetchChart(id); refreshBundle(id); pttLoad(id);
   if(dosChartTimer) clearInterval(dosChartTimer);
-  dosChartTimer=setInterval(function(){ if(selectedBed){ fetchChart(selectedBed); refreshBundle(selectedBed); pttPoll(selectedBed); } }, 4000);
+  dosChartTimer=setInterval(function(){ if(selectedBed&&!idled&&!document.hidden){ fetchChart(selectedBed); refreshBundle(selectedBed); pttPoll(selectedBed); } }, 4000);
 }
 function closeDossier(){ selectedBed=null; dosChart=null;
   if(dosChartTimer){ clearInterval(dosChartTimer); dosChartTimer=null; }
@@ -1318,23 +1318,42 @@ function renderVerify(d){
    WEBSOCKET
    ============================================================ */
 var ws=null, connected=false, lastMsg=0, connTries=0, paused=false;
+/* An open tab is an open instance. Render's free tier bills wall-clock time for
+   as long as anything is talking to the service, and this console polls every
+   2.5 s and holds a socket. The visibility handler below covers a BACKGROUNDED
+   tab, but a console left on a desk in the foreground keeps the backend awake
+   indefinitely — one forgotten overnight tab is ~8 of the month's 750 instance
+   hours. After IDLE_MS with no human input we drop the socket and stop polling;
+   any input at all brings it straight back. */
+var IDLE_MS=15*60*1000, lastInput=0, idled=false;
+function goIdle(){ if(idled||paused) return;
+  idled=true; try{ ws&&ws.close(); }catch(e){} setConn(false); }
+function noteInput(){ lastInput=performance.now(); if(!idled) return;
+  idled=false; if(document.hidden) return;
+  if(!ws||ws.readyState>1) connect(); }
 function clusterWS(){ return window.AEGIS.base().replace(/^http/,"ws")+"/aegis/cluster/stream"; }
-function connect(){ if(paused||document.hidden) return;   // don't stream to a backgrounded tab
+function connect(){ if(paused||idled||document.hidden) return;   // don't stream to a backgrounded or idle tab
   try{ ws=new WebSocket(clusterWS()); }catch(e){ setTimeout(connect,1500); return; }
   ws.onopen=function(){ connected=true; connTries=0; setConn(true); };
   ws.onmessage=function(e){ lastMsg=performance.now(); try{ ingest(JSON.parse(e.data)); }catch(err){ console.error(err); } };
-  ws.onclose=function(){ connected=false; connTries++; setConn(false); if(paused||document.hidden) return; setTimeout(connect, Math.min(4000, 1200+connTries*400)); };
+  ws.onclose=function(){ connected=false; connTries++; setConn(false); if(paused||idled||document.hidden) return; setTimeout(connect, Math.min(4000, 1200+connTries*400)); };
   ws.onerror=function(){ try{ws.close();}catch(e){} };
 }
 // Pause the cluster feed (and the poll below) on hidden tabs to save backend egress.
+// Coming back to the tab counts as input, so it also clears the idle stop.
 document.addEventListener("visibilitychange",function(){
   if(document.hidden){ paused=true; try{ws&&ws.close();}catch(e){} }
-  else { paused=false; if(!ws||ws.readyState>1) connect(); } });
+  else { paused=false; idled=false; lastInput=performance.now();
+         if(!ws||ws.readyState>1) connect(); } });
 function setConn(live){ $("conn").classList.toggle("live",live);
-  $("conn-txt").textContent = live ? "Live" : (connTries>=2 ? "Waking backend…" : "Connecting"); }
-setInterval(function(){ if(document.hidden) return;   // no background polling
+  $("conn-txt").textContent = idled ? "Idle · click to resume"
+    : live ? "Live" : (connTries>=2 ? "Waking backend…" : "Connecting"); }
+setInterval(function(){ if(document.hidden||idled) return;   // no background or idle polling
   if(connected && performance.now()-lastMsg<4000) return;
   fetch(window.AEGIS.http("/aegis/cluster/snapshot")).then(function(r){return r.json();}).then(ingest).catch(function(){}); },2500);
+["mousedown","keydown","touchstart","wheel","mousemove"].forEach(function(ev){
+  window.addEventListener(ev,noteInput,{passive:true}); });
+setInterval(function(){ if(performance.now()-lastInput>IDLE_MS) goIdle(); },30000);
 
 /* ============================================================
    AMBIENT BACKGROUND — drifting node mesh
@@ -1394,7 +1413,7 @@ function devIconSVG(t,cls){ cls=cls||"dv-ic";
   if(t==="optical") return '<svg class="'+cls+' o" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3.1"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>';
   return '<svg class="'+cls+' g" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4.5" width="18" height="6" rx="1.8"/><rect x="3" y="13.5" width="18" height="6" rx="1.8"/><circle cx="6.6" cy="7.5" r=".9" fill="currentColor"/><circle cx="6.6" cy="16.5" r=".9" fill="currentColor"/><path d="M10 7.5h7M10 16.5h7" stroke-width="1.1"/></svg>';
 }
-function startDevices(){ refreshFleet(); if(devTimer) clearInterval(devTimer); devTimer=setInterval(refreshFleet,2600); }
+function startDevices(){ refreshFleet(); if(devTimer) clearInterval(devTimer); devTimer=setInterval(function(){ if(!idled&&!document.hidden) refreshFleet(); },2600); }
 function stopDevices(){ if(devTimer){ clearInterval(devTimer); devTimer=null; } }
 function refreshFleet(){
   fetch(window.AEGIS.http("/aegis/devices")).then(function(r){return r.json();})
