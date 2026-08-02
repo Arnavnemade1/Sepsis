@@ -2462,21 +2462,44 @@ window.AegisIdentity = (function () {
 /* ---------------- CLINICAL OBSERVATIONS (auto-written from camera) ---------------- */
 window.AegisNotes = (function () {
   const seen = new Map();
+  /* Keyed by the sign's STABLE id, not its display name. The previous map was
+     keyed by name and had drifted: five of its entries matched no sign that
+     camera.js still emits ("Facial distress / grimacing", "Micro-tremor / rigors"
+     …), and 18 of the 26 live signs had no entry at all. Two consequences, both
+     silent — unmatched signs logged their bare internal name, and the "Resolved"
+     branch was gated on the phrase existing, so most signs could raise a note and
+     then never clear it. */
   const PHRASE = {
-    "Tachycardia": (s) => `Tachycardia — heart rate ${Math.round(s.hr)} bpm`,
-    "Bradycardia": (s) => `Bradycardia — heart rate ${Math.round(s.hr)} bpm`,
-    "HRV suppression": (s) => `Reduced heart-rate variability (${Math.round(s.hrv)} ms) — autonomic stress`,
-    "Tachypnea": (s) => `Tachypnea — respiratory rate ${Math.round(s.rr)}/min`,
-    "Reduced perfusion": () => `Reduced facial perfusion — possible peripheral vasoconstriction/shunting`,
-    "Pallor": () => `Facial pallor noted`,
-    "Drowsiness / ↓consciousness": () => `Reduced eye openness — drowsiness / possible altered mental status`,
-    "Facial distress / grimacing": () => `Facial signs of distress / grimacing`,
-    "Pain expression": () => `Facial expression consistent with pain`,
-    "Labored breathing (mouth open)": () => `Sustained mouth-open posture — possible laboured breathing`,
-    "Micro-tremor / rigors": () => `Facial micro-tremor — possible rigors/chills`,
-    "Elevated blink rate": (s) => `Elevated blink rate (${Math.round(s.blinkRate)}/min)`,
-    "Low signal quality": () => `Low optical signal quality — readings degraded`,
+    tachy: "Tachycardia",
+    brady: "Bradycardia",
+    hrv: "Reduced heart-rate variability — autonomic stress",
+    tachypnea: "Tachypnea",
+    accessory: "Accessory-muscle recruitment — laboured breathing",
+    tripod: "Tripod / forward-lean posture",
+    mouth: "Sustained open-mouth breathing",
+    flaring: "Nasal flaring — increased work of breathing",
+    rrirreg: "Irregular breathing rhythm",
+    perf: "Reduced facial perfusion — possible vasoconstriction / shunting",
+    pallor: "Facial pallor",
+    cyanosis: "Peripheral cyanosis",
+    mottle: "Skin mottling",
+    lidpallor: "Conjunctival / lid pallor",
+    icterus: "Scleral icterus",
+    diaphor: "Diaphoresis",
+    pupil: "Pupillary instability",
+    gaze: "Gaze non-fixation / roving",
+    asym: "Facial asymmetry",
+    drowsy: "Reduced eye openness — drowsiness / possible altered mental status",
+    toneloss: "Head drop — postural tone loss",
+    distress: "Facial signs of distress",
+    pain: "Facial expression consistent with pain",
+    agitation: "Agitation / restlessness",
+    rigors: "Micro-tremor — possible rigors / chills",
+    handtremor: "Hand tremor",
   };
+  const SYSTEM = { cardiovascular: "cardiovascular", autonomic: "autonomic",
+    respiratory: "respiratory", perfusion: "perfusion", integument: "integument",
+    neurologic: "neurologic" };
   const now = () => new Date().toLocaleTimeString("en-GB");
   function addNote(text, tier) {
     const log = document.querySelector("#notes-log"); if (!log) return;
@@ -2484,29 +2507,64 @@ window.AegisNotes = (function () {
     d.innerHTML = `<span class="ni"></span><time>${now()}</time><span class="nt">${text}</span>`;
     log.prepend(d); while (log.children.length > 40) log.removeChild(log.lastChild);
   }
+  const label = (x) => PHRASE[x.id] || x.name;
+  let riskHist = [];
   function update(s) {
     const imp = document.querySelector("#notes-impression"); if (!imp) return;
     const notable = (s.signs || []);
-    const active = new Map(notable.map((x) => [x.name, x]));
-    for (const [name, x] of active) if (!seen.has(name)) {
-      const ph = PHRASE[name] ? PHRASE[name](s) : name;
-      addNote("Onset — " + ph, x.tier === "crit" ? "crit" : x.tier === "dys" ? "warn" : "");
+    const active = new Map(notable.map((x) => [x.id || x.name, x]));
+
+    // Onset carries the measurement that triggered it, so the note is checkable.
+    for (const [id, x] of active) if (!seen.has(id)) {
+      addNote("Onset \u2014 " + label(x) + (x.detail ? ` \u00b7 ${x.detail}` : "")
+        + (x.grade && x.grade !== "validated" ? ` \u00b7 ${x.grade}` : ""),
+        x.tier === "crit" ? "crit" : x.tier === "dys" ? "warn" : "");
     }
-    for (const name of seen.keys()) if (!active.has(name) && PHRASE[name]) addNote("Resolved — " + name.replace(/ \(.*\)/, ""), "");
-    seen.clear(); for (const [n, x] of active) seen.set(n, x);
+    // Resolution is no longer gated on having a phrase, so every sign that can
+    // raise a note can also clear one.
+    for (const [id, prev] of seen) if (!active.has(id)) addNote("Resolved \u2014 " + label(prev), "");
+    // A sign that crosses into critical while already active is its own event.
+    for (const [id, x] of active) {
+      const prev = seen.get(id);
+      if (prev && prev.tier !== "crit" && x.tier === "crit")
+        addNote("Escalated \u2014 " + label(x) + (x.detail ? ` \u00b7 ${x.detail}` : ""), "crit");
+    }
+    seen.clear(); for (const [id, x] of active) seen.set(id, x);
+
+    // ---- rolling analysis ----
+    riskHist.push(s.risk || 0); if (riskHist.length > 30) riskHist.shift();
+    const trend = riskHist.length > 8
+      ? (riskHist.slice(-5).reduce((a, b) => a + b, 0) / 5) - (riskHist.slice(0, 5).reduce((a, b) => a + b, 0) / 5)
+      : 0;
+    const dir = trend > 0.04 ? "rising" : trend < -0.04 ? "settling" : "steady";
     const worst = notable.reduce((a, b) => (b.sev > (a ? a.sev : 0) ? b : a), null);
+    const systems = [...new Set(notable.map((x) => SYSTEM[x.cat] || x.cat))];
+    const soft = notable.filter((x) => x.grade === "experimental" || x.grade === "expression").length;
+
     let txt, cls = "";
-    if (!notable.length) {
-      txt = s.hr ? `No acute distress. Optical vitals within normal limits — HR ${Math.round(s.hr)} bpm, RR ${Math.round(s.rr || 0)}/min. Posture: ${s.posture}.`
-        : "Acquiring optical signal…";
+    if (s.calibrating) {
+      txt = `Calibrating to this subject \u2014 learning their resting normal (${Math.round((s.calibProgress || 0) * 100)}%). No findings are raised until calibration completes.`;
+    } else if (!notable.length) {
+      txt = s.hr
+        ? `No acute distress. Optical vitals within this subject's learned normal \u2014 HR ${Math.round(s.hr)} bpm, RR ${Math.round(s.rr || 0)}/min, signal quality ${Math.round((s.quality || 0) * 100)}%. Posture: ${s.posture}.`
+        : "Acquiring optical signal\u2026";
     } else {
-      const lead = notable.slice(0, 3).map((x) => x.name.replace(/ \/.*| \(.*/, "").toLowerCase()).join(", ");
-      txt = `Patient exhibits ${lead}${notable.length > 3 ? ` (+${notable.length - 3} more)` : ""}. `
-        + `HR ${Math.round(s.hr || 0)} bpm, RR ${Math.round(s.rr || 0)}/min, perfusion ${Math.round((s.perfusion || 0) * 100)}%. Posture: ${s.posture}.`;
+      const lead = notable.slice(0, 3).map((x) => label(x).replace(/ \u2014.*| \/.*/, "").toLowerCase()).join(", ");
+      txt = `${systems.length > 1 ? `${systems.length} systems involved (${systems.join(", ")})` : `${systems[0]} involvement`}: `
+        + `${lead}${notable.length > 3 ? ` and ${notable.length - 3} more` : ""}. `
+        + `Composite optical risk ${Math.round((s.risk || 0) * 100)}% and ${dir}. `
+        + `HR ${Math.round(s.hr || 0)} bpm, RR ${Math.round(s.rr || 0)}/min, perfusion ${Math.round((s.perfusion || 0) * 100)}%.`
+        + (soft ? ` ${soft} of ${notable.length} findings are experimental-grade and are corroborating, not diagnostic.` : "")
+        + ((s.quality || 0) < 0.5 ? " Signal quality is low \u2014 treat these readings with caution." : "");
       cls = worst && worst.sev > 0.66 ? "crit" : "warn";
     }
     imp.className = "notes-impression " + cls; imp.textContent = txt;
-    const st = document.querySelector("#notes-state"); if (st) st.textContent = notable.length ? (cls === "crit" ? "attention" : "observing") : "monitoring";
+    const st = document.querySelector("#notes-state");
+    if (st) {
+      const mode = s.calibrating ? "calibrating"
+        : notable.length ? (cls === "crit" ? "attention" : "observing") : "monitoring";
+      st.textContent = mode; st.className = "notes-state " + mode;
+    }
   }
 
   // Physiologic observations derived from the backend body-state (organ systems).

@@ -83,6 +83,8 @@ const S = {                                    // shared observable state
   hr: 0, hrv: 0, rr: 0, snr: 0, quality: 0,
   perfusion: 0, redness: 0, faceBlue: 0, tremor: 0,
   eyeClosure: 0, drowsy: 0, distress: 0, pain: 0, mouthOpen: 0, blinkRate: 0,
+  alarRatio: 0, asym: 0, irisVar: 0, gazeVar: 0, scleraYellow: 0, lidRed: 0,
+  diaphoresis: 0, rrIrreg: 0,
   posture: "—", rrBody: 0, respEffort: 0, shExc: 0, accessory: 0,
   agit: 0, headGap: 0, forwardLean: 0,
   handJit: 0, handBlue: 0, handMottle: 0, handLum: 0, neckBlue: 0,
@@ -160,6 +162,7 @@ function loop() {
     SHAL.ingestROIs([roi("forehead", G.forehead), roi("L cheek", G["left cheek"]), roi("R cheek", G["right cheek"])], ts);
     SHAL.endFrame(true);
     trackMotion(lm, ts);
+    ocular(lm, w, h, ts);
     S.posture = classifyFacePosture(lm);
     if (fres.faceBlendshapes && fres.faceBlendshapes[0]) updateBlend(fres.faceBlendshapes[0].categories, ts);
   }
@@ -302,7 +305,43 @@ function drawFaceMesh(x, lm, w, h) {
   loop(LIPS, "rgba(122,168,255,.6)", 1.2, true);
   loop(L_BROW, "rgba(52,225,255,.5)", 1.1, false); loop(R_BROW, "rgba(52,225,255,.5)", 1.1, false);
   loop(NOSE_BRIDGE, "rgba(52,225,255,.35)", 1.0, false);
+  drawIris(x, lm, w, h);
   x.shadowBlur = 0; x.restore();
+}
+/* Iris tracking rings. The 468-477 ring drives pupillary instability and gaze
+   fixation, and until it is drawn there is no way to see whether it is locked on —
+   an ocular sign firing off a mis-tracked iris should be visibly obvious. The
+   reticle scales with the measured iris radius, so instability reads as a pulsing
+   ring rather than a number nobody can check. */
+function drawIris(x, lm, w, h) {
+  if (!lm[468] || !lm[473]) return;
+  const io = Math.hypot(lm[33].x - lm[263].x, lm[33].y - lm[263].y) || 1;
+  for (const idx of [IRIS_L, IRIS_R]) {
+    const g = irisGeom(lm, idx); if (!g) continue;
+    const cx = g.cx * w, cy = g.cy * h, r = Math.max(3, g.r * w);
+    x.strokeStyle = "rgba(31,221,138,.9)"; x.lineWidth = 1.3;
+    x.shadowColor = "rgba(31,221,138,.8)"; x.shadowBlur = 7;
+    x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
+    // crosshair ticks — reads as an instrument lock, not a blob
+    x.beginPath();
+    x.moveTo(cx - r * 1.7, cy); x.lineTo(cx - r * 1.15, cy);
+    x.moveTo(cx + r * 1.15, cy); x.lineTo(cx + r * 1.7, cy);
+    x.moveTo(cx, cy - r * 1.7); x.lineTo(cx, cy - r * 1.15);
+    x.moveTo(cx, cy + r * 1.15); x.lineTo(cx, cy + r * 1.7);
+    x.stroke();
+    x.fillStyle = "rgba(31,221,138,.95)";
+    x.beginPath(); x.arc(cx, cy, 1.4, 0, Math.PI * 2); x.fill();
+  }
+  // sclera sample sites — show WHERE the icterus reading is taken from
+  const mark = (iris, cornerIdx) => {
+    const g = irisGeom(lm, iris), k = lm[cornerIdx]; if (!g || !k) return;
+    const sx = (g.cx + (k.x - g.cx) * 0.55) * w, sy = (g.cy + (k.y - g.cy) * 0.55) * h;
+    x.strokeStyle = "rgba(226,196,90,.75)"; x.lineWidth = 1; x.shadowBlur = 4;
+    x.shadowColor = "rgba(226,196,90,.6)";
+    x.strokeRect(sx - 3.5, sy - 3.5, 7, 7);
+  };
+  mark(IRIS_L, 33); mark(IRIS_R, 263);
+  x.shadowBlur = 0;
 }
 /* heartbeat-synced perfusion bloom at the forehead rPPG window (colour by HR) */
 function drawPulseGlow(x, lm, w, h, big) {
@@ -402,7 +441,19 @@ function patchStats(cx, cy, w, h, rad) {
     const blue = B / (R + G + B + 1e-6);
     const mx = Math.max(R, G, B), mn = Math.min(R, G, B), sat = (mx - mn) / (mx + 1e-6);
     const rbm = rb.reduce((a, b) => a + b, 0) / n; let v = 0; for (const z of rb) v += (z - rbm) ** 2; v /= n;
-    return { R, G, B, blue, sat, lum: (R + G + B) / 3, mottle: Math.sqrt(v) };
+    // specular fraction: bright AND desaturated pixels. Sweat sits on the skin as
+    // a mirror, so it reflects the light source's colour rather than the skin's —
+    // which is exactly a high-luminance, low-saturation pixel.
+    let spec = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const pr = d[i], pg = d[i + 1], pb = d[i + 2];
+      const pmx = Math.max(pr, pg, pb), pmn = Math.min(pr, pg, pb);
+      if ((pr + pg + pb) / 3 > 198 && (pmx - pmn) / (pmx + 1e-6) < 0.18) spec++;
+    }
+    // yellowness: icterus lifts R and G together while B is absorbed by bilirubin
+    const yellow = ((R + G) / 2 - B) / ((R + G) / 2 + B + 1e-6);
+    return { R, G, B, blue, sat, lum: (R + G + B) / 3, mottle: Math.sqrt(v),
+             spec: spec / n, yellow };
   } catch { return null; }
 }
 function sample(lm, w, h, ts) {
@@ -420,6 +471,119 @@ function trackMotion(lm, ts) {
     S.tremor = Math.min(1, (e / n) / io * 60);
   }
 }
+/* ---------------- ocular + facial morphology ----------------
+   MediaPipe's mesh is 478 points: 468 face + a 10-point IRIS ring (468-477) that
+   nothing here had ever read. That ring is what makes pupil instability and gaze
+   fixation measurable, and having the iris located is also what lets us sample
+   SCLERA rather than "somewhere in the eye socket".
+
+   Grading is deliberately conservative. Geometry (nasal flare, facial asymmetry,
+   gaze, pupil) is measured from landmarks and is repeatable; COLOUR findings
+   (icterus, lid pallor) are read off an uncontrolled webcam under unknown
+   illumination and are experimental — they are scored against the subject's own
+   learned baseline, so they report CHANGE, never an absolute clinical value. */
+const IRIS_L = [468, 469, 470, 471, 472], IRIS_R = [473, 474, 475, 476, 477];
+const ALA_L = 48, ALA_R = 278;                 // alar creases
+const SYM_PAIRS = [[33, 263], [61, 291], [50, 280], [105, 334], [70, 300], [132, 361], [172, 397]];
+let irisBuf = [], gazeBuf = [];
+
+function irisGeom(lm, idx) {
+  const c = lm[idx[0]]; if (!c) return null;
+  let d = 0, n = 0;
+  for (let i = 1; i < idx.length; i++) { const p = lm[idx[i]]; if (!p) continue; d += Math.hypot(p.x - c.x, p.y - c.y); n++; }
+  return n ? { cx: c.x, cy: c.y, r: d / n } : null;
+}
+function ocular(lm, w, h, ts) {
+  const io = Math.hypot(lm[33].x - lm[263].x, lm[33].y - lm[263].y) || 1;
+
+  /* --- nasal flaring: alar width against the subject's own inter-ocular span --- */
+  if (lm[ALA_L] && lm[ALA_R]) {
+    S.alarRatio = Math.hypot(lm[ALA_L].x - lm[ALA_R].x, lm[ALA_L].y - lm[ALA_R].y) / io;
+  }
+
+  /* --- facial asymmetry: mirrored pairs measured about the true face midline --- */
+  const mid = lm[168] && lm[152] ? { x: (lm[168].x + lm[152].x) / 2, y: (lm[168].y + lm[152].y) / 2 } : null;
+  if (mid) {
+    let a = 0, n = 0;
+    for (const [l, r] of SYM_PAIRS) {
+      if (!lm[l] || !lm[r]) continue;
+      a += Math.abs(Math.abs(lm[l].x - mid.x) - Math.abs(lm[r].x - mid.x)) + Math.abs(lm[l].y - lm[r].y);
+      n++;
+    }
+    if (n) S.asym = (a / n) / io;
+  }
+
+  /* --- iris ring: pupil instability + gaze fixation --- */
+  const il = irisGeom(lm, IRIS_L), ir = irisGeom(lm, IRIS_R);
+  if (il && ir) {
+    irisBuf.push({ ts, r: (il.r + ir.r) / 2 / io });
+    // gaze offset = iris centre relative to the eye-corner midpoint
+    const exL = (lm[33].x + lm[133].x) / 2, eyL = (lm[33].y + lm[133].y) / 2;
+    gazeBuf.push({ ts, x: (il.cx - exL) / io, y: (il.cy - eyL) / io });
+    while (irisBuf.length && ts - irisBuf[0].ts > 8000) irisBuf.shift();
+    while (gazeBuf.length && ts - gazeBuf[0].ts > 8000) gazeBuf.shift();
+    if (irisBuf.length > 12) {
+      const m = irisBuf.reduce((a, b) => a + b.r, 0) / irisBuf.length;
+      let v = 0; for (const p of irisBuf) v += (p.r - m) ** 2;
+      S.irisVar = Math.sqrt(v / irisBuf.length) / (m + 1e-6);   // coefficient of variation
+    }
+    if (gazeBuf.length > 12) {
+      const mx = gazeBuf.reduce((a, b) => a + b.x, 0) / gazeBuf.length;
+      const my = gazeBuf.reduce((a, b) => a + b.y, 0) / gazeBuf.length;
+      let v = 0; for (const p of gazeBuf) v += (p.x - mx) ** 2 + (p.y - my) ** 2;
+      S.gazeVar = Math.sqrt(v / gazeBuf.length);
+    }
+
+    /* --- sclera: sample BETWEEN the iris and the outer canthus, which is white
+           when healthy. Knowing where the iris is, is what makes this possible. --- */
+    const scl = (iris, cornerIdx) => {
+      const k = lm[cornerIdx]; if (!k) return null;
+      return patchStats(iris.cx + (k.x - iris.cx) * 0.55, iris.cy + (k.y - iris.cy) * 0.55, w, h, 0.008);
+    };
+    const sL = scl(il, 33), sR = scl(ir, 263);
+    if (sL && sR) S.scleraYellow = (sL.yellow + sR.yellow) / 2;
+  }
+
+  /* --- lower-lid margin colour (perfusion proxy) --- */
+  const lidL = lm[145], lidR = lm[374];
+  if (lidL && lidR) {
+    const a = patchStats(lidL.x, lidL.y + 0.012, w, h, 0.009);
+    const b = patchStats(lidR.x, lidR.y + 0.012, w, h, 0.009);
+    if (a && b) S.lidRed = ((a.R - a.B) / (a.R + a.B + 1e-6) + (b.R - b.B) / (b.R + b.B + 1e-6)) / 2;
+  }
+
+  /* --- diaphoresis: specular sheen across forehead + upper lip --- */
+  const fh = meanPatch(lm, G.forehead, w, h);
+  const lipAbove = lm[164] ? patchStats(lm[164].x, lm[164].y, w, h, 0.012) : null;
+  if (fh) S.diaphoresis = Math.max(fh.spec, lipAbove ? lipAbove.spec : 0);
+}
+/* patch stats over a landmark group (meanRGB only returned the colour triple) */
+function meanPatch(lm, idx, w, h) {
+  let cx = 0, cy = 0; for (const i of idx) { cx += lm[i].x; cy += lm[i].y; } cx /= idx.length; cy /= idx.length;
+  return patchStats(cx, cy, w, h, 0.03);
+}
+/* --- breathing rhythm regularity: coefficient of variation of breath-to-breath
+   intervals. RR itself is estimated in the frequency domain (a DFT peak), which
+   gives a RATE but deliberately throws away rhythm — a Cheyne-Stokes pattern and
+   a metronomic one at the same mean rate produce the same DFT peak. Peak-picking
+   the same detrended waveform recovers the intervals that distinguish them.
+   Irregular/periodic breathing is a late and ominous sign, so this reports change
+   against the subject's own baseline rather than an absolute. */
+function intervalCV(sig, fs) {
+  if (!sig || sig.length < 20 || !isFinite(fs) || fs <= 0) return 0;
+  const minGap = Math.max(2, Math.round(fs * 1.1));      // ≤ ~55 breaths/min
+  const pk = [];
+  for (let i = 1; i < sig.length - 1; i++)
+    if (sig[i] > sig[i - 1] && sig[i] >= sig[i + 1] && sig[i] > 0 &&
+        (!pk.length || i - pk[pk.length - 1] >= minGap)) pk.push(i);
+  if (pk.length < 4) return 0;
+  const iv = []; for (let i = 1; i < pk.length; i++) iv.push((pk[i] - pk[i - 1]) / fs);
+  const m = iv.reduce((a, b) => a + b, 0) / iv.length;
+  if (!(m > 0)) return 0;
+  let v = 0; for (const z of iv) v += (z - m) ** 2;
+  return Math.sqrt(v / iv.length) / m;
+}
+
 function updateBlend(cats, ts) {
   const get = (n) => { const c = cats.find((c) => c.categoryName === n); return c ? c.score : 0; };
   const k = (n) => blendEMA[n] = 0.6 * (blendEMA[n] || 0) + 0.4 * get(n);
@@ -514,6 +678,7 @@ function computeBody() {
     const shW = shBuf.reduce((a, b) => a + b.w, 0) / shBuf.length || 0.2;
     S.shExc = std(det) / shW;                  // breathing excursion, scale-invariant
     S.respEffort = clip01(S.shExc / 0.06);     // ~0.06 normalized excursion ≈ deep effort
+    S.rrIrreg = intervalCV(det, fs);           // rhythm, which the DFT rate discards
   }
   // sustained whole-body motion -> agitation/restlessness
   if (poseMotionBuf.length > 4) S.agit = poseMotionBuf.slice(-12).reduce((a, b) => a + b.m, 0) / Math.min(12, poseMotionBuf.length);
@@ -537,7 +702,16 @@ function classifyFacePosture(lm) { const v = (i) => [lm[i].x, lm[i].y]; const x 
 const Detector = (() => {
   const DEF = { hr: 75, hrv: 45, rrFace: 15, rrBody: 15, perf: 0.5, redness: 0.36,
     blink: 14, shExc: 0.02, agit: 0.015, handJit: 0.02, faceTremor: 0.05,
-    handBlue: 0.33, neckBlue: 0.33, faceBlue: 0.33, headGap: 0.95, handMottle: 8 };
+    handBlue: 0.33, neckBlue: 0.33, faceBlue: 0.33, headGap: 0.95, handMottle: 8,
+    alarRatio: 0.62, rrIrreg: 0.18, irisVar: 0.05, gazeVar: 0.02,
+    scleraYellow: 0.10, lidRed: 0.22, asym: 0.03, diaphoresis: 0.02 };
+  /* Most baselines are magnitudes and the `v > 0` guard below is what stops an
+     absent modality (hr = 0 with no face) from dragging them to zero. These two are
+     signed/near-zero by nature — a healthy sclera reads ~0 yellow, dry skin ~0
+     sheen — so that same guard would freeze them at their prior forever and every
+     subject would be scored against a stranger's eyes. They are only ever computed
+     with a tracked face, so finite is a sufficient condition here. */
+  const SIGNED = new Set(["scleraYellow", "diaphoresis"]);
   let base = { ...DEF };
   const st = new Map();                          // id -> {level, active}
   let warm = 0; const WARMUP = 8;                // ~8 s calibration before any flag
@@ -600,12 +774,75 @@ const Detector = (() => {
       gate: (c) => faceOK(c) || c.handTracking, score: (c, b) => Math.max(ramp(c.tremor / Math.max(b.faceTremor, 1e-3), 1.8, 3.4), c.handTracking ? ramp(c.handJit / Math.max(b.handJit, 1e-3), 1.8, 3.4) : 0) },
     { id: "handtremor", name: "Hand tremor", cat: "autonomic", region: "skin", grade: "experimental",
       gate: (c) => c.handTracking, score: (c, b) => ramp(c.handJit / Math.max(b.handJit, 1e-3), 1.8, 3.6) },
+    // ---- respiratory geometry + rhythm (nose, shoulders) ----
+    { id: "flaring", name: "Nasal flaring", cat: "respiratory", region: "lungs", grade: "proxy",
+      gate: (c) => faceOK(c) && c.alarRatio > 0,
+      score: (c, b) => ramp(c.alarRatio / Math.max(b.alarRatio, 1e-6), 1.06, 1.20) },
+    { id: "rrirreg", name: "Irregular breathing rhythm", cat: "respiratory", region: "lungs", grade: "proxy",
+      gate: (c) => c.bodyTracking && c.rrIrreg > 0,
+      score: (c, b) => ramp(c.rrIrreg / Math.max(b.rrIrreg, 1e-3), 1.6, 3.0) },
+    // ---- ocular (iris ring) ----
+    { id: "pupil", name: "Pupillary instability", cat: "autonomic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.irisVar > 0,
+      score: (c, b) => ramp(c.irisVar / Math.max(b.irisVar, 1e-4), 1.7, 3.2) },
+    { id: "gaze", name: "Gaze non-fixation / roving", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.gazeVar > 0,
+      score: (c, b) => ramp(c.gazeVar / Math.max(b.gazeVar, 1e-4), 1.8, 3.4) },
+    { id: "icterus", name: "Scleral icterus", cat: "integument", region: "liver", grade: "experimental",
+      gate: (c) => faceOK(c) && c.scleraYellow !== 0,
+      score: (c, b) => ramp(c.scleraYellow - b.scleraYellow, 0.05, 0.16) },
+    { id: "lidpallor", name: "Conjunctival / lid pallor", cat: "integument", region: "skin", grade: "experimental",
+      gate: (c) => faceOK(c) && c.lidRed > 0,
+      score: (c, b) => ramp(1 - c.lidRed / Math.max(b.lidRed, 1e-6), 0.18, 0.45) },
+    // ---- neurologic asymmetry ----
+    { id: "asym", name: "Facial asymmetry / droop", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: faceOK, score: (c, b) => ramp(c.asym / Math.max(b.asym, 1e-4), 1.5, 2.8) },
+    // ---- autonomic ----
+    { id: "diaphor", name: "Diaphoresis", cat: "autonomic", region: "skin", grade: "experimental",
+      gate: faceOK, score: (c, b) => ramp(c.diaphoresis - b.diaphoresis, 0.05, 0.20) },
   ];
+
+  /* What each sign is actually reading, in the subject's own numbers. A note that
+     says "Tachycardia" is a label; one that says "HR 112 bpm against a learned
+     resting 74" is a finding somebody can check. Keyed by the STABLE sign id —
+     the display names have been renamed before and silently broke the notes. */
+  const pc = (x) => (x >= 0 ? "+" : "\u2212") + Math.abs(Math.round(x * 100)) + "%";
+  const xb = (v, b) => (v / Math.max(b, 1e-9)).toFixed(1) + "\u00d7 baseline";
+  const DETAIL = {
+    tachy: (c, b) => `HR ${Math.round(c.hr)} bpm vs ${Math.round(b.hr)} resting`,
+    brady: (c, b) => `HR ${Math.round(c.hr)} bpm vs ${Math.round(b.hr)} resting`,
+    hrv: (c, b) => `HRV ${Math.round(c.hrv)} ms, ${pc(c.hrv / Math.max(b.hrv, 1e-6) - 1)} of baseline`,
+    tachypnea: (c) => `RR ${Math.round(Math.max(c.rr || 0, c.rrBody || 0))}/min`,
+    accessory: (c, b) => `shoulder excursion ${xb(c.shExc, b.shExc)}`,
+    tripod: (c) => `forward lean ${Math.round(c.forwardLean * 100)}%`,
+    mouth: (c) => `jaw open ${Math.round(c.mouthOpen * 100)}%`,
+    flaring: (c, b) => `alar width ${pc(c.alarRatio / Math.max(b.alarRatio, 1e-6) - 1)}`,
+    rrirreg: (c, b) => `breath-interval CV ${c.rrIrreg.toFixed(2)} vs ${b.rrIrreg.toFixed(2)}`,
+    perf: (c, b) => `pulsatility ${pc(c.perfusion / Math.max(b.perf, 1e-6) - 1)}`,
+    pallor: (c, b) => `facial redness ${pc(c.redness / Math.max(b.redness, 1e-6) - 1)}`,
+    cyanosis: (c, b) => `hand blue-ratio ${xb(c.handBlue, b.handBlue)}`,
+    mottle: (c, b) => `mottling variance ${xb(c.handMottle, b.handMottle)}`,
+    lidpallor: (c, b) => `lid redness ${pc(c.lidRed / Math.max(b.lidRed, 1e-6) - 1)}`,
+    icterus: (c, b) => `scleral yellowness +${(c.scleraYellow - b.scleraYellow).toFixed(2)}`,
+    diaphor: (c, b) => `specular sheen +${((c.diaphoresis - b.diaphoresis) * 100).toFixed(0)}% of patch`,
+    pupil: (c, b) => `iris-diameter CV ${xb(c.irisVar, b.irisVar)}`,
+    gaze: (c, b) => `gaze dispersion ${xb(c.gazeVar, b.gazeVar)}`,
+    asym: (c, b) => `landmark asymmetry ${xb(c.asym, b.asym)}`,
+    drowsy: (c) => `eye closure ${Math.round(c.drowsy * 100)}% of frames`,
+    toneloss: (c, b) => `head-to-shoulder gap ${pc(c.headGap / Math.max(b.headGap, 1e-6) - 1)}`,
+    distress: (c) => `brow/mouth action ${Math.round(c.distress * 100)}%`,
+    pain: (c) => `pain action units ${Math.round(c.pain * 100)}%`,
+    agitation: (c, b) => `motion energy ${xb(c.agit, b.agit)}`,
+    rigors: (c, b) => `micro-tremor ${xb(c.tremor, b.faceTremor)}`,
+    handtremor: (c, b) => `hand jitter ${xb(c.handJit, b.handJit)}`,
+  };
 
   function baseSrc(c) {
     return { hr: c.hr, hrv: c.hrv, rrFace: c.rr, rrBody: c.rrBody, perf: c.perfusion, redness: c.redness,
       blink: c.blinkRate, shExc: c.shExc, agit: c.agit, handJit: c.handJit, faceTremor: c.tremor,
-      handBlue: c.handBlue, neckBlue: c.neckBlue, faceBlue: c.faceBlue, headGap: c.headGap, handMottle: c.handMottle };
+      handBlue: c.handBlue, neckBlue: c.neckBlue, faceBlue: c.faceBlue, headGap: c.headGap, handMottle: c.handMottle,
+      alarRatio: c.alarRatio, rrIrreg: c.rrIrreg, irisVar: c.irisVar, gazeVar: c.gazeVar,
+      scleraYellow: c.scleraYellow, lidRed: c.lidRed, asym: c.asym, diaphoresis: c.diaphoresis };
   }
   /* Learn the subject's resting normal — aggressively during warm-up, then only
      from good-quality, stable frames. The freeze gate watches the strongest
@@ -616,7 +853,12 @@ const Detector = (() => {
     const warming = warm < WARMUP;
     if (!warming && (c.quality < 0.5 || peak > 0.2)) return;
     const src = baseSrc(c), lr = warming ? 0.16 : 0.03 * c.quality;
-    for (const key in base) { const v = src[key]; if (v != null && isFinite(v) && v > 0) base[key] = (1 - lr) * base[key] + lr * v; }
+    for (const key in base) {
+      const v = src[key];
+      if (v == null || !isFinite(v)) continue;
+      if (!SIGNED.has(key) && !(v > 0)) continue;
+      base[key] = (1 - lr) * base[key] + lr * v;
+    }
   }
 
   function tick(c) {
@@ -634,9 +876,13 @@ const Detector = (() => {
     const peak = cand.reduce((m, x) => Math.max(m, x.level), 0);    // strongest emerging sign
     adapt(c, peak);
     warm = Math.min(WARMUP, warm + 1);
-    const mk = (x) => ({ name: x.def.name, cat: x.def.cat, grade: x.def.grade, region: x.def.region,
-      sev: x.level, conf: Math.round(x.level * 100),
-      tier: x.level > 0.66 ? "crit" : x.level > 0.4 ? "dys" : "stress" });
+    const mk = (x) => {
+      let detail = "";
+      try { if (DETAIL[x.def.id]) detail = DETAIL[x.def.id](c, base); } catch (e) { detail = ""; }
+      return { id: x.def.id, name: x.def.name, cat: x.def.cat, grade: x.def.grade, region: x.def.region,
+        sev: x.level, conf: Math.round(x.level * 100), detail,
+        tier: x.level > 0.66 ? "crit" : x.level > 0.4 ? "dys" : "stress" };
+    };
     const signs = cand.filter((x) => x.active).map(mk).sort((a, b) => b.sev - a.sev);
     const emerging = cand.filter((x) => !x.active && x.gated && x.level > x.on * 0.5)
       .map(mk).sort((a, b) => b.sev - a.sev).slice(0, 3);
@@ -845,6 +1091,17 @@ function _syntheticFace() {
   place(G.forehead, (k, n) => ({ x: cx - 0.06 + (k / n) * 0.12, y: cy - 0.18 }));
   place(G["left cheek"], () => ({ x: cx - 0.1, y: cy + 0.07 })); place(G["right cheek"], () => ({ x: cx + 0.1, y: cy + 0.07 }));
   lm[54] = { x: cx - 0.16, y: cy - 0.13 }; lm[10] = { x: cx, y: cy - ry };
+  // iris rings (468-477) so the ocular overlay can be verified without a webcam
+  const iris = (idx, ex) => {
+    lm[idx[0]] = { x: ex, y: cy - 0.02 };
+    for (let k = 1; k < idx.length; k++) {
+      const a = (k - 1) / (idx.length - 1) * 6.2832;
+      lm[idx[k]] = { x: ex + Math.cos(a) * 0.016, y: cy - 0.02 + Math.sin(a) * 0.016 };
+    }
+  };
+  iris(IRIS_L, cx - 0.075); iris(IRIS_R, cx + 0.075);
+  lm[33] = { x: cx - 0.12, y: cy - 0.02 }; lm[263] = { x: cx + 0.12, y: cy - 0.02 };
+  lm[133] = { x: cx - 0.03, y: cy - 0.02 }; lm[362] = { x: cx + 0.03, y: cy - 0.02 };
   return lm;
 }
 let _demoRaf = 0;

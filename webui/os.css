@@ -1982,3 +1982,13 @@ b.sm{font-size:12px}
    hold the old stage height open */
 .cam-mini-body:not(.feed-on) #mini-video,
 .cam-mini-body:not(.feed-on) #mini-overlay{display:none}
+
+/* observations pane header — carries the state chip that the tabbed rebuild dropped */
+.notes-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+.notes-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint)}
+.notes-state{margin-left:auto;font-family:var(--mono);font-size:10px;letter-spacing:.04em;
+  color:var(--dim);border:1px solid var(--line-soft);background:var(--bg);
+  padding:2px 7px;border-radius:var(--r-sm);white-space:nowrap}
+.notes-state.attention{color:var(--crit-ink);border-color:rgba(var(--high-rgb),.45)}
+.notes-state.observing{color:var(--med-ink,var(--med));border-color:rgba(var(--med-rgb),.4)}
