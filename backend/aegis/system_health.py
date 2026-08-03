@@ -252,6 +252,35 @@ def _ladder(rig: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def _alarm_policy() -> Optional[Dict[str, Any]]:
+    """The alarm-policy search result. This exists so the false-alarm gap on this
+    page is not just a complaint: it records that four policy families were
+    searched against a locked holdout and none beat a plain threshold, which
+    redirects the reader from "tune the alarm" to "the score needs to separate
+    better"."""
+    d = _load("alarm_policy.json")
+    if not d:
+        return None
+    v = d.get("verdict") or {}
+    return {
+        "shipped": (d.get("shipped_policy") or {}).get("describe"),
+        "challenger": v.get("challenger"),
+        "promoted": bool(v.get("promoted")),
+        "reason": v.get("reason"),
+        "champion_far": v.get("champion_far"),
+        "challenger_far": v.get("challenger_far"),
+        "champion_detection": v.get("champion_detection"),
+        "challenger_detection": v.get("challenger_detection"),
+        "ci": [v.get("ci_low"), v.get("ci_high")],
+        "families": ["plain threshold", "K consecutive hours",
+                     "leaky exceedance integrator", "per-patient z-score"],
+        "verdict": ("No alarm policy beat a plain threshold. At a fixed detection "
+                    "rate the false-alarm rate is set by how well the score "
+                    "separates, and no post-processing recovers separation the "
+                    "score does not have."),
+    }
+
+
 def _improvement() -> Optional[Dict[str, Any]]:
     """The record of attempts to make it better — including the failures.
 
@@ -315,6 +344,7 @@ def report() -> Dict[str, Any]:
         "ladder": _ladder(rig),
         "generalization": _generalization(rig),
         "improvement": _improvement(),
+        "alarm_policy": _alarm_policy(),
         "strengths": good,
         "gaps": bad,
         "evaluation": {

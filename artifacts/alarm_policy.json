@@ -1,0 +1,23 @@
+{
+  "shipped_policy": {
+    "family": "plain",
+    "params": {
+      "threshold": 0.0725
+    },
+    "describe": "plain(threshold=0.0725)"
+  },
+  "verdict": {
+    "promoted": false,
+    "reason": "refused: detection gain is not separable from zero (95% CI +0.000 to +0.000)",
+    "champion": "plain(threshold=0.0725)",
+    "challenger": "plain(threshold=0.0857843)",
+    "champion_detection": 0.36,
+    "challenger_detection": 0.36,
+    "champion_far": 0.10820624546114742,
+    "challenger_far": 0.10820624546114742,
+    "delta_detection": 0.0,
+    "ci_low": 0.0,
+    "ci_high": 0.0,
+    "n_boot": 2000
+  }
+}
