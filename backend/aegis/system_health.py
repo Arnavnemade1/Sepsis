@@ -281,6 +281,63 @@ def _alarm_policy() -> Optional[Dict[str, Any]]:
     }
 
 
+def _refusal_class(reason: str, accepted: bool) -> str:
+    """Group a refusal by WHY, so sixteen rejections read as a pattern rather than
+    sixteen separate disappointments. The three classes are meaningfully different:
+    a trial that lost outright is the search exploring, a trial that gained but
+    failed the significance test is the gate doing its job, and a trial that was
+    simply not the round's best never got tested at all."""
+    if accepted:
+        return "accepted"
+    r = (reason or "").lower()
+    if "won the round" in r:
+        return "lost-round"
+    if "not the round" in r:
+        return "untested"
+    if "p=" in r or "significan" in r:
+        return "not-significant"
+    if "min_gain" in r or "<=" in r:
+        return "no-gain"
+    return "refused"
+
+
+def _transcript(led: Dict[str, Any], trials: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Per-trial record for the UI: what was changed, what it scored, what happened.
+
+    The ledger stores each trial's full resulting config but older runs pre-date the
+    mutation diff, so it is derived here when absent — the search never promoted
+    anything, which means the champion never moved and every trial is a mutation of
+    the baseline. Ordered worst-delta last so the near-misses read first.
+    """
+    try:
+        from backend.ml.selfimprove import config_diff
+    except Exception:
+        config_diff = None            # type: ignore[assignment]
+    base = led.get("champion_config") or led.get("baseline_config") or {}
+    out: List[Dict[str, Any]] = []
+    for t in trials:
+        mut = t.get("mutation")
+        if not mut and config_diff is not None and t.get("config"):
+            try:
+                mut = config_diff(base, t["config"])
+            except Exception:
+                mut = []
+        out.append({
+            "id": t.get("trial_id"),
+            "round": t.get("round_idx"),
+            "mutation": mut or ["(no change recorded)"],
+            "auroc": t.get("mean_auroc"),
+            "delta": t.get("delta_vs_champion"),
+            "p": t.get("p_value"),
+            "seconds": t.get("seconds"),
+            "accepted": bool(t.get("accepted")),
+            "outcome": _refusal_class(t.get("reason", ""), bool(t.get("accepted"))),
+            "reason": t.get("reason") or "",
+        })
+    out.sort(key=lambda r: (r["delta"] is None, -(r["delta"] or 0)))
+    return out
+
+
 def _improvement() -> Optional[Dict[str, Any]]:
     """The record of attempts to make it better — including the failures.
 
@@ -297,6 +354,7 @@ def _improvement() -> Optional[Dict[str, Any]]:
     return {
         "trials": len(trials),
         "accepted": len(accepted),
+        "transcript": _transcript(led, trials),
         "promoted": bool(led.get("promoted")),
         "baseline_auroc": round(float(led.get("baseline_search_auroc", 0)), 4),
         "champion_auroc": round(float(led.get("champion_search_auroc", 0)), 4),

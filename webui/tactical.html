@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=50" />
+<link rel="stylesheet" href="tactical.css?v=51" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -165,6 +165,17 @@
         <section class="sh-card">
           <div class="sh-card-h"><h2>Last improvement run</h2><span id="sh-imp-meta"></span></div>
           <div id="sh-improve"></div>
+        </section>
+        <section class="sh-card sh-card-wide">
+          <div class="sh-card-h"><h2>Search transcript</h2>
+            <span>every mutation the search tried, and what happened to it</span></div>
+          <div id="sh-trials" class="sh-trials"></div>
+          <p class="sh-note" id="sh-trials-note"></p>
+        </section>
+        <section class="sh-card sh-card-wide">
+          <div class="sh-card-h"><h2>Alarm policy</h2>
+            <span>can the false-alarm rate be fixed by how we alarm?</span></div>
+          <div id="sh-alarm"></div>
         </section>
         <section class="sh-card sh-card-wide">
           <div class="sh-card-h"><h2>Subsystem status</h2><span>live</span></div>
@@ -486,6 +497,6 @@
 </div>
 
 <script src="pktwin_ui.js?v=13"></script>
-<script src="tactical.js?v=38"></script>
+<script src="tactical.js?v=39"></script>
 </body>
 </html>

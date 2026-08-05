@@ -1651,6 +1651,7 @@ function loadValidation(){
 }
 function pctTxt(v){ return v==null?"—":Math.round(v*100)+"%"; }
 
+function pct1(v){ return v==null?"—":(v*100).toFixed(1)+"%"; }
 function renderHealth(d){
   if(!d || d.status!=="ok"){
     var st0=$("sh-status"); if(st0){ st0.className="sh-status warn";
@@ -1753,6 +1754,47 @@ function renderHealth(d){
       '<div class="sh-imp-s">A search that promotes nothing is the gate working, not '+
       'a gap in it — every candidate was measured on locked patients the search never '+
       'saw, and none beat the shipped configuration.</div>';
+  }
+
+  // ---- search transcript: what each mutation actually was ----
+  var tt=(imp&&imp.transcript)||[];
+  if(tt.length){
+    var OUT={accepted:"accepted","not-significant":"gain not significant",
+             "no-gain":"no gain",untested:"not tested",refused:"refused"};
+    $("sh-trials").innerHTML=tt.map(function(t){
+      var d=t.delta==null?0:t.delta;
+      return '<div class="sh-trial '+esc(t.outcome)+'">'+
+        '<span class="st-id">#'+t.id+'</span>'+
+        '<span class="st-mut">'+t.mutation.map(esc).join('<i> · </i>')+'</span>'+
+        '<span class="st-d '+(d>0?"up":d<0?"dn":"")+'">'+(d>=0?"+":"\u2212")+
+          Math.abs(d).toFixed(4)+'</span>'+
+        '<span class="st-p">'+(t.p==null?"—":"p "+t.p.toFixed(2))+'</span>'+
+        '<span class="st-o">'+esc(OUT[t.outcome]||t.outcome)+'</span></div>';
+    }).join("");
+    var n={}; tt.forEach(function(t){ n[t.outcome]=(n[t.outcome]||0)+1; });
+    var untested=n.untested||0;
+    $("sh-trials-note").innerHTML=
+      'Sorted by measured gain. '+
+      (untested? '<b>'+untested+' of '+tt.length+'</b> were evaluated but never tested: '+
+        'only the best challenger of each round is put to the paired test, so the rest '+
+        'cost compute without producing evidence. That is the clearest place this search '+
+        'has room to improve.' : '');
+  }
+
+  // ---- alarm policy ----
+  var ap=d.alarm_policy;
+  if(ap){
+    $("sh-alarm").innerHTML=
+      '<div class="sh-ap-v">'+esc(ap.verdict)+'</div>'+
+      '<div class="sh-ap-row"><span>searched</span><b>'+ap.families.map(esc).join(' · ')+'</b></div>'+
+      '<div class="sh-ap-row"><span>shipped</span><b>'+esc(ap.shipped||"—")+'</b></div>'+
+      '<div class="sh-ap-row"><span>best challenger</span><b>'+esc(ap.challenger||"—")+'</b></div>'+
+      '<div class="sh-ap-row"><span>on locked patients</span><b>'+
+        'false alarm '+pct1(ap.champion_far)+' \u2192 '+pct1(ap.challenger_far)+
+        ' · detection '+pct1(ap.champion_detection)+' \u2192 '+pct1(ap.challenger_detection)+'</b></div>'+
+      '<div class="sh-ap-tag '+(ap.promoted?"on":"")+'">'+
+        (ap.promoted?"PROMOTED":"REFUSED")+'</div>'+
+      '<div class="sh-note">'+esc(ap.reason||"")+'</div>';
   }
 
   // ---- live subsystem state ----

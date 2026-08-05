@@ -123,6 +123,40 @@ def _clip(v: float, k: Knob) -> float:
     return int(round(v)) if k.kind == "int" else float(v)
 
 
+def config_diff(parent: Config, child: Config) -> List[str]:
+    """What actually changed, in words.
+
+    A trial recorded only its full resulting config, so reading the ledger told you
+    the state a challenger ended in but never the edit that produced it — and with
+    three knobs moving out of a dozen, the difference is most of the information.
+    An accepted win you cannot attribute to a knob is not a finding, and a refusal
+    you cannot attribute to one teaches nothing about where the search has been.
+    """
+    out: List[str] = []
+    pr, cr = list(parent.get("roster", [])), list(child.get("roster", []))
+    for learner in cr:
+        if learner not in pr:
+            out.append(f"roster +{learner}")
+    for learner in pr:
+        if learner not in cr:
+            out.append(f"roster \u2212{learner}")
+    pp: Dict[str, Dict[str, float]] = parent.get("params", {})   # type: ignore[assignment]
+    cp: Dict[str, Dict[str, float]] = child.get("params", {})    # type: ignore[assignment]
+    for learner in sorted(set(pp) | set(cp)):
+        a, b = pp.get(learner, {}), cp.get(learner, {})
+        for key in sorted(set(a) | set(b)):
+            va, vb = a.get(key), b.get(key)
+            if va is None or vb is None or va == vb:
+                continue
+            if isinstance(va, float) or isinstance(vb, float):
+                if abs(float(va) - float(vb)) < 1e-12:
+                    continue
+                out.append(f"{learner}.{key} {float(va):.4g} \u2192 {float(vb):.4g}")
+            else:
+                out.append(f"{learner}.{key} {va} \u2192 {vb}")
+    return out
+
+
 def mutate(cfg: Config, scale: float, rng: random.Random,
            n_knobs: int = 3, roster_prob: float = 0.15) -> Config:
     """Perturb a config to produce a challenger.
@@ -231,6 +265,7 @@ class Trial:
     accepted: bool
     reason: str
     seconds: float
+    mutation: List[str] = field(default_factory=list)   # what this trial changed
 
 
 @dataclass
@@ -355,26 +390,56 @@ class RecursiveSelfImprover:
                 tr = Trial(trial_id=self._next_id, round_idx=r, config=cfg,
                            fold_scores=[float(x) for x in sc], mean_auroc=float(sc.mean()),
                            delta_vs_champion=float(d.mean()), p_value=float(p),
-                           accepted=False, reason="", seconds=round(time.time() - ts, 1))
+                           accepted=False, reason="", seconds=round(time.time() - ts, 1),
+                           mutation=config_diff(champ_cfg, cfg))
                 self._next_id += 1
                 round_trials.append((tr, sc))
                 self.log(f"  trial {tr.trial_id}: AUROC {tr.mean_auroc:.4f} "
                          f"(delta {tr.delta_vs_champion:+.4f}, p={p:.3f}, {tr.seconds}s)")
 
-            best_tr, best_sc = max(round_trials, key=lambda x: x[0].delta_vs_champion)
-            if best_tr.delta_vs_champion <= self.min_gain:
-                best_tr.reason = (f"delta {best_tr.delta_vs_champion:+.4f} <= min_gain "
-                                  f"{self.min_gain} (effect too small to be worth a change)")
-            elif best_tr.p_value >= alpha_c:
-                best_tr.reason = (f"delta {best_tr.delta_vs_champion:+.4f} but p={best_tr.p_value:.3f} "
-                                  f">= corrected alpha {alpha_c:.4f} (not distinguishable from fold noise)")
-            else:
-                best_tr.accepted = True
-                best_tr.reason = (f"delta {best_tr.delta_vs_champion:+.4f} > {self.min_gain} "
-                                  f"and p={best_tr.p_value:.3f} < {alpha_c:.4f}")
+            # Judge EVERY challenger, not just the one with the biggest delta.
+            #
+            # The old rule picked the round's leader by delta and then tested that
+            # one candidate's p-value. Those two orderings disagree: a smaller but
+            # far more consistent gain can carry much stronger evidence than a large
+            # noisy one. In the first real run, trial 5 (delta +0.0156, p=0.21) was
+            # selected over trial 1 (delta +0.0037, p=0.07) — the strongest evidence
+            # in the round was discarded for having a smaller mean, and 12 of 16
+            # evaluations produced no verdict at all despite being fully paid for.
+            #
+            # Every trial is already scored on the same folds, so testing all of them
+            # costs nothing extra. alpha_c is Bonferroni over the population, which is
+            # exactly the correction that testing `population` candidates requires —
+            # it was already being applied to the single selected one, so the bar is
+            # unchanged. Among those clearing BOTH bars, the largest delta wins.
             for tr, _ in round_trials:
-                if not tr.accepted and not tr.reason:
-                    tr.reason = "not the round's best challenger"
+                if tr.delta_vs_champion <= self.min_gain:
+                    tr.reason = (f"delta {tr.delta_vs_champion:+.4f} <= min_gain "
+                                 f"{self.min_gain} (effect too small to be worth a change)")
+                elif tr.p_value >= alpha_c:
+                    tr.reason = (f"delta {tr.delta_vs_champion:+.4f} but p={tr.p_value:.3f} "
+                                 f">= corrected alpha {alpha_c:.4f} (not distinguishable "
+                                 f"from fold noise)")
+                else:
+                    tr.accepted = True
+                    tr.reason = (f"delta {tr.delta_vs_champion:+.4f} > {self.min_gain} "
+                                 f"and p={tr.p_value:.3f} < {alpha_c:.4f}")
+
+            passing = [(tr, sc) for tr, sc in round_trials if tr.accepted]
+            if passing:
+                best_tr, best_sc = max(passing, key=lambda x: x[0].delta_vs_champion)
+                # only one config can seed the next round; the rest are recorded as
+                # having cleared the bar but lost the round, which is a real outcome
+                # and not the same as never having been tested.
+                for tr, _ in passing:
+                    if tr is not best_tr:
+                        tr.accepted = False
+                        tr.reason = (f"cleared the bar ({tr.reason}) but a stronger "
+                                     f"challenger won the round")
+            else:
+                best_tr, best_sc = max(round_trials, key=lambda x: x[0].delta_vs_champion)
+
+            for tr, _ in round_trials:
                 self._trials.append(tr)
 
             if best_tr.accepted:

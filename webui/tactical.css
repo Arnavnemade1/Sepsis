@@ -1300,3 +1300,46 @@ b{font-weight:700}
 
 .sh-note{font-family:var(--mono);font-size:10px;line-height:1.65;color:var(--faint);
   margin:13px 0 0;padding-top:11px;border-top:1px solid var(--hair-soft)}
+
+/* ---- search transcript: one row per mutation the search tried ---- */
+.sh-trials{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow-y:auto}
+.sh-trial{display:grid;grid-template-columns:36px minmax(0,1fr) 74px 62px 128px;
+  gap:10px;align-items:center;padding:6px 8px;border-radius:var(--r-xs);
+  border-left:2px solid transparent;background:rgba(255,255,255,.015)}
+.sh-trial:hover{background:rgba(255,255,255,.04)}
+.sh-trial.accepted{border-left-color:var(--ok)}
+.sh-trial.not-significant{border-left-color:var(--watch)}
+.sh-trial.no-gain{border-left-color:rgba(255,255,255,.14)}
+.sh-trial.untested{opacity:.62}
+.st-id{font-family:var(--mono);font-size:10px;color:var(--faint)}
+.st-mut{font-family:var(--mono);font-size:10.5px;color:var(--muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-mut i{font-style:normal;color:var(--faint)}
+.st-d{font-family:var(--mono);font-size:11.5px;text-align:right;color:var(--dim);
+  font-variant-numeric:tabular-nums}
+.st-d.up{color:var(--ok-ink)}.st-d.dn{color:var(--dim)}
+.st-p{font-family:var(--mono);font-size:10px;color:var(--faint);text-align:right}
+.st-o{font-family:var(--mono);font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--faint);text-align:right;white-space:nowrap}
+.sh-trial.not-significant .st-o{color:var(--watch-ink)}
+.sh-trial.accepted .st-o{color:var(--ok-ink)}
+
+/* ---- alarm policy verdict ---- */
+.sh-ap-v{font-size:12.5px;line-height:1.6;color:var(--ink);margin-bottom:11px}
+.sh-ap-row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:12px;
+  padding:5px 0;border-top:1px solid var(--hair-soft);font-size:11px}
+.sh-ap-row span{font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--faint)}
+.sh-ap-row b{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--muted);
+  word-break:break-word}
+.sh-ap-tag{display:inline-block;margin-top:11px;font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.09em;padding:3px 9px;border-radius:var(--r-xs);
+  color:var(--watch-ink);background:rgba(var(--med-rgb),.12);
+  border:1px solid rgba(var(--med-rgb),.3)}
+.sh-ap-tag.on{color:#08111a;background:var(--ok);border-color:var(--ok)}
+
+@media (max-width:900px){
+  .sh-trial{grid-template-columns:30px minmax(0,1fr) 66px;row-gap:2px}
+  .sh-trial .st-p,.sh-trial .st-o{display:none}
+  .sh-ap-row{grid-template-columns:1fr}
+}

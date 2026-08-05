@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -13,6 +13,7 @@ help:
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -98,6 +99,11 @@ operating-point:
 # that does not beat the shipped policy with a CI excluding zero.
 verify-alarm:
 	$(PY) -m backend.ml.scripts.verify_alarm_policy
+
+# The self-improvement loop's acceptance rule: refuses for the right reasons, and
+# still lets a genuine winner through.
+verify-selfimprove:
+	$(PY) -m backend.ml.scripts.verify_selfimprove
 
 alarm-policy:
 	$(PY) -m backend.ml.scripts.search_alarm_policy --save
