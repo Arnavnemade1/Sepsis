@@ -119,8 +119,13 @@
       "delta_vs_champion": -0.0008654762772480155,
       "p_value": 0.6019246784742149,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 58.7
+      "reason": "delta -0.0009 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 38.1,
+      "mutation": [
+        "et.n_estimators 120 \u2192 118",
+        "hgb.learning_rate 0.06 \u2192 0.06658",
+        "hgb.max_iter 400 \u2192 335"
+      ]
     },
     {
       "trial_id": 1,
@@ -170,7 +175,12 @@
       "p_value": 0.07062771707485031,
       "accepted": false,
       "reason": "delta +0.0037 <= min_gain 0.005 (effect too small to be worth a change)",
-      "seconds": 46.6
+      "seconds": 35.3,
+      "mutation": [
+        "hgb.max_iter 400 \u2192 381",
+        "hgb2.l2_regularization 0.1 \u2192 0.1133",
+        "hgb2.max_features 0.6 \u2192 0.6142"
+      ]
     },
     {
       "trial_id": 2,
@@ -219,8 +229,13 @@
       "delta_vs_champion": -0.004367558036867392,
       "p_value": 0.7111782814454952,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 58.2
+      "reason": "delta -0.0044 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 50.4,
+      "mutation": [
+        "hgb.learning_rate 0.06 \u2192 0.05375",
+        "hgb2.l2_regularization 0.1 \u2192 0.05977",
+        "hgb2.max_features 0.6 \u2192 0.527"
+      ]
     },
     {
       "trial_id": 3,
@@ -269,8 +284,13 @@
       "delta_vs_champion": -0.0031668215376597177,
       "p_value": 0.9705121588799384,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 68.2
+      "reason": "delta -0.0032 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 56.2,
+      "mutation": [
+        "et.min_samples_leaf 50 \u2192 51",
+        "hgb.learning_rate 0.06 \u2192 0.04882",
+        "hgb2.learning_rate 0.12 \u2192 0.08472"
+      ]
     },
     {
       "trial_id": 4,
@@ -319,8 +339,13 @@
       "delta_vs_champion": 0.0031798042573672283,
       "p_value": 0.15860783525714311,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 55.6
+      "reason": "delta +0.0032 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 39.9,
+      "mutation": [
+        "hgb.l2_regularization 1 \u2192 1.097",
+        "hgb.max_leaf_nodes 63 \u2192 60",
+        "hgb2.learning_rate 0.12 \u2192 0.1486"
+      ]
     },
     {
       "trial_id": 5,
@@ -369,7 +394,13 @@
       "p_value": 0.21119439118486605,
       "accepted": false,
       "reason": "delta +0.0156 but p=0.211 >= corrected alpha 0.0125 (not distinguishable from fold noise)",
-      "seconds": 49.5
+      "seconds": 35.6,
+      "mutation": [
+        "roster \u2212lr",
+        "et.min_samples_leaf 50 \u2192 54",
+        "hgb2.learning_rate 0.12 \u2192 0.1559",
+        "hgb2.max_features 0.6 \u2192 0.6213"
+      ]
     },
     {
       "trial_id": 6,
@@ -418,8 +449,13 @@
       "delta_vs_champion": -0.006343192164497709,
       "p_value": 0.9158039190285949,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 52.4
+      "reason": "delta -0.0063 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 34.8,
+      "mutation": [
+        "hgb.max_iter 400 \u2192 441",
+        "hgb2.l2_regularization 0.1 \u2192 0.07418",
+        "hgb2.learning_rate 0.12 \u2192 0.1477"
+      ]
     },
     {
       "trial_id": 7,
@@ -468,8 +504,13 @@
       "delta_vs_champion": 0.0007624249887507503,
       "p_value": 0.449341216548176,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 69.1
+      "reason": "delta +0.0008 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 45.3,
+      "mutation": [
+        "et.n_estimators 120 \u2192 132",
+        "hgb.l2_regularization 1 \u2192 0.4947",
+        "hgb.learning_rate 0.06 \u2192 0.04694"
+      ]
     },
     {
       "trial_id": 8,
@@ -519,7 +560,12 @@
       "p_value": 0.1662939085920695,
       "accepted": false,
       "reason": "delta +0.0054 but p=0.166 >= corrected alpha 0.0125 (not distinguishable from fold noise)",
-      "seconds": 51.4
+      "seconds": 34.6,
+      "mutation": [
+        "hgb.max_iter 400 \u2192 460",
+        "hgb2.max_leaf_nodes 15 \u2192 12",
+        "lr.C 0.5 \u2192 0.4791"
+      ]
     },
     {
       "trial_id": 9,
@@ -568,8 +614,13 @@
       "delta_vs_champion": -0.0030061885906935335,
       "p_value": 0.5781102193877675,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 47.8
+      "reason": "delta -0.0030 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 35.8,
+      "mutation": [
+        "et.max_depth 10 \u2192 9",
+        "et.n_estimators 120 \u2192 97",
+        "hgb2.learning_rate 0.12 \u2192 0.1358"
+      ]
     },
     {
       "trial_id": 10,
@@ -618,8 +669,13 @@
       "delta_vs_champion": -0.006918262829919364,
       "p_value": 0.7100707900767584,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 50.3
+      "reason": "delta -0.0069 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 38.7,
+      "mutation": [
+        "et.max_depth 10 \u2192 9",
+        "hgb.l2_regularization 1 \u2192 1.032",
+        "hgb.max_leaf_nodes 63 \u2192 76"
+      ]
     },
     {
       "trial_id": 11,
@@ -667,8 +723,14 @@
       "delta_vs_champion": -0.022674497495234164,
       "p_value": 0.963222396460105,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 49.1
+      "reason": "delta -0.0227 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 32.0,
+      "mutation": [
+        "roster \u2212et",
+        "et.min_samples_leaf 50 \u2192 43",
+        "hgb2.max_iter 300 \u2192 276",
+        "lr.C 0.5 \u2192 0.5102"
+      ]
     },
     {
       "trial_id": 12,
@@ -718,7 +780,12 @@
       "p_value": 0.21544475070620506,
       "accepted": false,
       "reason": "delta +0.0028 <= min_gain 0.005 (effect too small to be worth a change)",
-      "seconds": 72.0
+      "seconds": 33.6,
+      "mutation": [
+        "hgb.max_iter 400 \u2192 419",
+        "hgb2.learning_rate 0.12 \u2192 0.1586",
+        "hgb2.max_leaf_nodes 15 \u2192 17"
+      ]
     },
     {
       "trial_id": 13,
@@ -767,8 +834,12 @@
       "delta_vs_champion": 0.0026641011843877203,
       "p_value": 0.11533147348265178,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 66.6
+      "reason": "delta +0.0027 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 35.7,
+      "mutation": [
+        "et.n_estimators 120 \u2192 125",
+        "hgb2.max_leaf_nodes 15 \u2192 13"
+      ]
     },
     {
       "trial_id": 14,
@@ -817,8 +888,13 @@
       "delta_vs_champion": 0.002094528952105157,
       "p_value": 0.44836563993087586,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 61.7
+      "reason": "delta +0.0021 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 51.9,
+      "mutation": [
+        "et.max_depth 10 \u2192 9",
+        "hgb2.l2_regularization 0.1 \u2192 0.08017",
+        "hgb2.learning_rate 0.12 \u2192 0.1054"
+      ]
     },
     {
       "trial_id": 15,
@@ -867,8 +943,12 @@
       "delta_vs_champion": -0.0004608861561203141,
       "p_value": 0.5586995026278221,
       "accepted": false,
-      "reason": "not the round's best challenger",
-      "seconds": 56.1
+      "reason": "delta -0.0005 <= min_gain 0.005 (effect too small to be worth a change)",
+      "seconds": 57.2,
+      "mutation": [
+        "hgb.max_iter 400 \u2192 340",
+        "hgb2.l2_regularization 0.1 \u2192 0.1051"
+      ]
     }
   ],
   "gate": {
