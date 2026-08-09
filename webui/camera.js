@@ -261,6 +261,7 @@ function drawTo(t, lm) {
       mirrorText(x, "rPPG", b.x + b.w, b.y - 7, "600 11px ui-monospace,monospace", col, 6);
     }
   }
+  if (big) { drawFaceLock(x, lm, cw, ch); drawSignCallouts(x, lm, cw, ch); }
   if (big) { drawVitalTags(x, lm, cw, ch); drawWaveMonitor(x, cw, ch); }
 }
 /* draw left-to-right readable text on the CSS-mirrored overlay */
@@ -290,9 +291,26 @@ function drawScan(x, w, h) {
 function drawFaceMesh(x, lm, w, h) {
   x.save();
   // point cloud (single batched fill — cheap)
-  x.fillStyle = "rgba(96,216,255,.26)"; x.beginPath();
-  for (let i = 0; i < lm.length; i += 1) { const p = lm[i]; if (!p) continue; x.moveTo(p.x * w + 0.9, p.y * h); x.arc(p.x * w, p.y * h, 0.9, 0, 6.283); }
-  x.fill();
+  /* Depth banding. The cloud was one flat fill, so a 3D mesh rendered as a sticker.
+     MediaPipe carries a z per landmark; splitting into a few bands and fading the
+     far ones makes the face read as a volume being scanned rather than a decal.
+     Still batched — one path per band, not one per point. */
+  let zmin = Infinity, zmax = -Infinity;
+  for (const p of lm) { if (!p || p.z == null) continue; if (p.z < zmin) zmin = p.z; if (p.z > zmax) zmax = p.z; }
+  const zr = (zmax - zmin) || 1, BANDS = 4;
+  for (let b = 0; b < BANDS; b++) {
+    const near = 1 - b / (BANDS - 1);                     // 1 = closest to camera
+    x.fillStyle = `rgba(${96 + 60 * near | 0},${216},255,${(0.10 + 0.26 * near).toFixed(3)})`;
+    x.beginPath();
+    for (let i = 0; i < lm.length; i++) {
+      const p = lm[i]; if (!p) continue;
+      const t = p.z == null ? 0.5 : (p.z - zmin) / zr;    // 0 = nearest
+      if (Math.min(BANDS - 1, (t * BANDS) | 0) !== b) continue;
+      const r = 0.6 + 0.7 * near;
+      x.moveTo(p.x * w + r, p.y * h); x.arc(p.x * w, p.y * h, r, 0, 6.283);
+    }
+    x.fill();
+  }
   // contours
   const loop = (idx, col, wd, close) => {
     x.strokeStyle = col; x.lineWidth = wd; x.shadowColor = col; x.shadowBlur = 6;
@@ -342,6 +360,77 @@ function drawIris(x, lm, w, h) {
   };
   mark(IRIS_L, 33); mark(IRIS_R, 263);
   x.shadowBlur = 0;
+}
+/* ---- FACE-LOCK reticle + per-sign anatomical callouts ----
+   The overlay drew a beautiful mesh that never said WHAT it had found. A sign
+   firing in the sidebar list gave no clue which part of the face produced it, so
+   the two halves of the instrument — what it sees and where it saw it — were never
+   connected on screen. Each active sign is now pinned to the anatomy it was
+   measured from, which is both the most useful thing the overlay can show and the
+   thing that makes it look like a scanner rather than a filter. */
+const SIGN_ANCHOR = {
+  flaring: 4, mouth: 13, icterus: 468, lidpallor: 145,
+  blinkhi: 159, blinklo: 159, drowsy: 159, gaze: 468, pupil: 473,
+  diaphor: 10, pallor: 50, flushing: 280, perf: 10,
+  pain: 105, distress: 334, hypoexpr: 152, asym: 168,
+  rigors: 152, agitation: 152, toneloss: 152, tachy: 234, hrv: 234,
+};
+function drawSignCallouts(x, lm, w, h) {
+  const signs = (S.signs || []).filter((g) => SIGN_ANCHOR[g.id] != null && lm[SIGN_ANCHOR[g.id]]);
+  if (!signs.length) return;
+  const t = performance.now();
+  // stack labels down the left so callouts never sit on top of each other
+  const used = [];
+  signs.slice(0, 6).forEach((g) => {
+    const a = lm[SIGN_ANCHOR[g.id]];
+    const ax = a.x * w, ay = a.y * h;
+    const crit = g.tier === "crit";
+    const col = crit ? "rgba(229,84,76,.95)" : "rgba(226,163,60,.95)";
+    // pulsing ring on the anatomy that produced the reading
+    const ph = (t / 900 + g.sev) % 1;
+    x.save();
+    x.strokeStyle = col; x.lineWidth = 1.3; x.shadowColor = col; x.shadowBlur = 8;
+    x.beginPath(); x.arc(ax, ay, 5 + ph * 9, 0, 6.283); x.globalAlpha = 1 - ph; x.stroke();
+    x.globalAlpha = 1;
+    x.beginPath(); x.arc(ax, ay, 3.2, 0, 6.283); x.stroke();
+    // leader out to a stacked label column on the (mirrored) right edge
+    let ly = ay;
+    while (used.some((u) => Math.abs(u - ly) < 17)) ly += 17;
+    used.push(ly);
+    const lx = Math.min(w - 8, ax + 46);
+    x.globalAlpha = .75; x.lineWidth = 1;
+    x.beginPath(); x.moveTo(ax + 5, ay); x.lineTo(lx - 6, ly); x.stroke();
+    x.globalAlpha = 1; x.restore();
+    mirrorText(x, `${g.name}  ${g.conf}%`, lx, ly + 3.5,
+               "600 10.5px ui-monospace,monospace", col, 6);
+  });
+}
+/* corner brackets that converge on the face as tracking confidence rises */
+function drawFaceLock(x, lm, w, h) {
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const i of FACE_OVAL) {
+    const p = lm[i]; if (!p) continue;
+    x0 = Math.min(x0, p.x * w); x1 = Math.max(x1, p.x * w);
+    y0 = Math.min(y0, p.y * h); y1 = Math.max(y1, p.y * h);
+  }
+  if (x0 > x1) return;
+  const q = Math.max(0, Math.min(1, S.quality || 0));
+  const pad = 26 - 18 * q;                       // brackets close in as SQI rises
+  const L = 20 + 10 * q;
+  x0 -= pad; y0 -= pad; x1 += pad; y1 += pad;
+  x.save();
+  x.strokeStyle = `rgba(52,225,255,${(0.35 + 0.5 * q).toFixed(2)})`;
+  x.lineWidth = 1.6; x.shadowColor = "#34e1ff"; x.shadowBlur = 7;
+  const corner = (cx, cy, dx, dy) => {
+    x.beginPath(); x.moveTo(cx + dx * L, cy); x.lineTo(cx, cy);
+    x.lineTo(cx, cy + dy * L); x.stroke();
+  };
+  corner(x0, y0, 1, 1); corner(x1, y0, -1, 1);
+  corner(x0, y1, 1, -1); corner(x1, y1, -1, -1);
+  x.restore();
+  mirrorText(x, q > 0.5 ? "LOCK" : "ACQUIRING", x1, y0 - 8,
+             "700 9.5px ui-monospace,monospace",
+             q > 0.5 ? "rgba(31,221,138,.95)" : "rgba(226,163,60,.9)", 6);
 }
 /* heartbeat-synced perfusion bloom at the forehead rPPG window (colour by HR) */
 function drawPulseGlow(x, lm, w, h, big) {
@@ -1224,6 +1313,15 @@ function _demoOverlay(on) {
   cancelAnimationFrame(_demoRaf);
   if (on === false) return;
   S.hr = 88; S.quality = 0.82; S.snr = 6;
+  // populate a couple of findings so the callout layer is exercised too — the
+  // overlay's whole point is showing WHERE a sign came from, which an empty
+  // sign list cannot demonstrate.
+  S.signs = [
+    { id: "flaring", name: "Nasal flaring", conf: 71, sev: 0.71, tier: "dys" },
+    { id: "diaphor", name: "Diaphoresis", conf: 63, sev: 0.63, tier: "dys" },
+    { id: "blinklo", name: "Reduced blink", conf: 84, sev: 0.84, tier: "crit" },
+    { id: "pain", name: "Pain expression", conf: 58, sev: 0.58, tier: "dys" },
+  ];
   S.wave = Array.from({ length: 200 }, (_, i) => Math.sin(i * 0.45) * Math.exp(-(((i % 14) - 2) ** 2) / 8));
   const lm = _syntheticFace();
   (function spin() { targets.forEach((t) => drawTo(t, lm)); _demoRaf = requestAnimationFrame(spin); })();
