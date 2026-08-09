@@ -8,7 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=54" />
+<link rel="stylesheet" href="os.css?v=55" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -325,6 +325,15 @@
       <div class="cam-card">
         <div class="cam-card-h">TRACKED REGIONS</div>
         <div id="cam-rois" class="cam-rois"></div>
+      </div>
+
+      <!-- The five signs the CDC tells the public to watch for, mapped onto what
+           this sensor can actually see. One of them is a temperature and is marked
+           as such rather than approximated. -->
+      <div class="cam-card">
+        <div class="cam-card-h">CDC WARNING SIGNS
+          <span class="cam-badge" id="cdc-count">0/5</span></div>
+        <div id="cam-cdc" class="cam-cdc"></div>
       </div>
 
       <div class="cam-card cam-card-grow">
@@ -1010,8 +1019,8 @@
 
 <script type="module" src="twin3d.js?v=10"></script>
 <script type="module" src="pktwin.js?v=18"></script>
-<script type="module" src="camera.js?v=92"></script>
+<script type="module" src="camera.js?v=95"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=50"></script>
+<script src="os.js?v=51"></script>
 </body>
 </html>

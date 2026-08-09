@@ -1992,3 +1992,24 @@ b.sm{font-size:12px}
   padding:2px 7px;border-radius:var(--r-sm);white-space:nowrap}
 .notes-state.attention{color:var(--crit-ink);border-color:rgba(var(--high-rgb),.45)}
 .notes-state.observing{color:var(--med-ink,var(--med));border-color:rgba(var(--med-rgb),.4)}
+
+/* ---- CDC warning-sign coverage ---- */
+.cam-cdc{display:flex;flex-direction:column;gap:9px}
+.cdc-row{padding:8px 9px;border-radius:var(--r-sm);border:1px solid var(--line);
+  background:rgba(255,255,255,.015)}
+.cdc-row.on{border-color:rgba(var(--high-rgb),.45);background:rgba(var(--high-rgb),.05)}
+.cdc-row.soon{border-color:rgba(var(--med-rgb),.35)}
+.cdc-top{display:flex;align-items:center;gap:7px}
+.cdc-dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:0 0 auto}
+.cdc-row.on .cdc-dot{background:var(--crit)}
+.cdc-row.soon .cdc-dot{background:var(--med)}
+.cdc-l{font-size:11.5px;color:var(--ink);font-weight:600;line-height:1.3}
+.cdc-n{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--dim);flex:0 0 auto}
+.cdc-hits{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.cdc-hits span{font-family:var(--mono);font-size:9.5px;color:var(--crit-ink);
+  border:1px solid rgba(var(--high-rgb),.35);border-radius:3px;padding:1px 5px}
+/* the caveat is permanent, not a tooltip — it is the honest half of the claim */
+.cdc-cav{margin-top:6px;font-size:10px;line-height:1.5;color:var(--faint)}
+/* a sign the sensor physically cannot measure is marked in its own right */
+.cdc-row.obs-partial .cdc-l::after{content:" · partial";font-weight:400;color:var(--med)}
+.cdc-row.obs-yes .cdc-l::after{content:" · covered";font-weight:400;color:var(--ok)}

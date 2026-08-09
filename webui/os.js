@@ -2496,6 +2496,11 @@ window.AegisNotes = (function () {
     agitation: "Agitation / restlessness",
     rigors: "Micro-tremor — possible rigors / chills",
     handtremor: "Hand tremor",
+    flushing: "Facial flushing — vasodilation (fever proxy, not a temperature)",
+    blinkhi: "Elevated blink rate",
+    blinklo: "Reduced blink rate / staring",
+    hypoexpr: "Reduced facial expressivity — flat affect",
+    headrove: "Disorganised head movement",
   };
   const SYSTEM = { cardiovascular: "cardiovascular", autonomic: "autonomic",
     respiratory: "respiratory", perfusion: "perfusion", integument: "integument",

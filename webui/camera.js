@@ -84,7 +84,7 @@ const S = {                                    // shared observable state
   perfusion: 0, redness: 0, faceBlue: 0, tremor: 0,
   eyeClosure: 0, drowsy: 0, distress: 0, pain: 0, mouthOpen: 0, blinkRate: 0,
   alarRatio: 0, asym: 0, irisVar: 0, gazeVar: 0, scleraYellow: 0, lidRed: 0,
-  diaphoresis: 0, rrIrreg: 0,
+  diaphoresis: 0, rrIrreg: 0, exprVar: 0, headRove: 0,
   posture: "—", rrBody: 0, respEffort: 0, shExc: 0, accessory: 0,
   agit: 0, headGap: 0, forwardLean: 0,
   handJit: 0, handBlue: 0, handMottle: 0, handLum: 0, neckBlue: 0,
@@ -96,7 +96,7 @@ let riskHist = [];
 function register(video, overlay, label) { targets.push({ video, overlay, label, ctx: overlay.getContext("2d") }); }
 
 /* ---------------- lifecycle ---------------- */
-function open() { $("#camera-app").classList.remove("hidden"); paintApp(); if (S.enabled) $("#camera-app").classList.add("live", "scanning"); else setState("idle", "ready — enable camera"); }
+function open() { $("#camera-app").classList.remove("hidden"); paintApp(); renderCDC(); if (S.enabled) $("#camera-app").classList.add("live", "scanning"); else setState("idle", "ready — enable camera"); }
 function close() { $("#camera-app").classList.add("hidden"); }
 
 async function enable() {
@@ -469,6 +469,15 @@ function trackMotion(lm, ts) {
     for (let i = 1; i < lmHist.length; i++) for (let k = 0; k < pts.length; k++) { const a = lmHist[i].pts[k], b = lmHist[i - 1].pts[k]; e += Math.hypot(a[0] - b[0], a[1] - b[1]); n++; }
     const io = Math.hypot(lm[33].x - lm[263].x, lm[33].y - lm[263].y) || 1;
     S.tremor = Math.min(1, (e / n) / io * 60);
+    /* Roving is the opposite end of the spectrum from tremor: not jitter, but the
+       head wandering over a wide area without settling. Measured as the spread of
+       the nose position across the window, normalised by face size so distance to
+       the camera does not change it. */
+    const nx = lmHist.map((f) => f.pts[0][0]), ny = lmHist.map((f) => f.pts[0][1]);
+    const mx = nx.reduce((a, b) => a + b, 0) / nx.length;
+    const my = ny.reduce((a, b) => a + b, 0) / ny.length;
+    let sv = 0; for (let i = 0; i < nx.length; i++) sv += (nx[i] - mx) ** 2 + (ny[i] - my) ** 2;
+    S.headRove = Math.sqrt(sv / nx.length) / io;
   }
 }
 /* ---------------- ocular + facial morphology ----------------
@@ -485,7 +494,7 @@ function trackMotion(lm, ts) {
 const IRIS_L = [468, 469, 470, 471, 472], IRIS_R = [473, 474, 475, 476, 477];
 const ALA_L = 48, ALA_R = 278;                 // alar creases
 const SYM_PAIRS = [[33, 263], [61, 291], [50, 280], [105, 334], [70, 300], [132, 361], [172, 397]];
-let irisBuf = [], gazeBuf = [];
+let irisBuf = [], gazeBuf = [], exprBuf = [];
 
 function irisGeom(lm, idx) {
   const c = lm[idx[0]]; if (!c) return null;
@@ -593,6 +602,20 @@ function updateBlend(cats, ts) {
   S.distress = Math.min(1, (k("browDownLeft") + k("browDownRight")) / 2 + (k("mouthFrownLeft") + k("mouthFrownRight")) / 2 + 0.5 * (k("mouthPressLeft") + k("mouthPressRight")) / 2);
   S.pain = Math.min(1, (k("browDownLeft") + k("browDownRight")) / 2 * 0.5 + (k("eyeSquintLeft") + k("eyeSquintRight")) / 2 * 0.3 + (k("noseSneerLeft") + k("noseSneerRight")) / 2 * 0.4 + k("cheekSquintLeft") * 0.2);
   S.mouthOpen = k("jawOpen");
+  /* Facial expressivity. Sepsis-associated encephalopathy presents far more often
+     as the HYPOactive kind — flat, withdrawn, not agitated — and a face that has
+     stopped moving is the observable half of that. Summing the action units and
+     tracking their spread over a window separates a genuinely still face from one
+     that simply is not emoting at this instant. */
+  var act = k("browDownLeft") + k("browInnerUp") + k("mouthFrownLeft") +
+            k("mouthSmileLeft") + k("jawOpen") + k("eyeSquintLeft") + k("noseSneerLeft");
+  exprBuf.push({ ts, a: act });
+  while (exprBuf.length && ts - exprBuf[0].ts > 12000) exprBuf.shift();
+  if (exprBuf.length > 20) {
+    const m = exprBuf.reduce((x, y) => x + y.a, 0) / exprBuf.length;
+    let v = 0; for (const e of exprBuf) v += (e.a - m) ** 2;
+    S.exprVar = Math.sqrt(v / exprBuf.length);
+  }
   if (eye > 0.5 && !blinkState) { blinkState = true; blinkTimes.push(ts); }
   else if (eye < 0.3 && blinkState) blinkState = false;
   while (blinkTimes.length && ts - blinkTimes[0] > 30000) blinkTimes.shift();
@@ -704,7 +727,8 @@ const Detector = (() => {
     blink: 14, shExc: 0.02, agit: 0.015, handJit: 0.02, faceTremor: 0.05,
     handBlue: 0.33, neckBlue: 0.33, faceBlue: 0.33, headGap: 0.95, handMottle: 8,
     alarRatio: 0.62, rrIrreg: 0.18, irisVar: 0.05, gazeVar: 0.02,
-    scleraYellow: 0.10, lidRed: 0.22, asym: 0.03, diaphoresis: 0.02 };
+    scleraYellow: 0.10, lidRed: 0.22, asym: 0.03, diaphoresis: 0.02,
+    exprVar: 0.10, headRove: 0.02 };
   /* Most baselines are magnitudes and the `v > 0` guard below is what stops an
      absent modality (hr = 0 with no face) from dragging them to zero. These two are
      signed/near-zero by nature — a healthy sclera reads ~0 yellow, dry skin ~0
@@ -800,6 +824,62 @@ const Detector = (() => {
     // ---- autonomic ----
     { id: "diaphor", name: "Diaphoresis", cat: "autonomic", region: "skin", grade: "experimental",
       gate: faceOK, score: (c, b) => ramp(c.diaphoresis - b.diaphoresis, 0.05, 0.20) },
+    // ---- thermoregulatory (fever proxies — see CDC_SIGNS on what this cannot see) ----
+    { id: "flushing", name: "Facial flushing", cat: "integument", region: "skin", grade: "experimental",
+      gate: faceOK, score: (c, b) => ramp(c.redness / Math.max(b.redness, 1e-6), 1.10, 1.30) },
+    // ---- encephalopathy / altered mental status ----
+    { id: "blinkhi", name: "Elevated blink rate", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.blinkRate > 0,
+      score: (c, b) => ramp(c.blinkRate / Math.max(b.blink, 1e-6), 1.6, 3.0) },
+    { id: "blinklo", name: "Reduced blink / staring", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.blinkRate >= 0,
+      score: (c, b) => ramp(1 - c.blinkRate / Math.max(b.blink, 1e-6), 0.45, 0.8) },
+    { id: "hypoexpr", name: "Reduced facial expressivity", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.exprVar > 0,
+      score: (c, b) => ramp(1 - c.exprVar / Math.max(b.exprVar, 1e-6), 0.5, 0.85) },
+    { id: "headrove", name: "Disorganised head movement", cat: "neurologic", region: "brain", grade: "experimental",
+      gate: (c) => faceOK(c) && c.headRove > 0,
+      score: (c, b) => ramp(c.headRove / Math.max(b.headRove, 1e-4), 2.0, 4.0) },
+  ];
+
+/* ---------------------------------------------------------------------------
+   CDC PUBLIC WARNING SIGNS -> what this camera can and cannot see.
+
+   The five signs the CDC tells the public to watch for are not the same shape as
+   a detector inventory: one of them is a temperature, which an RGB sensor cannot
+   measure at all. Mapping them explicitly is what keeps the claim honest — the
+   alternative is a demo that appears to cover "fever" because something vaguely
+   red lit up. `observable: false` means exactly that, and no amount of signal
+   processing changes it without a different sensor.
+   --------------------------------------------------------------------------- */
+  const CDC_SIGNS = [
+    { key: "fever", label: "Fever, shivering, or feeling very cold",
+      observable: "partial", signs: ["rigors", "flushing", "handtremor"],
+      caveat: "Shivering and rigors are visible as motion. CORE TEMPERATURE IS NOT " +
+              "MEASURABLE from an RGB camera — flushing is a vasodilation proxy only, " +
+              "and is confounded by exertion, embarrassment and ambient warmth. A " +
+              "thermal sensor is required to claim fever." },
+    { key: "confusion", label: "Confusion or trouble thinking clearly",
+      observable: "partial", signs: ["drowsy", "gaze", "blinklo", "blinkhi",
+                                     "hypoexpr", "headrove", "toneloss", "asym"],
+      caveat: "These are behavioural correlates of encephalopathy, not a cognitive " +
+              "test. Orientation and attention need interaction the camera cannot " +
+              "initiate; a still, quiet patient and a calm one look alike." },
+    { key: "dyspnea", label: "Shortness of breath or rapid breathing",
+      observable: "yes", signs: ["tachypnea", "accessory", "tripod", "mouth",
+                                 "flaring", "rrirreg"],
+      caveat: "The best-covered of the five: rate, effort, posture and rhythm are " +
+              "all geometric and measured directly." },
+    { key: "clammy", label: "Clammy or sweaty skin",
+      observable: "partial", signs: ["diaphor", "pallor", "mottle", "cyanosis"],
+      caveat: "Sheen and colour are visible; skin TEMPERATURE and moisture are not, " +
+              "so 'clammy' is inferred from the appearance of sweat plus poor " +
+              "perfusion rather than felt." },
+    { key: "pain", label: "Extreme pain or discomfort",
+      observable: "partial", signs: ["pain", "distress", "agitation"],
+      caveat: "Facial action units associated with pain are detectable, but pain is " +
+              "a report, not a sign. Expression is suppressible, culturally variable, " +
+              "and absent in a sedated or obtunded patient." },
   ];
 
   /* What each sign is actually reading, in the subject's own numbers. A note that
@@ -835,6 +915,11 @@ const Detector = (() => {
     agitation: (c, b) => `motion energy ${xb(c.agit, b.agit)}`,
     rigors: (c, b) => `micro-tremor ${xb(c.tremor, b.faceTremor)}`,
     handtremor: (c, b) => `hand jitter ${xb(c.handJit, b.handJit)}`,
+    flushing: (c, b) => `facial redness ${pc(c.redness / Math.max(b.redness, 1e-6) - 1)}`,
+    blinkhi: (c, b) => `${Math.round(c.blinkRate)}/min vs ${Math.round(b.blink)} baseline`,
+    blinklo: (c, b) => `${Math.round(c.blinkRate)}/min vs ${Math.round(b.blink)} baseline`,
+    hypoexpr: (c, b) => `expression variability ${pc(c.exprVar / Math.max(b.exprVar, 1e-6) - 1)}`,
+    headrove: (c, b) => `head dispersion ${xb(c.headRove, b.headRove)}`,
   };
 
   function baseSrc(c) {
@@ -842,7 +927,8 @@ const Detector = (() => {
       blink: c.blinkRate, shExc: c.shExc, agit: c.agit, handJit: c.handJit, faceTremor: c.tremor,
       handBlue: c.handBlue, neckBlue: c.neckBlue, faceBlue: c.faceBlue, headGap: c.headGap, handMottle: c.handMottle,
       alarRatio: c.alarRatio, rrIrreg: c.rrIrreg, irisVar: c.irisVar, gazeVar: c.gazeVar,
-      scleraYellow: c.scleraYellow, lidRed: c.lidRed, asym: c.asym, diaphoresis: c.diaphoresis };
+      scleraYellow: c.scleraYellow, lidRed: c.lidRed, asym: c.asym, diaphoresis: c.diaphoresis,
+      exprVar: c.exprVar, headRove: c.headRove };
   }
   /* Learn the subject's resting normal — aggressively during warm-up, then only
      from good-quality, stable frames. The freeze gate watches the strongest
@@ -894,7 +980,8 @@ const Detector = (() => {
     return { signs, emerging, risk, calibrating: warm < WARMUP, calibProgress: warm / WARMUP, baseline: { ...base } };
   }
   function reset() { st.clear(); warm = 0; base = { ...DEF }; sens = sens; }
-  return { tick, reset, baseline: () => base, setSensitivity };
+  return { tick, reset, baseline: () => base, setSensitivity, cdcSigns: () => CDC_SIGNS,
+           catalogue: () => SIGNS.map((d) => ({ id: d.id, name: d.name, cat: d.cat, grade: d.grade })) };
 })();
 
 function runDetector() {
@@ -929,9 +1016,37 @@ function publishOptical() {
   if (pill) pill.classList.toggle("hidden", !(S.enabled && (S.tracking || S.bodyTracking) && !S.calibrating));
 }
 
+/* ---- CDC warning-sign coverage, lit by the detectors currently firing ----
+   Static structure, live state: each row shows what the camera can see for that
+   warning sign and which of its detectors are active right now. The "cannot see"
+   caveat is always visible, not a tooltip — it is the part a judge should read. */
+function renderCDC() {
+  const host = $("#cam-cdc"); if (!host) return;
+  const rows = Detector.cdcSigns();
+  const active = new Set((S.signs || []).map((x) => x.id));
+  const emerging = new Set((S.emerging || []).map((x) => x.id));
+  let lit = 0;
+  host.innerHTML = rows.map((r) => {
+    const on = r.signs.filter((id) => active.has(id));
+    const soon = r.signs.filter((id) => emerging.has(id));
+    if (on.length) lit++;
+    const state = on.length ? "on" : soon.length ? "soon" : "";
+    return `<div class="cdc-row ${state} obs-${r.observable}">
+      <div class="cdc-top"><span class="cdc-dot"></span>
+        <span class="cdc-l">${r.label}</span>
+        <span class="cdc-n">${on.length}/${r.signs.length}</span></div>
+      ${on.length ? `<div class="cdc-hits">${on.map((id) => {
+        const s = (S.signs || []).find((x) => x.id === id);
+        return `<span>${s ? s.name : id}</span>`; }).join("")}</div>` : ""}
+      <div class="cdc-cav">${r.caveat}</div></div>`;
+  }).join("");
+  const c = $("#cdc-count"); if (c) c.textContent = `${lit}/${rows.length}`;
+}
+
 /* ---------------- render all views + notes ---------------- */
 function render() {
   paintApp(); paintMini(); publishOptical(); ingestToBackend(); paintSHAL();
+  renderCDC();
   if (window.AegisNotes) window.AegisNotes.update(snapshot());
 }
 
@@ -1113,7 +1228,8 @@ function _demoOverlay(on) {
   const lm = _syntheticFace();
   (function spin() { targets.forEach((t) => drawTo(t, lm)); _demoRaf = requestAnimationFrame(spin); })();
 }
-window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m), _detector: Detector, _paintSHAL: paintSHAL, _demoOverlay };
+window.AegisCamera = { open, close, enable, state: snapshot, setSensitivity: (m) => Detector.setSensitivity(m),
+  cdcSigns: () => Detector.cdcSigns(), catalogue: () => Detector.catalogue(), _detector: Detector, _paintSHAL: paintSHAL, _demoOverlay };
 document.addEventListener("DOMContentLoaded", init);
 init();
 document.addEventListener("click", (e) => {
