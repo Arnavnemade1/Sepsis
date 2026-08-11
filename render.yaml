@@ -5,7 +5,13 @@
 # at this service's URL (see webui/config.js).
 #
 # Deploy: render.com → New → Blueprint → connect this GitHub repo. Then set the
-# secret env vars (SUPABASE_URL, SUPABASE_KEY, OPENROUTER_API_KEY) in the dashboard.
+# secret env vars (SUPABASE_URL, SUPABASE_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY)
+# in the dashboard.
+#
+# The AI-doctor consult call relays its realtime audio WebSocket through this
+# service, which is the reason the credential lives here and not in the static
+# frontend: Gemini's ephemeral auth tokens are rejected by the Live socket, so a
+# browser-direct design would have to publish the key.
 services:
   - type: web
     name: sepsis-backend
@@ -21,5 +27,7 @@ services:
         sync: false
       - key: SUPABASE_KEY            # service-role key — set in dashboard, never committed
         sync: false
-      - key: OPENROUTER_API_KEY      # optional (LLM narrative); set in dashboard
+      - key: GEMINI_API_KEY          # primary LLM + the AI-doctor voice call; set in dashboard
+        sync: false
+      - key: OPENROUTER_API_KEY      # text-only backup provider (Nemotron); set in dashboard
         sync: false

@@ -73,6 +73,8 @@ def _default_post(url: str, headers: Dict[str, str], payload: Dict[str, Any],
 
 
 class OpenRouterClient:
+    provider = "openrouter"
+
     def __init__(
         self,
         model: Optional[str] = None,

@@ -17,7 +17,11 @@ The app is **two pieces** with different hosting needs:
 2. In the service's **Environment**, set the secrets (these are NOT in the repo):
    - `SUPABASE_URL` — `https://oyukwcuwiyiuslmmbvou.supabase.co`
    - `SUPABASE_KEY` — your Supabase **service-role** key (from `backend/.env`)
-   - `OPENROUTER_API_KEY` — optional (LLM narrative)
+   - `GEMINI_API_KEY` — primary LLM provider, and the only one that carries the
+     AI-doctor **voice consult** (`/aegis/doctor/live`). Without it the consult
+     panel still works, but typed-only.
+   - `OPENROUTER_API_KEY` — text-only backup provider (Nemotron 3 Ultra), so a
+     Gemini quota wall degrades the narrative layer instead of removing it.
 3. Deploy. You get a URL like **`https://sepsis-backend.onrender.com`**.
 4. Verify: open `https://sepsis-backend.onrender.com/aegis/health` → `{"status":"ok", ...}`.
 

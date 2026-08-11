@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
-from backend.llm.openrouter import OpenRouterClient
+from backend.llm.provider import LLMProvider
 
 _ASK_SYSTEM = (
     "You are AegisOS's read-only operations assistant for an EXPERIMENTAL sepsis "
@@ -51,9 +51,9 @@ _BRIEF_SYSTEM = (
 
 
 class AegisAssistant:
-    def __init__(self, client: Optional[OpenRouterClient] = None,
+    def __init__(self, client: Optional[LLMProvider] = None,
                  max_state_chars: int = 6000):
-        self.client = client or OpenRouterClient()
+        self.client = client or LLMProvider()
         self.max_state_chars = max_state_chars
 
     # ------------------------------------------------------------------ #

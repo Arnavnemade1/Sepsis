@@ -10,6 +10,7 @@
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="os.css?v=55" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
+<link rel="stylesheet" href="doctor.css?v=4" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -233,6 +234,7 @@
       <span class="dock-label">patient</span>
       <button class="dock-btn accent" id="launch-camera">◉ Optical</button>
       <button class="dock-btn" id="launch-story">◔ Clinical Story <span id="story-count" class="story-pill">0</span></button>
+      <button class="dock-btn" id="launch-doctor" title="Call Dr. Aegis and talk this case through — grounded in the selected patient">◈ Consult</button>
     </div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>
@@ -1017,10 +1019,92 @@
   </div>
 </div>
 
+<!-- ===================== CONSULT CALL (Dr. Aegis) ===================== -->
+<!-- A call with a colleague about the selected case. The right-hand rail shows
+     exactly what the doctor is grounded in — including what it CANNOT see — so
+     nothing it says is unattributable. -->
+<div id="doctor-app" class="doc-app hidden">
+  <header class="doc-head">
+    <div class="doc-head-l">
+      <span class="doc-mark">◈</span>
+      <span class="doc-title">CONSULT</span>
+      <span class="doc-sub">Dr. Aegis · realtime case discussion · research decision-support, not a diagnosis</span>
+    </div>
+    <div class="doc-head-r">
+      <span class="doc-timer" id="doc-timer"></span>
+      <span class="doc-state idle" id="doc-state"><i></i><span>not connected</span></span>
+      <button class="doc-btn" id="doc-close">✕ close</button>
+    </div>
+  </header>
+
+  <div class="doc-body">
+    <!-- stage -->
+    <section class="doc-stage">
+      <div class="doc-orb" id="doc-orb">
+        <canvas id="doc-orb-canvas"></canvas>
+        <div class="doc-orb-core">◈</div>
+      </div>
+      <div class="doc-who">
+        <b>DR. AEGIS</b>
+        <span>consulting physician · read-only</span>
+      </div>
+      <div class="doc-caption idle" id="doc-caption">Open the call to talk this case through.</div>
+      <div class="doc-hint">speak naturally — interrupt any time · Esc closes</div>
+
+      <div class="doc-self off" id="doc-self">
+        <video id="doc-self-video" autoplay playsinline muted></video>
+        <div class="doc-self-off">camera off</div>
+        <span class="doc-self-tag">you</span>
+      </div>
+    </section>
+
+    <!-- grounding rail -->
+    <aside class="doc-rail">
+      <div class="doc-card">
+        <div class="doc-card-h"><span>grounded in</span></div>
+        <div class="doc-ground-head">
+          <span class="doc-tier" id="doc-tier">—</span>
+          <span class="doc-pt" id="doc-pt">loading case…</span>
+        </div>
+        <div class="doc-facts" id="doc-facts"></div>
+        <div class="doc-note" id="doc-recorded"></div>
+      </div>
+
+      <div class="doc-card doc-card-scroll">
+        <div class="doc-card-h"><span>transcript</span></div>
+        <div class="doc-log" id="doc-log">
+          <div class="doc-log-empty">transcript will appear here</div>
+        </div>
+      </div>
+
+      <div class="doc-card">
+        <div class="doc-card-h"><span>what it cannot see</span></div>
+        <ul class="doc-blind" id="doc-blind"></ul>
+        <div class="doc-note" id="doc-prov"></div>
+      </div>
+    </aside>
+  </div>
+
+  <footer class="doc-foot">
+    <button class="doc-btn call" id="doc-call">◉ start call</button>
+    <button class="doc-btn end" id="doc-end" disabled>■ end</button>
+    <button class="doc-btn" id="doc-mic">◉ mic</button>
+    <div class="doc-level" id="doc-level"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+    <button class="doc-btn" id="doc-cam" title="use the optical feed as your self-view">◎ camera</button>
+    <button class="doc-btn" id="doc-video" title="stream the camera view so Dr. Aegis can see the patient">◎ show patient</button>
+    <div class="doc-ask">
+      <input id="doc-input" type="text" placeholder="or type a question — same case, same rules" autocomplete="off" />
+      <button class="doc-btn" id="doc-send">send</button>
+    </div>
+    <div class="doc-banner hidden" id="doc-banner"></div>
+  </footer>
+</div>
+
 <script type="module" src="twin3d.js?v=10"></script>
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=51"></script>
+<script src="os.js?v=52"></script>
+<script src="doctor.js?v=3"></script>
 </body>
 </html>

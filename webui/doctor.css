@@ -1,0 +1,192 @@
+/* ============================================================
+   AEGIS — CONSULT CALL (Dr. Aegis)
+   ------------------------------------------------------------
+   A video call inside a clinical instrument. It obeys the same three
+   rules as the rest of the shell (os.css), and one of them does real
+   work here:
+
+   COLOUR IS SIGNAL. A call UI wants to glow — every consumer video app
+   paints the speaking participant in brand colour. Not here. The voice
+   ring, the level meter and the transcript are ALL neutral, because the
+   only saturated colour on this screen is the patient's tier chip. If
+   the doctor's voice ring were accent-blue and the tier chip amber, the
+   thing moving would out-shout the thing that matters.
+
+   Every colour below is a token from os.css. Nothing is hardcoded.
+   ============================================================ */
+
+.doc-app{position:fixed;inset:0;z-index:45;display:flex;flex-direction:column;isolation:isolate;
+  background:var(--bg);animation:docIn .35s var(--ease)}
+.doc-app.hidden{display:none}
+@keyframes docIn{from{opacity:0;transform:scale(1.015)}to{opacity:1;transform:scale(1)}}
+
+/* ---- head ---- */
+.doc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);
+  padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);flex:0 1 auto}
+.doc-head-l{display:flex;align-items:baseline;gap:var(--sp-3);min-width:0}
+.doc-mark{font-size:15px;color:var(--muted)}
+.doc-title{font-weight:700;letter-spacing:1.1px;font-size:15px}
+.doc-sub{font-family:var(--sans);font-size:12.5px;color:var(--dim);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.doc-head-r{display:flex;align-items:center;gap:var(--sp-3);flex:0 1 auto}
+.doc-state{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;
+  color:var(--muted);white-space:nowrap}
+.doc-state i{width:7px;height:7px;border-radius:50%;background:var(--nodata);transition:background .2s}
+.doc-state.connecting i{background:var(--med);animation:docBlink 1s steps(2) infinite}
+.doc-state.live i{background:var(--low)}
+.doc-state.error i{background:var(--high)}
+@keyframes docBlink{50%{opacity:.25}}
+.doc-timer{font-family:var(--mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+
+/* ---- body ---- */
+.doc-body{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 344px;gap:var(--sp-4);
+  padding:var(--sp-4) var(--sp-5);min-height:0}
+
+/* ---- stage: the doctor's presence ---- */
+/* overflow:hidden is load-bearing. The caption is unbounded prose in a centred
+   flex column — without it a long answer escapes the stage and paints straight
+   over the grounding rail below it on narrow screens. */
+.doc-stage{position:relative;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:var(--sp-5);min-width:0;min-height:0;overflow:hidden;
+  background:var(--s1);border:1px solid var(--line);border-radius:var(--r-xl);padding:var(--sp-5)}
+
+.doc-orb{position:relative;width:210px;height:210px;flex:0 0 auto;display:grid;place-items:center}
+.doc-orb canvas{position:absolute;inset:0;width:100%;height:100%}
+.doc-orb-core{width:112px;height:112px;border-radius:50%;background:var(--s2);
+  border:1px solid var(--line-bright);display:grid;place-items:center;
+  font-family:var(--mono);font-size:26px;color:var(--muted);letter-spacing:-1px}
+.doc-app.speaking .doc-orb-core{border-color:var(--line-bright);color:var(--ink)}
+
+.doc-who{text-align:center}
+.doc-who b{display:block;font-size:15px;letter-spacing:1.4px;font-weight:600}
+.doc-who span{display:block;font-family:var(--mono);font-size:11.5px;color:var(--dim);
+  margin-top:var(--sp-1);letter-spacing:.06em}
+
+/* Live caption. The spoken word is the interface here, so it gets the size —
+   but it scrolls inside its own box; the full record lives in the transcript. */
+/* flex:1 makes the caption absorb the stage's free space instead of sitting at
+   its 64px floor and scrolling two lines at a time inside a tall empty panel. */
+.doc-caption{max-width:min(760px,92%);min-height:64px;max-height:34vh;overflow-y:auto;
+  flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+  text-align:center;font-size:16.5px;line-height:1.55;color:var(--ink)}
+.doc-caption.idle{color:var(--dim);font-size:14px}
+.doc-caption .doc-cap-you{color:var(--muted)}
+
+.doc-hint{position:absolute;bottom:var(--sp-3);left:0;right:0;text-align:center;
+  font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+
+/* self view — a PIP, deliberately small: this call is about the patient's data,
+   not about watching yourself talk */
+.doc-self{position:absolute;right:var(--sp-3);bottom:var(--sp-3);width:168px;height:120px;
+  border-radius:var(--r-lg);overflow:hidden;background:var(--bg2);border:1px solid var(--line);
+  display:grid;place-items:center}
+.doc-self video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+/* No feed, no box. An empty "camera off" rectangle is a corner of dead pixels
+   sitting on top of the caption; the footer's camera button is the affordance. */
+.doc-self.off{display:none}
+.doc-self-off{font-family:var(--mono);font-size:10.5px;color:var(--faint);text-align:center;
+  padding:0 var(--sp-2);letter-spacing:.05em}
+.doc-self:not(.off) .doc-self-off{display:none}
+/* When the PIP IS up it floats over the stage, so the caption's box has to end
+   above it or the last lines read through a video feed. */
+.doc-app.selfview .doc-stage{padding-bottom:calc(var(--sp-4) + 120px)}
+.doc-self-tag{position:absolute;left:6px;bottom:5px;font-family:var(--mono);font-size:9.5px;
+  color:var(--muted);background:rgba(0,0,0,.55);padding:1px 5px;border-radius:var(--r-sm);
+  letter-spacing:.06em}
+
+/* ---- rail ---- */
+.doc-rail{display:flex;flex-direction:column;gap:var(--sp-3);min-height:0;overflow-y:auto}
+.doc-card{background:var(--s1);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:var(--sp-3);flex:0 0 auto}
+.doc-card-h{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:var(--sp-2)}
+
+/* grounding — what the doctor can actually see. The auditable half of the call. */
+.doc-ground-head{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+.doc-tier{font-family:var(--mono);font-size:10.5px;font-weight:600;letter-spacing:.1em;
+  padding:2px 7px;border-radius:var(--r-sm);border:1px solid var(--nodata);color:var(--muted)}
+.doc-tier.LOW{color:var(--low-ink);border-color:rgba(var(--low-rgb),.5);background:rgba(var(--low-rgb),.1)}
+.doc-tier.MEDIUM{color:var(--med-ink);border-color:rgba(var(--med-rgb),.5);background:rgba(var(--med-rgb),.1)}
+.doc-tier.HIGH,.doc-tier.CRITICAL{color:var(--high-ink);border-color:rgba(var(--high-rgb),.5);
+  background:rgba(var(--high-rgb),.1)}
+.doc-pt{font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.doc-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-1) var(--sp-2)}
+.doc-fact{background:var(--s2);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:5px 6px;min-width:0}
+.doc-fact b{display:block;font-family:var(--mono);font-size:13px;font-variant-numeric:tabular-nums;
+  color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.doc-fact span{display:block;font-family:var(--mono);font-size:9px;color:var(--faint);
+  letter-spacing:.08em;text-transform:uppercase;margin-top:1px}
+
+.doc-note{font-size:11.5px;line-height:1.5;color:var(--dim);margin-top:var(--sp-2)}
+.doc-blind{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+.doc-blind li{font-size:11px;line-height:1.4;color:var(--dim);padding-left:12px;position:relative}
+.doc-blind li::before{content:"—";position:absolute;left:0;color:var(--faint)}
+
+/* transcript */
+.doc-card-scroll{flex:1 1 auto;min-height:120px;display:flex;flex-direction:column}
+.doc-log{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:var(--sp-2);
+  padding-right:2px;min-height:0}
+.doc-line{font-size:12.5px;line-height:1.5}
+.doc-line .doc-role{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint);margin-bottom:2px}
+.doc-line.you{color:var(--muted)}
+.doc-line.doctor{color:var(--ink)}
+.doc-line.sys{color:var(--dim);font-family:var(--mono);font-size:11px;
+  border-left:2px solid var(--line);padding-left:var(--sp-2)}
+.doc-log-empty{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+
+/* ---- foot: the controls ---- */
+.doc-foot{flex:0 1 auto;display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
+  padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--line)}
+.doc-btn{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--s2);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:8px 13px;cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease);white-space:nowrap;flex:0 1 auto}
+.doc-btn:hover{background:var(--s3);border-color:var(--line-bright)}
+.doc-btn.on{border-color:rgba(var(--accent-rgb),.55);color:var(--accent-ink)}
+.doc-btn.muted{color:var(--muted)}
+.doc-btn:disabled{opacity:.4;cursor:not-allowed}
+.doc-btn.end{color:var(--high-ink);background:rgba(var(--high-rgb),.1);
+  border-color:rgba(var(--high-rgb),.4)}
+.doc-btn.end:hover{background:rgba(var(--high-rgb),.2)}
+.doc-btn.call{color:var(--low-ink);background:rgba(var(--low-rgb),.1);
+  border-color:rgba(var(--low-rgb),.4)}
+.doc-btn.call:hover{background:rgba(var(--low-rgb),.2)}
+
+/* mic level — neutral by rule; it reports a device, not a patient */
+.doc-level{flex:0 1 auto;display:flex;align-items:center;gap:4px;height:20px;padding:0 var(--sp-2)}
+.doc-level i{display:block;width:2px;height:4px;background:var(--nodata);border-radius:1px;
+  transition:height .08s linear,background .08s linear}
+.doc-level i.hot{background:var(--muted)}
+
+.doc-ask{flex:1 1 220px;min-width:160px;display:flex;gap:var(--sp-2)}
+.doc-ask input{flex:1 1 auto;min-width:0;background:var(--s2);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:8px 11px;color:var(--ink);font-family:var(--sans);font-size:13px}
+.doc-ask input:focus{outline:none;border-color:rgba(var(--accent-rgb),.55)}
+.doc-ask input::placeholder{color:var(--faint)}
+
+.doc-banner{font-family:var(--mono);font-size:11.5px;color:var(--med-ink);
+  background:rgba(var(--med-rgb),.1);border:1px solid rgba(var(--med-rgb),.35);
+  border-radius:var(--r-md);padding:6px 10px;flex:0 1 auto}
+.doc-banner.hidden{display:none}
+
+/* ---- narrow / short screens ---- */
+@media (max-width:1080px){
+  /* stacked: the stage keeps the larger share, because the thing being said is
+     the thing you are reading — the rail scrolls on its own */
+  .doc-body{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(300px,1.2fr) minmax(0,1fr)}
+  .doc-orb{width:112px;height:112px}
+  .doc-orb-core{width:64px;height:64px;font-size:18px}
+  .doc-stage{gap:var(--sp-3)}
+  .doc-hint{display:none}          /* absolute-positioned; it sits over the caption here */
+  .doc-self{width:124px;height:88px}
+  .doc-app.selfview .doc-stage{padding-bottom:calc(var(--sp-3) + 92px)}
+}
+@media (max-height:720px){
+  .doc-orb{width:140px;height:140px}
+  .doc-orb-core{width:78px;height:78px;font-size:19px}
+  .doc-stage{gap:var(--sp-3)}
+  .doc-caption{min-height:48px;font-size:15px}
+}

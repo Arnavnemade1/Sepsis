@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from backend.llm.openrouter import OpenRouterClient
+from backend.llm.provider import LLMProvider
 
 _SYSTEM = (
     "You are a concise clinical decision-support assistant for an EXPERIMENTAL "
@@ -27,8 +27,8 @@ _SYSTEM = (
 
 
 class AlertExplainer:
-    def __init__(self, client: Optional[OpenRouterClient] = None):
-        self.client = client or OpenRouterClient()
+    def __init__(self, client: Optional[LLMProvider] = None):
+        self.client = client or LLMProvider()
 
     def narrate(
         self,

@@ -39,7 +39,7 @@ from backend.aegis.syscalls import SyscallTable
 from backend.aegis.kernel.runtime import KernelDeviceRuntime
 from backend.aegis.kernel.hdkernel import (
     run_workload as _run_kworkload, KWORKLOADS as _KWORKLOADS, POLICIES as _KPOLICIES)
-from backend.llm.openrouter import OpenRouterClient as _ORClient
+from backend.llm.provider import LLMProvider as _LLMProvider
 from backend.llm.assistant import AegisAssistant as _AegisAssistant
 from backend.core.simulator import PatientTelemetrySimulator
 
@@ -277,10 +277,11 @@ def _hdk_last() -> Dict[str, Any]:
 
 procfs.register("/proc/kthreads", lambda: _hdk_last()["ps"])           # the process table
 procfs.register("/proc/ksched", lambda: _hdk_last()["top"])            # scheduler/top summary
-# The resilient LLM layer (shared, budgeted, multi-model). On-demand only — the
-# realtime loop never calls it; operators drive it via `ask`/`brief`. Telemetry
-# is read-only through /proc/llm.
-_llm_client = _ORClient()
+# The resilient LLM layer (shared, budgeted, multi-model, multi-VENDOR: Gemini
+# primary → Nemotron backup). On-demand only — the realtime loop never calls it;
+# operators drive it via `ask`/`brief` and the consult call. Telemetry is
+# read-only through /proc/llm.
+_llm_client = _LLMProvider()
 _llm = _AegisAssistant(_llm_client)
 procfs.register("/proc/llm", lambda: _llm_client.status())
 # The ML control plane: train + specialize real detectors from the OS terminal.
@@ -2180,6 +2181,217 @@ def llm_brief() -> Dict[str, Any]:
     """A shift-handoff briefing of the current cohort (grounded, budgeted)."""
     return {**_llm.brief(_llm_state()),
             "budget_remaining": _llm_client.budget_remaining()}
+
+
+# ====================================================================== #
+# AI DOCTOR CONSULT — call a colleague about a case.
+#
+# Read-only, like every other prose surface in AegisOS: the doctor discusses
+# state that already exists and has no path to the syscall gate. What is new is
+# that the conversation is two-way and realtime, which is only safe because the
+# grounding (backend/llm/case.py) travels with the model as a locked system
+# instruction and carries the detector's real external-validation numbers.
+#
+# The audio socket relays through THIS process on purpose. Ephemeral Gemini auth
+# tokens are rejected by the Live socket on this account, so a browser-direct
+# design would have to ship the API key to a static page. It does not.
+# ====================================================================== #
+from backend.llm.doctor import AIDoctor as _AIDoctor
+from backend.llm.live import LiveConsult as _LiveConsult, LiveUnavailable as _LiveUnavailable
+
+_doctor = _AIDoctor(_llm_client)
+
+
+# The banding that actually produces the tier shown on screen (server.py:719).
+# Passed to the dossier so the doctor states THIS scale and is barred from
+# comparing it against the detector's out-of-fold operating point, which is a
+# different quantity entirely.
+_TIER_BANDS = {"high": 0.6, "medium": 0.35}
+
+
+def _doctor_dossier(bed: Optional[str]) -> Dict[str, Any]:
+    """Grounded dossier for a bed (or the live session when no bed is named)."""
+    snap = patient_snapshot(bed) if bed else patient_snapshot(None)
+    try:
+        roster = _patient_roster()
+    except Exception:
+        roster = None
+    return _doctor.dossier(snap or {}, cohort=roster, tier_bands=_TIER_BANDS)
+
+
+class DoctorConsultIn(BaseModel):
+    question: str
+    bed: Optional[str] = None
+    history: Optional[List[Dict[str, str]]] = None
+
+
+@app.get("/aegis/doctor/status")
+def doctor_status() -> Dict[str, Any]:
+    """Can we place a call, and by which transport?"""
+    return {
+        "voice": _LiveConsult.available(),        # realtime audio socket
+        "text": bool(_llm_client.available),      # typed consult / fallback
+        "llm": _llm_client.status(),
+    }
+
+
+@app.get("/aegis/doctor/brief")
+def doctor_brief(bed: Optional[str] = None, opening: bool = True) -> Dict[str, Any]:
+    """The case dossier the doctor is grounded in, plus its opening statement.
+
+    Returned before the call connects so the UI can show what the doctor can see —
+    a consult whose grounding is invisible is impossible to audit."""
+    dossier = _doctor_dossier(bed)
+    out: Dict[str, Any] = {
+        "bed": dossier.get("bed"), "headline": dossier.get("headline"),
+        "facts": dossier.get("facts"), "unmeasured": dossier.get("unmeasured"),
+        "provenance": dossier.get("provenance"), "dossier_text": dossier.get("text"),
+        "voice": _LiveConsult.available(),
+    }
+    if opening:
+        out["opening"] = _doctor.opening(dossier)
+    return out
+
+
+@app.post("/aegis/doctor/consult")
+def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
+    """One typed turn of the consult — the transport when there is no microphone,
+    and the fallback when the realtime socket is unavailable."""
+    dossier = _doctor_dossier(payload.bed)
+    res = _doctor.consult(payload.question, dossier, history=payload.history)
+    return {**res, "bed": dossier.get("bed"), "headline": dossier.get("headline"),
+            "budget_remaining": _llm_client.budget_remaining()}
+
+
+# Uplink ceiling for one call. A stuck browser that streams microphone audio
+# forever would otherwise burn the quota silently; this caps a single consult at
+# a length no real bedside conversation exceeds.
+_CALL_MAX_AUDIO_S = 15 * 60.0
+
+
+@app.websocket("/aegis/doctor/live")
+async def doctor_live(ws: WebSocket) -> None:
+    """Relay: browser audio/video  <->  Gemini Live, grounded in the bed's dossier.
+
+    Browser frames (JSON): audio{data} · video{data,mime} · text{text} ·
+    end_audio · bye. Server frames: ready · transcript · audio · turn_end ·
+    interrupted · case_update · error · closed."""
+    await ws.accept()
+    bed = ws.query_params.get("bed") or None
+    session_live: Optional[_LiveConsult] = None
+    try:
+        dossier = _doctor_dossier(bed)
+    except Exception as exc:
+        await ws.send_json({"type": "error", "fatal": True,
+                            "message": f"could not assemble the case: {exc}"})
+        await ws.close()
+        return
+
+    try:
+        session_live = _LiveConsult(_doctor.system_instruction(dossier))
+        await session_live.connect()
+    except _LiveUnavailable as exc:
+        # Not an error the clinician can act on — tell the UI to fall back to the
+        # typed consult, which is grounded in the identical dossier.
+        await ws.send_json({"type": "error", "fatal": True, "fallback": "text",
+                            "message": str(exc)})
+        await ws.close()
+        return
+
+    await ws.send_json({
+        "type": "ready", "bed": dossier.get("bed"), "headline": dossier.get("headline"),
+        "facts": dossier.get("facts"), "unmeasured": dossier.get("unmeasured"),
+        "provenance": dossier.get("provenance"),
+        "input_rate": 16000, "output_rate": 24000, "voice": session_live.voice,
+        "model": session_live.model,
+    })
+
+    stop = asyncio.Event()
+    budget = {"audio_s": 0.0}
+
+    async def pump_up() -> None:
+        """Browser -> Gemini. Forwards chunk-for-chunk; never batches (pacing is
+        what the model's turn detection runs on)."""
+        from backend.llm.live import pcm_duration_s
+        try:
+            while not stop.is_set():
+                msg = await ws.receive_json()
+                kind = msg.get("type")
+                if kind == "audio" and msg.get("data"):
+                    budget["audio_s"] += pcm_duration_s(msg["data"])
+                    if budget["audio_s"] > _CALL_MAX_AUDIO_S:
+                        await ws.send_json({"type": "error", "fatal": True,
+                                            "message": "call length limit reached"})
+                        break
+                    await session_live.send_audio(msg["data"])
+                elif kind == "video" and msg.get("data"):
+                    await session_live.send_video(msg["data"],
+                                                  msg.get("mime", "image/jpeg"))
+                elif kind == "text" and msg.get("text"):
+                    await session_live.send_text(str(msg["text"])[:2000])
+                elif kind == "end_audio":
+                    await session_live.end_audio()
+                elif kind == "bye":
+                    break
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        except Exception as exc:                          # pragma: no cover
+            print(f"[doctor] uplink ended: {type(exc).__name__}: {exc}")
+        finally:
+            stop.set()
+
+    async def pump_down() -> None:
+        """Gemini -> browser."""
+        try:
+            async for ev in session_live.events():
+                if stop.is_set():
+                    break
+                await ws.send_json(ev)
+                if ev.get("type") == "closed":
+                    break
+        except (WebSocketDisconnect, RuntimeError):
+            pass
+        except Exception as exc:                          # pragma: no cover
+            print(f"[doctor] downlink ended: {type(exc).__name__}: {exc}")
+        finally:
+            stop.set()
+
+    async def watch_case() -> None:
+        """A call can outlive the state it opened on. Poll the bed's tier and tell
+        both the doctor and the UI when it moves, rather than letting the
+        conversation drift onto numbers that have since changed."""
+        last = (dossier.get("facts") or {}).get("tier")
+        while not stop.is_set():
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=20.0)
+                return
+            except asyncio.TimeoutError:
+                pass
+            try:
+                fresh = _doctor_dossier(bed)
+                facts = fresh.get("facts") or {}
+                tier = facts.get("tier")
+                if tier and tier != last:
+                    await session_live.note(
+                        f"{fresh.get('headline')} — tier moved {last} -> {tier}")
+                    await ws.send_json({"type": "case_update", "facts": facts,
+                                        "headline": fresh.get("headline"),
+                                        "from_tier": last, "to_tier": tier})
+                    last = tier
+            except Exception:
+                return
+
+    try:
+        await asyncio.gather(pump_up(), pump_down(), watch_case(),
+                             return_exceptions=True)
+    finally:
+        stop.set()
+        if session_live is not None:
+            await session_live.close()
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 class VasodilationIn(BaseModel):

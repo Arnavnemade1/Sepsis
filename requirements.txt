@@ -12,3 +12,6 @@ z3-solver==4.16.0.0
 supabase==2.31.0
 python-dotenv==1.2.1
 httpx==0.28.1
+# realtime AI-doctor consult relays over a raw WebSocket client (also pulled in by
+# uvicorn[standard], pinned here because backend/llm/live.py imports it directly)
+websockets==15.0.1
