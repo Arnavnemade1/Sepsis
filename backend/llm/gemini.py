@@ -238,6 +238,69 @@ class GeminiClient:
                 break                                   # 4xx/5xx/empty/truncated
         return None
 
+    # -- agentic turn (function calling) ---------------------------------- #
+    def generate(self, system: str, contents: List[Dict[str, Any]],
+                 tools: Optional[List[Dict[str, Any]]] = None,
+                 max_tokens: int = 700, temperature: float = 0.3
+                 ) -> Optional[Dict[str, Any]]:
+        """One raw turn that may come back as TEXT or as FUNCTION CALLS.
+
+        ``contents`` is Gemini-native (roles + parts), because a tool-using
+        conversation carries functionCall/functionResponse parts that the simple
+        ``{role, text}`` shape cannot represent. Returns
+        ``{text, calls, model}`` or None. Deliberately uncached: a tool call is
+        an action, and replaying an action from cache would silently repeat it."""
+        if not self.available:
+            return None
+        if self._calls >= self.max_calls:
+            return None
+        headers = {"x-goog-api-key": self.api_key or "", "Content-Type": "application/json"}
+        now = time.time()
+        for model in self._live_models(now):
+            for attempt in (0, 1):
+                payload: Dict[str, Any] = {
+                    "contents": contents,
+                    "generationConfig": {"maxOutputTokens": max_tokens,
+                                         "temperature": temperature},
+                }
+                if system:
+                    payload["systemInstruction"] = {"parts": [{"text": system}]}
+                if tools:
+                    payload["tools"] = [{"functionDeclarations": tools}]
+                if attempt == 0 and model not in self._no_thinking_cfg:
+                    payload["generationConfig"]["thinkingConfig"] = {"thinkingBudget": 0}
+                try:
+                    status, data = self._post(
+                        f"{_BASE}/models/{model}:generateContent", headers,
+                        payload, self.timeout_s)
+                except Exception as exc:
+                    self._bump(model, "err")
+                    self._last_err = str(exc)
+                    break
+                if status == 400 and attempt == 0 and self._rejects_thinking(data):
+                    self._no_thinking_cfg.add(model)
+                    continue
+                if status in (429, 503):
+                    self._bump(model, "429")
+                    self._cooldown[model] = time.time() + self.cooldown_s
+                    break
+                if status == 200 and data:
+                    parts = (((data.get("candidates") or [{}])[0]
+                              .get("content") or {}).get("parts") or [])
+                    calls = [p["functionCall"] for p in parts if p.get("functionCall")]
+                    text = "".join(p.get("text", "") for p in parts
+                                   if not p.get("thought")).strip()
+                    if calls or text:
+                        self._bump(model, "ok")
+                        self._calls += 1
+                        self._last_call = time.time()
+                        self._last_model = model
+                        return {"text": text, "calls": calls, "model": model}
+                self._bump(model, "err")
+                self._last_err = self._err_msg(data, status, False)
+                break
+        return None
+
     @staticmethod
     def _rejects_thinking(data: Optional[Dict[str, Any]]) -> bool:
         msg = ((data or {}).get("error") or {}).get("message", "")

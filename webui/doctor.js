@@ -39,7 +39,7 @@
     micOn: true, videoOn: false, camReady: false,
     startedAt: 0, timer: null,
     capCtx: null, capNode: null, capStream: null, capSrc: null,
-    playCtx: null, playAt: 0, sources: [],
+    playCtx: null, playAt: 0, sources: [], flashT: null,
     level: 0, speaking: false,
     line: { role: null, text: "" },
     raf: null, statusTimer: null
@@ -78,6 +78,9 @@
     setState("idle", "not connected");
     $("#doc-log").innerHTML = "";
     $("#doc-log").appendChild(el("div", "doc-log-empty", "transcript will appear here"));
+    $("#doc-acts").innerHTML = "";
+    $("#doc-acts").appendChild(el("div", "doc-log-empty", "nothing run yet"));
+    $("#doc-act-count").textContent = "0";
     caption("Open the call to talk this case through.", true);
     $("#doc-timer").textContent = "";
     $("#doc-banner").classList.add("hidden");
@@ -276,6 +279,12 @@
       case "case_update":
         paintGround(m.headline, m.facts);
         logLine("sys", "case changed mid-call: tier " + m.from_tier + " → " + m.to_tier);
+        break;
+      case "ui":
+        logLine("sys", "▸ " + runUI(m.action, m.args));
+        break;
+      case "tool":
+        logAction(m);
         break;
       case "going_away":
         banner("The realtime session is about to expire — end and reopen the call to continue.");
@@ -492,6 +501,122 @@
     setTimeout(pumpVideo, VIDEO_MS);
   }
 
+  /* ---------------- the agent's hands ---------------- */
+  /* The server decides WHAT to do; this decides HOW, against the real shell
+     modules. Nothing here is a private copy of the cockpit — `select_patient`
+     drives the same AegisPatient the top bar drives, so the agent and the
+     clinician are always looking at one system. */
+  var PANELS = {
+    camera:       function () { return window.AegisCamera; },
+    story:        function () { return window.AegisStory; },
+    consensus:    function () { return window.AegisConsensus; },
+    orchestrator: function () { return window.AegisOrchestrator; },
+    federation:   function () { return window.AegisFederation; },
+    rbac:         function () { return window.AegisRBAC; },
+    dsl:          function () { return window.AegisDSL; },
+    pharma:       function () { return window.AegisPharma; },
+    identity:     function () { return window.AegisIdentity; }
+  };
+
+  function runUI(action, args) {
+    args = args || {};
+    try {
+      switch (action) {
+        case "open_panel":   return openPanel(args.panel, args.bed);
+        case "close_panel":  return closePanel(args.panel);
+        case "select_patient":
+          if (window.AegisPatient) window.AegisPatient.set(args.bed);
+          S.bed = args.bed;
+          return "switched to " + args.bed;
+        case "enable_camera":
+          if (window.AegisCamera) window.AegisCamera.enable();
+          setTimeout(bindSelfView, 1500);
+          return "camera requested";
+        case "focus_organ":
+          if (window.AegisTwin && window.AegisTwin.setFocus) window.AegisTwin.setFocus(args.organ);
+          return "focused " + args.organ;
+        case "highlight":
+          flash(args.text);
+          return "highlighted";
+        default:
+          return "unknown command " + action;
+      }
+    } catch (e) {
+      return "failed: " + (e && e.message);
+    }
+  }
+
+  function openPanel(panel, bed) {
+    if (panel === "consult") return "already open";
+    if (panel === "tactical") { window.open("tactical.html", "_blank"); return "tactical opened"; }
+    if (panel === "twin") {
+      if (window.AegisPK) window.AegisPK.open(bed || S.bed || "session");
+      return "treatment twin opened";
+    }
+    var mod = (PANELS[panel] || function () {})();
+    if (mod && mod.open) { mod.open(); return panel + " opened"; }
+    return panel + " unavailable";
+  }
+
+  function closePanel(panel) {
+    if (panel === "consult") { close(); return "consult closed"; }
+    if (panel === "twin") { if (window.AegisPK) window.AegisPK.close(); return "twin closed"; }
+    var mod = (PANELS[panel] || function () {})();
+    if (mod && mod.close) { mod.close(); return panel + " closed"; }
+    return panel + " unavailable";
+  }
+
+  function flash(text) {
+    var el0 = $("#doc-flash");
+    if (!el0) return;
+    el0.textContent = text || "";
+    el0.classList.remove("hidden");
+    clearTimeout(S.flashT);
+    S.flashT = setTimeout(function () { el0.classList.add("hidden"); }, 6000);
+  }
+
+  /* ---------------- activity feed ---------------- */
+  /* Every tool call the agent makes, shown as it makes it. An agent with this
+     much reach that works invisibly is not auditable, and this project's whole
+     argument is that you can check it. Gate refusals render as refusals. */
+  function logAction(a) {
+    var feed = $("#doc-acts");
+    if (!feed) return;
+    var empty = feed.querySelector(".doc-log-empty");
+    if (empty) empty.remove();
+    var row = el("div", "doc-act " + (a.kind || "read") + (a.ok ? "" : " bad"));
+    var head = el("div", "doc-act-h");
+    head.appendChild(el("b", null, a.tool));
+    head.appendChild(el("span", "doc-act-kind", a.kind || "read"));
+    row.appendChild(head);
+    var argstr = summarizeArgs(a.args);
+    if (argstr) row.appendChild(el("div", "doc-act-args", argstr));
+    var v = a.verdict;
+    if (v) {
+      var verdict = el("div", "doc-act-verdict " + (v.allowed ? "ok" : "deny"));
+      verdict.textContent = (v.allowed ? "✓ certified · " : "✕ " + (v.errno || "denied") + " · ")
+        + (v.message || "");
+      row.appendChild(verdict);
+    } else if (!a.ok && a.error) {
+      row.appendChild(el("div", "doc-act-verdict deny", a.error));
+    }
+    feed.appendChild(row);
+    feed.scrollTop = feed.scrollHeight;
+    var n = $("#doc-act-count");
+    if (n) n.textContent = feed.querySelectorAll(".doc-act").length;
+  }
+
+  function summarizeArgs(args) {
+    if (!args) return "";
+    var out = [];
+    for (var k in args) {
+      if (!Object.prototype.hasOwnProperty.call(args, k)) continue;
+      var v = args[k];
+      out.push(k + "=" + (typeof v === "object" ? JSON.stringify(v) : String(v)));
+    }
+    return out.join(" · ").slice(0, 120);
+  }
+
   /* ---------------- typed consult (no mic, or voice unavailable) --------- */
   function askText() {
     var input = $("#doc-input");
@@ -507,6 +632,11 @@
       body: JSON.stringify({ question: q, bed: S.bed, history: textHistory() })
     }).then(function (r) { return r.json(); }).then(function (d) {
       setState("idle", "typed consult");
+      // the typed path is agentic too — run whatever it drove, same as the call
+      (d.actions || []).forEach(function (a) {
+        logAction({ tool: a.tool, args: a.args, ok: a.ok, kind: a.ui ? "ui" : "read" });
+        if (a.ui) logLine("sys", "▸ " + runUI(a.ui.action, a.ui.args));
+      });
       logLine("doctor", d.answer || "(no answer)");
       caption(d.answer || "");
     }).catch(function () {

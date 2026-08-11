@@ -10,7 +10,7 @@
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="os.css?v=55" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
-<link rel="stylesheet" href="doctor.css?v=4" />
+<link rel="stylesheet" href="doctor.css?v=5" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -1050,6 +1050,7 @@
       </div>
       <div class="doc-caption idle" id="doc-caption">Open the call to talk this case through.</div>
       <div class="doc-hint">speak naturally — interrupt any time · Esc closes</div>
+      <div class="doc-flash hidden" id="doc-flash"></div>
 
       <div class="doc-self off" id="doc-self">
         <video id="doc-self-video" autoplay playsinline muted></video>
@@ -1068,6 +1069,17 @@
         </div>
         <div class="doc-facts" id="doc-facts"></div>
         <div class="doc-note" id="doc-recorded"></div>
+      </div>
+
+      <!-- Everything the agent does, as it does it. It can read any subsystem,
+           pull any panel up and invoke the write syscalls — so it has to be
+           watchable. Gate refusals show as refusals, in the prover's words. -->
+      <div class="doc-card doc-card-scroll">
+        <div class="doc-card-h"><span>what it ran</span>
+          <span class="doc-act-n" id="doc-act-count">0</span></div>
+        <div class="doc-acts" id="doc-acts">
+          <div class="doc-log-empty">nothing run yet</div>
+        </div>
       </div>
 
       <div class="doc-card doc-card-scroll">
@@ -1105,6 +1117,6 @@
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
 <script src="os.js?v=52"></script>
-<script src="doctor.js?v=3"></script>
+<script src="doctor.js?v=4"></script>
 </body>
 </html>

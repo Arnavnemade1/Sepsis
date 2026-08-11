@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -20,6 +20,7 @@ help:
 	@echo "  make verify-opts  Treatment options: reasons traceable to numbers, cage refusals shown"
 	@echo "  make verify-z3    Z3 concurrency: every entry point guarded, no context corruption"
 	@echo "  make verify-doctor AI-doctor consult: grounding, provenance, scale firewall, failover"
+	@echo "  make verify-agent  Agent plane: catalogue, read confinement, gated writes"
 	@echo "  make verify-llm    LLM transport: fallback chain, cooldown, cache, budget"
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
@@ -68,6 +69,14 @@ verify-pk-api:
 # cage refuses is labelled refused with the cage's own words rather than hidden.
 verify-opts:
 	$(PY) -m backend.aegis.verify_treatment_options
+
+# The agent plane — Dr. Aegis's control surface over the OS. Checks that every
+# advertised tool is callable, that the universal read primitive stays a READ
+# confined to /aegis, that every write goes through the Z3 trap gate and a
+# refused write leaves the kernel untouched, and that a UI command never claims
+# to have read what it only displayed. In-process, no LLM, no spend.
+verify-agent:
+	$(PY) -m backend.aegis.verify_agent
 
 # The AI-doctor consult layer. Checks the properties the safety argument rests on
 # — that the dossier names the criteria that fired, that its performance figures

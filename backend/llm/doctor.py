@@ -29,10 +29,23 @@ transports.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import json
+from typing import Any, Callable, Dict, List, Optional
 
 from backend.llm.case import build_dossier
 from backend.llm.provider import LLMProvider
+
+
+def _bound(out: Dict[str, Any], max_chars: int = 3500) -> Dict[str, Any]:
+    """Keep one tool result from swallowing the conversation's context."""
+    try:
+        blob = json.dumps(out, default=str)
+    except Exception:
+        return {"ok": False, "error": "result was not serializable"}
+    if len(blob) <= max_chars:
+        return out
+    return {"ok": out.get("ok", True), "truncated": True, "prefix": blob[:max_chars],
+            "note": "truncated; ask for a narrower slice if you need the rest"}
 
 _PERSONA = """You are DR. AEGIS, the consulting physician voice of AegisOS — an \
 EXPERIMENTAL sepsis early-warning research system. A clinician has opened a \
@@ -75,6 +88,35 @@ septic patient above a non-septic one — it is NOT accuracy, and calling 0.72 \
 "72% accurate" is wrong and you must not say it. Quote each figure as what it is: \
 AUROC, false-alarm rate, detection rate, median lead time. Never compare numbers \
 that live on different scales; the dossier tells you when two of them do.
+
+YOU OPERATE THE SYSTEM
+You are not a commentary track — you run AegisOS. You can inspect every subsystem \
+it has, pull any panel up on the clinician's screen, switch the cockpit to another \
+bed, convene the consensus chamber, project the treatment twin, and invoke the \
+write syscalls. Use that. If they ask something you do not already have, go and \
+read it rather than saying you cannot see it. If you reference a subsystem, OPEN \
+it — say what you are opening in the same breath, briefly, the way you would say \
+"here, look at this" to a colleague. Do not narrate tool names or paths; narrate \
+what you are doing and why.
+
+Refer to patients by NAME, not by bed id. Every tool result gives you the name; \
+use it. Bed ids differ by one character and are trivially transposed in speech — \
+saying "bed three" while you are in fact looking at bed four is a patient-safety \
+error even when every number you quote is right. If you must give a bed id, read \
+it back from the tool result you just received rather than from memory.
+
+Opening a panel is NOT reading it. A display command puts something on their \
+screen and returns you nothing. If you are going to say what a subsystem shows — \
+node counts, votes, trajectories, any number at all — you must have called the \
+tool that returns that data and read the result. Describing a panel you only \
+opened is fabrication, and it is the one failure this system exists to prevent.
+
+Two rules on acting. First, reads and pulling things up are yours to initiate \
+freely. WRITES are not: never call the `syscall` tool unless the clinician asked \
+for that action in this conversation. Second, when a write comes back refused, \
+say so plainly and give the prover's reason in its own words — a refusal is \
+information, not an obstacle to route around, and you must never retry it or \
+find another path to the same effect.
 
 If asked what you are, say plainly: a research decision-support tool, not a \
 diagnosis, not a substitute for their own assessment or for their hospital's \
@@ -134,6 +176,55 @@ class AIDoctor:
                     "provider": getattr(self.client, "_last_provider", None)}
         return {"answer": self._template(question, dossier), "source": "template",
                 "model": None, "provider": None}
+
+    # -- agentic text turn (tool-using) ----------------------------------- #
+    def act(self, question: str, dossier: Dict[str, Any],
+            tools: List[Dict[str, Any]],
+            invoke: Callable[[str, Dict[str, Any]], Dict[str, Any]],
+            history: Optional[List[Dict[str, str]]] = None,
+            max_rounds: int = 4, max_tokens: int = 700) -> Dict[str, Any]:
+        """A typed consult turn in which the doctor may drive the OS.
+
+        Loops call → execute → feed back until it answers in prose or hits
+        ``max_rounds``. The round cap is a real safety property, not a
+        formality: a model that mis-reads a tool result can otherwise re-issue
+        the same call forever, and on a metered API that is an unbounded bill.
+        Falls back to the non-agentic path if the provider has no tool support."""
+        gem = getattr(self.client, "gemini", None)
+        if gem is None or not getattr(gem, "available", False):
+            return self.consult(question, dossier, history=history)
+
+        contents: List[Dict[str, Any]] = []
+        for t in (history or [])[-10:]:
+            contents.append({"role": "model" if t.get("role") == "model" else "user",
+                             "parts": [{"text": str(t.get("text", ""))}]})
+        contents.append({"role": "user", "parts": [{"text": question}]})
+
+        system = self.system_instruction(dossier)
+        used: List[Dict[str, Any]] = []
+        for _ in range(max_rounds):
+            turn = gem.generate(system, contents, tools=tools, max_tokens=max_tokens)
+            if turn is None:                       # provider down mid-loop
+                break
+            if not turn.get("calls"):
+                return {"answer": turn.get("text") or "", "source": "llm",
+                        "model": turn.get("model"), "provider": "gemini",
+                        "actions": used}
+            contents.append({"role": "model", "parts": [
+                {"functionCall": c} for c in turn["calls"]]})
+            responses = []
+            for c in turn["calls"]:
+                name = c.get("name") or ""
+                out = invoke(name, c.get("args") or {})
+                used.append({"tool": name, "args": c.get("args") or {},
+                             "ok": bool(out.get("ok")), "ui": out.get("ui")})
+                responses.append({"functionResponse": {
+                    "name": name, "response": _bound(out)}})
+            contents.append({"role": "user", "parts": responses})
+        # ran out of rounds (or the provider dropped) — answer from what we have
+        res = self.consult(question, dossier, history=history)
+        res["actions"] = used
+        return res
 
     def opening(self, dossier: Dict[str, Any], max_tokens: int = 320) -> Dict[str, Any]:
         """The doctor's first words when the call connects."""

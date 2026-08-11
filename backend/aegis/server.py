@@ -2223,6 +2223,7 @@ class DoctorConsultIn(BaseModel):
     question: str
     bed: Optional[str] = None
     history: Optional[List[Dict[str, str]]] = None
+    agentic: bool = True                  # may drive the OS to answer
 
 
 @app.get("/aegis/doctor/status")
@@ -2256,11 +2257,281 @@ def doctor_brief(bed: Optional[str] = None, opening: bool = True) -> Dict[str, A
 @app.post("/aegis/doctor/consult")
 def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
     """One typed turn of the consult — the transport when there is no microphone,
-    and the fallback when the realtime socket is unavailable."""
+    and the fallback when the realtime socket is unavailable.
+
+    Agentic by default: the doctor may drive the OS to answer, and any cockpit
+    commands it issues come back in ``actions`` for the browser to run, so the
+    typed path has the same reach as the voice path."""
     dossier = _doctor_dossier(payload.bed)
-    res = _doctor.consult(payload.question, dossier, history=payload.history)
+    if payload.agentic:
+        res = _doctor.act(payload.question, dossier, _tools.declarations(),
+                          _tools.invoke, history=payload.history)
+    else:
+        res = _doctor.consult(payload.question, dossier, history=payload.history)
     return {**res, "bed": dossier.get("bed"), "headline": dossier.get("headline"),
             "budget_remaining": _llm_client.budget_remaining()}
+
+
+# ---------------------------------------------------------------------- #
+# The agent plane: bind every tool in the catalogue to a real handler.
+#
+# Reads go straight to the endpoint functions. Writes go to the SAME Z3-gated,
+# audited trap gate the console uses — the agent may invoke any syscall in the
+# table, and the prover decides which ones take effect. UI tools have no server
+# handler; they are forwarded to the cockpit over the consult socket.
+# ---------------------------------------------------------------------- #
+from backend.aegis.agent import registry as _tools, summarize as _tool_summarize
+
+# The read primitive is confined to this app's own GET routes. It is genuinely
+# unrestricted over AegisOS state — and it is a *read*: it cannot reach a POST,
+# cannot leave the process, and cannot touch anything the trap gate governs.
+_READ_ROUTES: Dict[str, Any] = {}
+
+
+def _index_read_routes() -> None:
+    for route in app.routes:
+        methods = getattr(route, "methods", None) or set()
+        path = getattr(route, "path", "")
+        if "GET" in methods and path.startswith("/aegis") and getattr(route, "endpoint", None):
+            _READ_ROUTES[path] = route
+
+
+def _agent_os_read(path: str, params: str = "") -> Dict[str, Any]:
+    """Generic GET over the OS's own state surface, by path.
+
+    Path params are resolved with Starlette's own matcher rather than by string
+    surgery — a hand-rolled prefix match happily read '/aegis/cohort/bed_0/bundle'
+    as bed_id='bed_0/bundle'. Query values are coerced from the parameter's
+    DEFAULT, not its annotation: this module runs under
+    `from __future__ import annotations`, so every annotation is a string and
+    type-based coercion silently never fires."""
+    from urllib.parse import parse_qs
+    import inspect
+
+    raw = (path or "").split("?")[0].rstrip("/") or "/aegis/health"
+    if not raw.startswith("/aegis"):
+        return {"error": f"{raw!r} is not an AegisOS state path (must start /aegis)"}
+    if "?" in (path or ""):
+        params = params or path.split("?", 1)[1]
+    if not _READ_ROUTES:
+        _index_read_routes()
+
+    query: Dict[str, Any] = {k: v[0] for k, v in parse_qs(params or "").items()}
+    scope = {"type": "http", "method": "GET", "path": raw, "headers": [],
+             "root_path": "", "query_string": b""}
+    fn = None
+    path_params: Dict[str, Any] = {}
+    for route in _READ_ROUTES.values():
+        try:
+            match, child = route.matches(scope)
+        except Exception:
+            continue
+        if match.value == 2:                       # Match.FULL
+            fn = route.endpoint
+            path_params = dict(child.get("path_params") or {})
+            break
+    if fn is None:
+        return {"error": f"no readable surface at {raw!r}",
+                "hint": "call list_surfaces to see what exists"}
+
+    supplied = dict(query)
+    supplied.update(path_params)                   # path wins over query
+    call: Dict[str, Any] = {}
+    for name, prm in inspect.signature(fn).parameters.items():
+        if name in supplied:
+            val = supplied[name]
+            default = prm.default
+            try:
+                if isinstance(default, bool):
+                    val = str(val).lower() in ("1", "true", "yes")
+                elif isinstance(default, int):
+                    val = int(val)
+                elif isinstance(default, float):
+                    val = float(val)
+            except (TypeError, ValueError):
+                pass
+            call[name] = val
+        elif prm.default is inspect.Parameter.empty:
+            return {"error": f"{raw!r} needs a '{name}' argument",
+                    "hint": f"pass it in params, e.g. params='{name}=…'"}
+    out = fn(**call)
+    if inspect.iscoroutine(out):
+        out.close()
+        return {"error": f"{raw!r} is async and not reachable from the agent plane"}
+    return out
+
+
+def _agent_list_surfaces() -> Dict[str, Any]:
+    if not _READ_ROUTES:
+        _index_read_routes()
+    out = []
+    for path in sorted(_READ_ROUTES):
+        doc = (_READ_ROUTES[path].endpoint.__doc__ or "").strip().split("\n")[0]
+        out.append({"path": path, "what": doc[:150]})
+    return {"count": len(out), "surfaces": out}
+
+
+def _agent_syscall(syscall: str, bed: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Every agent write lands here — the same trap gate the console uses."""
+    res = syscalls.invoke(syscall, bed, args or {}, caller="dr-aegis")
+    return res.to_dict()
+
+
+def _agent_service_control(name: str, action: str) -> Dict[str, Any]:
+    """systemctl-style control, synchronous (the async endpoint also broadcasts;
+    the agent plane cannot await, so it drives the supervisor directly)."""
+    act = (action or "").lower()
+    ok = (aegisd.stop(name) if act == "stop" else
+          aegisd.restart(name) if act in ("restart", "start") else None)
+    if ok is None:
+        return {"status": "error", "detail": f"unknown action {action!r}"}
+    if not ok:
+        return {"status": "error", "detail": f"unknown service {name!r}"}
+    return {"status": "ok", "service": name, "action": act,
+            "state": aegisd.services[name].state}
+
+
+def _agent_list_patients() -> Dict[str, Any]:
+    """The roster WITH each bed's current risk and tier, sorted sickest first.
+
+    /aegis/patients alone carries no risk at all, so "who is the sickest patient"
+    was unanswerable from it — the agent picked a bed and then described a LOW
+    tier as the sickest, because nothing in its input could have told it
+    otherwise. The live per-bed risk lives on the cluster topology; joining the
+    two here makes the ranking a fact the agent reads instead of a guess."""
+    roster = patients().get("patients", [])
+    live: Dict[str, Dict[str, Any]] = {}
+    try:
+        for node in (cluster_snapshot().get("topology") or []):
+            live[str(node.get("node_id"))] = node
+    except Exception:
+        pass
+    out = []
+    for p in roster:
+        node = live.get(str(p.get("id"))) or {}
+        risk = node.get("p")
+        out.append({"bed": p.get("id"), "name": p.get("name"), "kind": p.get("kind"),
+                    "risk": round(float(risk), 4) if risk is not None else None,
+                    "tier": node.get("tier"), "trend": node.get("slope"),
+                    "septic_course": p.get("septic"), "icu_hour": p.get("icu_hour")})
+    out.sort(key=lambda r: (r["risk"] is None, -(r["risk"] or 0.0)))
+    return {"n": len(out), "sorted_by": "risk, highest first", "patients": out,
+            "note": "risk is the live fused per-bed risk; tier bands at "
+                    f"HIGH>={_TIER_BANDS['high']}, MEDIUM>={_TIER_BANDS['medium']}."}
+
+
+def _agent_open_panel(panel: str, bed: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The companion read behind `open_panel`: what that surface actually shows.
+
+    Without this the agent opened a panel and then described contents it had
+    never received. Now "pull it up" returns the panel's data in the same call,
+    which is what the request meant and leaves nothing to invent. Panels with no
+    readable payload (the camera is a live device) return None, and the registry
+    then tells the model plainly that it has not seen anything."""
+    p = (panel or "").lower()
+    try:
+        if p == "story":
+            return causal_graph(bed)
+        if p == "consensus":
+            return consensus_round(None, bed)
+        if p == "orchestrator":
+            return {"status": orchestrator_status(), "attestation": orchestrator_attest()}
+        if p == "federation":
+            return fedlearn_result()
+        if p == "pharma":
+            return pharmacopoeia_stats()
+        if p == "identity":
+            return identity_status()
+        if p == "rbac":
+            return rbac_policy()
+        if p == "dsl":
+            return dsl_default()
+        if p == "twin":
+            return pk_bed(bed) if bed else pk_session()
+        if p == "tactical":
+            return cohort_roster()
+        if p == "consult":
+            return doctor_brief(bed, opening=False)
+    except Exception as exc:
+        return {"error": f"{type(exc).__name__}: {exc}"}
+    return None                          # camera: a live device, nothing to read
+
+
+def _bind_agent_tools() -> None:
+    b = _tools.bind
+    b("open_panel", _agent_open_panel)
+    # Switching beds must re-ground the agent, not just re-scope the screen. The
+    # dossier is locked into the session at connect time and never changes, so an
+    # agent that moved the cockpit to bed_3 kept narrating bed_0's numbers under
+    # bed_3's name. The companion read hands it the new patient's dossier in the
+    # same call that makes the switch.
+    b("select_patient", lambda bed: doctor_brief(bed, opening=False))
+    b("os_read", _agent_os_read)
+    b("list_surfaces", _agent_list_surfaces)
+    b("list_patients", _agent_list_patients)
+    b("get_patient", lambda bed=None: patient_snapshot(bed))
+    b("get_case_dossier", lambda bed=None: doctor_brief(bed, opening=False))
+    b("get_vitals_trend", lambda bed: cohort_chart(bed))
+    b("get_causal_graph", lambda bed=None: causal_graph(bed))
+    b("trace_incident", lambda node_id, bed=None: causal_incident(node_id, bed))
+    b("run_consensus", lambda bed=None: consensus_round(None, bed))
+    b("run_whatif", lambda bed=None: (_bed_snapshot(bed) or {}).get("whatif") if bed else whatif())
+    b("project_treatment", lambda bed, adverse=True: pk_bed(bed, adverse=adverse))
+    b("screen_drugs", lambda drugs, bed=None: pharmacopoeia_screen(PharmaScreenIn(
+        drugs=list(drugs),
+        # renal state comes from the bed's own chart, so the hazard set is this
+        # patient's rather than a generic screen
+        context={"renal_failure": bool(((getattr(cluster, "histories", {}) or {})
+                                        .get(bed) or {}).get("renal_failure", False))})))
+    b("get_validation", lambda: cohort_validation())
+    b("get_orchestrator", lambda: {"status": orchestrator_status(),
+                                   "attestation": orchestrator_attest()})
+    b("get_kernel", lambda: _kernel_plane(full=False))
+    b("get_audit", lambda limit=24: aegis_syscall_audit(int(limit)))
+    b("get_activity", lambda limit=20: {"activity": _tools.activity(int(limit))})
+    b("syscall", _agent_syscall)
+    b("set_tracking", lambda bed, command: patient_terminal.exec(
+        bed, command, context=_patient_ctx(bed)))
+    b("service_control", _agent_service_control)
+    b("simulate_stage", lambda stage: simulate(stage))
+
+
+def _gate_verdict(out: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Pull the prover's decision out of a gated write so the cockpit can show a
+    refusal as a refusal, in the certificate's own words."""
+    res = out.get("result")
+    if not isinstance(res, dict) or "z3_status" not in res:
+        return None
+    return {"allowed": res.get("allowed"), "errno": res.get("errno_name", res.get("errno")),
+            "z3_status": res.get("z3_status"), "message": res.get("message"),
+            "violations": res.get("violations") or []}
+
+
+class AgentInvokeIn(BaseModel):
+    tool: str
+    args: Dict[str, Any] = {}
+
+
+@app.get("/aegis/agent/tools")
+def agent_tools() -> Dict[str, Any]:
+    """The agent's capability catalogue — what Dr. Aegis can reach, read and do,
+    and which of those go through the certified gate."""
+    cat = _tools.catalogue()
+    return {"tools": cat, "bound": len(_tools.bound()), "unbound": _tools.unbound(),
+            "counts": {k: sum(1 for t in cat if t["kind"] == k)
+                       for k in ("read", "ui", "write")}}
+
+
+@app.get("/aegis/agent/activity")
+def agent_activity(limit: int = 50) -> Dict[str, Any]:
+    """What the agent has actually done — every tool call and its outcome."""
+    return {"activity": _tools.activity(limit)}
+
+
+@app.post("/aegis/agent/invoke")
+def agent_invoke(payload: AgentInvokeIn) -> Dict[str, Any]:
+    """Invoke one tool directly (the text consult and the console use this)."""
+    return _tools.invoke(payload.tool, payload.args)
 
 
 # Uplink ceiling for one call. A stuck browser that streams microphone audio
@@ -2288,7 +2559,8 @@ async def doctor_live(ws: WebSocket) -> None:
         return
 
     try:
-        session_live = _LiveConsult(_doctor.system_instruction(dossier))
+        session_live = _LiveConsult(_doctor.system_instruction(dossier),
+                                    tools=_tools.declarations())
         await session_live.connect()
     except _LiveUnavailable as exc:
         # Not an error the clinician can act on — tell the UI to fall back to the
@@ -2303,11 +2575,46 @@ async def doctor_live(ws: WebSocket) -> None:
         "facts": dossier.get("facts"), "unmeasured": dossier.get("unmeasured"),
         "provenance": dossier.get("provenance"),
         "input_rate": 16000, "output_rate": 24000, "voice": session_live.voice,
-        "model": session_live.model,
+        "model": session_live.model, "tools": len(session_live.tools),
     })
 
     stop = asyncio.Event()
     budget = {"audio_s": 0.0}
+    # Which bed the conversation is actually on. The agent can move it mid-call.
+    scope: Dict[str, Any] = {"bed": bed, "tier": (dossier.get("facts") or {}).get("tier")}
+
+    async def run_tools(calls: List[Dict[str, Any]]) -> None:
+        """Execute what the agent asked for and answer every call it made.
+
+        UI tools are not run here — they are forwarded to the cockpit, which
+        drives the real shell. The model is told the command was dispatched so it
+        can narrate ("pulling that up now") without waiting on the browser."""
+        responses: List[Dict[str, Any]] = []
+        for call in calls:
+            name = call.get("name") or ""
+            out = _tools.invoke(name, call.get("args") or {})
+            ui = out.get("ui")
+            if ui:
+                await ws.send_json({"type": "ui", "action": ui.get("action"),
+                                    "args": ui.get("args") or {}})
+                # the tier watcher has to follow the agent, or it keeps reporting
+                # changes on the bed the call opened on rather than the one being
+                # discussed now
+                if name == "select_patient" and (ui.get("args") or {}).get("bed"):
+                    scope["bed"] = ui["args"]["bed"]
+                    scope["tier"] = None
+            # mirror every call into the cockpit's activity feed: an agent whose
+            # actions are invisible is an agent nobody can check
+            await ws.send_json({
+                "type": "tool", "tool": name, "args": call.get("args") or {},
+                "ok": bool(out.get("ok")), "kind": (_tools.get(name).kind
+                                                    if _tools.get(name) else "unknown"),
+                "error": out.get("error"),
+                "verdict": _gate_verdict(out)})
+            responses.append({"id": call.get("id"), "name": name,
+                              "response": _tool_summarize(out)})
+        if responses:
+            await session_live.send_tool_response(responses)
 
     async def pump_up() -> None:
         """Browser -> Gemini. Forwards chunk-for-chunk; never batches (pacing is
@@ -2341,11 +2648,16 @@ async def doctor_live(ws: WebSocket) -> None:
             stop.set()
 
     async def pump_down() -> None:
-        """Gemini -> browser."""
+        """Gemini -> browser, with the agent's tool calls executed in between."""
         try:
             async for ev in session_live.events():
                 if stop.is_set():
                     break
+                if ev.get("type") == "tool_call":
+                    await run_tools(ev.get("calls") or [])
+                    continue                       # the raw call is not the UI's business
+                if ev.get("type") == "tool_cancel":
+                    continue
                 await ws.send_json(ev)
                 if ev.get("type") == "closed":
                     break
@@ -2360,7 +2672,6 @@ async def doctor_live(ws: WebSocket) -> None:
         """A call can outlive the state it opened on. Poll the bed's tier and tell
         both the doctor and the UI when it moves, rather than letting the
         conversation drift onto numbers that have since changed."""
-        last = (dossier.get("facts") or {}).get("tier")
         while not stop.is_set():
             try:
                 await asyncio.wait_for(stop.wait(), timeout=20.0)
@@ -2368,16 +2679,17 @@ async def doctor_live(ws: WebSocket) -> None:
             except asyncio.TimeoutError:
                 pass
             try:
-                fresh = _doctor_dossier(bed)
+                fresh = _doctor_dossier(scope["bed"])
                 facts = fresh.get("facts") or {}
                 tier = facts.get("tier")
-                if tier and tier != last:
+                last = scope["tier"]
+                if tier and last and tier != last:
                     await session_live.note(
                         f"{fresh.get('headline')} — tier moved {last} -> {tier}")
                     await ws.send_json({"type": "case_update", "facts": facts,
                                         "headline": fresh.get("headline"),
                                         "from_tier": last, "to_tier": tier})
-                    last = tier
+                scope["tier"] = tier
             except Exception:
                 return
 
@@ -2513,6 +2825,14 @@ class _SmartStatic(StaticFiles):
 
 if _os.path.isdir(_WEBUI):
     app.mount("/", _SmartStatic(directory=_WEBUI, html=True), name="aegisos-shell")
+
+
+# Bind the agent's tools LAST: the handlers close over endpoint functions defined
+# throughout this module, and the read primitive indexes the finished route table.
+_bind_agent_tools()
+_index_read_routes()
+print(f"[aegis] agent plane: {len(_tools.bound())} tools bound"
+      + (f", UNBOUND: {_tools.unbound()}" if _tools.unbound() else ""))
 
 
 if __name__ == "__main__":  # pragma: no cover

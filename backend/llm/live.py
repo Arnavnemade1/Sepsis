@@ -47,11 +47,13 @@ class LiveUnavailable(RuntimeError):
 
 class LiveConsult:
     def __init__(self, system_instruction: str, voice: Optional[str] = None,
-                 model: Optional[str] = None, connect_timeout: float = 20.0):
+                 model: Optional[str] = None, connect_timeout: float = 20.0,
+                 tools: Optional[List[Dict[str, Any]]] = None):
         self.system_instruction = system_instruction
         self.voice = voice or live_voice()
         self.model = model or live_model()
         self.connect_timeout = connect_timeout
+        self.tools = tools or []            # functionDeclarations the agent may call
         self._ws: Optional[Any] = None
         self._closed = False
 
@@ -70,7 +72,7 @@ class LiveConsult:
         try:
             self._ws = await asyncio.wait_for(
                 websockets.connect(url, max_size=None), self.connect_timeout)
-            await self._ws.send(json.dumps({"setup": {
+            setup: Dict[str, Any] = {
                 "model": self.model,
                 "generationConfig": {
                     "responseModalities": ["AUDIO"],
@@ -82,7 +84,10 @@ class LiveConsult:
                 # and a consult you cannot read back is not a clinical artifact.
                 "inputAudioTranscription": {},
                 "outputAudioTranscription": {},
-            }}))
+            }
+            if self.tools:
+                setup["tools"] = [{"functionDeclarations": self.tools}]
+            await self._ws.send(json.dumps({"setup": setup}))
             raw = await asyncio.wait_for(self._ws.recv(), self.connect_timeout)
             if "setupComplete" not in self._decode(raw):
                 raise LiveUnavailable(f"unexpected setup reply: {str(raw)[:200]}")
@@ -135,6 +140,14 @@ class LiveConsult:
     async def end_audio(self) -> None:
         await self._send({"realtimeInput": {"audioStreamEnd": True}})
 
+    async def send_tool_response(self, responses: List[Dict[str, Any]]) -> None:
+        """Return tool results. Each entry is ``{id, name, response}``.
+
+        The model is blocked on these — a call it never gets an answer to leaves
+        the turn hanging with dead air on a voice line, so the relay must reply
+        to EVERY id it was given, failures included."""
+        await self._send({"toolResponse": {"functionResponses": responses}})
+
     # -- downlink --------------------------------------------------------- #
     @staticmethod
     def _decode(raw: Any) -> Dict[str, Any]:
@@ -157,6 +170,18 @@ class LiveConsult:
                 if msg.get("goAway"):
                     yield {"type": "going_away",
                            "time_left": (msg["goAway"] or {}).get("timeLeft")}
+                    continue
+                tc = msg.get("toolCall")
+                if tc:
+                    calls = [{"id": c.get("id"), "name": c.get("name"),
+                              "args": c.get("args") or {}}
+                             for c in (tc.get("functionCalls") or [])]
+                    if calls:
+                        yield {"type": "tool_call", "calls": calls}
+                    continue
+                if msg.get("toolCallCancellation"):
+                    yield {"type": "tool_cancel",
+                           "ids": (msg["toolCallCancellation"] or {}).get("ids") or []}
                     continue
                 sc = msg.get("serverContent")
                 if not sc:

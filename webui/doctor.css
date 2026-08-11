@@ -138,6 +138,36 @@
   border-left:2px solid var(--line);padding-left:var(--sp-2)}
 .doc-log-empty{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
 
+/* activity feed — what the agent ran.
+   Kind is carried by a hairline on the left edge, not by fill: a write is worth
+   noticing, so it is the only one that gets a saturated border, and only a GATE
+   REFUSAL gets the alarm hue. Reads are the common case and stay neutral. */
+.doc-act-n{font-family:var(--mono);font-size:10px;color:var(--dim);
+  background:var(--s2);border:1px solid var(--line);border-radius:var(--r-sm);padding:0 5px}
+.doc-acts{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px;min-height:0;
+  padding-right:2px}
+.doc-act{background:var(--s2);border:1px solid var(--line-soft);border-left:2px solid var(--nodata);
+  border-radius:var(--r-sm);padding:5px 7px}
+.doc-act.ui{border-left-color:var(--dim)}
+.doc-act.write{border-left-color:var(--med)}
+.doc-act.bad{border-left-color:var(--high)}
+.doc-act-h{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
+.doc-act-h b{font-family:var(--mono);font-size:11.5px;color:var(--ink)}
+.doc-act-kind{font-family:var(--mono);font-size:8.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--faint)}
+.doc-act-args{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:2px;
+  word-break:break-all}
+.doc-act-verdict{font-size:10.5px;line-height:1.4;margin-top:3px}
+.doc-act-verdict.ok{color:var(--low-ink)}
+.doc-act-verdict.deny{color:var(--high-ink)}
+
+/* the agent pointing at something */
+.doc-flash{position:absolute;top:var(--sp-3);left:50%;transform:translateX(-50%);
+  max-width:min(560px,88%);font-size:13px;line-height:1.45;text-align:center;
+  color:var(--ink);background:var(--s2);border:1px solid var(--line-bright);
+  border-radius:var(--r-md);padding:7px 13px;box-shadow:var(--elev-1)}
+.doc-flash.hidden{display:none}
+
 /* ---- foot: the controls ---- */
 .doc-foot{flex:0 1 auto;display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;
   padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--line)}
