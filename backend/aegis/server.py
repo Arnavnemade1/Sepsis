@@ -39,6 +39,14 @@ from backend.aegis.syscalls import SyscallTable
 from backend.aegis.kernel.runtime import KernelDeviceRuntime
 from backend.aegis.kernel.hdkernel import (
     run_workload as _run_kworkload, KWORKLOADS as _KWORKLOADS, POLICIES as _KPOLICIES)
+# Resolve server-side credentials BEFORE the LLM layer is constructed: the
+# clients below read os.getenv at import time, so a key recovered from the
+# Supabase runtime_config fallback has to be in the environment by now or it
+# arrives too late to matter. The env var still wins when it is set.
+from backend.core import runtime_config as _rtcfg
+_rtcfg.prime("GEMINI_API_KEY")
+_rtcfg.prime("OPENROUTER_API_KEY")
+
 from backend.llm.provider import LLMProvider as _LLMProvider
 from backend.llm.assistant import AegisAssistant as _AegisAssistant
 from backend.core.simulator import PatientTelemetrySimulator
@@ -2239,6 +2247,7 @@ def doctor_status() -> Dict[str, Any]:
     return {
         "voice": voice_ok,                        # realtime audio socket
         "voice_reason": voice_reason,
+        "key_source": _rtcfg.source("GEMINI_API_KEY"),   # environment | supabase | unset
         "text": bool(_llm_client.available),      # typed consult / fallback
         "llm": _llm_client.status(),
     }
