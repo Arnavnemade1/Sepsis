@@ -62,6 +62,32 @@
 .doc-who span{display:block;font-family:var(--mono);font-size:11.5px;color:var(--dim);
   margin-top:var(--sp-1);letter-spacing:.06em}
 
+/* The phase readout. It is the one piece of JARVIS-ness that earns its place:
+   a voice interface that shows nothing between you finishing a sentence and the
+   reply starting feels broken, and a word is cheaper than a spinner. Tracked
+   with a leading marker rather than a colour, per the identity rule. */
+.doc-phase{position:relative;display:inline-block !important;font-size:10.5px !important;
+  letter-spacing:.24em !important;text-transform:uppercase;padding-left:14px}
+.doc-phase::before{content:"";position:absolute;left:0;top:50%;width:6px;height:6px;
+  margin-top:-3px;border-radius:50%;background:currentColor;opacity:.35}
+.ph-listening .doc-phase{color:var(--muted)}
+.ph-listening .doc-phase::before{opacity:1;animation:docPulse 2.4s var(--ease) infinite}
+.ph-thinking .doc-phase{color:var(--muted)}
+.ph-thinking .doc-phase::before{opacity:1;animation:docPulse .9s var(--ease) infinite}
+.ph-speaking .doc-phase{color:var(--ink)}
+.ph-speaking .doc-phase::before{opacity:1}
+.ph-connecting .doc-phase,.ph-waking .doc-phase{color:var(--muted)}
+.ph-connecting .doc-phase::before,.ph-waking .doc-phase::before{
+  opacity:1;animation:docBlink .7s steps(2) infinite}
+.ph-offline .doc-phase{color:var(--high-ink)}
+.ph-offline .doc-phase::before{opacity:.9}
+@keyframes docPulse{0%,100%{opacity:.3}50%{opacity:1}}
+
+/* The core mark tracks the phase too — dim at rest, present when it is talking. */
+.doc-orb-core{transition:color .25s var(--ease),border-color .25s var(--ease)}
+.ph-speaking .doc-orb-core{color:var(--ink);border-color:var(--line-bright)}
+.ph-offline .doc-orb-core{color:var(--faint)}
+
 /* Live caption. The spoken word is the interface here, so it gets the size —
    but it scrolls inside its own box; the full record lives in the transcript. */
 /* flex:1 makes the caption absorb the stage's free space instead of sitting at

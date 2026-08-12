@@ -2234,9 +2234,11 @@ class DoctorConsultIn(BaseModel):
 
 @app.get("/aegis/doctor/status")
 def doctor_status() -> Dict[str, Any]:
-    """Can we place a call, and by which transport?"""
+    """Can we place a call, by which transport, and if not — why not?"""
+    voice_ok, voice_reason = _LiveConsult.availability()
     return {
-        "voice": _LiveConsult.available(),        # realtime audio socket
+        "voice": voice_ok,                        # realtime audio socket
+        "voice_reason": voice_reason,
         "text": bool(_llm_client.available),      # typed consult / fallback
         "llm": _llm_client.status(),
     }
@@ -2254,6 +2256,7 @@ def doctor_brief(bed: Optional[str] = None, opening: bool = True) -> Dict[str, A
         "facts": dossier.get("facts"), "unmeasured": dossier.get("unmeasured"),
         "provenance": dossier.get("provenance"), "dossier_text": dossier.get("text"),
         "voice": _LiveConsult.available(),
+        "voice_reason": _LiveConsult.availability()[1],
     }
     if opening:
         out["opening"] = _doctor.opening(dossier)

@@ -59,8 +59,21 @@ class LiveConsult:
 
     @staticmethod
     def available() -> bool:
-        return websockets is not None and bool(
-            os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+        return LiveConsult.availability()[0]
+
+    @staticmethod
+    def availability() -> "tuple":
+        """(ok, reason). The reason matters on a deploy: 'voice is unavailable'
+        with no cause sends you hunting through browser permissions when the
+        actual problem is an env var that was never set on the server."""
+        if websockets is None:
+            return False, ("the server is missing the `websockets` package "
+                           "(pip install -r requirements.txt)")
+        if not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")):
+            return False, ("no GEMINI_API_KEY on the server — set it in the "
+                           "deployment's environment and restart. Voice runs "
+                           "through the backend, so the key must live there.")
+        return True, "ready"
 
     # -- lifecycle -------------------------------------------------------- #
     async def connect(self) -> None:

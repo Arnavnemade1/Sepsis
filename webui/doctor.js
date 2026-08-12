@@ -40,10 +40,36 @@
     startedAt: 0, timer: null,
     capCtx: null, capNode: null, capStream: null, capSrc: null,
     playCtx: null, playAt: 0, sources: [], flashT: null,
-    level: 0, speaking: false,
+    level: 0, speaking: false, phase: "standby", voiceOk: null, voiceWhy: "",
     line: { role: null, text: "" },
-    raf: null, statusTimer: null
+    raf: null, statusTimer: null, thinkSince: 0
   };
+
+  /* The assistant's phase. It drives the ring, the readout and the caption, so
+     there is exactly one place that decides what the thing is doing — the old
+     version inferred "speaking" from an audio packet and nothing tracked the gap
+     between you finishing a sentence and the first word coming back, which is
+     the moment a voice UI feels broken if it shows nothing. */
+  var PHASES = {
+    standby:    "STANDBY",
+    waking:     "WAKING BACKEND",
+    connecting: "ESTABLISHING LINK",
+    listening:  "LISTENING",
+    thinking:   "WORKING",
+    speaking:   "SPEAKING",
+    ended:      "LINK CLOSED",
+    offline:    "VOICE OFFLINE"
+  };
+
+  function phase(p) {
+    if (S.phase === p) return;
+    S.phase = p;
+    if (p === "thinking") S.thinkSince = Date.now();
+    var app = $("#doctor-app");
+    app.className = app.className.replace(/\bph-\w+/g, "").trim() + " ph-" + p;
+    var r = $("#doc-phase");
+    if (r) r.textContent = PHASES[p] || p.toUpperCase();
+  }
 
   function $(s) { return document.querySelector(s); }
   function el(tag, cls, txt) {
@@ -58,6 +84,7 @@
     S.bed = bed || currentBed();
     $("#doctor-app").classList.remove("hidden");
     resetUI();
+    preflight();
     loadBrief();
     loadCaps();
     startOrb();
@@ -73,6 +100,43 @@
     // the shell's patient selector is the source of truth for "who are we on"
     try { return (window.AegisPatient && window.AegisPatient.bed()) || null; }
     catch (e) { return null; }
+  }
+
+  /* Ask the SERVER whether it can place a call before offering the button.
+     Voice runs through the backend, so "can I talk to it" is a server fact, and
+     a deploy with no key would otherwise present a live-looking call button that
+     fails on click with a generic socket error. */
+  function preflight() {
+    phase("waking");
+    fetch(window.AEGIS.http("/aegis/doctor/status"))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        S.voiceOk = !!d.voice;
+        S.voiceWhy = d.voice_reason || "";
+        var btn = $("#doc-call");
+        if (S.voiceOk) {
+          btn.disabled = false;
+          btn.textContent = "◉ start call";
+          phase("standby");
+          setState("idle", "ready");
+        } else {
+          btn.disabled = true;
+          btn.textContent = "◉ voice offline";
+          phase("offline");
+          setState("error", "voice offline");
+          banner("Voice is unavailable on this deployment — " + S.voiceWhy
+                 + " The typed consult below works and uses the same dossier and "
+                 + "the same tools.");
+        }
+      })
+      .catch(function () {
+        // the backend sleeps on the free tier; a cold start is not a failure
+        S.voiceOk = null;
+        phase("standby");
+        setState("error", "backend unreachable");
+        banner("Could not reach the backend. On the free tier it sleeps after "
+               + "15 minutes and the first request wakes it — try again in a moment.");
+      });
   }
 
   function resetUI() {
@@ -230,7 +294,8 @@
     S.connecting = true;
     $("#doc-call").disabled = true;
     setState("connecting", "connecting…");
-    caption("Connecting to Dr. Aegis…", true);
+    phase("connecting");
+    caption("Establishing link…", true);
 
     var url = window.AEGIS.base().replace(/^http/, "ws") + "/aegis/doctor/live" +
       (S.bed ? "?bed=" + encodeURIComponent(S.bed) : "");
@@ -245,14 +310,15 @@
     };
     ws.onerror = function () { if (!S.open) failCall("could not reach the consult service"); };
     ws.onclose = function () {
-      if (S.open) logLine("sys", "call ended");
+      if (S.open) logLine("sys", "link closed");
       teardownAudio();
       S.open = false; S.connecting = false;
       setState("idle", "call ended");
-      $("#doc-call").disabled = false;
+      phase("ended");
+      $("#doc-call").disabled = !(S.voiceOk !== false);
       $("#doc-end").disabled = true;
       stopTimer();
-      caption("Call ended.", true);
+      caption("Link closed.", true);
     };
   }
 
@@ -260,6 +326,7 @@
     S.connecting = false;
     S.open = false;
     setState("error", "unavailable");
+    phase("offline");
     $("#doc-call").disabled = false;
     banner("Voice call unavailable — " + msg + ". The typed consult below still works and uses the same dossier.");
     caption("Voice is unavailable. Type a question below to consult by text.", true);
@@ -272,9 +339,12 @@
         setState("live", "on call");
         $("#doc-end").disabled = false;
         if (m.headline) { S.headline = m.headline; paintGround(m.headline, m.facts); }
-        caption("Connected. Dr. Aegis can see the case on the right — ask away.", true);
-        logLine("sys", "consult opened on " + (m.headline || "this case") +
-          " · voice " + (m.voice || "—"));
+        phase("listening");
+        caption("Link established. Go ahead.", true);
+        // a short, factual bring-up: what it is grounded in and what it can reach
+        logLine("sys", "link established · " + (m.headline || "this case"));
+        logLine("sys", "voice " + (m.voice || "—") + " · " + (m.tools || 0)
+          + " tools · grounded in the dossier on the right");
         startMic();
         startTimer();
         break;
@@ -286,16 +356,21 @@
         } else {
           if (S.line.role !== "clinician") { S.line = { role: "clinician", text: "" }; }
           S.line.text += m.text;
+          // your words are transcribed the moment you stop — that is the handover
+          // point, and it is where the ring should stop listening and start working
+          if (S.phase === "listening") phase("thinking");
         }
         logLine(m.role, m.text);
         break;
       case "audio":
         playChunk(m.data);
+        phase("speaking");
         break;
       case "turn_end":
         closeLine();
         S.speaking = false;
         $("#doctor-app").classList.remove("speaking");
+        if (S.open) phase("listening");
         break;
       case "interrupted":
         flushPlayback();
@@ -428,6 +503,10 @@
       var Ctx = window.AudioContext || window.webkitAudioContext;
       S.playCtx = new Ctx();
       S.playAt = 0;
+      // sources -> analyser -> speakers, so the ring can read the real waveform
+      S.analyser = S.playCtx.createAnalyser();
+      S.analyser.fftSize = 256;
+      S.analyser.connect(S.playCtx.destination);
     }
     if (S.playCtx.state === "suspended") S.playCtx.resume();
     return S.playCtx;
@@ -448,7 +527,7 @@
     }
     var src = ctx.createBufferSource();
     src.buffer = buf;
-    src.connect(ctx.destination);
+    src.connect(S.analyser || ctx.destination);
     var at = Math.max(ctx.currentTime + 0.02, S.playAt);
     src.start(at);
     S.playAt = at + buf.duration;
@@ -728,11 +807,19 @@
   /* ---------------- the voice ring ---------------- */
   /* Neutral by rule (see doctor.css): it shows who is talking, which is a device
      state, not a clinical one. Outer arc = the doctor, inner = your mic. */
+  /* An instrument bezel, not a light show.
+     Three layers: a static tick ring (the bezel), one sweeping arc whose speed
+     says what the assistant is doing, and a waveform ring whose amplitude is
+     REAL — the doctor's actual output level from an analyser on the playback
+     graph, and your actual mic level on the way in. It is monochrome by rule:
+     saturated colour in this product means a patient is in trouble, so the
+     assistant's own chrome never borrows it. */
   function startOrb() {
     var cv = $("#doc-orb-canvas");
     if (!cv) return;
     var ctx = cv.getContext("2d");
-    var phase = 0;
+    var spin = 0, sweep = 0;
+
     function frame() {
       S.raf = requestAnimationFrame(frame);
       var dpr = window.devicePixelRatio || 1;
@@ -741,42 +828,98 @@
       if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      var cx = w / 2, cy = h / 2, base = Math.min(w, h) / 2 - 8;
-      phase += S.speaking ? 0.09 : 0.02;
 
+      var cx = w / 2, cy = h / 2, base = Math.min(w, h) / 2 - 6;
       var css = getComputedStyle(document.documentElement);
-      var line = css.getPropertyValue("--line-bright").trim() || "rgba(255,255,255,.18)";
+      var faint = css.getPropertyValue("--faint").trim() || "#4b4f56";
+      var dim = css.getPropertyValue("--dim").trim() || "#6d7178";
       var muted = css.getPropertyValue("--muted").trim() || "#a0a4ac";
+      var ink = css.getPropertyValue("--ink").trim() || "#f2f3f5";
 
-      // doctor ring — amplitude tracks whether audio is actually playing
-      ctx.strokeStyle = S.speaking ? muted : line;
+      var p = S.phase;
+      var busy = (p === "connecting" || p === "waking");
+      var live = (p === "listening" || p === "thinking" || p === "speaking");
+      var amp = 0;
+      if (p === "speaking") amp = outLevel();
+      else if (p === "listening") amp = Math.min(1, S.level * 2.4);
+
+      spin += busy ? 0.055 : (p === "thinking" ? 0.028 : 0.006);
+      sweep += busy ? 0.09 : 0.035;
+
+      // ---- bezel: fixed ticks, so motion elsewhere has something to move against
+      ctx.strokeStyle = faint;
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = live ? 0.55 : 0.3;
+      for (var i = 0; i < 60; i++) {
+        var a0 = (i / 60) * Math.PI * 2;
+        var long = i % 5 === 0;
+        var r0 = base, r1 = base - (long ? 6 : 3);
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a0) * r0, cy + Math.sin(a0) * r0);
+        ctx.lineTo(cx + Math.cos(a0) * r1, cy + Math.sin(a0) * r1);
+        ctx.stroke();
+      }
+
+      // ---- sweeping arc: the "it is doing something" signal
+      var arcR = base - 11;
+      ctx.globalAlpha = busy ? 0.9 : (live ? 0.6 : 0.25);
+      ctx.strokeStyle = busy ? muted : dim;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, spin, spin + (busy ? 1.1 : 0.55));
+      ctx.stroke();
+      ctx.globalAlpha *= 0.45;
+      ctx.beginPath();
+      ctx.arc(cx, cy, arcR, spin + Math.PI, spin + Math.PI + (busy ? 0.7 : 0.35));
+      ctx.stroke();
+
+      // ---- waveform rings: amplitude is real audio, not decoration
       ctx.lineWidth = 1;
       for (var r = 0; r < 3; r++) {
-        var amp = S.speaking ? 5 + r * 2.5 : 1.2;
+        // amplitude scales with the ring, not in fixed pixels — at the small orb
+        // size a fixed 13px wobble braided the three rings into a knot
+        var a1 = live ? base * (0.012 + amp * 0.085 + r * amp * 0.022) : base * 0.01;
         ctx.beginPath();
-        for (var a = 0; a <= Math.PI * 2 + 0.02; a += 0.06) {
-          var wob = Math.sin(a * (3 + r) + phase * (1 + r * 0.4)) * amp;
-          var rad = base - r * 9 + wob;
+        for (var a = 0; a <= Math.PI * 2 + 0.02; a += 0.055) {
+          var wob = Math.sin(a * (3 + r) + sweep * (1 + r * 0.35)) * a1;
+          var rad = base - 20 - r * 8 + wob;
           var x = cx + Math.cos(a) * rad, y = cy + Math.sin(a) * rad;
           if (a === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
         }
-        ctx.globalAlpha = S.speaking ? 0.85 - r * 0.22 : 0.35 - r * 0.09;
+        ctx.strokeStyle = p === "speaking" ? ink : (live ? muted : dim);
+        ctx.globalAlpha = (p === "speaking" ? 0.8 : live ? 0.45 : 0.22) - r * 0.13;
+        ctx.stroke();
+      }
+
+      // ---- mic ring, inside: reports the input device only
+      if (S.open && S.micOn && S.level > 0.01) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, base * 0.34 + S.level * 22, 0, Math.PI * 2);
+        ctx.strokeStyle = muted;
+        ctx.globalAlpha = Math.min(0.45, S.level * 2);
         ctx.stroke();
       }
       ctx.globalAlpha = 1;
-
-      // your mic ring, inside — reports the input device, nothing clinical
-      if (S.open && S.micOn && S.level > 0.01) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, base * 0.42 + S.level * 26, 0, Math.PI * 2);
-        ctx.strokeStyle = muted;
-        ctx.globalAlpha = Math.min(0.5, S.level * 2.2);
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
       paintLevel();
     }
     frame();
+  }
+
+  /* RMS of what is actually coming out of the speaker. Without this the ring
+     "speaks" as a fixed animation whenever a packet arrives, which looks alive
+     but tells you nothing; with it, the ring tracks the voice. */
+  function outLevel() {
+    if (!S.analyser) return 0.35;
+    var buf = S.analyBuf || (S.analyBuf = new Uint8Array(S.analyser.fftSize));
+    S.analyser.getByteTimeDomainData(buf);
+    var sum = 0;
+    for (var i = 0; i < buf.length; i++) {
+      var v = (buf[i] - 128) / 128;
+      sum += v * v;
+    }
+    var rms = Math.sqrt(sum / buf.length);
+    S.outSmooth = (S.outSmooth || 0) * 0.6 + rms * 0.4;
+    return Math.min(1, S.outSmooth * 3.2);
   }
 
   function stopOrb() { if (S.raf) { cancelAnimationFrame(S.raf); S.raf = null; } }

@@ -346,7 +346,10 @@ def build_dossier(snapshot: Dict[str, Any],
     L.append(provenance_text())
 
     text = "\n".join(L)
-    headline = f"{name} · bed {bed} · {level}" + (
+    # "bed_0" already contains the word, and the headline is read ALOUD on the
+    # voice call — "bed bed_0" comes out as "bed bed zero".
+    bed_label = bed[4:] if bed.lower().startswith("bed_") else bed
+    headline = f"{name} · bed {bed_label} · {level}" + (
         f" · P={_fmt(prob, 3)}" if prob is not None else "")
     return {
         "bed": bed,

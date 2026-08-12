@@ -164,8 +164,10 @@ def t6_failure_templates() -> None:
     check("grounded template", "SBP 94" in r2["answer"] or "RR 26" in r2["answer"],
           "the offline template answers from the real dossier facts, not a canned string")
     o = doc.opening(d)
-    check("opening", o["source"] == "template" and "bed_9" in o["answer"],
-          "the opening degrades to a grounded template too")
+    check("opening", o["source"] == "template" and "Test, P." in o["answer"],
+          "the opening degrades to a grounded template too (names the patient)")
+    check("headline spoken", " bed 9" in d["headline"] and "bed_9" not in d["headline"],
+          "the headline is read ALOUD, so 'bed_9' is rendered 'bed 9' — not 'bed bed nine'")
 
 
 def t7_provider_failover() -> None:

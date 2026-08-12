@@ -19,9 +19,23 @@ The app is **two pieces** with different hosting needs:
    - `SUPABASE_KEY` — your Supabase **service-role** key (from `backend/.env`)
    - `GEMINI_API_KEY` — primary LLM provider, and the only one that carries the
      AI-doctor **voice consult** (`/aegis/doctor/live`). Without it the consult
-     panel still works, but typed-only.
-   - `OPENROUTER_API_KEY` — text-only backup provider (Nemotron 3 Ultra), so a
-     Gemini quota wall degrades the narrative layer instead of removing it.
+     panel still works, but typed-only: the call button disables itself and says
+     so. **This is the one variable the voice call cannot start without** —
+     voice relays through the backend precisely so the key never ships to the
+     browser, which means it has to exist *here*, not in the frontend build.
+   - `OPENROUTER_API_KEY` — text-only backup provider, so a Gemini quota wall
+     degrades the narrative layer instead of removing it.
+   - `OPENROUTER_MODEL` — set to `nvidia/nemotron-3-ultra-550b-a55b:free`. If an
+     older value is still set it silently pins the backup to that model; check
+     `primary_model` under `openrouter` in `/aegis/doctor/status`.
+
+   Confirm all three landed:
+
+   ```bash
+   curl -s https://<your-service>.onrender.com/aegis/doctor/status
+   ```
+
+   `voice` must be `true`. If it is `false`, `voice_reason` says why.
 3. Deploy. You get a URL like **`https://sepsis-backend.onrender.com`**.
 4. Verify: open `https://sepsis-backend.onrender.com/aegis/health` → `{"status":"ok", ...}`.
 
