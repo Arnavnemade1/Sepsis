@@ -252,6 +252,25 @@ def _catalogue() -> List[Tool]:
         "List every readable state path in this AegisOS build, with a one-line "
         "description each. Use before os_read when you need to find where "
         "something lives.", {}, []))
+    T.append(Tool(
+        "list_actions", KIND_READ,
+        "List every action this OS can be made to take — each with the body it "
+        "expects. Use before os_write when you need to find how to drive "
+        "something.", {}, []))
+
+    # ---- WRITE: the generic primitive --------------------------------- #
+    T.append(Tool(
+        "os_write", KIND_WRITE,
+        "Drive ANY AegisOS actuation endpoint by path — the universal DO, for "
+        "anything the named tools do not cover. Reaches the ML control plane, "
+        "the package manager, chaos injection, device pairing, record import, "
+        "proof certification and the rest. Call list_actions to find the path "
+        "and the body it wants. Anything that would reach a patient still passes "
+        "the Z3 gate and can come back refused.",
+        {"path": _s("An /aegis/... POST path, e.g. '/aegis/ml/train'."),
+         "body": {"type": "OBJECT", "description": "JSON body the endpoint expects."},
+         "params": _s("Optional query string.")},
+        ["path"]))
 
     # ---- READ: the paths worth naming --------------------------------- #
     T.append(Tool(
@@ -373,6 +392,29 @@ def _catalogue() -> List[Tool]:
         "Flash a short caption over the cockpit to point at what matters right "
         "now. Use sparingly — for the one thing, not a running commentary.",
         {"text": _s("Under ~90 characters.")}, ["text"]))
+    T.append(Tool(
+        "play_treatment_twin", KIND_UI,
+        "Drive the 3D treatment-twin playback so they can watch a drug "
+        "distribute: play, pause, scrub to a time, change speed, or switch which "
+        "candidate order is being shown.",
+        {"command": _s("What to do.", ("play", "pause", "restart")),
+         "arm": _s("Which candidate order to show."),
+         "at_hour": _n("Scrub to this hour."),
+         "rate": _n("Playback speed, e.g. 0.5, 1, 3.")}, []))
+    # NOTE: there is deliberately no `run_console` tool. The OS console lives on
+    # tactical.html, not on the page the consult runs in, so a tool that "typed
+    # into the console" would have had nothing to type into — and its commands
+    # (ps / top / kstat / roster) are already covered by get_kernel and
+    # list_patients. A tool that silently does nothing is worse than no tool.
+    T.append(Tool(
+        "set_camera_sensitivity", KIND_UI,
+        "Retune the optical biosensor's detection sensitivity.",
+        {"mode": _s("Sensitivity mode.", ("low", "balanced", "high"))}, ["mode"]))
+    T.append(Tool(
+        "note", KIND_UI,
+        "Write an observation into the patient's Observations pane — a note the "
+        "clinician keeps, not an order.",
+        {"text": _s("The observation.")}, ["text"]))
 
     # ---- WRITE: through the trap gate --------------------------------- #
     T.append(Tool(
@@ -401,6 +443,138 @@ def _catalogue() -> List[Tool]:
         "Start, stop or restart an aegisd service (resonance, radar, triage).",
         {"name": _s("Service name from os_read('/aegis/services')."),
          "action": _s("What to do.", ("start", "stop", "restart"))}, ["name", "action"]))
+    # ---- WRITE: named actuation, so the model reaches for the right thing --- #
+    T.append(Tool(
+        "counterfactual_replay", KIND_WRITE,
+        "Re-run a patient's recorded course as if a different action had been "
+        "taken at a branch point — the 'what if we had caught this sooner' "
+        "experiment. Get an outcome_id or node_id from get_causal_graph first.",
+        {"bed": _s("Bed id."),
+         "outcome_id": _s("Replay at the earliest actionable node upstream of this outcome."),
+         "node_id": _s("…or replay at this specific branch point."),
+         "treatment": {"type": "OBJECT",
+                       "description": "Alternative action, e.g. "
+                                      "{'fluid_rate':5,'vasopressor_dose':0,'antibiotic_code':3}."},
+         "horizon": _n("Hours to project forward.")}, []))
+    T.append(Tool(
+        "govern", KIND_WRITE,
+        "Put a decision through the autonomous orchestrator's non-maleficence "
+        "invariant: it composes the layers and returns either a signed "
+        "certificate or a refusal. Use to show whether an action would be "
+        "permitted before anyone takes it.",
+        {"action": _s("What to govern.", ("treat", "escalate", "pin", "actuator")),
+         "target": _s("Bed id the decision applies to."),
+         "layer": _s("Which layer, default 'bed'."),
+         "payload": {"type": "OBJECT", "description": "Action parameters."}},
+        ["action"]))
+    T.append(Tool(
+        "run_scenario", KIND_WRITE,
+        "Run the orchestrator's end-to-end scenario for a bed — the full cascade "
+        "from signal to certified decision.",
+        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+    T.append(Tool(
+        "certify_proof", KIND_WRITE,
+        "Mint a portable, Ed25519-signed SMT-LIB2 safety certificate for a "
+        "protocol — one any third party can re-check WITHOUT trusting AegisOS.",
+        {"risk_level": _s("Risk level the protocol is for, e.g. 'HIGH'."),
+         "protocol": {"type": "OBJECT", "description": "The protocol to certify."},
+         "vitals": {"type": "OBJECT", "description": "Vitals context."},
+         "clinical_history": {"type": "OBJECT", "description": "History context."}}, []))
+    T.append(Tool(
+        "verify_proof", KIND_WRITE,
+        "Re-check a signed safety certificate. Use to demonstrate that a forged "
+        "or altered certificate fails verification.",
+        {"certificate": {"type": "OBJECT", "description": "The certificate to check."},
+         "require_signature": _b("Require a valid signature (default true).")},
+        ["certificate"]))
+    T.append(Tool(
+        "verify_driver", KIND_WRITE,
+        "Statically verify a device driver with the Aegis-eBPF verifier: proves "
+        "termination, memory safety and capability confinement before the driver "
+        "is ever allowed to touch a patient's data stream.",
+        {"name": _s("A driver from os_read('/aegis/kernel/devices')."),
+         "source": _s("Or raw eBPF assembly to verify instead."),
+         "win_len": _n("Window length (default 2).")}, []))
+    T.append(Tool(
+        "verify_rules", KIND_WRITE,
+        "Compile hospital-authored safety rules (the clinical DSL) to Z3 and "
+        "prove a protocol against them — returns a counterexample for any rule "
+        "that does not hold. Read the shipped rule set first with "
+        "os_read('/aegis/dsl/default').",
+        {"policy": _s("DSL rule text. Omit to use the shipped default policy."),
+         "protocol": {"type": "OBJECT", "description": "The protocol to check."},
+         "context": {"type": "OBJECT",
+                     "description": "Patient context, e.g. {'risk_level':'HIGH','chf':true}."}},
+        []))
+    T.append(Tool(
+        "check_identity", KIND_WRITE,
+        "Run the physiologic identity guard: does this waveform still belong to "
+        "the same patient? With only 'target' it verifies them against their own "
+        "later stream; adding 'source' simulates another patient's stream being "
+        "connected to their monitor, which should raise PATIENT_IDENTITY_FAULT.",
+        {"target": _s("Whose monitor (patient id from os_read('/aegis/identity'))."),
+         "source": _s("Whose stream is (mis)connected — omit for a self-check.")}, []))
+    T.append(Tool(
+        "train_model", KIND_WRITE,
+        "Train or specialize a sepsis detector from inside the OS, with real "
+        "grouped cross-validation. Returns a job id — poll it with "
+        "os_read('/aegis/ml/job/<id>'). Registers the result; it does NOT "
+        "hot-swap the certified production detector, and you must not imply it "
+        "did.",
+        {"name": _s("A name for the model you are training."),
+         "feature_set": _s("Which features.", ("wearable", "lab")),
+         "horizon": _n("Early-warning hours before onset, to specialize."),
+         "limit": _n("How many patients to train on (default 1000)."),
+         "folds": _n("CV folds (default 3).")}, ["name"]))
+    T.append(Tool(
+        "run_kernel_workload", KIND_WRITE,
+        "Run the HDSched cognitive scheduler over a workload and return the "
+        "benchmark: how the policy dispatched, with its overhead disclosed.",
+        {"workload": _s("Workload.", ("mixed", "pipeline", "fanout", "stress")),
+         "policy": _s("Policy.", ("FIFO", "RR", "CFS", "EDF", "HDSched"))}, []))
+    T.append(Tool(
+        "inject_fault", KIND_WRITE,
+        "Inject a device fault — pull a sensor — to demonstrate that the kernel "
+        "degrades safely rather than inventing data. Always say you are injecting "
+        "a fault; never present the result as a real device failure.",
+        {"slot": _s("Device key or bay, e.g. 'dev_0'."),
+         "reason": _s("Why (recorded in the fault log).")}, ["slot"]))
+    T.append(Tool(
+        "recover_device", KIND_WRITE,
+        "Bring an injected-fault device back and re-verify its driver.",
+        {"slot": _s("Device key or bay.")}, ["slot"]))
+    T.append(Tool(
+        "run_chaos", KIND_WRITE,
+        "Run a chaos experiment against one node of the cognitive scheduler — "
+        "demonstrates the OS holding its safety properties under stress. Say "
+        "that you are perturbing the system; never present the result as the "
+        "patient's own physiology.",
+        {"node": _s("Bed id to perturb."),
+         "action": _s("What to do.", ("crisis", "clear", "noise")),
+         "intensity": _n("How hard (default 1.0).")}, ["node"]))
+    T.append(Tool(
+        "manage_package", KIND_WRITE,
+        "Install or uninstall a capability-confined AegisOS app package.",
+        {"action": _s("What to do.", ("install", "uninstall")),
+         "name": _s("Package name from os_read('/aegis/pkg').")}, ["action", "name"]))
+    T.append(Tool(
+        "import_history", KIND_WRITE,
+        "Import a patient's clinical history as free text, or link it from a "
+        "record source. This personalises their alerting PRIOR — say that it "
+        "shifts when the OS alerts, not that their population risk changed.",
+        {"bed": _s("Bed id."),
+         "text": _s("The chart text to import."),
+         "source": _s("Or a source to link from os_read('/aegis/records/sources')."),
+         "patient_ref": _s("Source-specific id (FHIR patient id / MRN), when linking.")},
+        ["bed"]))
+    T.append(Tool(
+        "device_action", KIND_WRITE,
+        "Drive a device in the fleet: pair it, assign it to a bed, unassign it, "
+        "or send it a command.",
+        {"device_id": _s("Device id from os_read('/aegis/devices')."),
+         "action": _s("What to do.", ("pair", "assign", "unassign", "command")),
+         "bed": _s("Bed id, for assign."),
+         "command": _s("Command name, for 'command'.")}, ["device_id", "action"]))
     T.append(Tool(
         "simulate_stage", KIND_WRITE,
         "Drive the DEMO patient simulator to a clinical stage. This is the "

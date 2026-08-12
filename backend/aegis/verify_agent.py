@@ -93,10 +93,46 @@ def main() -> int:
     check("discoverable", surfaces["count"] > 30,
           f"{surfaces['count']} readable surfaces are self-describing")
 
-    # A read tool must not be able to reach a mutation: no POST route is indexed.
-    posts = [p for p in srv._READ_ROUTES
-             if "POST" in (getattr(srv._READ_ROUTES[p], "methods", None) or set())]
-    check("gets only", not posts, "the read index contains no POST route")
+    # A read tool must not be able to reach a mutation: no POST-only route is
+    # in the read index, and the read primitive refuses one by path.
+    read_only = [p for p in srv._READ_ROUTES
+                 if "GET" not in (getattr(srv._READ_ROUTES[p], "methods", None) or set())]
+    check("gets only", not read_only, "every indexed read route is a GET")
+    post_only = next((p for p in srv._WRITE_ROUTES if p not in srv._READ_ROUTES), None)
+    if post_only:
+        r = (R.invoke("os_read", {"path": post_only}).get("result") or {})
+        check("read cannot mutate", "error" in r,
+              f"os_read refuses a POST-only path ({post_only})")
+
+    # -- 2b. the write primitive reaches the actuation surface ---------- #
+    print("[2b] os_write drives the OS — and stays inside it")
+    actions = R.invoke("list_actions")["result"]
+    check("actions listed", actions["count"] > 25,
+          f"{actions['count']} actuation endpoints are discoverable with their bodies")
+    check("bodies resolved", any(a["body"] for a in actions["actions"]),
+          "body models resolve under Pydantic v2 (field_info.annotation, not .type_)")
+    for bad_path in ("/etc/shadow", "http://evil/x", "../../x"):
+        r = (R.invoke("os_write", {"path": bad_path}).get("result") or {})
+        if "error" not in r:
+            check("write confinement", False, f"escaped via {bad_path!r}")
+            break
+    else:
+        check("write confinement", True, "refuses any path outside /aegis")
+    reentry = (R.invoke("os_write", {"path": "/aegis/agent/invoke",
+                                     "body": {}}).get("result") or {})
+    check("no re-entry", "error" in reentry,
+          "cannot re-enter the agent plane through itself")
+    missing = (R.invoke("os_write", {"path": "/aegis/nope"}).get("result") or {})
+    check("unknown action", "error" in missing, "an unknown action path is reported, not crashed")
+
+    # THE invariant: clinical egress is gated no matter which road reaches it.
+    via_write = (R.invoke("os_write", {
+        "path": "/aegis/syscall",
+        "body": {"syscall": "escalate", "bed": "bed_1", "args": {"level": 3}}
+    }).get("result") or {})
+    check("gate holds via os_write", via_write.get("errno_name") == "EPERM",
+          "a baseless escalation through the GENERIC write primitive is still refused "
+          "— the gate is in the endpoint, not in the tool wrapper")
 
     # -- 3. writes go through the gate ---------------------------------- #
     print("[3] Writes: the trap gate decides, not the agent")
@@ -124,6 +160,33 @@ def main() -> int:
     act = [a for a in R.activity(10) if a["tool"] == "syscall"]
     check("verdict surfaced", act and act[-1].get("z3_status") is not None,
           "the activity feed carries errno + z3 status for every write")
+
+    # -- 3b. the named actuation tools actually run --------------------- #
+    print("[3b] Named actuation: every wrapper matches its endpoint's real payload")
+    ran = []
+    for name, args in (("verify_driver", {"name": "ecg"}),
+                       ("verify_rules", {}),
+                       ("check_identity", {}),
+                       ("run_kernel_workload", {"workload": "mixed", "policy": "HDSched"}),
+                       ("run_scenario", {}),
+                       ("certify_proof", {"risk_level": "HIGH"}),
+                       ("govern", {"action": "treat", "target": "bed_0"}),
+                       ("counterfactual_replay", {"bed": "bed_0"})):
+        out = R.invoke(name, args)
+        bad = (not out.get("ok")) or "bad arguments" in str(out.get("error", ""))
+        ran.append((name, not bad, out.get("error")))
+    broken = [(n, e) for n, ok, e in ran if not ok]
+    check("wrappers match", not broken,
+          f"{len(ran)} named actuation tools dispatch cleanly"
+          if not broken else f"signature mismatch: {broken}")
+    # a wrapper that silently mis-declares its schema is the failure mode here:
+    # the model calls it once, gets "bad arguments", and gives up on the tool
+    for tname in ("train_model", "run_chaos", "device_action", "import_history",
+                  "manage_package", "inject_fault"):
+        tool = R.get(tname)
+        miss = [r for r in tool.required if r not in tool.properties]
+        check(f"schema {tname}", not miss,
+              f"{tname}: required args all declared ({', '.join(tool.required) or 'none'})")
 
     # -- 4. UI commands are honest about what they returned ------------- #
     print("[4] UI commands: 'I opened it' and 'I have seen it' stay distinct")

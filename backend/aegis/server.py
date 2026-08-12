@@ -506,6 +506,12 @@ async def _drive_loop() -> None:
 async def _startup() -> None:
     # Become ready IMMEDIATELY: start the realtime loops and return so uvicorn
     # signals healthy and the deploy's health check passes right away.
+    global _MAIN_LOOP
+    # The agent plane runs from threadpool workers (sync REST) as well as from
+    # the consult socket. A cockpit broadcast has to be scheduled back onto THIS
+    # loop — the one that owns the client WebSockets — or we would be writing to
+    # a socket from a foreign loop.
+    _MAIN_LOOP = asyncio.get_event_loop()
     asyncio.create_task(_drive_loop())
     asyncio.create_task(_cluster_loop())
 
@@ -2283,17 +2289,49 @@ def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
 from backend.aegis.agent import registry as _tools, summarize as _tool_summarize
 
 # The read primitive is confined to this app's own GET routes. It is genuinely
-# unrestricted over AegisOS state — and it is a *read*: it cannot reach a POST,
-# cannot leave the process, and cannot touch anything the trap gate governs.
+# unrestricted over AegisOS state — and it is a *read*: it cannot leave the
+# process and cannot mutate anything.
 _READ_ROUTES: Dict[str, Any] = {}
+# The write primitive covers the OS's own POST surface. Clinical egress still
+# lands in the Z3 trap gate, because the gate lives INSIDE /aegis/syscall — it is
+# a property of the endpoint, not a restriction bolted on at this layer.
+_WRITE_ROUTES: Dict[str, Any] = {}
+_MAIN_LOOP: Optional[Any] = None
 
 
 def _index_read_routes() -> None:
     for route in app.routes:
         methods = getattr(route, "methods", None) or set()
         path = getattr(route, "path", "")
-        if "GET" in methods and path.startswith("/aegis") and getattr(route, "endpoint", None):
+        if not path.startswith("/aegis") or not getattr(route, "endpoint", None):
+            continue
+        if "GET" in methods:
             _READ_ROUTES[path] = route
+        if "POST" in methods:
+            _WRITE_ROUTES[path] = route
+
+
+def _agent_await(coro: Any, timeout: float = 30.0) -> Any:
+    """Run a coroutine endpoint from the agent plane, wherever we are called from.
+
+    Sync REST handlers run on a threadpool worker with no loop, so ``asyncio.run``
+    is right there. The consult relay is already ON the main loop, where
+    ``asyncio.run`` would raise — so we hand the coroutine to that loop and wait
+    on the future from this thread."""
+    running = None
+    try:
+        running = asyncio.get_running_loop()
+    except RuntimeError:
+        pass
+    if running is None:
+        if _MAIN_LOOP is not None and _MAIN_LOOP.is_running():
+            fut = asyncio.run_coroutine_threadsafe(coro, _MAIN_LOOP)
+            return fut.result(timeout)
+        return asyncio.run(coro)
+    # Called from inside the loop that would have to run it: we cannot block on
+    # ourselves. Schedule it and report that it is in flight.
+    running.create_task(coro)
+    return {"status": "scheduled", "note": "dispatched on the server's event loop"}
 
 
 def _agent_os_read(path: str, params: str = "") -> Dict[str, Any]:
@@ -2361,6 +2399,117 @@ def _agent_os_read(path: str, params: str = "") -> Dict[str, Any]:
     return out
 
 
+def _body_model(field: Any) -> Any:
+    """The Pydantic model behind a FastAPI body param, across both major versions.
+
+    Pydantic v1 exposed ``ModelField.type_``; under v2 (what this project pins)
+    FastAPI's shim carries the real annotation on ``field_info.annotation``, and
+    reaching for ``.type_`` raises."""
+    ann = getattr(getattr(field, "field_info", None), "annotation", None)
+    return ann if ann is not None else getattr(field, "type_", None)
+
+
+def _model_fields(model: Any) -> List[str]:
+    return list(getattr(model, "model_fields", None) or getattr(model, "__fields__", {}) or {})
+
+
+def _agent_os_write(path: str, body: Optional[Dict[str, Any]] = None,
+                    params: str = "") -> Dict[str, Any]:
+    """Generic POST over the OS's own actuation surface — the universal DO.
+
+    Reaches every mutating endpoint AegisOS exposes: the ML control plane, the
+    package manager, chaos injection and recovery, counterfactual replay, the
+    eBPF driver verifier, device pairing, record import, proof certification.
+
+    Clinical egress is NOT special-cased here and does not need to be. The Z3
+    trap gate lives inside ``/aegis/syscall`` itself, so a write that would reach
+    a patient still has to come back with a certificate whether it arrives from
+    the console, from a named tool, or from this primitive. There is one gate and
+    every road leads to it."""
+    from urllib.parse import parse_qs
+    import inspect
+
+    raw = (path or "").split("?")[0].rstrip("/")
+    if not raw.startswith("/aegis"):
+        return {"error": f"{raw!r} is not an AegisOS path (must start /aegis)"}
+    if not _WRITE_ROUTES:
+        _index_read_routes()
+    if raw in ("/aegis/agent/invoke", "/aegis/doctor/consult"):
+        # Re-entering the agent through itself is a loop, not a capability.
+        return {"error": f"{raw!r} would re-enter the agent plane; call the tool directly"}
+
+    scope = {"type": "http", "method": "POST", "path": raw, "headers": [],
+             "root_path": "", "query_string": b""}
+    route = None
+    path_params: Dict[str, Any] = {}
+    for r in _WRITE_ROUTES.values():
+        try:
+            match, child = r.matches(scope)
+        except Exception:
+            continue
+        if match.value == 2:
+            route = r
+            path_params = dict(child.get("path_params") or {})
+            break
+    if route is None:
+        return {"error": f"no actuation surface at {raw!r}",
+                "hint": "call list_actions to see what can be driven"}
+
+    fn = route.endpoint
+    supplied: Dict[str, Any] = {k: v[0] for k, v in parse_qs(params or "").items()}
+    supplied.update(path_params)
+    # FastAPI has already resolved the body model for us — important, because this
+    # module's `from __future__ import annotations` makes raw annotations strings.
+    body_models = {p.name: _body_model(p)
+                   for p in (getattr(route, "dependant", None).body_params
+                             if getattr(route, "dependant", None) else [])}
+    call: Dict[str, Any] = {}
+    for name, prm in inspect.signature(fn).parameters.items():
+        if name in body_models:
+            try:
+                call[name] = body_models[name](**(body or {}))
+            except Exception as exc:
+                return {"error": f"invalid body for {raw!r}: {exc}",
+                        "expects": _model_fields(body_models[name])}
+        elif name in supplied:
+            val, default = supplied[name], prm.default
+            try:
+                if isinstance(default, bool):
+                    val = str(val).lower() in ("1", "true", "yes")
+                elif isinstance(default, int):
+                    val = int(val)
+                elif isinstance(default, float):
+                    val = float(val)
+            except (TypeError, ValueError):
+                pass
+            call[name] = val
+        elif prm.default is inspect.Parameter.empty:
+            return {"error": f"{raw!r} needs a '{name}' argument"}
+    out = fn(**call)
+    if inspect.iscoroutine(out):
+        out = _agent_await(out)
+    return out if isinstance(out, dict) else {"result": out}
+
+
+def _agent_list_actions() -> Dict[str, Any]:
+    if not _WRITE_ROUTES:
+        _index_read_routes()
+    out = []
+    for path in sorted(_WRITE_ROUTES):
+        if path in ("/aegis/agent/invoke", "/aegis/doctor/consult"):
+            continue
+        route = _WRITE_ROUTES[path]
+        doc = (route.endpoint.__doc__ or "").strip().split("\n")[0]
+        fields: List[str] = []
+        dep = getattr(route, "dependant", None)
+        for p in (dep.body_params if dep else []):
+            fields += _model_fields(_body_model(p))
+        out.append({"path": path, "what": doc[:140], "body": fields})
+    return {"count": len(out), "actions": out,
+            "note": "drive any of these with os_write. Clinical egress "
+                    "(/aegis/syscall) still passes the Z3 gate and may be refused."}
+
+
 def _agent_list_surfaces() -> Dict[str, Any]:
     if not _READ_ROUTES:
         _index_read_routes()
@@ -2375,6 +2524,33 @@ def _agent_syscall(syscall: str, bed: str, args: Optional[Dict[str, Any]] = None
     """Every agent write lands here — the same trap gate the console uses."""
     res = syscalls.invoke(syscall, bed, args or {}, caller="dr-aegis")
     return res.to_dict()
+
+
+def _agent_import_history(bed: str, text: str = "", source: Optional[str] = None,
+                          patient_ref: Optional[str] = None) -> Dict[str, Any]:
+    """Import a chart as free text, or link one from a record source."""
+    if source and not text:
+        return patient_history_link(bed, LinkIn(source=source, patient_ref=patient_ref))
+    return patient_history_import(bed, HistoryIn(text=text, source=source or "manual"))
+
+
+def _agent_device_action(device_id: str, action: str, bed: Optional[str] = None,
+                         command: Optional[str] = None) -> Dict[str, Any]:
+    """Pair / assign / unassign a device, or send it a command."""
+    act = (action or "").lower()
+    if act == "pair":
+        return device_pair(device_id)
+    if act == "assign":
+        if not bed:
+            return {"status": "error", "detail": "assign needs a bed"}
+        return device_assign(device_id, DeviceAssignIn(bed_id=bed))
+    if act == "unassign":
+        return device_unassign(device_id)
+    if act == "command":
+        if not command:
+            return {"status": "error", "detail": "command needs a command name"}
+        return device_action(device_id, DeviceActionIn(action=command))
+    return {"status": "error", "detail": f"unknown device action {action!r}"}
 
 
 def _agent_service_control(name: str, action: str) -> Dict[str, Any]:
@@ -2467,7 +2643,9 @@ def _bind_agent_tools() -> None:
     # same call that makes the switch.
     b("select_patient", lambda bed: doctor_brief(bed, opening=False))
     b("os_read", _agent_os_read)
+    b("os_write", _agent_os_write)
     b("list_surfaces", _agent_list_surfaces)
+    b("list_actions", _agent_list_actions)
     b("list_patients", _agent_list_patients)
     b("get_patient", lambda bed=None: patient_snapshot(bed))
     b("get_case_dossier", lambda bed=None: doctor_brief(bed, opening=False))
@@ -2494,6 +2672,54 @@ def _bind_agent_tools() -> None:
         bed, command, context=_patient_ctx(bed)))
     b("service_control", _agent_service_control)
     b("simulate_stage", lambda stage: simulate(stage))
+    # -- named actuation: thin wrappers so the model reaches for the right thing.
+    #    Every signature below mirrors the endpoint's REAL payload model; do not
+    #    invent a friendlier shape here, or the tool will fail on first use.
+    b("counterfactual_replay", lambda bed=None, outcome_id=None, node_id=None,
+      treatment=None, horizon=None: causal_replay(ReplayIn(**{
+          k: v for k, v in {"bed": bed, "outcome_id": outcome_id, "node_id": node_id,
+                            "treatment": treatment, "horizon": horizon}.items()
+          if v is not None})))
+    b("govern", lambda action, target=None, layer="bed", payload=None:
+      orchestrator_govern(GovernIn(action=action, target=target, layer=layer,
+                                   payload=payload or {})))
+    b("run_scenario", lambda bed=None: orchestrator_scenario(bed))
+    b("certify_proof", lambda risk_level=None, protocol=None, vitals=None,
+      clinical_history=None: proof_core_certify(CoreProofIn(**{
+          k: v for k, v in {"risk_level": risk_level, "protocol": protocol,
+                            "vitals": vitals, "clinical_history": clinical_history}.items()
+          if v is not None})))
+    b("verify_proof", lambda certificate, require_signature=True: proof_verify(
+        ProofVerifyIn(certificate=certificate, require_signature=require_signature)))
+    b("verify_driver", lambda name=None, source=None, win_len=2: kernel_verify(
+        VerifyIn(**{k: v for k, v in
+                    {"name": name, "source": source, "win_len": win_len}.items()
+                    if v is not None})))
+    b("verify_rules", lambda policy=None, protocol=None, context=None:
+      dsl_verify_endpoint(DslVerifyIn(**{
+          k: v for k, v in {"policy": policy, "protocol": protocol,
+                            "context": context}.items() if v is not None})))
+    b("check_identity", lambda target=None, source=None: (
+        identity_swap(IdentitySwapIn(target=target, source=source)) if source
+        else identity_self_check(IdentitySwapIn(target=target))))
+    b("train_model", lambda name, feature_set="wearable", horizon=None,
+      limit=1000, folds=3: ml_train(MLTrainIn(**{
+          k: v for k, v in {"name": name, "feature_set": feature_set,
+                            "horizon": horizon, "limit": int(limit),
+                            "folds": int(folds)}.items() if v is not None})))
+    b("run_kernel_workload", lambda workload="mixed", policy="HDSched": hdkernel_run(
+        HDKernelRunIn(workload=workload, policy=policy)))
+    b("inject_fault", lambda slot, reason="injected by the consult agent":
+      _agent_await(kernel_fault(KernelFaultIn(slot=slot, reason=reason))))
+    b("recover_device", lambda slot, reason="recovered by the consult agent":
+      _agent_await(kernel_recover(KernelFaultIn(slot=slot, reason=reason))))
+    b("run_chaos", lambda node, action="crisis", intensity=1.0: _agent_await(
+        cluster_chaos(ChaosIn(node=node, action=action, intensity=float(intensity)))))
+    b("manage_package", lambda action, name: _agent_await(
+        pkg_install(PkgIn(name=name)) if action == "install"
+        else pkg_uninstall(PkgIn(name=name))))
+    b("import_history", _agent_import_history)
+    b("device_action", _agent_device_action)
 
 
 def _gate_verdict(out: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -2590,9 +2816,15 @@ async def doctor_live(ws: WebSocket) -> None:
         drives the real shell. The model is told the command was dispatched so it
         can narrate ("pulling that up now") without waiting on the browser."""
         responses: List[Dict[str, Any]] = []
+        loop = asyncio.get_running_loop()
         for call in calls:
             name = call.get("name") or ""
-            out = _tools.invoke(name, call.get("args") or {})
+            # Off the event loop: tools are synchronous and some are slow (a
+            # kernel workload, a training launch), and the ones that wrap async
+            # endpoints have to be able to schedule back onto THIS loop and wait.
+            # Running them inline would block the audio relay and deadlock those.
+            out = await loop.run_in_executor(
+                None, _tools.invoke, name, call.get("args") or {})
             ui = out.get("ui")
             if ui:
                 await ws.send_json({"type": "ui", "action": ui.get("action"),

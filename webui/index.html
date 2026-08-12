@@ -10,7 +10,7 @@
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="os.css?v=55" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
-<link rel="stylesheet" href="doctor.css?v=5" />
+<link rel="stylesheet" href="doctor.css?v=6" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -1089,6 +1089,15 @@
         </div>
       </div>
 
+      <!-- Its authority, stated up front. It reaches every subsystem in the OS;
+           the one thing it cannot do is put an action past the Z3 gate. -->
+      <div class="doc-card">
+        <div class="doc-card-h"><span>what it can do</span>
+          <span class="doc-act-n" id="doc-cap-n">—</span></div>
+        <div class="doc-caps" id="doc-caps"></div>
+        <div class="doc-note" id="doc-cap-note"></div>
+      </div>
+
       <div class="doc-card">
         <div class="doc-card-h"><span>what it cannot see</span></div>
         <ul class="doc-blind" id="doc-blind"></ul>
@@ -1117,6 +1126,6 @@
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
 <script src="os.js?v=52"></script>
-<script src="doctor.js?v=4"></script>
+<script src="doctor.js?v=5"></script>
 </body>
 </html>

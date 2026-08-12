@@ -59,6 +59,7 @@
     $("#doctor-app").classList.remove("hidden");
     resetUI();
     loadBrief();
+    loadCaps();
     startOrb();
   }
 
@@ -101,6 +102,30 @@
   }
 
   /* ---------------- grounding rail ---------------- */
+  /* The capability roster. Shown because an agent that can drive the whole OS
+     should not be a black box about what "the whole OS" means. */
+  function loadCaps() {
+    fetch(window.AEGIS.http("/aegis/agent/tools"))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var c = d.counts || {};
+        $("#doc-cap-n").textContent = (d.bound || 0);
+        var wrap = $("#doc-caps");
+        wrap.innerHTML = "";
+        [["read", c.read, "inspect any subsystem"],
+         ["ui", c.ui, "drive the cockpit"],
+         ["write", c.write, "act on the system"]].forEach(function (row) {
+          var d0 = el("div", "doc-cap " + row[0]);
+          d0.appendChild(el("b", null, String(row[1] || 0)));
+          d0.appendChild(el("span", null, row[2]));
+          wrap.appendChild(d0);
+        });
+        $("#doc-cap-note").textContent =
+          "Every action that would reach a patient passes the Z3 egress gate and "
+          + "is written to the append-only audit log. A refused action changes nothing.";
+      }).catch(function () { $("#doc-cap-n").textContent = "—"; });
+  }
+
   function loadBrief() {
     var url = window.AEGIS.http("/aegis/doctor/brief?opening=false" +
       (S.bed ? "&bed=" + encodeURIComponent(S.bed) : ""));
@@ -538,6 +563,15 @@
         case "highlight":
           flash(args.text);
           return "highlighted";
+        case "play_treatment_twin":  return driveTwin(args);
+        case "set_camera_sensitivity":
+          if (window.AegisCamera && window.AegisCamera.setSensitivity) {
+            window.AegisCamera.setSensitivity(args.mode);
+            return "camera sensitivity → " + args.mode;
+          }
+          return "optical biosensor unavailable";
+        case "note":
+          return addNote(args.text);
         default:
           return "unknown command " + action;
       }
@@ -564,6 +598,42 @@
     var mod = (PANELS[panel] || function () {})();
     if (mod && mod.close) { mod.close(); return panel + " closed"; }
     return panel + " unavailable";
+  }
+
+  /* The PK twin is a separate overlay with its own player; open it first if the
+     agent reaches for playback before anyone has opened it. */
+  function driveTwin(args) {
+    var pk = window.AegisPKTwin;
+    if (!window.AegisPK) return "treatment twin unavailable";
+    if (!window.AegisPK.isOpen || !window.AegisPK.isOpen()) {
+      window.AegisPK.open(S.bed || "session");
+      if (args.command !== "play") return "treatment twin opened";
+    }
+    if (!pk) return "treatment twin opened";
+    var did = [];
+    if (args.arm && pk.setArm) { pk.setArm(args.arm); did.push("arm " + args.arm); }
+    if (args.at_hour != null && pk.setTime) { pk.setTime(+args.at_hour); did.push("t=" + args.at_hour + "h"); }
+    if (args.rate && pk.setRate) { pk.setRate(+args.rate); did.push(args.rate + "×"); }
+    if (args.command === "play" && pk.play) { pk.play(); did.push("playing"); }
+    if (args.command === "pause" && pk.pause) { pk.pause(); did.push("paused"); }
+    if (args.command === "restart" && pk.setTime) { pk.setTime(0); if (pk.play) pk.play(); did.push("restarted"); }
+    return "treatment twin: " + (did.join(", ") || "no change");
+  }
+
+  /* An agent-authored observation is marked as such in the log — a note the
+     clinician keeps must say who wrote it. */
+  function addNote(text) {
+    var log = document.querySelector("#notes-log");
+    if (!log) return "observations pane unavailable";
+    // match the pane's own row markup (.note > .ni + time + .nt) so an agent note
+    // is styled like every other observation rather than as unstyled stray text
+    var row = el("div", "note");
+    row.appendChild(el("span", "ni"));
+    row.appendChild(el("time", null, new Date().toLocaleTimeString("en-GB")));
+    row.appendChild(el("span", "nt", "Dr. Aegis · " + (text || "")));
+    log.prepend(row);
+    while (log.children.length > 40) log.removeChild(log.lastChild);
+    return "noted";
   }
 
   function flash(text) {

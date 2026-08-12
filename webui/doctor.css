@@ -161,6 +161,17 @@
 .doc-act-verdict.ok{color:var(--low-ink)}
 .doc-act-verdict.deny{color:var(--high-ink)}
 
+/* capability roster — three counts, and only the write column is coloured,
+   because that is the only one that changes anything */
+.doc-caps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--sp-2)}
+.doc-cap{background:var(--s2);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:6px 7px;text-align:center}
+.doc-cap b{display:block;font-family:var(--mono);font-size:17px;
+  font-variant-numeric:tabular-nums;color:var(--ink);line-height:1.1}
+.doc-cap span{display:block;font-size:9.5px;line-height:1.3;color:var(--faint);margin-top:3px}
+.doc-cap.write{border-color:rgba(var(--med-rgb),.35)}
+.doc-cap.write b{color:var(--med-ink)}
+
 /* the agent pointing at something */
 .doc-flash{position:absolute;top:var(--sp-3);left:50%;transform:translateX(-50%);
   max-width:min(560px,88%);font-size:13px;line-height:1.45;text-align:center;
