@@ -127,37 +127,41 @@
     var scoped = "[The clinician is currently looking at " + visibleSurface()
       + ". Answer in two or three spoken sentences.] " + q;
 
-    fetch(window.AEGIS.http("/aegis/doctor/consult"), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: scoped, bed: bed(), history: S.history })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      S.busy = false;
-      $("#summon-hint").textContent = "↵";
-      $("#summon-answer").classList.remove("waiting");
-      S.lastAnswer = d.answer || "";
-      $("#summon-answer").textContent = S.lastAnswer || "(no answer)";
-      S.history.push({ role: "user", text: q });
-      S.history.push({ role: "model", text: S.lastAnswer });
-      S.history = S.history.slice(-10);
-      input.value = "";
-      // Anything it drove, run against the real cockpit — same handler the
-      // consult uses, so summon and call cannot drift apart.
-      (d.actions || []).forEach(function (a) {
-        if (a.ui && window.AegisDoctor && window.AegisDoctor.runUI) {
+    // Streamed, so a four-tool answer narrates itself instead of spinning.
+    // Same reader the consult panel uses — one implementation, no drift.
+    window.AegisDoctor.streamConsult(scoped, S.history, {
+      onRunning: function (ev) {
+        $("#summon-answer").textContent = "· " + (window.AegisDoctor.describeTool
+          ? window.AegisDoctor.describeTool(ev.tool, ev.args) : ev.tool);
+      },
+      onAction: function (a) {
+        if (a.ui && window.AegisDoctor.runUI) {
           window.AegisDoctor.runUI(a.ui.action, a.ui.args);
         }
         var chip = el("span", "summon-act", a.tool);
         if (!a.ok) chip.classList.add("bad");
         $("#summon-acts").appendChild(chip);
-      });
-    }).catch(function () {
-      S.busy = false;
-      $("#summon-hint").textContent = "↵";
-      $("#summon-answer").classList.remove("waiting");
-      $("#summon-answer").textContent =
-        "Could not reach the assistant. On the free tier the backend sleeps after "
-        + "15 minutes — the first request wakes it, so try again in a moment.";
-    });
+      },
+      onAnswer: function (d) {
+        S.busy = false;
+        $("#summon-hint").textContent = "↵";
+        $("#summon-answer").classList.remove("waiting");
+        S.lastAnswer = d.answer || "";
+        $("#summon-answer").textContent = S.lastAnswer || "(no answer)";
+        S.history.push({ role: "user", text: q });
+        S.history.push({ role: "model", text: S.lastAnswer });
+        S.history = S.history.slice(-10);
+        input.value = "";
+      },
+      onError: function () {
+        S.busy = false;
+        $("#summon-hint").textContent = "↵";
+        $("#summon-answer").classList.remove("waiting");
+        $("#summon-answer").textContent =
+          "Could not reach the assistant. On the free tier the backend sleeps after "
+          + "15 minutes — the first request wakes it, so try again in a moment.";
+      }
+    }, bed());
   }
 
   /* ---------------- wiring ---------------- */

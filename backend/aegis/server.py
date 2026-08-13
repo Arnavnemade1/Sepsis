@@ -19,6 +19,7 @@ Run:  python -m backend.aegis.server      (or: uvicorn backend.aegis.server:app)
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
@@ -2276,6 +2277,50 @@ def doctor_brief(bed: Optional[str] = None, opening: bool = True) -> Dict[str, A
     if opening:
         out["opening"] = _doctor.opening(dossier)
     return out
+
+
+@app.post("/aegis/doctor/consult/stream")
+def doctor_consult_stream(payload: DoctorConsultIn):
+    """The typed consult, narrated as it works.
+
+    An agentic answer that chains four tools takes about nine seconds. Returned
+    as one blob that is nine seconds of nothing, which reads as a hang — the user
+    reported it as "takes a long time" long before the model was actually slow.
+    Same work, streamed: each tool is announced before it runs, so the wait is
+    legible and the cockpit can follow along live instead of catching up at the
+    end."""
+    from fastapi.responses import StreamingResponse
+    import queue as _queue
+
+    q: "_queue.Queue" = _queue.Queue()
+
+    def work() -> None:
+        try:
+            dossier = _doctor_dossier(payload.bed)
+            q.put({"type": "grounded", "bed": dossier.get("bed"),
+                   "headline": dossier.get("headline"), "facts": dossier.get("facts")})
+            res = _doctor.act(payload.question, dossier, _tools.declarations(),
+                              _tools.invoke, history=payload.history,
+                              budgets={t.name: t.budget for t in _tools._tools.values()
+                                       if t.budget},
+                              on_event=q.put)
+            q.put({"type": "answer", **res})
+        except Exception as exc:                       # pragma: no cover
+            q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+        finally:
+            q.put(None)
+
+    _threading.Thread(target=work, name="consult-stream", daemon=True).start()
+
+    def events():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item, default=str)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.post("/aegis/doctor/consult")

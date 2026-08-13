@@ -295,7 +295,14 @@ class GeminiClient:
                         self._calls += 1
                         self._last_call = time.time()
                         self._last_model = model
-                        return {"text": text, "calls": calls, "model": model}
+                        # `parts` verbatim, not just `calls`. Gemini 3.x attaches a
+                        # `thoughtSignature` to functionCall PARTS and rejects the
+                        # next turn with 400 if you echo the call back without it.
+                        # Reconstructing {"functionCall": {...}} from name+args
+                        # silently drops it, so every multi-step agentic turn died
+                        # on its second round and fell back to a tool-less answer.
+                        return {"text": text, "calls": calls, "parts": parts,
+                                "model": model}
                 self._bump(model, "err")
                 self._last_err = self._err_msg(data, status, False)
                 break

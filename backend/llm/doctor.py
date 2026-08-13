@@ -223,7 +223,8 @@ class AIDoctor:
             invoke: Callable[[str, Dict[str, Any]], Dict[str, Any]],
             history: Optional[List[Dict[str, str]]] = None,
             max_rounds: int = 4, max_tokens: int = 700,
-            budgets: Optional[Dict[str, int]] = None) -> Dict[str, Any]:
+            budgets: Optional[Dict[str, int]] = None,
+            on_event: Optional[Callable[[Dict[str, Any]], None]] = None) -> Dict[str, Any]:
         """A typed consult turn in which the doctor may drive the OS.
 
         Loops call → execute → feed back until it answers in prose or hits
@@ -252,14 +253,28 @@ class AIDoctor:
                 return {"answer": turn.get("text") or "", "source": "llm",
                         "model": turn.get("model"), "provider": "gemini",
                         "actions": used}
-            contents.append({"role": "model", "parts": [
-                {"functionCall": c} for c in turn["calls"]]})
+            # Echo the model's turn back EXACTLY as it came. Rebuilding the parts
+            # from name+args loses the thoughtSignature that Gemini 3.x requires
+            # on a functionCall it is shown again — and it answers a turn missing
+            # one with a 400, not a warning.
+            contents.append({"role": "model",
+                             "parts": turn.get("parts")
+                             or [{"functionCall": c} for c in turn["calls"]]})
             responses = []
             for c in turn["calls"]:
                 name = c.get("name") or ""
+                # Announce BEFORE running it. A four-tool chain takes ~9 seconds,
+                # and a spinner for nine seconds reads as broken; the same nine
+                # seconds narrated step by step reads as work.
+                if on_event:
+                    on_event({"type": "running", "tool": name,
+                              "args": c.get("args") or {}})
                 out = invoke(name, c.get("args") or {})
-                used.append({"tool": name, "args": c.get("args") or {},
-                             "ok": bool(out.get("ok")), "ui": out.get("ui")})
+                act = {"tool": name, "args": c.get("args") or {},
+                       "ok": bool(out.get("ok")), "ui": out.get("ui")}
+                used.append(act)
+                if on_event:
+                    on_event({"type": "action", **act})
                 responses.append({"functionResponse": {
                     "name": name, "response": _bound(out, budgets.get(name, 3500))}})
             contents.append({"role": "user", "parts": responses})

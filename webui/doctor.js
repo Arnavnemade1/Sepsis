@@ -163,8 +163,13 @@
 
   function caption(txt, idle) {
     var c = $("#doc-caption");
+    var grew = txt && txt.indexOf(c.textContent) === 0;   // same line, extended
     c.textContent = txt;
     c.classList.toggle("idle", !!idle);
+    // A new line starts at its beginning; a line that is still being spoken
+    // follows the words. Without this the docked strip opened halfway through a
+    // sentence, because the box keeps the scroll position of the previous answer.
+    c.scrollTop = grew ? c.scrollHeight : 0;
   }
 
   /* ---------------- grounding rail ---------------- */
@@ -685,12 +690,25 @@
   /* Shrink the consult into a corner so the panel it just opened is visible,
      then come back. Never while it is mid-sentence — losing the caption you are
      reading to watch a panel appear is a bad trade. */
-  function stepAside(ms) {
+  /* Sticky, not timed. A timer that restored after five seconds snapped the
+     consult back over the panel while you were still reading it — which is the
+     same bug as never stepping aside, just delayed. It stays docked until you
+     ask for it back: tap the strip, or ask another question. */
+  function stepAside() {
     var app = $("#doctor-app");
+    if (app.classList.contains("hidden")) return;
     app.classList.add("aside");
     clearTimeout(S.asideT);
-    S.asideT = setTimeout(function () { app.classList.remove("aside"); },
-                          ms || 5200);
+  }
+
+  function stepBack() {
+    var app = $("#doctor-app");
+    if (app) app.classList.remove("aside");
+  }
+
+  function isAside() {
+    var app = $("#doctor-app");
+    return !!(app && app.classList.contains("aside"));
   }
 
   function agentView(text, detail) {
@@ -734,10 +752,16 @@
 
     agentView(label, summarizeArgs(args));
     pointAt(POINT_AT[action] || "#doctor-app", label);
-    // only step aside for things there is actually something to SEE
+    // Only step aside for things there is actually something to SEE.
+    //
+    // This used to be skipped while the doctor was speaking, which is precisely
+    // when it opens panels — it narrates as it acts — so on a voice call the
+    // consult never got out of the way and the panel opened behind it. The
+    // caption is no longer a reason to stay fullscreen: the docked strip keeps
+    // it readable, so you can watch the panel AND follow what it is saying.
     if (action === "open_panel" || action === "show_treatment_options"
         || action === "play_treatment_twin" || action === "enable_camera") {
-      if (S.phase !== "speaking") stepAside();
+      stepAside();
     }
   }
 
@@ -896,26 +920,86 @@
     var q = (input.value || "").trim();
     if (!q) return;
     input.value = "";
+    stepBack();                 // a new question means they are back with you
     logLine("clinician", q);
     if (S.open) { send({ type: "text", text: q }); return; }
-    // REST fallback: same dossier, same persona, no socket.
-    setState("connecting", "thinking…");
-    fetch(window.AEGIS.http("/aegis/doctor/consult"), {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, bed: S.bed, history: textHistory() })
-    }).then(function (r) { return r.json(); }).then(function (d) {
-      setState("idle", "typed consult");
-      // the typed path is agentic too — run whatever it drove, same as the call
-      (d.actions || []).forEach(function (a) {
+    // Streamed REST: same dossier, same persona, no socket — but each tool is
+    // announced as it runs, so a multi-step answer shows its work instead of
+    // sitting silent for the eight seconds it genuinely takes.
+    setState("connecting", "working…");
+    phase("thinking");
+    caption("", true);
+    streamConsult(q, textHistory(), {
+      onRunning: function (ev) {
+        caption("· " + describeTool(ev.tool, ev.args), true);
+      },
+      onAction: function (a) {
         logAction({ tool: a.tool, args: a.args, ok: a.ok, kind: a.ui ? "ui" : "read" });
         if (a.ui) logLine("sys", "▸ " + runUI(a.ui.action, a.ui.args));
-      });
-      logLine("doctor", d.answer || "(no answer)");
-      caption(d.answer || "");
-    }).catch(function () {
-      setState("error", "unreachable");
-      logLine("sys", "consult service unreachable");
+      },
+      onAnswer: function (d) {
+        setState("idle", "typed consult");
+        phase("standby");
+        logLine("doctor", d.answer || "(no answer)");
+        caption(d.answer || "");
+      },
+      onError: function () {
+        setState("error", "unreachable");
+        phase("standby");
+        logLine("sys", "consult service unreachable");
+        caption("Could not reach the assistant.", true);
+      }
     });
+  }
+
+  /* Shared SSE reader for the typed consult. The summon bar uses it too, so both
+     typed entry points narrate identically and cannot drift. */
+  function streamConsult(question, history, cb, bedOverride) {
+    var url = window.AEGIS.http("/aegis/doctor/consult/stream");
+    fetch(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: question,
+                             bed: bedOverride !== undefined ? bedOverride : S.bed,
+                             history: history })
+    }).then(function (r) {
+      if (!r.ok || !r.body) throw new Error("stream unavailable");
+      var reader = r.body.getReader(), dec = new TextDecoder(), buf = "";
+      function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return;
+          buf += dec.decode(res.value, { stream: true });
+          var parts = buf.split("\n\n");
+          buf = parts.pop();                       // keep the incomplete tail
+          parts.forEach(function (block) {
+            var line = block.split("\n").find(function (l) { return l.indexOf("data: ") === 0; });
+            if (!line) return;
+            var ev;
+            try { ev = JSON.parse(line.slice(6)); } catch (e) { return; }
+            if (ev.type === "running" && cb.onRunning) cb.onRunning(ev);
+            else if (ev.type === "action" && cb.onAction) cb.onAction(ev);
+            else if (ev.type === "answer" && cb.onAnswer) cb.onAnswer(ev);
+            else if (ev.type === "error" && cb.onError) cb.onError(ev);
+          });
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function () { if (cb.onError) cb.onError({}); });
+  }
+
+  var TOOL_VERB = {
+    list_patients: "checking the unit", get_patient: "reading the chart",
+    get_patient_history: "pulling the prior record",
+    get_causal_graph: "tracing the causal graph", run_consensus: "convening consensus",
+    show_treatment_options: "pulling up treatment options",
+    get_vitals_trend: "reading the trend", select_patient: "switching patient",
+    open_panel: "opening a panel", get_validation: "checking how good this model is",
+    syscall: "asking the gate", counterfactual_replay: "running the counterfactual"
+  };
+  function describeTool(name, args) {
+    var v = TOOL_VERB[name] || name.replace(/_/g, " ");
+    if (name === "open_panel" && args && args.panel) v = "opening the " + args.panel;
+    return v + "…";
   }
 
   function textHistory() {
@@ -1073,6 +1157,11 @@
     else if (e.target.closest("#doc-video")) { toggleVideoShare(); }
     else if (e.target.closest("#doc-cam")) { toggleCamera(); }
     else if (e.target.closest("#doc-send")) { askText(); }
+    // tapping the docked strip (anywhere that is not a control) brings it back
+    else if (isAside() && e.target.closest("#doctor-app")
+             && !e.target.closest("input") && !e.target.closest("button")) {
+      stepBack();
+    }
   });
 
   document.addEventListener("keydown", function (e) {
@@ -1090,5 +1179,6 @@
   // runUI is exported so the summon bar drives the cockpit through the SAME
   // handler the call does — two entry points, one implementation, no drift.
   window.AegisDoctor = { open: open, close: close, call: callStart, hangup: hangup,
-                         runUI: runUI, _state: S };
+                         runUI: runUI, streamConsult: streamConsult,
+                         describeTool: describeTool, _state: S };
 })();

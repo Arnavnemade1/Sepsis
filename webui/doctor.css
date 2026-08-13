@@ -224,14 +224,33 @@
   animation:docTargetFade 2.2s var(--ease)}
 @keyframes docTargetFade{0%{outline-color:var(--ink)}100%{outline-color:transparent}}
 
-/* step aside: shrink to a corner so the real panel is visible behind */
-.doc-app{transition:transform .45s var(--ease),opacity .45s var(--ease)}
-/* Anchor the shrink to a corner. Scaling about the centre and then translating
-   by percentages lands it wherever the viewport happens to be shaped; scaling
-   about the bottom-right corner puts it in the same place every time. */
-.doc-app.aside{transform:scale(.28);transform-origin:100% 100%;opacity:.96;
-  pointer-events:none;border-left:1px solid var(--line-bright)}
-.doc-app.aside .doc-rail,.doc-app.aside .doc-foot{opacity:.4}
+/* STEP ASIDE — get out of the way so the panel it just opened is visible.
+
+   This was a scale(.28) shrink to the corner, which had two problems: the whole
+   consult became unreadable thumbnail (including the caption you were mid-way
+   through reading), and a scaled overlay still owns its stacking context, so it
+   sat on top of the corner of whatever opened. Docking it to a strip along the
+   bottom leaves the entire screen above it clear, and the one thing you actually
+   need while watching — what it is saying — stays full size. */
+.doc-app{transition:top .42s var(--ease),background-color .42s var(--ease)}
+.doc-app.aside{top:auto;height:132px;border-top:1px solid var(--line-bright);
+  background:var(--s1);box-shadow:0 -14px 34px -18px rgba(0,0,0,.9)}
+.doc-app.aside .doc-head,.doc-app.aside .doc-rail,.doc-app.aside .doc-orb,
+.doc-app.aside .doc-who,.doc-app.aside .doc-hint,.doc-app.aside .doc-self{display:none}
+.doc-app.aside .doc-body{padding:var(--sp-2) var(--sp-4);grid-template-columns:minmax(0,1fr);
+  grid-template-rows:minmax(0,1fr)}
+.doc-app.aside .doc-stage{background:transparent;border:0;padding:0;justify-content:center}
+.doc-app.aside .doc-caption{max-height:none;min-height:0;font-size:14px;text-align:left;
+  max-width:100%;justify-content:flex-start}
+.doc-app.aside .doc-foot{padding:var(--sp-2) var(--sp-4)}
+/* the strip is still live — you can talk, type and end the call from it */
+.doc-app.aside .doc-ask{flex:1 1 300px}
+/* and it says how to get back, because a sticky dock with no affordance is a
+   panel the user thinks they broke */
+.doc-app.aside .doc-stage::after{content:"tap to expand";position:absolute;
+  right:var(--sp-4);top:var(--sp-2);font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.doc-app.aside .doc-stage{cursor:pointer}
 
 .doc-agentview{position:absolute;left:var(--sp-3);bottom:var(--sp-3);display:flex;
   align-items:baseline;gap:var(--sp-2);max-width:60%;

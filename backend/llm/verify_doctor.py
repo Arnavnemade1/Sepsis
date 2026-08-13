@@ -252,6 +252,47 @@ def t8_gemini_client() -> None:
           "'thought' parts are stripped from the answer")
 
 
+def t8b_thought_signature() -> None:
+    """The agentic loop must echo the model's turn back VERBATIM.
+
+    Gemini 3.x attaches a `thoughtSignature` to functionCall parts and answers
+    the next turn with a 400 if the call is shown again without it. Rebuilding
+    the part from name+args drops it, and the failure is invisible from the
+    outside: the round 400s, the loop burns its remaining rounds, and the answer
+    silently falls back to a non-agentic one that never saw the tool result. So
+    assert the parts survive rather than trusting that they do."""
+    print("[8b] Agentic loop: the model's own parts are echoed back untouched")
+    seen: List[Dict[str, Any]] = []
+    sig = "SIGNATURE-XYZ"
+
+    def transport(url, headers, payload, timeout):
+        seen.append(payload)
+        if len(seen) == 1:                        # round 1: ask for a tool
+            return 200, {"candidates": [{"content": {"parts": [
+                {"functionCall": {"name": "get_validation", "args": {}},
+                 "thoughtSignature": sig}]}}]}
+        return 200, {"candidates": [{"finishReason": "STOP", "content": {"parts": [
+            {"text": "the detector is modest"}]}}]}
+
+    gem = GeminiClient(models=["m1"], min_interval_s=0.0, post_fn=transport)
+    gem.api_key = "test"
+    doc = AIDoctor(LLMProvider(gemini=gem, openrouter=OpenRouterClient(post_fn=_dead())))
+    d = doc.dossier(SNAP, tier_bands=BANDS)
+    res = doc.act("how good is this model?", d,
+                  [{"name": "get_validation", "description": "x"}],
+                  lambda n, a: {"ok": True, "result": {"auroc": 0.72}})
+    check("answered", res.get("source") == "llm" and "modest" in res["answer"],
+          "the loop completes and returns the model's own answer, not a fallback")
+    echoed = seen[1]["contents"][1] if len(seen) > 1 else {}
+    parts = echoed.get("parts") or []
+    check("signature survives",
+          any(p.get("thoughtSignature") == sig for p in parts),
+          "the functionCall part is echoed WITH its thoughtSignature intact")
+    check("no wasted rounds", len(seen) == 2,
+          f"one tool call cost {len(seen)} round trips (expected 2 — a dropped "
+          "signature used to 400, burn every retry round, then fall back)")
+
+
 def t9_live_wire_format() -> None:
     print("[9] Live socket: the wire format the API actually accepts")
     sent: List[Dict[str, Any]] = []
@@ -360,7 +401,8 @@ def main() -> int:
     print("=" * 66)
     for t in (t1_dossier_grounding, t2_provenance_is_real, t3_scale_firewall,
               t4_unmeasured, t5_persona_lock, t6_failure_templates,
-              t7_provider_failover, t8_gemini_client, t9_live_wire_format,
+              t7_provider_failover, t8_gemini_client, t8b_thought_signature,
+              t9_live_wire_format,
               t10_live_events, t11_no_key_no_call, t12_live_smoke):
         t()
     print("-" * 66)
