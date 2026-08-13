@@ -75,6 +75,12 @@ class Tool:
     properties: Dict[str, Any] = field(default_factory=dict)
     required: List[str] = field(default_factory=list)
     handler: Optional[Callable[..., Any]] = None
+    # How much of a result is worth sending back. Most payloads are reference
+    # data where a prefix is fine, but a few tools ARE their payload — the
+    # treatment options are six arguments with six verdicts, and truncating them
+    # to a prefix leaves the model describing the first two options as if they
+    # were all of them. Those get more room; the default stays tight.
+    budget: Optional[int] = None
 
     def declaration(self) -> Dict[str, Any]:
         """Gemini functionDeclaration form (shared by Live and generateContent)."""
@@ -275,8 +281,11 @@ def _catalogue() -> List[Tool]:
     # ---- READ: the paths worth naming --------------------------------- #
     T.append(Tool(
         "list_patients", KIND_READ,
-        "The monitored roster: every bed with name, tier, risk and whether it is "
-        "a live monitor or a replayed validation record.", {}, []))
+        "The monitored roster, sorted sickest first: every patient with their "
+        "NAME, tier, live risk and whether they are a live monitor or a replayed "
+        "validation record. Each carries a 'bed_handle' for passing to other "
+        "tools — that is an internal identifier, not something to say out loud.",
+        {}, []))
     T.append(Tool(
         "get_patient", KIND_READ,
         "Full clinical state for one bed: vitals, calibrated risk and tier, "
@@ -287,40 +296,40 @@ def _catalogue() -> List[Tool]:
         "The grounded consult dossier for a bed — the same briefing that grounds "
         "this call, including what the system CANNOT see and the detector's real "
         "external-validation performance. Use when switching to a different bed.",
-        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
         "get_vitals_trend", KIND_READ,
         "The recorded time series for a bed — how the vitals actually moved, not "
         "just where they are now. Use before claiming something is 'rising'.",
-        {"bed": _s("Bed id.")}, ["bed"]))
+        {"bed": _s("bed_handle from list_patients.")}, ["bed"]))
     T.append(Tool(
         "get_causal_graph", KIND_READ,
         "The tamper-evident temporal causal graph for a bed: what happened, in "
         "what order, and which links are Z3-proven versus merely associated.",
-        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
         "trace_incident", KIND_READ,
         "Trace backwards from one causal-graph node to the chain that produced "
         "it — an incident report for a single event.",
         {"node_id": _s("Node id from get_causal_graph."),
-         "bed": _s("Bed id. Omit for the current patient.")}, ["node_id"]))
+         "bed": _s("bed_handle from list_patients. Omit for the current patient.")}, ["node_id"]))
     T.append(Tool(
         "run_consensus", KIND_READ,
         "Convene the Byzantine-fault-tolerant consensus chamber: independent "
         "specialist models vote on deterioration and return a quorum certificate. "
         "Use when you want a second opinion that is not your own.",
-        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
         "run_whatif", KIND_READ,
         "Project the treatment twin forward for a bed: what the modelled "
         "trajectory looks like if the advisory protocol is followed versus not. "
         "A projection, not a recommendation.",
-        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
         "project_treatment", KIND_READ,
         "Physiologically-based pharmacokinetic projection for a bed: where a drug "
         "distributes over time and the exposure-driven adverse-event risk.",
-        {"bed": _s("Bed id."),
+        {"bed": _s("bed_handle from list_patients."),
          "adverse": _b("Include adverse-event projection (default true).")}, ["bed"]))
     T.append(Tool(
         "screen_drugs", KIND_READ,
@@ -330,6 +339,21 @@ def _catalogue() -> List[Tool]:
         {"drugs": {"type": "ARRAY", "items": {"type": "STRING"},
                    "description": "Drug names, e.g. ['vancomycin','piperacillin']."},
          "bed": _s("Bed id, so renal/hepatic state is taken into account.")}, ["drugs"]))
+    T.append(Tool(
+        "show_treatment_options", KIND_UI,
+        "Pull up the candidate treatment paths for a patient AND read them — "
+        "every option the OS considered, what each one buys, what it costs, its "
+        "projected adverse-event risk, and crucially WHICH ONES THE Z3 CAGE "
+        "REFUSED and in the prover's own words. Use this whenever they ask what "
+        "the choices are, what you would consider, or why something is not on the "
+        "table. Do NOT read the whole list aloud — six options recited in order is "
+        "a wall of text on a voice call. Lead with the recommended path and why, "
+        "give the ONE trade-off that actually differs between the realistic "
+        "choices, and name any refusal in the cage's own words. Let them ask "
+        "about the rest. You are explaining options that already exist — you are "
+        "still not ordering them.",
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, [],
+        budget=8000))
     T.append(Tool(
         "get_validation", KIND_READ,
         "The detector's REAL measured performance against ground-truth labels — "
@@ -377,7 +401,7 @@ def _catalogue() -> List[Tool]:
         "returns the new patient's dossier in 'data' — from that point on, that "
         "is your grounding, and you must not carry the previous patient's numbers, "
         "name or history across.",
-        {"bed": _s("Bed id from list_patients.")}, ["bed"]))
+        {"bed": _s("The bed_handle from list_patients (internal id — do not say it aloud).")}, ["bed"]))
     T.append(Tool(
         "enable_camera", KIND_UI,
         "Turn on the optical biosensor (contactless rPPG, perfusion, distress "
@@ -435,7 +459,7 @@ def _catalogue() -> List[Tool]:
         "Change what AegisOS watches for a patient — add a focus (an organ system "
         "or metric to weight) or a watch rule. Observation-only: it changes what "
         "is monitored, never what is administered.",
-        {"bed": _s("Bed id."),
+        {"bed": _s("bed_handle from list_patients."),
          "command": _s("A tracking command, e.g. 'focus respiratory' or "
                        "'watch lactate > 3'.")}, ["bed", "command"]))
     T.append(Tool(
@@ -449,7 +473,7 @@ def _catalogue() -> List[Tool]:
         "Re-run a patient's recorded course as if a different action had been "
         "taken at a branch point — the 'what if we had caught this sooner' "
         "experiment. Get an outcome_id or node_id from get_causal_graph first.",
-        {"bed": _s("Bed id."),
+        {"bed": _s("bed_handle from list_patients."),
          "outcome_id": _s("Replay at the earliest actionable node upstream of this outcome."),
          "node_id": _s("…or replay at this specific branch point."),
          "treatment": {"type": "OBJECT",
@@ -471,7 +495,7 @@ def _catalogue() -> List[Tool]:
         "run_scenario", KIND_WRITE,
         "Run the orchestrator's end-to-end scenario for a bed — the full cascade "
         "from signal to certified decision.",
-        {"bed": _s("Bed id. Omit for the current patient.")}, []))
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
         "certify_proof", KIND_WRITE,
         "Mint a portable, Ed25519-signed SMT-LIB2 safety certificate for a "
@@ -562,7 +586,7 @@ def _catalogue() -> List[Tool]:
         "Import a patient's clinical history as free text, or link it from a "
         "record source. This personalises their alerting PRIOR — say that it "
         "shifts when the OS alerts, not that their population risk changed.",
-        {"bed": _s("Bed id."),
+        {"bed": _s("bed_handle from list_patients."),
          "text": _s("The chart text to import."),
          "source": _s("Or a source to link from os_read('/aegis/records/sources')."),
          "patient_ref": _s("Source-specific id (FHIR patient id / MRN), when linking.")},

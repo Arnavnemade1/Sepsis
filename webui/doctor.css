@@ -198,6 +198,53 @@
 .doc-cap.write{border-color:rgba(var(--med-rgb),.35)}
 .doc-cap.write b{color:var(--med-ink)}
 
+/* ---- watching the agent work ----
+   A pointer that travels to whatever it is driving, a pulse on the target, and
+   the consult stepping aside so the panel it opened is actually visible. All
+   neutral: this reports a machine's attention, not a patient's state. */
+.doc-cursor{position:fixed;left:0;top:0;z-index:60;pointer-events:none;opacity:0;
+  transition:transform .5s cubic-bezier(.22,.61,.36,1),opacity .25s var(--ease)}
+.doc-cursor.on{opacity:1}
+.doc-cursor-ring,.doc-cursor-dot{position:absolute;border-radius:50%;
+  transform:translate(-50%,-50%)}
+.doc-cursor-ring{width:26px;height:26px;border:1px solid var(--muted);opacity:.9}
+.doc-cursor-dot{width:5px;height:5px;background:var(--ink)}
+.doc-cursor.tap .doc-cursor-ring{animation:docTap .65s var(--ease)}
+@keyframes docTap{
+  0%{width:26px;height:26px;opacity:.95}
+  100%{width:78px;height:78px;opacity:0}
+}
+.doc-cursor-tag{position:absolute;left:18px;top:8px;white-space:nowrap;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:var(--ink);
+  background:var(--s2);border:1px solid var(--line-bright);border-radius:var(--r-sm);
+  padding:3px 7px;box-shadow:var(--elev-1)}
+
+/* the element the agent just touched */
+.doc-target{outline:1px solid var(--muted) !important;outline-offset:2px;
+  animation:docTargetFade 2.2s var(--ease)}
+@keyframes docTargetFade{0%{outline-color:var(--ink)}100%{outline-color:transparent}}
+
+/* step aside: shrink to a corner so the real panel is visible behind */
+.doc-app{transition:transform .45s var(--ease),opacity .45s var(--ease)}
+/* Anchor the shrink to a corner. Scaling about the centre and then translating
+   by percentages lands it wherever the viewport happens to be shaped; scaling
+   about the bottom-right corner puts it in the same place every time. */
+.doc-app.aside{transform:scale(.28);transform-origin:100% 100%;opacity:.96;
+  pointer-events:none;border-left:1px solid var(--line-bright)}
+.doc-app.aside .doc-rail,.doc-app.aside .doc-foot{opacity:.4}
+
+.doc-agentview{position:absolute;left:var(--sp-3);bottom:var(--sp-3);display:flex;
+  align-items:baseline;gap:var(--sp-2);max-width:60%;
+  background:var(--s2);border:1px solid var(--line);border-radius:var(--r-md);
+  padding:6px 10px;transition:opacity .3s var(--ease)}
+.doc-agentview.idle{opacity:.3}
+.doc-agentview-k{font-family:var(--mono);font-size:9px;letter-spacing:.18em;
+  text-transform:uppercase;color:var(--faint)}
+.doc-agentview b{font-family:var(--mono);font-size:11.5px;color:var(--ink);
+  white-space:nowrap}
+.doc-agentview-d{font-family:var(--mono);font-size:10px;color:var(--dim);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* the agent pointing at something */
 .doc-flash{position:absolute;top:var(--sp-3);left:50%;transform:translateX(-50%);
   max-width:min(560px,88%);font-size:13px;line-height:1.45;text-align:center;

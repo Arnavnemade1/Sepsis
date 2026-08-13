@@ -42,7 +42,7 @@ def main() -> int:
     print("=" * 70)
 
     import backend.aegis.server as srv
-    from backend.aegis.agent import KIND_UI, KIND_WRITE, registry as R
+    from backend.aegis.agent import KIND_UI, KIND_WRITE, registry as R, summarize
 
     # -- 1. everything advertised is real ------------------------------- #
     print("[1] The catalogue: nothing is offered that cannot be called")
@@ -202,6 +202,28 @@ def main() -> int:
     check("re-grounds", (sel.get("data") or {}).get("bed") == "bed_2",
           "switching beds hands over the NEW patient's dossier (the locked one is stale)")
 
+    # -- 4b. treatment options: the refusals are the point --------------- #
+    print("[4b] Treatment options carry the cage's verdicts, and fit in a turn")
+    to = R.invoke("show_treatment_options", {"bed": "bed_0"})
+    data = to.get("data") or {}
+    opts = data.get("options") or []
+    check("options read", len(opts) >= 3,
+          f"{len(opts)} candidate paths returned with the panel")
+    check("verdicts", all(o.get("verdict") and o.get("z3_status") for o in opts),
+          "every option carries the prover's verdict and status")
+    refused = [o for o in opts if not o.get("allowed")]
+    check("refusal visible", any("REJECT" in str(o.get("verdict", "")).upper()
+                                 for o in refused) if refused else True,
+          f"{len(refused)} refused option(s) quote the cage verbatim"
+          if refused else "no refusals for this patient right now (not a failure)")
+    budget = R.get("show_treatment_options").budget
+    import json as _json
+    sized = summarize(to, budget or 3500)
+    check("fits the turn", not sized.get("truncated"),
+          f"payload {len(_json.dumps(to, default=str))} chars fits its {budget}-char "
+          "budget — a truncated options list would describe the first two paths "
+          "as if they were all of them")
+
     # -- 5. rankable roster --------------------------------------------- #
     print("[5] 'Who is the sickest patient' is answerable from the data")
     roster = R.invoke("list_patients")["result"]
@@ -211,6 +233,24 @@ def main() -> int:
           "the roster is ordered sickest-first, so ranking is read not guessed")
     check("has tier", any(p.get("tier") for p in roster["patients"]),
           "each bed carries its tier alongside the number")
+    first = roster["patients"][0]
+    check("name leads", list(first)[0] == "name" and first.get("bed_handle"),
+          "the NAME is the first field and the id is demoted to 'bed_handle' — "
+          "the model was transposing 'bed three' while acting on bed four")
+    check("handle explained", "bed_handle" in roster.get("note", ""),
+          "the roster tells the model the handle is internal, not to be spoken")
+
+    # -- 5b. the vitals the mid-call watcher tracks --------------------- #
+    print("[5b] The watcher can see vitals move, not just the tier")
+    watched = {v[0] for v in srv._WATCHED_VITALS}
+    facts = (R.invoke("get_case_dossier", {"bed": "bed_0"})["result"]
+             .get("facts") or {})
+    present = watched & set((facts.get("vitals") or {}))
+    check("watchable", len(present) >= 3,
+          f"{len(present)} of the watched vitals are present in the dossier facts "
+          f"({', '.join(sorted(present))})")
+    check("thresholds sane", all(d > 0 for _, _, _, d in srv._WATCHED_VITALS),
+          "every watched vital has a non-zero threshold, so a note means something moved")
 
     # -- 6. failures are results, not exceptions ------------------------ #
     print("[6] A failing tool returns something the agent has to account for")
@@ -231,7 +271,6 @@ def main() -> int:
 
     # -- 7. result bounding --------------------------------------------- #
     print("[7] One tool result cannot swallow the conversation")
-    from backend.aegis.agent import summarize
     big = summarize({"ok": True, "result": {"x": "y" * 50000}}, max_chars=2000)
     check("bounded", big.get("truncated") and len(str(big)) < 4000,
           "an oversized payload is truncated with an explicit marker")

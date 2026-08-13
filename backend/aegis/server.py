@@ -2283,7 +2283,9 @@ def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
     dossier = _doctor_dossier(payload.bed)
     if payload.agentic:
         res = _doctor.act(payload.question, dossier, _tools.declarations(),
-                          _tools.invoke, history=payload.history)
+                          _tools.invoke, history=payload.history,
+                          budgets={t.name: t.budget for t in _tools._tools.values()
+                                   if t.budget})
     else:
         res = _doctor.consult(payload.question, dossier, history=payload.history)
     return {**res, "bed": dossier.get("bed"), "headline": dossier.get("headline"),
@@ -2596,16 +2598,73 @@ def _agent_list_patients() -> Dict[str, Any]:
         pass
     out = []
     for p in roster:
-        node = live.get(str(p.get("id"))) or {}
+        pid = str(p.get("id"))
+        node = live.get(pid) or {}
         risk = node.get("p")
-        out.append({"bed": p.get("id"), "name": p.get("name"), "kind": p.get("kind"),
+        out.append({"name": p.get("name"),          # name FIRST — this is what gets said
+                    "bed_handle": pid, "kind": p.get("kind"),
                     "risk": round(float(risk), 4) if risk is not None else None,
                     "tier": node.get("tier"), "trend": node.get("slope"),
                     "septic_course": p.get("septic"), "icu_hour": p.get("icu_hour")})
     out.sort(key=lambda r: (r["risk"] is None, -(r["risk"] or 0.0)))
     return {"n": len(out), "sorted_by": "risk, highest first", "patients": out,
             "note": "risk is the live fused per-bed risk; tier bands at "
-                    f"HIGH>={_TIER_BANDS['high']}, MEDIUM>={_TIER_BANDS['medium']}."}
+                    f"HIGH>={_TIER_BANDS['high']}, MEDIUM>={_TIER_BANDS['medium']}. "
+                    "'bed_handle' is an internal identifier for passing to other "
+                    "tools — refer to patients by NAME when you speak.",
+            "patients_by_risk": [p["name"] for p in out[:5]]}
+
+
+def _agent_treatment_options(bed: Optional[str] = None) -> Dict[str, Any]:
+    """Candidate treatment paths, trimmed to what a person can be told out loud.
+
+    The raw payload carries full PK concentration curves per drug per arm —
+    hundreds of KB the model cannot use and would have to be truncated past. What
+    a clinician actually wants spoken is: which path is recommended, what each
+    one trades, and which the cage refused and why. So this returns the argument,
+    not the arrays."""
+    raw = pk_options(bed=bed) if bed else pk_options()
+
+    def _short(items: Any, n: int = 3) -> List[str]:
+        """The top few reasons, as sentences. Each already traces to a number in
+        its own option (that is what verify_treatment_options proves), so the
+        first few are the argument — the rest is corroboration."""
+        out = []
+        for it in (items or [])[:n]:
+            if isinstance(it, dict):
+                txt = it.get("text") or it.get("reason") or it.get("label") or ""
+            else:
+                txt = str(it)
+            txt = str(txt).strip()
+            if txt:
+                out.append(txt[:220])
+        return out
+
+    opts = []
+    for o in (raw.get("options") or []):
+        ver = o.get("verification") or {}
+        opts.append({
+            "key": o.get("key"), "label": o.get("label"), "note": o.get("note"),
+            "antibiotic": o.get("antibiotic"), "protocol": o.get("protocol"),
+            "allowed": bool(o.get("safe")),
+            "verdict": ver.get("message"), "z3_status": ver.get("z3_status"),
+            "violations": ver.get("violations") or [],
+            "upsides": _short(o.get("upsides")), "downsides": _short(o.get("downsides")),
+            "serious_adverse_risk": o.get("p_any_serious"),
+            "n_serious": o.get("n_serious"),
+        })
+    refused = [o["label"] for o in opts if not o["allowed"]]
+    return {
+        "patient": raw.get("bed_name"), "risk_level": raw.get("risk_level"),
+        "recommended": raw.get("recommended"),
+        "administered": raw.get("administered"),
+        "n_options": len(opts), "n_refused": len(refused), "refused": refused,
+        "options": opts,
+        "honesty": raw.get("honesty"),
+        "note": "These are projections over candidate orders, not orders. Options "
+                "marked allowed=false were REFUSED by the Z3 safety cage — quote "
+                "the verdict verbatim if you mention them.",
+    }
 
 
 def _agent_open_panel(panel: str, bed: Optional[str] = None) -> Optional[Dict[str, Any]]:
@@ -2654,6 +2713,7 @@ def _bind_agent_tools() -> None:
     # bed_3's name. The companion read hands it the new patient's dossier in the
     # same call that makes the switch.
     b("select_patient", lambda bed: doctor_brief(bed, opening=False))
+    b("show_treatment_options", _agent_treatment_options)
     b("os_read", _agent_os_read)
     b("os_write", _agent_os_write)
     b("list_surfaces", _agent_list_surfaces)
@@ -2777,6 +2837,19 @@ def agent_invoke(payload: AgentInvokeIn) -> Dict[str, Any]:
 # a length no real bedside conversation exceeds.
 _CALL_MAX_AUDIO_S = 15 * 60.0
 
+# What counts as a MATERIAL mid-call move, per vital: (field, label, unit, delta).
+# The thresholds are deliberately coarse — roughly "a nurse would mention it" —
+# because a note on every flicker is noise, and an assistant that interrupts
+# constantly gets tuned out exactly like an alarm that cries wolf.
+_WATCHED_VITALS = (
+    ("systolic_bp", "SBP", "mmHg", 10.0),
+    ("map", "MAP", "mmHg", 8.0),
+    ("heart_rate", "HR", "bpm", 12.0),
+    ("respiratory_rate", "RR", "/min", 4.0),
+    ("spo2", "SpO2", "%", 3.0),
+    ("skin_temp", "temp", "°C", 0.5),
+)
+
 
 @app.websocket("/aegis/doctor/live")
 async def doctor_live(ws: WebSocket) -> None:
@@ -2819,7 +2892,27 @@ async def doctor_live(ws: WebSocket) -> None:
     stop = asyncio.Event()
     budget = {"audio_s": 0.0}
     # Which bed the conversation is actually on. The agent can move it mid-call.
-    scope: Dict[str, Any] = {"bed": bed, "tier": (dossier.get("facts") or {}).get("tier")}
+    scope: Dict[str, Any] = {
+        "bed": bed,
+        "tier": (dossier.get("facts") or {}).get("tier"),
+        "vitals": dict((dossier.get("facts") or {}).get("vitals") or {}),
+        "dossier": dossier,
+        # A rolling tail of what was said, so a session that expires can be
+        # rebuilt with the conversation intact rather than starting over.
+        "tail": [],
+        "session": 1,
+    }
+
+    def remember(role: str, text: str) -> None:
+        t = (text or "").strip()
+        if not t:
+            return
+        tail = scope["tail"]
+        if tail and tail[-1]["role"] == role:
+            tail[-1]["text"] = (tail[-1]["text"] + " " + t)[-1200:]
+        else:
+            tail.append({"role": role, "text": t[:1200]})
+        del tail[:-10]
 
     async def run_tools(calls: List[Dict[str, Any]]) -> None:
         """Execute what the agent asked for and answer every call it made.
@@ -2855,8 +2948,10 @@ async def doctor_live(ws: WebSocket) -> None:
                                                     if _tools.get(name) else "unknown"),
                 "error": out.get("error"),
                 "verdict": _gate_verdict(out)})
+            spec = _tools.get(name)
             responses.append({"id": call.get("id"), "name": name,
-                              "response": _tool_summarize(out)})
+                              "response": _tool_summarize(
+                                  out, (spec.budget if spec and spec.budget else 3500))})
         if responses:
             await session_live.send_tool_response(responses)
 
@@ -2891,19 +2986,75 @@ async def doctor_live(ws: WebSocket) -> None:
         finally:
             stop.set()
 
-    async def pump_down() -> None:
-        """Gemini -> browser, with the agent's tool calls executed in between."""
+    async def reconnect() -> bool:
+        """Rebuild the realtime session, carrying the conversation across.
+
+        Gemini Live sessions expire (~15 min) and announce it with `goAway`. The
+        old behaviour was a banner and then silence mid-sentence, which in front
+        of anyone reads as broken. Instead: open a fresh session on the CURRENT
+        bed's dossier, replay the last few turns as context, and keep going. The
+        clinician sees a short reconnecting blip, not the end of the consult."""
+        nonlocal session_live
+        old = session_live
         try:
-            async for ev in session_live.events():
-                if stop.is_set():
-                    break
-                if ev.get("type") == "tool_call":
-                    await run_tools(ev.get("calls") or [])
-                    continue                       # the raw call is not the UI's business
-                if ev.get("type") == "tool_cancel":
-                    continue
-                await ws.send_json(ev)
-                if ev.get("type") == "closed":
+            fresh = _doctor_dossier(scope["bed"])
+            scope["dossier"] = fresh
+            tail = scope["tail"]
+            context = ""
+            if tail:
+                lines = "\n".join(
+                    f"{'You' if t['role'] == 'doctor' else 'The clinician'}: {t['text']}"
+                    for t in tail)
+                context = (
+                    "\n\n=== CONVERSATION SO FAR ===\nThis consult is already in "
+                    "progress; the realtime session was renewed underneath it. Do "
+                    "NOT greet them again or re-introduce yourself. Pick up exactly "
+                    "where this left off:\n" + lines + "\n=== END ===")
+            new = _LiveConsult(_doctor.system_instruction(fresh) + context,
+                               tools=_tools.declarations())
+            await new.connect()
+            session_live = new
+            scope["session"] += 1
+        except Exception as exc:
+            print(f"[doctor] reconnect failed: {type(exc).__name__}: {exc}")
+            return False
+        finally:
+            try:
+                await old.close()
+            except Exception:
+                pass
+        return True
+
+    async def pump_down() -> None:
+        """Gemini -> browser, with tool calls executed and expiry healed in between."""
+        try:
+            while not stop.is_set():
+                renewed = False
+                async for ev in session_live.events():
+                    if stop.is_set():
+                        break
+                    kind = ev.get("type")
+                    if kind == "tool_call":
+                        await run_tools(ev.get("calls") or [])
+                        continue                   # the raw call is not the UI's business
+                    if kind == "tool_cancel":
+                        continue
+                    if kind == "transcript":
+                        remember("doctor" if ev.get("role") == "doctor" else "clinician",
+                                 ev.get("text", ""))
+                    if kind == "going_away":
+                        # Renew BEFORE it dies, so the seam falls in a gap rather
+                        # than in the middle of a sentence.
+                        await ws.send_json({"type": "renewing"})
+                        renewed = await reconnect()
+                        if renewed:
+                            await ws.send_json({"type": "renewed",
+                                                "session": scope["session"]})
+                        break
+                    await ws.send_json(ev)
+                    if kind == "closed":
+                        break
+                if not renewed:
                     break
         except (WebSocketDisconnect, RuntimeError):
             pass
@@ -2913,9 +3064,16 @@ async def doctor_live(ws: WebSocket) -> None:
             stop.set()
 
     async def watch_case() -> None:
-        """A call can outlive the state it opened on. Poll the bed's tier and tell
-        both the doctor and the UI when it moves, rather than letting the
-        conversation drift onto numbers that have since changed."""
+        """A call outlives the state it opened on, and the dossier does not move.
+
+        The system instruction is fixed at connect, so ten minutes into a consult
+        the doctor is still holding the vitals it was handed at the start. Tier
+        changes were caught; a systolic sliding from 104 to 84 was not, and a
+        system whose whole argument is honesty about what it knows should not
+        state a twenty-minute-old number in a live conversation.
+
+        So watch the numbers too, and only speak up when a move is material —
+        a note on every tick would be noise the doctor learns to ignore."""
         while not stop.is_set():
             try:
                 await asyncio.wait_for(stop.wait(), timeout=20.0)
@@ -2925,15 +3083,34 @@ async def doctor_live(ws: WebSocket) -> None:
             try:
                 fresh = _doctor_dossier(scope["bed"])
                 facts = fresh.get("facts") or {}
-                tier = facts.get("tier")
-                last = scope["tier"]
+                changes: List[str] = []
+
+                tier, last = facts.get("tier"), scope["tier"]
                 if tier and last and tier != last:
+                    changes.append(f"tier {last} -> {tier}")
+                scope["tier"] = tier
+
+                now_v = facts.get("vitals") or {}
+                was_v = scope["vitals"] or {}
+                for key, label, unit, delta in _WATCHED_VITALS:
+                    a, b = was_v.get(key), now_v.get(key)
+                    if a is None or b is None:
+                        continue
+                    if abs(float(b) - float(a)) >= delta:
+                        changes.append(
+                            f"{label} {float(a):.0f} -> {float(b):.0f} {unit}".strip())
+                        was_v[key] = b
+                scope["vitals"] = {**was_v, **{k: v for k, v in now_v.items()
+                                               if k not in was_v}}
+
+                if changes:
                     await session_live.note(
-                        f"{fresh.get('headline')} — tier moved {last} -> {tier}")
+                        f"{fresh.get('headline')} — " + "; ".join(changes)
+                        + ". These supersede the numbers in your dossier; use "
+                          "these, and say they have moved since you last looked.")
                     await ws.send_json({"type": "case_update", "facts": facts,
                                         "headline": fresh.get("headline"),
-                                        "from_tier": last, "to_tier": tier})
-                scope["tier"] = tier
+                                        "changes": changes, "to_tier": tier})
             except Exception:
                 return
 

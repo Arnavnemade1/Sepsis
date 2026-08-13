@@ -10,7 +10,7 @@
 <script src="config.js?v=9"></script>
 <link rel="stylesheet" href="os.css?v=55" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
-<link rel="stylesheet" href="doctor.css?v=7" />
+<link rel="stylesheet" href="doctor.css?v=9" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -1057,6 +1057,14 @@
         <div class="doc-self-off">camera off</div>
         <span class="doc-self-tag">you</span>
       </div>
+
+      <!-- What the agent is doing to the cockpit, right now. The consult covers
+           the screen, so without this its actions happen out of sight. -->
+      <div class="doc-agentview idle" id="doc-agentview">
+        <span class="doc-agentview-k">agent</span>
+        <b id="doc-agentview-act">idle</b>
+        <span class="doc-agentview-d" id="doc-agentview-detail"></span>
+      </div>
     </section>
 
     <!-- grounding rail -->
@@ -1126,6 +1134,6 @@
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
 <script src="os.js?v=52"></script>
-<script src="doctor.js?v=7"></script>
+<script src="doctor.js?v=8"></script>
 </body>
 </html>

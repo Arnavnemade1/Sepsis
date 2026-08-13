@@ -241,7 +241,7 @@ class GeminiClient:
     # -- agentic turn (function calling) ---------------------------------- #
     def generate(self, system: str, contents: List[Dict[str, Any]],
                  tools: Optional[List[Dict[str, Any]]] = None,
-                 max_tokens: int = 700, temperature: float = 0.3
+                 max_tokens: int = 700, temperature: float = 0.6
                  ) -> Optional[Dict[str, Any]]:
         """One raw turn that may come back as TEXT or as FUNCTION CALLS.
 

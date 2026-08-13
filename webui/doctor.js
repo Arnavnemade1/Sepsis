@@ -42,7 +42,8 @@
     playCtx: null, playAt: 0, sources: [], flashT: null,
     level: 0, speaking: false, phase: "standby", voiceOk: null, voiceWhy: "",
     line: { role: null, text: "" },
-    raf: null, statusTimer: null, thinkSince: 0
+    raf: null, statusTimer: null, thinkSince: 0,
+    cursorT: null, asideT: null, viewT: null, prePhase: null
   };
 
   /* The assistant's phase. It drives the ring, the readout and the caption, so
@@ -54,6 +55,7 @@
     standby:    "STANDBY",
     waking:     "WAKING BACKEND",
     connecting: "ESTABLISHING LINK",
+    renewing:   "RENEWING SESSION",
     listening:  "LISTENING",
     thinking:   "WORKING",
     speaking:   "SPEAKING",
@@ -378,7 +380,9 @@
         break;
       case "case_update":
         paintGround(m.headline, m.facts);
-        logLine("sys", "case changed mid-call: tier " + m.from_tier + " → " + m.to_tier);
+        logLine("sys", "state moved: " + ((m.changes || []).join("; ")
+                                          || ("tier → " + m.to_tier)));
+        flash((m.changes || []).join(" · "));
         break;
       case "ui":
         logLine("sys", "▸ " + runUI(m.action, m.args));
@@ -386,9 +390,21 @@
       case "tool":
         logAction(m);
         break;
-      case "going_away":
-        banner("The realtime session is about to expire — end and reopen the call to continue.");
+      case "renewing":
+        // The server is rebuilding the realtime session underneath us and
+        // replaying the conversation into it. Not an error, and not the end of
+        // the call — just a gap.
+        S.prePhase = S.phase;
+        phase("renewing");
         break;
+      case "renewed":
+        phase(S.prePhase === "speaking" ? "listening" : (S.prePhase || "listening"));
+        S.prePhase = null;
+        flushPlayback();          // anything queued belonged to the dead session
+        logLine("sys", "session renewed — conversation carried over");
+        break;
+      case "going_away":
+        break;                    // handled server-side by the renewal above
       case "error":
         if (m.fallback === "text" || m.fatal) failCall(m.message || "service error");
         else logLine("sys", m.message || "error");
@@ -622,8 +638,112 @@
     identity:     function () { return window.AegisIdentity; }
   };
 
+  /* ---------------- watching it work ---------------- */
+  /* The consult overlay is fullscreen, so when the agent opens a panel it lands
+     UNDERNEATH and the clinician sees nothing happen. Three pieces fix that:
+     a pointer that travels to whatever is being driven, a pulse on the target,
+     and the consult stepping aside long enough to watch. It is the difference
+     between "it says it opened the causal graph" and seeing the causal graph
+     open. */
+  function agentPointer() {
+    var p = $("#doc-cursor");
+    if (!p) {
+      p = el("div", "doc-cursor");
+      p.id = "doc-cursor";
+      p.innerHTML = '<i class="doc-cursor-ring"></i><i class="doc-cursor-dot"></i>'
+        + '<span class="doc-cursor-tag"></span>';
+      document.body.appendChild(p);
+    }
+    return p;
+  }
+
+  function pointAt(target, label) {
+    var p = agentPointer();
+    var r = (typeof target === "string" ? document.querySelector(target) : target);
+    var x, y;
+    if (r && r.getBoundingClientRect) {
+      var b = r.getBoundingClientRect();
+      if (!b.width && !b.height) r = null;
+      else { x = b.left + b.width / 2; y = b.top + Math.min(b.height / 2, 60); }
+    }
+    if (!r) { x = window.innerWidth * 0.5; y = window.innerHeight * 0.42; }
+    p.querySelector(".doc-cursor-tag").textContent = label || "";
+    p.style.transform = "translate(" + Math.round(x) + "px," + Math.round(y) + "px)";
+    p.classList.add("on");
+    p.classList.remove("tap");
+    // reflow so the tap animation restarts even on back-to-back commands
+    void p.offsetWidth;
+    p.classList.add("tap");
+    if (r && r.classList) {
+      r.classList.add("doc-target");
+      setTimeout(function () { r.classList.remove("doc-target"); }, 2200);
+    }
+    clearTimeout(S.cursorT);
+    S.cursorT = setTimeout(function () { p.classList.remove("on"); }, 4200);
+  }
+
+  /* Shrink the consult into a corner so the panel it just opened is visible,
+     then come back. Never while it is mid-sentence — losing the caption you are
+     reading to watch a panel appear is a bad trade. */
+  function stepAside(ms) {
+    var app = $("#doctor-app");
+    app.classList.add("aside");
+    clearTimeout(S.asideT);
+    S.asideT = setTimeout(function () { app.classList.remove("aside"); },
+                          ms || 5200);
+  }
+
+  function agentView(text, detail) {
+    var v = $("#doc-agentview");
+    if (!v) return;
+    v.classList.remove("idle");
+    $("#doc-agentview-act").textContent = text || "—";
+    $("#doc-agentview-detail").textContent = detail || "";
+    clearTimeout(S.viewT);
+    S.viewT = setTimeout(function () {
+      v.classList.add("idle");
+      $("#doc-agentview-act").textContent = "idle";
+      $("#doc-agentview-detail").textContent = "";
+    }, 6000);
+  }
+
+  // where each UI command should point on screen
+  var POINT_AT = {
+    select_patient: "#patient-trigger",
+    enable_camera: "#launch-camera",
+    open_panel: "#launch-story",
+    focus_organ: "#twin-stage",
+    note: ".win-aux",
+    show_treatment_options: "#launch-camera"
+  };
+
+  function showDriving(action, args) {
+    args = args || {};
+    var label = ({
+      open_panel: "opening " + (args.panel || "panel"),
+      close_panel: "closing " + (args.panel || "panel"),
+      select_patient: "switching patient",
+      enable_camera: "starting optical feed",
+      focus_organ: "focusing " + (args.organ || "organ"),
+      highlight: "pointing something out",
+      note: "writing an observation",
+      play_treatment_twin: "driving the treatment twin",
+      set_camera_sensitivity: "retuning the optical feed",
+      show_treatment_options: "pulling up treatment options"
+    })[action] || action;
+
+    agentView(label, summarizeArgs(args));
+    pointAt(POINT_AT[action] || "#doctor-app", label);
+    // only step aside for things there is actually something to SEE
+    if (action === "open_panel" || action === "show_treatment_options"
+        || action === "play_treatment_twin" || action === "enable_camera") {
+      if (S.phase !== "speaking") stepAside();
+    }
+  }
+
   function runUI(action, args) {
     args = args || {};
+    showDriving(action, args);
     try {
       switch (action) {
         case "open_panel":   return openPanel(args.panel, args.bed);
@@ -651,6 +771,10 @@
           return "optical biosensor unavailable";
         case "note":
           return addNote(args.text);
+        case "show_treatment_options":
+          // the treatment twin IS the options view — same overlay, scoped to the bed
+          if (window.AegisPK) { window.AegisPK.open(args.bed || S.bed || "session"); }
+          return "treatment options opened";
         default:
           return "unknown command " + action;
       }
