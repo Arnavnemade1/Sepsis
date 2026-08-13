@@ -764,6 +764,12 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
         "protocol": adv["protocol"], "verification": adv["verification"],
         "narrative": adv["narrative"], "narrative_source": adv.get("narrative_source"),
         "causal_graph": ing.summary() if ing else None,
+        # The imported chart, not just the risk uplift derived from it. It was
+        # already loaded here to compute susceptibility, but only the number
+        # travelled onward — so the consult could tell you a patient's alerting
+        # prior had been raised and not that they are dialysis-dependent with a
+        # penicillin allergy. The record itself is the clinically useful half.
+        "record": _hobj or None,
         "system": session.os.status(),
         "recorded": True,
     }
@@ -2540,6 +2546,35 @@ def _agent_syscall(syscall: str, bed: str, args: Optional[Dict[str, Any]] = None
     return res.to_dict()
 
 
+def _agent_patient_history(bed: Optional[str] = None) -> Dict[str, Any]:
+    """The prior record for a bed, plus the chart flags the monitor already had.
+
+    Two different things live under the word "history" here and conflating them
+    would be a grounding bug: the CHART FLAGS come with the monitored record and
+    are always present; the IMPORTED RECORD is a chart someone brought in and is
+    usually absent. Returning both, labelled, means the doctor can say which one
+    it is reading from."""
+    target = bed or (cluster.node_ids[0] if getattr(cluster, "node_ids", None) else None)
+    record = patient_terminal.get_history(target) if target else None
+    flags = (getattr(cluster, "histories", {}) or {}).get(target) or {}
+    out: Dict[str, Any] = {
+        "bed_handle": target,
+        "chart_flags": flags or None,
+        "imported_record": record or None,
+        "has_prior_record": bool(record),
+    }
+    if not record:
+        out["note"] = ("No prior chart is on file for this patient. Say so plainly; "
+                       "it can be imported (import_history) or linked from a source "
+                       "(list_record_sources). The chart_flags above still apply.")
+    else:
+        out["note"] = ("imported_record is REPORTED HISTORY from before this "
+                       "admission — not measured today, and not independently "
+                       "verified. Its susceptibility uplift shifts when the system "
+                       "alerts, not the patient's measured risk.")
+    return out
+
+
 def _agent_import_history(bed: str, text: str = "", source: Optional[str] = None,
                           patient_ref: Optional[str] = None) -> Dict[str, Any]:
     """Import a chart as free text, or link one from a record source."""
@@ -2721,6 +2756,8 @@ def _bind_agent_tools() -> None:
     b("list_patients", _agent_list_patients)
     b("get_patient", lambda bed=None: patient_snapshot(bed))
     b("get_case_dossier", lambda bed=None: doctor_brief(bed, opening=False))
+    b("get_patient_history", _agent_patient_history)
+    b("list_record_sources", lambda: records_sources())
     b("get_vitals_trend", lambda bed: cohort_chart(bed))
     b("get_causal_graph", lambda bed=None: causal_graph(bed))
     b("trace_incident", lambda node_id, bed=None: causal_incident(node_id, bed))

@@ -1087,5 +1087,8 @@
     if (!$("#doctor-app").classList.contains("hidden") && !S.open) loadBrief();
   });
 
-  window.AegisDoctor = { open: open, close: close, call: callStart, hangup: hangup, _state: S };
+  // runUI is exported so the summon bar drives the cockpit through the SAME
+  // handler the call does — two entry points, one implementation, no drift.
+  window.AegisDoctor = { open: open, close: close, call: callStart, hangup: hangup,
+                         runUI: runUI, _state: S };
 })();

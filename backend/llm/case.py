@@ -222,6 +222,46 @@ def _qsofa_detail(v: Dict[str, Any], hist: Dict[str, Any]) -> List[str]:
     return fired
 
 
+def _record_block(record: Optional[Dict[str, Any]]) -> List[str]:
+    """The patient's imported prior record — who they were before this admission.
+
+    A sepsis score computed from six vitals is a thin thing to reason from. The
+    same soft pressure means something different in a dialysis-dependent
+    72-year-old than in a healthy adult, and a proposed antibiotic means
+    something different when the allergy list says penicillin. This block is what
+    lets the consult say "given she's CKD stage 4" instead of reciting numbers at
+    a stranger.
+
+    Kept explicitly separate from the live vitals: the record is HISTORY, and the
+    doctor must not present it as something measured today."""
+    if not record:
+        return ["PRIOR RECORD: none imported for this patient. If the clinician "
+                "refers to past admissions, allergies or comorbidities, say the "
+                "system has no chart on file and that one can be imported or "
+                "linked from a record source."]
+    out: List[str] = ["", "PRIOR RECORD (imported chart — HISTORY, not measured today):"]
+    for key, label in (("comorbidities", "Comorbidities"), ("medications", "Medications"),
+                       ("allergies", "ALLERGIES"), ("priorities", "Care priorities")):
+        vals = record.get(key) or []
+        if vals:
+            out.append(f"  {label}: {', '.join(str(v) for v in vals[:12])}")
+    if record.get("summary"):
+        out.append(f"  Summary: {str(record['summary'])[:400]}")
+    susc = record.get("susceptibility") or {}
+    if susc.get("logit_uplift"):
+        out.append(
+            f"  Susceptibility: {susc.get('level', 'raised')} — logit uplift "
+            f"{susc['logit_uplift']:+.2f} (odds ratio {susc.get('odds_ratio', '?')})"
+            + (", capped" if susc.get("capped") else "") + ". This shifts WHEN the "
+            "system alerts for this host; it is not a claim that their measured "
+            "risk changed.")
+    src = record.get("source")
+    if src:
+        out.append(f"  Source: {src}. Treat it as reported history, not verified "
+                   "fact — say where it came from if it matters to the decision.")
+    return out
+
+
 def _organ_block(body: Dict[str, Any]) -> List[str]:
     """Non-normal organ systems only — a wall of 'normal' buries the one that isn't."""
     out = []
@@ -274,7 +314,8 @@ def build_dossier(snapshot: Dict[str, Any],
              + (f", {pat['gender']}" if pat.get("gender") else ""))
     if hist:
         keep = {k: hist[k] for k in list(hist)[:10]}
-        L.append(f"CLINICAL HISTORY (as recorded): {json.dumps(keep, default=str)}")
+        L.append(f"CHART FLAGS (from the monitored record): {json.dumps(keep, default=str)}")
+    L.extend(_record_block(snapshot.get("record")))
 
     L.append("")
     L.append(f"CURRENT RISK: tier {level}, calibrated P(sepsis) = "

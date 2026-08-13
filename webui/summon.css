@@ -1,0 +1,63 @@
+/* ============================================================
+   AEGIS — SUMMON BAR
+   ------------------------------------------------------------
+   The assistant, called to wherever you already are. It floats, so
+   it is one of the few things in this product allowed a real shadow
+   (identity rule 2: elevation is for things that genuinely float).
+
+   Everything else obeys the rules: achromatic surfaces, hairline
+   structure, mono for machine text. No colour — this is chrome, and
+   in this product colour means a patient.
+   ============================================================ */
+
+.summon{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-start;
+  justify-content:center;padding-top:14vh;background:rgba(0,0,0,.42);
+  animation:summonIn .16s var(--ease)}
+.summon.hidden{display:none}
+@keyframes summonIn{from{opacity:0}to{opacity:1}}
+
+.summon-card{width:min(680px,92vw);background:var(--s1);border:1px solid var(--line-bright);
+  border-radius:var(--r-xl);box-shadow:var(--elev);overflow:hidden;
+  animation:summonRise .2s var(--ease)}
+@keyframes summonRise{from{transform:translateY(-8px);opacity:.6}
+                      to{transform:translateY(0);opacity:1}}
+
+.summon-bar{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-4)}
+.summon-mark{color:var(--muted);font-size:15px;flex:0 0 auto}
+#summon-input{flex:1 1 auto;min-width:0;background:transparent;border:0;outline:none;
+  color:var(--ink);font-family:var(--sans);font-size:15px;padding:2px 0}
+#summon-input::placeholder{color:var(--faint)}
+.summon-hint{font-family:var(--mono);font-size:11px;color:var(--faint);flex:0 0 auto;
+  border:1px solid var(--line);border-radius:var(--r-sm);padding:1px 6px}
+
+/* what it can see from here — stated, because a context-aware answer whose
+   context is invisible is just a confident guess */
+.summon-ctx{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  letter-spacing:.04em;padding:0 var(--sp-4) var(--sp-3);
+  border-bottom:1px solid var(--line-soft)}
+
+.summon-body{padding:var(--sp-3) var(--sp-4);max-height:38vh;overflow-y:auto}
+.summon-body.hidden{display:none}
+.summon-answer{font-size:14.5px;line-height:1.6;color:var(--ink);white-space:pre-wrap}
+.summon-answer.waiting::after{content:"working…";font-family:var(--mono);font-size:12px;
+  color:var(--dim);letter-spacing:.1em;animation:summonBlink 1.1s steps(2) infinite}
+@keyframes summonBlink{50%{opacity:.3}}
+
+.summon-acts{display:flex;flex-wrap:wrap;gap:5px;margin-top:var(--sp-2)}
+.summon-act{font-family:var(--mono);font-size:9.5px;letter-spacing:.06em;
+  color:var(--dim);background:var(--s2);border:1px solid var(--line-soft);
+  border-radius:var(--r-sm);padding:2px 6px}
+.summon-act.bad{color:var(--high-ink);border-color:rgba(var(--high-rgb),.4)}
+
+.summon-foot{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);
+  padding:var(--sp-2) var(--sp-4) var(--sp-3);border-top:1px solid var(--line-soft)}
+.summon-btn{font-family:var(--mono);font-size:11.5px;color:var(--ink);background:var(--s2);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:6px 11px;cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease)}
+.summon-btn:hover{background:var(--s3);border-color:var(--line-bright)}
+.summon-esc{font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:.06em}
+
+@media (max-height:640px){
+  .summon{padding-top:8vh}
+  .summon-body{max-height:30vh}
+}

@@ -298,6 +298,21 @@ def _catalogue() -> List[Tool]:
         "external-validation performance. Use when switching to a different bed.",
         {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
     T.append(Tool(
+        "get_patient_history", KIND_READ,
+        "The patient's PRIOR RECORD — comorbidities, regular medications, "
+        "allergies, care priorities, the imported summary, and how much their "
+        "history raises their alerting prior. This is history, not today's "
+        "measurements. Reach for it whenever context before this admission would "
+        "change your reading: a soft pressure in a dialysis patient, a proposed "
+        "antibiotic against a listed allergy, a fever in someone immunosuppressed. "
+        "If nothing is on file it says so — offer to import or link one.",
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, []))
+    T.append(Tool(
+        "list_record_sources", KIND_READ,
+        "Where a patient's prior chart can be imported or linked from — manual "
+        "paste, a live FHIR endpoint, or a hospital stub. Use when they ask to "
+        "pull someone's history in and you need to say what is available.", {}, []))
+    T.append(Tool(
         "get_vitals_trend", KIND_READ,
         "The recorded time series for a bed — how the vitals actually moved, not "
         "just where they are now. Use before claiming something is 'rising'.",

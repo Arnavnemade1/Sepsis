@@ -240,6 +240,36 @@ def main() -> int:
     check("handle explained", "bed_handle" in roster.get("note", ""),
           "the roster tells the model the handle is internal, not to be spoken")
 
+    # -- 5c. prior history is readable, and stays labelled as history --- #
+    print("[5c] The patient's prior record: reachable, and never mistaken for today")
+    blank = R.invoke("get_patient_history", {"bed": "bed_9"})["result"]
+    check("absence is a fact", blank["has_prior_record"] is False and blank.get("note"),
+          "a bed with no chart says so explicitly rather than returning nothing")
+    dos_blank = R.invoke("get_case_dossier", {"bed": "bed_9"})["result"]["dossier_text"]
+    check("absence in dossier", "PRIOR RECORD: none imported" in dos_blank,
+          "the dossier states the absence, so the doctor cannot quietly assume a history")
+
+    srv._agent_import_history(
+        bed="bed_8", text="68F. CKD stage 4 on dialysis. Penicillin allergy. COPD on home O2.")
+    got = R.invoke("get_patient_history", {"bed": "bed_8"})["result"]
+    rec = got.get("imported_record") or {}
+    check("record readable", got["has_prior_record"] and rec.get("comorbidities"),
+          f"imported chart reads back with {len(rec.get('comorbidities') or [])} comorbidities")
+    check("allergies carried", any("enicillin" in str(a) for a in (rec.get("allergies") or [])),
+          "the allergy list survives the round trip — this is the field that changes an order")
+    check("two histories distinct", "chart_flags" in got and "imported_record" in got,
+          "monitored chart flags and the imported record are returned SEPARATELY, "
+          "so the doctor can say which one it is reading")
+
+    dos = R.invoke("get_case_dossier", {"bed": "bed_8"})["result"]["dossier_text"]
+    check("record in dossier", "PRIOR RECORD (imported chart" in dos and "ALLERGIES" in dos,
+          "the imported record reaches the dossier — previously only its risk uplift did")
+    check("labelled as history", "HISTORY, not measured today" in dos,
+          "it is labelled history, so a comorbidity is never presented as an observation")
+    check("uplift explained", ("shifts WHEN the system alerts" in dos
+                               or "susceptibility" not in dos.lower()),
+          "a susceptibility uplift is explained as an alerting shift, not a risk change")
+
     # -- 5b. the vitals the mid-call watcher tracks --------------------- #
     print("[5b] The watcher can see vitals move, not just the tier")
     watched = {v[0] for v in srv._WATCHED_VITALS}
