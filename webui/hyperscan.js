@@ -18,7 +18,8 @@
 (function () {
   "use strict";
 
-  var S = { open: false, running: false, bed: null, home: null, report: null };
+  var S = { open: false, running: false, bed: null, home: null, report: null,
+           speechText: '', speechAudio: null, playing: null, speakState: 'idle' };
 
   function $(s) { return document.querySelector(s); }
   function el(tag, cls, txt) {
@@ -72,6 +73,10 @@
     $("#hs-report").innerHTML = "";
     $("#hs-report").classList.add("hidden");
     $("#hs-progress").style.width = "0%";
+    stopPlay(); S.speechAudio = null; S.speechText = "";
+    setSpeak("idle");
+    $("#hs-mute").textContent = muted() ? "◌ autoplay off" : "◉ autoplay on";
+    $("#hs-mute").classList.toggle("on", !muted());
     setPhase("sweeping", "collecting");
     takeBody();
     run();
@@ -79,6 +84,7 @@
 
   function close() {
     if (!S.open) return;
+    stopPlay();
     S.open = false; S.running = false;
     returnBody();
     $("#hyperscan").classList.add("hidden");
@@ -126,7 +132,54 @@
   function onEvent(ev) {
     if (ev.type === "stage") return onStage(ev);
     if (ev.type === "report") { S.report = ev.report; paintReport(ev.report); return; }
+    if (ev.type === "speech_pending") { setSpeak("rendering"); return; }
+    if (ev.type === "speech") return onSpeech(ev);
     if (ev.type === "error") { setPhase("error", "failed"); }
+  }
+
+  /* The report is read aloud because it reaches someone whose hands are busy —
+     but never without asking twice: browsers block unprompted audio, and a
+     report that starts talking at a bedside without warning is worse than one
+     that stays quiet. Muting is remembered. */
+  function onSpeech(ev) {
+    S.speechText = ev.text || "";
+    S.speechAudio = ev.audio || null;
+    if (!ev.audio) { setSpeak(ev.available === false ? "unavailable" : "unavailable"); return; }
+    setSpeak("ready");
+    if (!muted()) play();
+  }
+
+  function muted() { try { return localStorage.getItem("aegis_hs_mute") === "1"; } catch (e) { return false; } }
+  function setMuted(v) { try { localStorage.setItem("aegis_hs_mute", v ? "1" : "0"); } catch (e) {} }
+
+  function play() {
+    if (!S.speechAudio || !window.AegisDoctor || !window.AegisDoctor.speak) return;
+    // A browser that has had no user gesture will refuse to start audio. The
+    // hyperscan is always opened by a click, so this normally succeeds — and
+    // when it does not, the button says "play" instead of failing silently.
+    S.playing = window.AegisDoctor.speak(S.speechAudio, ev_rate());
+    setSpeak("playing");
+  }
+  function ev_rate() { return 24000; }
+  function stopPlay() {
+    if (S.playing && S.playing.stop) S.playing.stop();
+    S.playing = null;
+    // "ready" means there is something to replay. Saying so before any audio has
+    // arrived offers a play button that plays nothing.
+    setSpeak(S.speechAudio ? "ready" : "idle");
+  }
+
+  function setSpeak(state) {
+    var b = $("#hs-speak");
+    if (!b) return;
+    S.speakState = state;
+    b.disabled = (state === "rendering" || state === "unavailable" || state === "idle");
+    b.textContent = state === "rendering" ? "◍ rendering voice…"
+      : state === "unavailable" ? "◍ voice unavailable"
+      : state === "idle" ? "◍ voice"
+      : state === "playing" ? "■ stop"
+      : "▶ replay briefing";
+    b.classList.toggle("on", state === "playing");
   }
 
   function onStage(ev) {
@@ -246,6 +299,18 @@
     if (e.target.closest("#hs-close")) { close(); return; }
     if (e.target.closest("#hs-again")) {
       if (!S.running) { open(S.bed); }
+      return;
+    }
+    if (e.target.closest("#hs-speak")) {
+      if (S.speakState === "playing") stopPlay(); else play();
+      return;
+    }
+    if (e.target.closest("#hs-mute")) {
+      var m = !muted();
+      setMuted(m);
+      $("#hs-mute").textContent = m ? "◌ autoplay off" : "◉ autoplay on";
+      $("#hs-mute").classList.toggle("on", !m);
+      if (m) stopPlay();
       return;
     }
   });

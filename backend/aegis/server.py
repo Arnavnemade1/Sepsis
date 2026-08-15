@@ -2297,6 +2297,36 @@ def _run_hyperscan(bed: Optional[str],
     return _hyperscan_engine.synthesize(bed, collected, dossier, emit)
 
 
+from backend.llm import speech as _speech
+
+
+class SpeakIn(BaseModel):
+    text: str
+    voice: Optional[str] = None
+
+
+@app.get("/aegis/speech")
+def speech_status() -> Dict[str, Any]:
+    """Can the assistant read something out, and in whose voice?"""
+    return _speech.status()
+
+
+@app.post("/aegis/speech")
+def speak(payload: SpeakIn) -> Dict[str, Any]:
+    """Render text to speech in the assistant's voice.
+
+    Same voice and same 24 kHz mono PCM as the consult call, so the assistant
+    sounds like one clinician wherever you reach it. Returns
+    {available:false} rather than an error when speech is unavailable — the
+    caller always has the text and must not lose it because audio failed."""
+    out = _speech.synthesize(payload.text, payload.voice)
+    if not out:
+        return {"available": False, "reason": (
+            "no GEMINI_API_KEY on the server" if not _speech.available()
+            else "speech budget exhausted or the renderer failed")}
+    return {"available": True, **out}
+
+
 @app.get("/aegis/hyperscan")
 def hyperscan(bed: Optional[str] = None) -> Dict[str, Any]:
     """Full-subsystem sweep + situation report for one patient (blocking)."""
@@ -2320,7 +2350,17 @@ def hyperscan_stream(payload: DoctorConsultIn):
         try:
             q.put({"type": "begin", "stages": len(_HYPERSCAN_STAGES) + 1})
             rep = _run_hyperscan(payload.bed, q.put)
+            # Report first, THEN the voice. Rendering speech takes ~12 s; holding
+            # the finished report back for it would trade a fast read for a slow
+            # listen. This way the report is on screen immediately and the audio
+            # arrives while it is being read.
             q.put({"type": "report", "report": rep})
+            spoken = rep.get("spoken")
+            if spoken:
+                q.put({"type": "speech_pending"})
+                audio = _speech.synthesize(spoken)
+                q.put({"type": "speech", "text": spoken,
+                       **(audio or {"available": False})})
         except Exception as exc:                    # pragma: no cover
             q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
         finally:

@@ -129,6 +129,8 @@
   border:1px solid var(--line);border-radius:var(--r-md);padding:8px 13px;cursor:pointer;
   transition:background .15s var(--ease),border-color .15s var(--ease)}
 .hs-btn:hover{background:var(--s3);border-color:var(--line-bright)}
+.hs-btn:disabled{opacity:.45;cursor:not-allowed}
+.hs-btn.on{border-color:rgba(var(--accent-rgb),.55);color:var(--accent-ink)}
 .hs-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-left:auto}
 
 /* flags pinned to organs (hosted inside the twin stage) */

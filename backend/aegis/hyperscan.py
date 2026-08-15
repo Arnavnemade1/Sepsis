@@ -44,6 +44,12 @@ REVIEW_NOTICE = (
     "clinician would consider are not measured by this system at all."
 )
 
+# The spoken equivalent. Shorter, because it is heard rather than read, and it
+# has to survive being listened to at half attention.
+SPOKEN_REVIEW_TAIL = (
+    "Please review all of this yourself against the patient before you act on any "
+    "of it — this is a research tool, not a diagnosis.")
+
 # stage key -> (label, body region the finding hangs off, tool to call)
 STAGES: List[Dict[str, Any]] = [
     {"key": "vitals", "label": "Vitals and calibrated risk", "region": "heart",
@@ -86,7 +92,14 @@ of ONE option from the supplied list that the cage ALLOWED — never a label you
 invent", "why": "2-3 sentences tied to this patient's numbers", "watch": "what \
 would change this"},
  "not_measured": ["inputs a clinician would want that this system does not have"],
- "confidence": "one honest sentence about how much weight this deserves"
+ "confidence": "one honest sentence about how much weight this deserves",
+ "spoken": "THIS WILL BE READ ALOUD. 4-6 sentences, spoken English, no lists, no \
+markdown, no symbols. Lead with the patient by name and what matters most. Round \
+numbers the way a doctor speaks them — 'systolic in the eighties', 'about two \
+thirds' — never read decimals digit by digit. Say what you would consider and \
+why, in one sentence. Say plainly that roughly one alarm in three from this \
+system is false. END by telling them to review all of it themselves against the \
+patient before acting. Sound like a colleague on the phone, not a document."
 }
 
 Rules. Ground every claim in the supplied subsystem output; invent nothing. \
@@ -231,6 +244,18 @@ class Hyperscan:
             rec["cage_verdict"] = by_label[pick].get("verdict")
         report["recommendation"] = rec
         report["refused_options"] = refused
+
+        # The spoken brief is the version most likely to be *acted on*, because
+        # it reaches someone whose hands are busy and whose eyes are elsewhere.
+        # The review instruction therefore cannot be left to the model here
+        # either — if it did not say it, we say it.
+        spoken = str(report.get("spoken") or "").strip()
+        if not spoken:
+            spoken = str(report.get("situation") or "").strip()
+        low = spoken.lower()
+        if not any(w in low for w in ("review", "check it yourself", "verify")):
+            spoken = (spoken + " " + SPOKEN_REVIEW_TAIL).strip()
+        report["spoken"] = spoken
         return report
 
 

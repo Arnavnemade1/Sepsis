@@ -561,6 +561,39 @@
     $("#doctor-app").classList.add("speaking");
   }
 
+  /* Play a rendered utterance (base64 s16le PCM) through the SAME graph the call
+     uses, so a spoken report and a spoken answer come out of one voice and one
+     analyser — the ring reacts to both. Returns a stop handle. */
+  function speak(b64, rate) {
+    if (!b64) return null;
+    var ctx = playCtx();
+    var bin = atob(b64), n = bin.length >> 1;
+    var buf = ctx.createBuffer(1, n, rate || OUT_RATE);
+    var ch = buf.getChannelData(0);
+    for (var i = 0; i < n; i++) {
+      var v = (bin.charCodeAt(i * 2 + 1) << 8) | bin.charCodeAt(i * 2);
+      if (v >= 0x8000) v -= 0x10000;
+      ch[i] = v / 0x8000;
+    }
+    flushPlayback();
+    var src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(S.analyser || ctx.destination);
+    src.start();
+    S.sources.push(src);
+    S.speaking = true;
+    phase("speaking");
+    src.onended = function () {
+      var k = S.sources.indexOf(src);
+      if (k >= 0) S.sources.splice(k, 1);
+      if (!S.sources.length) {
+        S.speaking = false;
+        phase(S.open ? "listening" : "standby");
+      }
+    };
+    return { stop: function () { try { src.stop(); } catch (e) {} } };
+  }
+
   function flushPlayback() {
     S.sources.forEach(function (s) { try { s.stop(); } catch (e) {} });
     S.sources = [];
@@ -1179,6 +1212,6 @@
   // runUI is exported so the summon bar drives the cockpit through the SAME
   // handler the call does — two entry points, one implementation, no drift.
   window.AegisDoctor = { open: open, close: close, call: callStart, hangup: hangup,
-                         runUI: runUI, streamConsult: streamConsult,
+                         runUI: runUI, streamConsult: streamConsult, speak: speak,
                          describeTool: describeTool, _state: S };
 })();

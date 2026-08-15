@@ -317,6 +317,36 @@ def main() -> int:
           "the clinician-review notice is a module constant, not a prompt instruction "
           "the model could omit")
 
+    # The SPOKEN brief is the version most likely to be acted on — it reaches
+    # someone whose hands are busy — so its review instruction is enforced too.
+    from backend.aegis.hyperscan import SPOKEN_REVIEW_TAIL
+    silent = Hyperscan._enforce(
+        {"options": [], "recommendation": {"option": "Recommended"},
+         "spoken": "He looks septic. I would start the bundle."}, real_opts)
+    check("spoken review enforced", "review" in silent["spoken"].lower(),
+          "a spoken brief that omitted the review instruction has it appended")
+    kept = Hyperscan._enforce(
+        {"options": [], "recommendation": {"option": "Recommended"},
+         "spoken": "Please review this yourself before acting."}, real_opts)
+    check("no double tail", kept["spoken"].count("review") == 1,
+          "a brief that already says it is not made to say it twice")
+    empty = Hyperscan._enforce(
+        {"options": [], "recommendation": {}, "situation": "Falls back to this."},
+        real_opts)
+    check("spoken falls back", "Falls back to this." in empty["spoken"]
+          and SPOKEN_REVIEW_TAIL.split("—")[0].strip() in empty["spoken"],
+          "with no spoken field it falls back to the situation, still with the notice")
+
+    from backend.llm import speech as _sp
+    st = _sp.status()
+    check("speech shares the voice", st["rate"] == 24000,
+          f"speech renders at 24 kHz in the consult's voice ({st['voice']}) — one "
+          "assistant, not two")
+    check("speech is bounded", st["budget_remaining"] <= 60,
+          "speech is the costliest call in the layer and is hard-capped")
+    check("speech fails safe", _sp.synthesize("") is None,
+          "empty text renders nothing rather than spending a call")
+
     # -- 6. failures are results, not exceptions ------------------------ #
     print("[6] A failing tool returns something the agent has to account for")
     for name, args in (("nonexistent_tool", {}),
