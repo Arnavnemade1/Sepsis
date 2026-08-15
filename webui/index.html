@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="pktwin.css?v=10" />
 <link rel="stylesheet" href="doctor.css?v=11" />
 <link rel="stylesheet" href="summon.css?v=1" />
+<link rel="stylesheet" href="hyperscan.css?v=2" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -236,6 +237,7 @@
       <button class="dock-btn accent" id="launch-camera">◉ Optical</button>
       <button class="dock-btn" id="launch-story">◔ Clinical Story <span id="story-count" class="story-pill">0</span></button>
       <button class="dock-btn" id="launch-doctor" title="Call Dr. Aegis and talk this case through — grounded in the selected patient">◈ Consult</button>
+      <button class="dock-btn accent" id="launch-hyperscan" title="Hyperscan — sweep every subsystem and produce a situation report">◎ Hyperscan</button>
       <button class="dock-btn" id="launch-summon" title="Ask Dr. Aegis from anywhere — ⌘K / Ctrl-K">◈ Ask <span class="dock-kbd">⌘K</span></button>
     </div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
@@ -1021,6 +1023,39 @@
   </div>
 </div>
 
+<!-- ===================== HYPERSCAN ===================== -->
+<!-- A full-subsystem sweep of one patient, flagged on the body as it lands,
+     ending in a situation report. Every figure in it comes from a subsystem you
+     can open yourself — and the review notice at the bottom is appended by the
+     server, not written by the model. -->
+<div id="hyperscan" class="hs hidden">
+  <header class="hs-head">
+    <div class="hs-head-l">
+      <span class="hs-mark">◎</span>
+      <span class="hs-title">HYPERSCAN</span>
+      <span class="hs-sub">full-subsystem sweep · situation report · requires clinician review</span>
+    </div>
+    <div class="hs-head-r">
+      <span class="hs-phase" id="hs-phase">IDLE</span>
+      <button class="hs-btn" id="hs-close">✕ close</button>
+    </div>
+  </header>
+  <div class="hs-bar"><i id="hs-progress"></i></div>
+
+  <div class="hs-body-wrap">
+    <div class="hs-left">
+      <div class="hs-stage" id="hs-stage"></div>
+      <div class="hs-stages" id="hs-stages"></div>
+    </div>
+    <div class="hs-report hidden" id="hs-report"></div>
+  </div>
+
+  <footer class="hs-foot">
+    <button class="hs-btn" id="hs-again">↻ run again</button>
+    <span class="hs-note">every figure traces to a subsystem you can open yourself</span>
+  </footer>
+</div>
+
 <!-- ===================== CONSULT CALL (Dr. Aegis) ===================== -->
 <!-- A call with a colleague about the selected case. The right-hand rail shows
      exactly what the doctor is grounded in — including what it CANNOT see — so
@@ -1131,12 +1166,13 @@
   </footer>
 </div>
 
-<script type="module" src="twin3d.js?v=10"></script>
+<script type="module" src="twin3d.js?v=11"></script>
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
 <script src="os.js?v=52"></script>
 <script src="doctor.js?v=11"></script>
 <script src="summon.js?v=2"></script>
+<script src="hyperscan.js?v=2"></script>
 </body>
 </html>

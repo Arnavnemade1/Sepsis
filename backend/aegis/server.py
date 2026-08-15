@@ -2279,6 +2279,66 @@ def doctor_brief(bed: Optional[str] = None, opening: bool = True) -> Dict[str, A
     return out
 
 
+from backend.aegis.hyperscan import (Hyperscan as _Hyperscan, STAGES as _HYPERSCAN_STAGES,
+                                     REVIEW_NOTICE as _REVIEW)
+
+_hyperscan_engine: Optional[_Hyperscan] = None
+
+
+def _run_hyperscan(bed: Optional[str],
+                   emit: Optional[Any] = None) -> Dict[str, Any]:
+    # Built on first use: this block sits above the agent plane in the module, so
+    # binding the tool registry at import time would depend on statement order.
+    global _hyperscan_engine
+    if _hyperscan_engine is None:
+        _hyperscan_engine = _Hyperscan(_tools.invoke, _llm_client)
+    dossier = _doctor_dossier(bed)
+    collected = _hyperscan_engine.collect(bed, emit)
+    return _hyperscan_engine.synthesize(bed, collected, dossier, emit)
+
+
+@app.get("/aegis/hyperscan")
+def hyperscan(bed: Optional[str] = None) -> Dict[str, Any]:
+    """Full-subsystem sweep + situation report for one patient (blocking)."""
+    return _run_hyperscan(bed)
+
+
+@app.post("/aegis/hyperscan/stream")
+def hyperscan_stream(payload: DoctorConsultIn):
+    """The sweep, narrated stage by stage.
+
+    Streamed because the point is watchable: each subsystem lands as its own
+    event so the body on screen can flag the finding while the rest is still
+    being collected. A nine-stage sweep behind a spinner would be the same work
+    and none of the legibility."""
+    from fastapi.responses import StreamingResponse
+    import queue as _queue
+
+    q: "_queue.Queue" = _queue.Queue()
+
+    def work() -> None:
+        try:
+            q.put({"type": "begin", "stages": len(_HYPERSCAN_STAGES) + 1})
+            rep = _run_hyperscan(payload.bed, q.put)
+            q.put({"type": "report", "report": rep})
+        except Exception as exc:                    # pragma: no cover
+            q.put({"type": "error", "message": f"{type(exc).__name__}: {exc}"})
+        finally:
+            q.put(None)
+
+    _threading.Thread(target=work, name="hyperscan", daemon=True).start()
+
+    def events():
+        while True:
+            item = q.get()
+            if item is None:
+                break
+            yield f"data: {json.dumps(item, default=str)}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
 @app.post("/aegis/doctor/consult/stream")
 def doctor_consult_stream(payload: DoctorConsultIn):
     """The typed consult, narrated as it works.
@@ -2794,6 +2854,7 @@ def _bind_agent_tools() -> None:
     # same call that makes the switch.
     b("select_patient", lambda bed: doctor_brief(bed, opening=False))
     b("show_treatment_options", _agent_treatment_options)
+    b("hyperscan", lambda bed=None: _run_hyperscan(bed))
     b("os_read", _agent_os_read)
     b("os_write", _agent_os_write)
     b("list_surfaces", _agent_list_surfaces)

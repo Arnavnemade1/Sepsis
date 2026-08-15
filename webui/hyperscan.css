@@ -1,0 +1,148 @@
+/* ============================================================
+   AEGIS — HYPERSCAN
+   ------------------------------------------------------------
+   One event, two halves: the body being swept, and what the sweep
+   concluded. The scan chrome is ACCENT — "the system is working" —
+   never a clinical hue, because on this body saturated colour means
+   pathology and a scan must not claim something about the patient
+   by choosing its own paint. The only clinical colour on this screen
+   is the cage's refusal, which genuinely is a warning.
+   ============================================================ */
+
+.hs{position:fixed;inset:0;z-index:55;display:flex;flex-direction:column;
+  background:var(--bg);animation:hsIn .28s var(--ease)}
+.hs.hidden{display:none}
+@keyframes hsIn{from{opacity:0}to{opacity:1}}
+
+/* head */
+.hs-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);
+  padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);flex:0 1 auto}
+.hs-head-l{display:flex;align-items:baseline;gap:var(--sp-3);min-width:0}
+.hs-mark{color:var(--accent);font-size:15px}
+.hs-title{font-weight:700;letter-spacing:1.6px;font-size:15px}
+.hs-sub{font-family:var(--sans);font-size:12.5px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hs-head-r{display:flex;align-items:center;gap:var(--sp-3)}
+.hs-phase{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;color:var(--dim);
+  padding-left:14px;position:relative}
+.hs-phase::before{content:"";position:absolute;left:0;top:50%;margin-top:-3px;
+  width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.4}
+.hs-phase.sweeping,.hs-phase.thinking{color:var(--accent-ink)}
+.hs-phase.sweeping::before,.hs-phase.thinking::before{opacity:1;
+  animation:hsBlink 1s steps(2) infinite}
+.hs-phase.done{color:var(--low-ink)}
+.hs-phase.done::before{opacity:1}
+.hs-phase.error{color:var(--high-ink)}
+@keyframes hsBlink{50%{opacity:.25}}
+
+.hs-bar{height:2px;background:var(--s2);flex:0 0 auto}
+.hs-bar i{display:block;height:100%;width:0;background:var(--accent);
+  transition:width .35s var(--ease)}
+
+/* body: the twin on the left, the report on the right */
+.hs-body-wrap{flex:1;display:grid;grid-template-columns:minmax(0,1fr) 460px;
+  gap:var(--sp-4);padding:var(--sp-4) var(--sp-5);min-height:0}
+
+.hs-left{position:relative;display:flex;flex-direction:column;gap:var(--sp-3);min-height:0}
+.hs-stage{flex:1;position:relative;min-height:0;border:1px solid var(--line);
+  border-radius:var(--r-xl);background:var(--s1);overflow:hidden}
+/* the borrowed #twin-stage fills the slot */
+.hs-stage .hs-body{position:absolute;inset:0;width:100%;height:100%}
+
+/* Stage list under the body. The rows are .hs-row, NOT .hs-stage — that class is
+   the 3D stage container (flex:1, absolutely-positioned children), and reusing it
+   here made every row try to be the viewport. */
+.hs-stages{flex:0 0 auto;max-height:34%;overflow-y:auto;display:flex;flex-direction:column;
+  gap:3px;padding-right:2px}
+.hs-row{display:flex;align-items:baseline;gap:var(--sp-2);
+  background:var(--s1);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:5px 8px;font-size:11.5px}
+.hs-dot{width:6px;height:6px;border-radius:50%;background:var(--nodata);flex:0 0 auto;
+  align-self:center}
+.hs-row.running .hs-dot{background:var(--accent);animation:hsBlink .8s steps(2) infinite}
+.hs-row.done .hs-dot{background:var(--low)}
+.hs-row.bad .hs-dot{background:var(--med)}
+.hs-st-label{color:var(--ink);flex:0 1 auto}
+.hs-st-head{font-family:var(--mono);font-size:10.5px;color:var(--dim);margin-left:auto;
+  text-align:right}
+
+/* report */
+.hs-report{overflow-y:auto;padding-right:var(--sp-2);min-height:0}
+.hs-report.hidden{display:none}
+.hs-sec{margin-bottom:var(--sp-4)}
+.hs-sec-h{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--dim);margin:0 0 var(--sp-2)}
+.hs-p{font-size:13.5px;line-height:1.6;color:var(--ink);margin:0}
+
+.hs-finds{display:flex;flex-direction:column;gap:5px}
+.hs-find{background:var(--s1);border:1px solid var(--line-soft);
+  border-left:2px solid var(--nodata);border-radius:var(--r-sm);padding:6px 9px}
+.hs-find.high{border-left-color:var(--med)}
+.hs-find-t{display:block;font-size:12.5px;line-height:1.5;color:var(--ink)}
+.hs-find-s{display:block;font-family:var(--mono);font-size:9.5px;color:var(--faint);
+  margin-top:2px;letter-spacing:.05em}
+
+.hs-two{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+.hs-list{background:var(--s1);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:7px 9px}
+.hs-list.bare{background:transparent;border:0;padding:0}
+.hs-list-h{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;color:var(--faint);
+  text-transform:uppercase;margin-bottom:4px}
+.hs-li{font-size:12px;line-height:1.5;color:var(--muted);padding-left:11px;position:relative}
+.hs-li::before{content:"—";position:absolute;left:0;color:var(--faint)}
+.hs-list-e{font-size:12px;color:var(--faint)}
+
+.hs-opts{display:flex;flex-direction:column;gap:5px}
+.hs-opt{background:var(--s1);border:1px solid var(--line-soft);border-radius:var(--r-sm);
+  padding:7px 9px}
+.hs-opt.pick{border-color:rgba(var(--accent-rgb),.5);background:rgba(var(--accent-rgb),.06)}
+/* a cage refusal is the one genuinely alarming thing on this screen */
+.hs-opt.refused{border-left:2px solid var(--high)}
+.hs-opt-h{display:flex;align-items:baseline;justify-content:space-between;gap:var(--sp-2)}
+.hs-opt-h b{font-size:12.5px}
+.hs-opt-tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;color:var(--faint)}
+.hs-opt.refused .hs-opt-tag{color:var(--high-ink)}
+.hs-opt.pick .hs-opt-tag{color:var(--accent-ink)}
+.hs-opt-t{font-size:12px;line-height:1.45;color:var(--muted);margin-top:3px}
+.hs-opt-v{font-size:11px;line-height:1.4;color:var(--high-ink);margin-top:3px}
+
+.hs-rec{background:var(--s1);border:1px solid rgba(var(--accent-rgb),.4);
+  border-radius:var(--r-lg);padding:var(--sp-3)}
+.hs-rec.none{border-color:var(--line)}
+.hs-rec-k{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;color:var(--faint);
+  text-transform:uppercase}
+.hs-rec-o{display:block;font-size:16px;color:var(--ink);margin:2px 0 var(--sp-2)}
+.hs-rec-note{font-size:12px;line-height:1.5;color:var(--med-ink);margin-top:var(--sp-2)}
+.hs-rec-w{font-size:12px;line-height:1.5;color:var(--dim);margin-top:var(--sp-2)}
+
+/* the notice. Deliberately the loudest block in the report. */
+.hs-notice{background:rgba(var(--med-rgb),.08);border:1px solid rgba(var(--med-rgb),.4);
+  border-radius:var(--r-lg);padding:var(--sp-3);font-size:12.5px;line-height:1.6;
+  color:var(--ink)}
+.hs-notice-k{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  color:var(--med-ink);margin-bottom:5px}
+.hs-empty{font-size:13px;color:var(--dim);line-height:1.6}
+
+.hs-foot{flex:0 1 auto;display:flex;align-items:center;gap:var(--sp-2);
+  padding:var(--sp-3) var(--sp-5);border-top:1px solid var(--line)}
+.hs-btn{font-family:var(--mono);font-size:12px;color:var(--ink);background:var(--s2);
+  border:1px solid var(--line);border-radius:var(--r-md);padding:8px 13px;cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease)}
+.hs-btn:hover{background:var(--s3);border-color:var(--line-bright)}
+.hs-note{font-family:var(--mono);font-size:10.5px;color:var(--faint);margin-left:auto}
+
+/* flags pinned to organs (hosted inside the twin stage) */
+.twin-flags{position:absolute;inset:0;pointer-events:none;z-index:6}
+.twin-flag{position:absolute;left:0;top:0;display:flex;align-items:center;gap:6px;
+  background:rgba(10,11,12,.82);border:1px solid rgba(var(--accent-rgb),.45);
+  border-radius:var(--r-sm);padding:3px 8px;white-space:nowrap;
+  opacity:0;transform-origin:0 0;transition:opacity .35s var(--ease)}
+.twin-flag.in{opacity:1}
+.twin-flag i{width:5px;height:5px;border-radius:50%;background:var(--accent);flex:0 0 auto}
+.tf-k{font-size:11px;color:var(--ink)}
+.tf-v{font-family:var(--mono);font-size:9.5px;color:var(--accent-ink)}
+
+@media (max-width:1180px){
+  .hs-body-wrap{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(240px,.9fr) minmax(0,1fr)}
+  .hs-stages{max-height:26%}
+}

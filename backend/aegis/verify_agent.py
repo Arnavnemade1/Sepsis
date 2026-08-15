@@ -282,6 +282,41 @@ def main() -> int:
     check("thresholds sane", all(d > 0 for _, _, _, d in srv._WATCHED_VITALS),
           "every watched vital has a non-zero threshold, so a note means something moved")
 
+    # -- 5d. hyperscan: the report cannot overrule the cage -------------- #
+    print("[5d] Hyperscan: the safety layer outranks the synthesis")
+    from backend.aegis.hyperscan import Hyperscan, REVIEW_NOTICE, STAGES
+
+    real_opts = {"options": {"options": [
+        {"label": "Recommended", "allowed": True, "verdict": "FORMALLY VERIFIED"},
+        {"label": "Standard bundle", "allowed": False,
+         "verdict": "VERIFICATION REJECTED: Renal_Fluid_Cap exceeded"},
+    ]}}
+    # (a) the model picks the option the cage refused
+    r = Hyperscan._enforce({"options": [], "recommendation": {"option": "Standard bundle",
+                                                              "why": "looks best"}}, real_opts)
+    check("refused not promoted", r["recommendation"]["option"] is None
+          and r["recommendation"].get("refused_by_cage"),
+          "a recommendation naming a REFUSED option is withheld, with the cage's verdict")
+    # (b) the model invents an option that was never evaluated
+    r2 = Hyperscan._enforce({"options": [{"label": "escalate_to_high", "tradeoff": "x"}],
+                             "recommendation": {"option": "escalate_to_high"}}, real_opts)
+    check("invented not promoted", r2["recommendation"]["option"] is None,
+          "a recommendation naming an option the system never evaluated is withheld")
+    check("options are authoritative",
+          [o["label"] for o in r2["options"]] == ["Recommended", "Standard bundle"],
+          "the options list is rebuilt from the treatment engine, not from the model")
+    # (c) a legitimate pick survives
+    r3 = Hyperscan._enforce({"options": [], "recommendation": {"option": "recommended"}},
+                            real_opts)
+    check("valid pick kept", r3["recommendation"]["option"] == "Recommended",
+          "a permitted option is kept and canonicalised to the engine's own label")
+    check("stages tagged", all(s.get("region") and s.get("tool") for s in STAGES),
+          f"all {len(STAGES)} sweep stages carry a body region and a tool")
+    check("notice is code", "independently reviewed and verified" in REVIEW_NOTICE
+          and "not a diagnosis" in REVIEW_NOTICE,
+          "the clinician-review notice is a module constant, not a prompt instruction "
+          "the model could omit")
+
     # -- 6. failures are results, not exceptions ------------------------ #
     print("[6] A failing tool returns something the agent has to account for")
     for name, args in (("nonexistent_tool", {}),

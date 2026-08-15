@@ -355,6 +355,17 @@ def _catalogue() -> List[Tool]:
                    "description": "Drug names, e.g. ['vancomycin','piperacillin']."},
          "bed": _s("Bed id, so renal/hepatic state is taken into account.")}, ["drugs"]))
     T.append(Tool(
+        "hyperscan", KIND_UI,
+        "Run a HYPERSCAN: sweep every subsystem for this patient and produce a "
+        "full situation report — findings with their sources, the candidate "
+        "treatment paths with the cage's verdicts, a recommendation, and what the "
+        "system cannot see. Opens the scan on their screen and returns the report "
+        "to you. Use when they ask for the whole picture, a workup, or 'what is "
+        "going on with this patient'. It takes several seconds; say you are "
+        "running it. Always tell them the report needs their own review.",
+        {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, [],
+        budget=9000))
+    T.append(Tool(
         "show_treatment_options", KIND_UI,
         "Pull up the candidate treatment paths for a patient AND read them — "
         "every option the OS considered, what each one buys, what it costs, its "

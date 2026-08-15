@@ -1055,10 +1055,22 @@ function animate() {
   if (reticle && shellU) {                       // ride the scan band up the body
     const s = Math.max(0, Math.min(1, shellU.uScan.value));
     reticle.position.y = s * H * 0.96 + 0.06;
-    reticle.rotation.y += dt * 0.3;
+    reticle.rotation.y += dt * (hyperOn ? 0.85 : 0.3);
     const edge = Math.sin(s * Math.PI);          // fade at feet/head
-    reticle.children.forEach((c) => { c.material.opacity = (c.geometry.parameters.arc ? 0.6 : 0.55) * edge; });
+    reticle.children.forEach((c) => {
+      if (c.userData.aura) {
+        // each shell breathes on its own phase, so the aura pulses outward
+        const ph = t * 2.1 - c.userData.i * 0.7;
+        c.material.opacity = (0.3 - c.userData.i * 0.08) * edge * (0.55 + 0.45 * Math.sin(ph));
+        const k = 1 + 0.06 * Math.sin(ph);
+        c.scale.set(k, k, 1);
+        return;
+      }
+      c.material.opacity = (c.geometry.parameters.arc ? 0.6 : 0.55)
+        * edge * (hyperOn ? 1.5 : 1);
+    });
   }
+  _placeFlags();
   if (wrist && wristBone && wrist.visible) { wristBone.getWorldPosition(_v); wrist.position.copy(_v).add(new THREE.Vector3(0, 0.02, 0.04)); }
 
   // inspect readout tracks the clicked organ
@@ -1104,8 +1116,103 @@ function _lendAnatomy() {
    laptop. The overlay parks it on open and wakes it on close. */
 let parked = false;
 function setParked(v) { parked = !!v; }
+
+/* ---------------- HYPERSCAN mode ---------------- */
+/* The idle sweep is a thin pale ring — deliberately quiet, because it runs all
+   the time and must not compete with a stressed organ. A hyperscan is a discrete
+   event with a beginning and an end, so it gets a louder instrument: the ring
+   thickens, gains concentric aura shells that breathe, and shifts to the
+   affordance accent.
+   Accent, specifically, and not one of the clinical hues: on this body a
+   saturated colour means pathology, and a scan that painted itself amber would
+   be claiming something about the patient rather than about itself. */
+const HYPER_COLOR = 0x7aa2f7;          // --accent; "the system is working", never "urgent"
+let hyperOn = false, auraRings = [];
+
+function setHyperscan(on) {
+  hyperOn = !!on;
+  if (!reticle) return;
+  const base = reticle.children.filter((c) => !c.userData.aura);
+  base.forEach((c) => {
+    c.material.color.setHex(hyperOn ? HYPER_COLOR : (c.geometry.parameters.arc ? 0x9aa0a8 : 0x8fe9ff));
+  });
+  if (hyperOn && !auraRings.length) {
+    // three shells at increasing radius and decreasing opacity — an aura is a
+    // falloff, not a fatter line
+    for (let i = 0; i < 3; i++) {
+      const a = new THREE.Mesh(
+        new THREE.TorusGeometry(0.24 + i * 0.05, 0.0016 + i * 0.001, 6, 90),
+        new THREE.MeshBasicMaterial({ color: HYPER_COLOR, transparent: true,
+          opacity: 0.3 - i * 0.08, depthWrite: false, blending: THREE.AdditiveBlending }));
+      a.rotation.x = Math.PI / 2; a.userData = { aura: true, i };
+      auraRings.push(a); reticle.add(a);
+    }
+  }
+  auraRings.forEach((a) => { a.visible = hyperOn; });
+}
+
+/* Flags — a finding pinned to the organ it came from, as the sweep discovers it.
+   DOM rather than sprites so the text stays crisp through the bloom pass, and
+   projected each frame so they track the body as it rotates. */
+let flagHost = null, flags = [];
+function flag(regionOrKey, label, sub) {
+  if (!renderer) return;
+  const host = renderer.domElement.parentElement; if (!host) return;
+  if (!flagHost) {
+    flagHost = document.createElement("div");
+    flagHost.className = "twin-flags";
+    host.appendChild(flagHost);
+  }
+  // resolve a body REGION (what the backend speaks) to an organ pivot
+  let pivot = (organs[regionOrKey] || {}).pivot;
+  if (!pivot) {
+    const k = Object.keys(organs).find((x) => organs[x].region === regionOrKey);
+    pivot = k ? organs[k].pivot : null;
+  }
+  const e = document.createElement("div");
+  e.className = "twin-flag";
+  e.innerHTML = '<i></i><span class="tf-k"></span><span class="tf-v"></span>';
+  e.querySelector(".tf-k").textContent = label || "";
+  e.querySelector(".tf-v").textContent = sub || "";
+  flagHost.appendChild(e);
+  requestAnimationFrame(() => e.classList.add("in"));
+  flags.push({ el: e, pivot, born: performance.now() });
+  return e;
+}
+function clearFlags() {
+  flags.forEach((f) => f.el.remove()); flags = [];
+}
+function _placeFlags() {
+  if (!flags.length || !camera || !renderer) return;
+  const w = renderer.domElement.clientWidth, h = renderer.domElement.clientHeight;
+  const p = new THREE.Vector3();
+  // Several stages hang off the same organ (brain takes history, causal AND
+  // consensus), and distinct organs can project to nearly the same pixel from a
+  // front-on camera — so anchoring alone stacked the flags into an unreadable
+  // pile. Nudge each one down until it clears the ones already placed: the
+  // anchor still says which organ it belongs to, the leader line does the rest.
+  const placed = [];
+  const ROW = 22;
+  flags.forEach((f) => {
+    if (!f.pivot) { f.el.style.display = "none"; return; }
+    f.pivot.getWorldPosition(p); p.project(camera);
+    if (p.z > 1) { f.el.style.display = "none"; return; }
+    let x = (p.x * 0.5 + 0.5) * w, y = (-p.y * 0.5 + 0.5) * h;
+    let guard = 0;
+    while (guard++ < 12 && placed.some((q) => Math.abs(q.y - y) < ROW
+                                             && Math.abs(q.x - x) < 190)) {
+      y += ROW;
+    }
+    y = Math.max(6, Math.min(h - 26, y));
+    placed.push({ x, y });
+    f.el.style.display = "";
+    f.el.style.transform = "translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px)";
+  });
+}
+
 window.AegisTwin = { start, update, resize, setOptical, setFocus, _setAtlas, _measure,
                      triggerInfusion, _lendAnatomy, setParked,
+                     setHyperscan, flag, clearFlags,
                      isParked: () => parked };
 const probe = setInterval(() => {
   const el = document.getElementById("twin-stage");
