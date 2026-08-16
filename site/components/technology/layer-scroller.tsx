@@ -109,12 +109,24 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
         if (Math.abs(target.current - current) < 0.0005) current = target.current;
 
         const t = current * v.duration;
+
         // currentTime is never written from the scroll handler itself: scroll
         // fires far more often than a video can seek, and seeking mid-seek is
         // what makes this pattern stutter.
-        if (Math.abs(v.currentTime - t) > 0.02) {
-          if (typeof v.fastSeek === "function") v.fastSeek(t);
-          else v.currentTime = t;
+        //
+        // `!v.seeking` is what makes scrolling UP work. The easing is already
+        // symmetric, so rewinding was never a logic problem — but a backward
+        // seek in H.264 has to decode forward from the previous keyframe, and
+        // this clip is short enough to have very few. Firing a fresh seek every
+        // frame while the last one is still in flight makes the decoder thrash
+        // and the picture sit frozen. Waiting for each seek to land paces the
+        // requests to whatever the decoder can actually deliver.
+        if (!v.seeking && Math.abs(v.currentTime - t) > 0.02) {
+          // Deliberately NOT fastSeek. It trades accuracy for speed by snapping
+          // to the nearest keyframe, which on a clip with sparse keyframes can
+          // throw a rewind back to the start. Chrome has no fastSeek anyway;
+          // Safari and Firefox do, and there it made scrolling up jump.
+          v.currentTime = t;
         }
       }
       raf = requestAnimationFrame(tick);
