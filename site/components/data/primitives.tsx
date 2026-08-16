@@ -33,7 +33,14 @@ export function Section({
   );
 }
 
-/** A flat hairline panel. Rule 2: no glow, no gradient. */
+/**
+ * A hairline panel.
+ *
+ * Translucent rather than solid, because the site's footage runs behind every
+ * page: an opaque panel would punch a rectangular hole in it. Frosted glass over
+ * moving texture keeps the surface calm enough to read dense numbers on while
+ * letting the background stay continuous. Still flat — no glow, no gradient.
+ */
 export function Panel({
   children,
   className = "",
@@ -42,7 +49,11 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <div className={`rounded-lg border border-line bg-s1 ${className}`}>{children}</div>
+    <div
+      className={`rounded-lg border border-line bg-s1/62 backdrop-blur-xl ${className}`}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -74,7 +85,7 @@ export function MetricTile({
   const sizeClass = size === "lg" ? "text-[28px]" : "text-[20px]";
 
   return (
-    <div className="flex h-full flex-col rounded-lg border border-line bg-s1 p-5">
+    <div className="flex h-full flex-col rounded-lg border border-line bg-s1/62 p-5 backdrop-blur-xl">
       <div
         className={`num font-mono ${sizeClass} leading-none font-medium ${toneClass}`}
       >
@@ -132,7 +143,7 @@ export function DataTable({
 }) {
   return (
     // The page body must never scroll sideways — wide tables scroll inside here.
-    <div className="scroll-x rounded-lg border border-line bg-s1">
+    <div className="scroll-x rounded-lg border border-line bg-s1/62 backdrop-blur-xl">
       <table className="w-full min-w-[560px] border-collapse text-[13px]">
         {caption && <caption className="sr-only">{caption}</caption>}
         <thead>

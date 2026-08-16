@@ -1,18 +1,25 @@
-import { ChartFrame, RefLine } from "./chart-frame";
+import { ChartFrame, RefLine, Annotation } from "./chart-frame";
 import { DrawPath, DrawDots } from "@/components/motion/draw-path";
-import { toPath, zip } from "@/lib/scales";
+import { toPath, zip, scaleX, scaleY } from "@/lib/scales";
 import { f4 } from "@/lib/format";
 import type { ModelResult } from "@/lib/results";
 
+const M = { l: 48, r: 20, t: 16, b: 38 };
+const W = 460;
+const H = 320;
+
 /**
- * Calibration. The diagonal is perfect calibration: a bin the model called 4%
- * should contain 4% septic hours. Landing on it is what lets a clinician read
- * the number as a probability rather than a ranking.
+ * Calibration.
  *
- * Honest note the page prints alongside: the cross-hospital run has only a
- * couple of reliability bins because predicted probabilities on a ~1.4%
- * prevalence problem cluster hard at the low end. Few bins is a real limitation
- * of this plot, not a sign of a suspiciously perfect fit.
+ * The diagonal is perfect calibration: a bin the model called 4% should contain
+ * 4% septic hours. Landing on it is what lets a clinician read the output as a
+ * probability rather than a ranking — and it is the property most likely to
+ * break when a model changes hospital, which is exactly what this measures.
+ *
+ * Honest limitation, printed next to the chart on the page: the cross-hospital
+ * run resolves only a couple of bins, because predictions on a ~1.4% prevalence
+ * problem cluster hard at the low end. Few bins is a real weakness of this
+ * diagram, not evidence of a suspiciously perfect fit.
  */
 export function ReliabilityChart({
   model,
@@ -25,6 +32,10 @@ export function ReliabilityChart({
   const hi = Math.max(0.02, ...model.reliability.meanPred, ...model.reliability.obsFreq);
   const max = Math.ceil(hi * 100) / 100;
 
+  const sx = scaleX([0, max], W, M);
+  const sy = scaleY([0, max], H, M);
+  const screen = pts.map(([x, y]) => [sx(x), sy(y)] as const);
+
   return (
     <ChartFrame
       label={`Calibration reliability diagram, ${label}. Expected calibration error ${f4(
@@ -32,6 +43,9 @@ export function ReliabilityChart({
       )}.`}
       xDomain={[0, max]}
       yDomain={[0, max]}
+      width={W}
+      height={H}
+      margins={M}
       xLabel="predicted probability"
       yLabel="observed frequency"
       table={
@@ -60,26 +74,41 @@ export function ReliabilityChart({
         </table>
       }
     >
-      {({ sx, sy }) => {
-        const screen = pts.map(([x, y]) => [sx(x), sy(y)] as const);
-        return (
-          <>
-            <RefLine
-              d={`M${sx(0)} ${sy(0)} L${sx(max)} ${sy(max)}`}
-              label="perfect"
-              x={sx(max)}
-              y={sy(max) - 6}
-            />
-            <DrawPath
-              d={toPath(pts, sx, sy)}
-              stroke="var(--color-accent)"
-              width={2}
-              delay={0.1}
-            />
-            <DrawDots pts={screen} />
-          </>
-        );
-      }}
+      {() => (
+        <>
+          {/* the tolerance corridor — inside this, a probability is trustworthy
+              at the resolution this evaluation can actually resolve */}
+          <path
+            d={`M${sx(0)} ${sy(0)} L${sx(max)} ${sy(max)} L${sx(max)} ${sy(max * 0.82)} L${sx(0)} ${sy(0)} Z`}
+            fill="var(--color-accent)"
+            opacity={0.06}
+          />
+          <RefLine d={`M${sx(0)} ${sy(0)} L${sx(max)} ${sy(max)}`} />
+          <text
+            x={sx(max) - 4}
+            y={sy(max) + 14}
+            textAnchor="end"
+            className="fill-faint font-mono"
+            fontSize={9}
+          >
+            perfect calibration
+          </text>
+
+          <DrawPath d={toPath(pts, sx, sy)} stroke="var(--color-accent)" width={2.2} delay={0.1} />
+          <DrawDots pts={screen} r={4.5} />
+
+          <Annotation
+            x={screen[screen.length - 1][0]}
+            y={screen[screen.length - 1][1]}
+            dx={-18}
+            dy={-28}
+            anchor="end"
+            title={`ECE ${f4(model.ece)}`}
+            detail="off-site"
+            color="var(--color-accent)"
+          />
+        </>
+      )}
     </ChartFrame>
   );
 }

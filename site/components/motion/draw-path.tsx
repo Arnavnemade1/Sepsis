@@ -49,6 +49,33 @@ export function DrawPath({
   );
 }
 
+/**
+ * The shaded region under a curve. Fades and rises rather than "drawing",
+ * because an area is a quantity, not a stroke — AUROC *is* this area, so it
+ * should arrive as a mass.
+ */
+export function DrawArea({
+  d,
+  fill,
+  delay = 0,
+}: {
+  d: string;
+  fill: string;
+  delay?: number;
+}) {
+  return (
+    <motion.path
+      d={d}
+      fill={fill}
+      stroke="none"
+      initial={{ opacity: 0 }}
+      whileInView={{ opacity: 1 }}
+      viewport={{ once: true, amount: 0.3 }}
+      transition={{ duration: 0.7, ease: [0.2, 0.7, 0.2, 1], delay: delay + 0.25 }}
+    />
+  );
+}
+
 /** Scatter points that fade in after their curve has drawn. */
 export function DrawDots({
   pts,

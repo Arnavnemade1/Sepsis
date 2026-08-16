@@ -13,7 +13,7 @@ import {
   directions,
   dirLabel,
 } from "@/lib/results";
-import { f2, f3, f4, ci, pct, count, signed, pval } from "@/lib/format";
+import { f2, f3, f4, ci, pct, count, signed } from "@/lib/format";
 import {
   Section,
   Panel,
@@ -32,6 +32,11 @@ import { PrChart } from "@/components/charts/pr-chart";
 import { ReliabilityChart } from "@/components/charts/reliability-chart";
 import { DecisionCurve } from "@/components/charts/decision-curve";
 import { AlarmBurden } from "@/components/charts/alarm-burden";
+import { TrialScatter } from "@/components/charts/trial-scatter";
+import { ThresholdSweep } from "@/components/charts/threshold-sweep";
+import { GapSlope } from "@/components/charts/gap-slope";
+import { AblationBars } from "@/components/charts/ablation-bars";
+import { GapStoryFrame } from "@/components/explainer/gap-story-frame";
 
 export const metadata: Metadata = {
   title: "Research",
@@ -310,11 +315,13 @@ export default function ResearchPage() {
                     </h3>
                     <div className="mt-4 space-y-5">
                       <RocChart
+                        id={key}
                         stacked={d.models.stacked}
                         gbm={d.models.gbm}
                         label={dirLabel(d)}
                       />
                       <PrChart
+                        id={key}
                         stacked={d.models.stacked}
                         gbm={d.models.gbm}
                         label={dirLabel(d)}
@@ -339,9 +346,9 @@ export default function ResearchPage() {
                     key={i}
                     cells={[
                       dirLabel(d),
-                      pct(d.models.stacked.sensAtSpec["0.85"], 1),
-                      pct(d.models.stacked.sensAtSpec["0.90"], 1),
-                      pct(d.models.stacked.sensAtSpec["0.95"], 1),
+                      pct(d.models.stacked.sensAtSpec["0.85"].sensitivity, 1),
+                      pct(d.models.stacked.sensAtSpec["0.90"].sensitivity, 1),
+                      pct(d.models.stacked.sensAtSpec["0.95"].sensitivity, 1),
                     ]}
                   />
                 ))}
@@ -480,6 +487,7 @@ export default function ResearchPage() {
                     </h3>
                     <div className="mt-4">
                       <AlarmBurden
+                        id={`ab-${i}`}
                         model={d.models.stacked}
                         label={dirLabel(d)}
                         shippedThreshold={operatingPoint.high}
@@ -529,48 +537,13 @@ export default function ResearchPage() {
             lede="Same model, same features, same code. The only thing that changes is which hospital the test patients came from."
           >
             <Reveal className="mt-8">
+              <GapStoryFrame />
+            </Reveal>
+
+            <Reveal className="mt-4">
               <Panel className="p-6 sm:p-8">
-                <div className="flex flex-wrap items-end gap-x-10 gap-y-6">
-                  <div>
-                    <div className="num font-mono text-[38px] leading-none text-dim">
-                      {f3(generalization.internalAuroc)}
-                    </div>
-                    <div className="mt-2 text-[13px] font-medium text-muted">
-                      Within hospital
-                    </div>
-                    <div className="mt-0.5 text-[12px] text-faint">
-                      {generalization.internalNote}
-                    </div>
-                  </div>
-
-                  <div className="pb-6 text-dim">→</div>
-
-                  <div>
-                    <div className="num font-mono text-[38px] leading-none text-ink">
-                      <Counter to={generalization.externalAuroc} decimals={3} />
-                    </div>
-                    <div className="mt-2 text-[13px] font-medium text-ink">
-                      Across hospitals
-                    </div>
-                    <div className="mt-0.5 text-[12px] text-faint">
-                      {generalization.externalNote}
-                    </div>
-                  </div>
-
-                  <div className="ml-auto">
-                    <div className="num font-mono text-[38px] leading-none text-high-ink">
-                      −{f3(generalization.gap)}
-                    </div>
-                    <div className="mt-2 text-[13px] font-medium text-high-ink">
-                      The gap
-                    </div>
-                    <div className="mt-0.5 text-[12px] text-faint">
-                      what a new hospital costs you
-                    </div>
-                  </div>
-                </div>
-
-                <p className="mt-7 max-w-2xl text-[14px] leading-relaxed text-muted text-pretty">
+                <GapSlope />
+                <p className="mt-6 max-w-2xl text-[14px] leading-relaxed text-muted text-pretty">
                   A model that reports only the left-hand number is not lying, exactly — but
                   it is describing a deployment that does not exist. Every headline on this
                   site uses the right-hand one.
@@ -622,30 +595,9 @@ export default function ResearchPage() {
             </Reveal>
 
             <Reveal className="mt-4">
-              <DataTable
-                caption="Held-out comparison of operating points"
-                head={["Operating point", "Threshold", "Utility", "Detection", "False alarms", "Lead"]}
-              >
-                {operatingPoint.heldOut.rows.map((r, i) => (
-                  <Row
-                    key={i}
-                    emphasis={r.threshold === operatingPoint.high}
-                    cells={[
-                      <span key="l">
-                        {r.label}
-                        {r.threshold === operatingPoint.high && (
-                          <span className="ml-2 text-accent-ink">● shipped</span>
-                        )}
-                      </span>,
-                      r.threshold,
-                      signed(r.utility, 4),
-                      pct(r.detection, 1),
-                      pct(r.far, 1),
-                      `${r.lead} h`,
-                    ]}
-                  />
-                ))}
-              </DataTable>
+              <Panel className="p-5 sm:p-6">
+                <ThresholdSweep />
+              </Panel>
             </Reveal>
 
             <Stagger className="mt-4 grid gap-3 sm:grid-cols-3">
@@ -710,28 +662,8 @@ export default function ResearchPage() {
                   correction (p &lt; 0.0125).
                 </p>
 
-                <div className="mt-5">
-                  <DataTable
-                    caption="Self-improvement trials, largest apparent gain first"
-                    head={["Trial", "AUROC", "Δ vs champion", "p", "Verdict"]}
-                  >
-                    {selfImprove.trials.slice(0, 4).map((t) => (
-                      <Row
-                        key={t.id}
-                        cells={[
-                          <span key="t" className="font-mono text-[12px]">
-                            #{t.id}
-                          </span>,
-                          f4(t.auroc),
-                          signed(t.delta, 4),
-                          pval(t.p),
-                          <StatusChip key="v" tone={t.accepted ? "low" : "nodata"}>
-                            {t.accepted ? "accepted" : "rejected"}
-                          </StatusChip>,
-                        ]}
-                      />
-                    ))}
-                  </DataTable>
+                <div className="mt-6">
+                  <TrialScatter />
                 </div>
 
                 <p className="mt-4 text-[14px] leading-relaxed text-muted text-pretty">
@@ -764,30 +696,8 @@ export default function ResearchPage() {
                   ablation is published here because a negative result on a fashionable method
                   is worth more than a quiet omission.
                 </p>
-                <div className="mt-5">
-                  <DataTable caption="QHDC ablation" head={["Model", "AUROC", "AUPRC", "Utility"]}>
-                    {Object.entries(qhdc.ablation).map(([name, m]) => (
-                      <Row
-                        key={name}
-                        emphasis={name.startsWith("GBM")}
-                        cells={[
-                          name,
-                          <span key="a">
-                            {f3(m.auroc.mean)}{" "}
-                            <span className="text-faint">± {f3(m.auroc.sd)}</span>
-                          </span>,
-                          <span key="p">
-                            {f3(m.auprc.mean)}{" "}
-                            <span className="text-faint">± {f3(m.auprc.sd)}</span>
-                          </span>,
-                          <span key="u">
-                            {f3(m.utility.mean)}{" "}
-                            <span className="text-faint">± {f3(m.utility.sd)}</span>
-                          </span>,
-                        ]}
-                      />
-                    ))}
-                  </DataTable>
+                <div className="mt-6">
+                  <AblationBars />
                 </div>
                 <p className="mt-4 text-[13.5px] leading-relaxed text-dim text-pretty">
                   The dimensional sweep is the other half of the story: cost grows as 2

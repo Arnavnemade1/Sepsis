@@ -46,7 +46,7 @@ export default function ExplainerPlayer() {
   return (
     <div
       ref={box}
-      className="overflow-hidden rounded-lg border border-line bg-s1"
+      className="overflow-hidden rounded-lg border border-line bg-s1/62 backdrop-blur-xl"
       style={{ aspectRatio: `${W} / ${H}` }}
     >
       <Player

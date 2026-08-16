@@ -6,6 +6,7 @@ import { site, backendUrl } from "@/lib/site-config";
 import { MotionProvider } from "@/components/providers/motion-provider";
 import { SiteHeader } from "@/components/chrome/site-header";
 import { SiteFooter } from "@/components/chrome/site-footer";
+import { SiteBackground } from "@/components/chrome/site-background";
 
 import "./globals.css";
 
@@ -52,6 +53,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           Skip to content
         </a>
         <MotionProvider>
+          {/* One fixed video for the entire site, behind every route. */}
+          <SiteBackground />
           <SiteHeader />
           <main id="main">{children}</main>
           <SiteFooter />

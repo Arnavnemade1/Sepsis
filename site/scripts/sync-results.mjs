@@ -55,12 +55,27 @@ const model = (m) => ({
   ece: r(m.ece, 5),
   prevalence: r(m.prevalence, 5),
   utility: r(m.normalized_utility),
-  // sensitivity at fixed specificity — the clinically legible operating points
-  sensAtSpec: {
-    "0.85": r(m.operating_points?.["sens@spec>=0.85"]),
-    "0.90": r(m.operating_points?.["sens@spec>=0.90"]),
-    "0.95": r(m.operating_points?.["sens@spec>=0.95"]),
-  },
+  // Sensitivity at fixed specificity — the clinically legible operating points.
+  // NOTE the source stores an OBJECT per level ({sensitivity, specificity,
+  // threshold}), not a bare number. Assigning it straight through silently
+  // produced NaN everywhere it was formatted as a percentage.
+  //
+  // `achieved` is kept because the requested specificity is a floor the sweep
+  // aims at, not one it always hits — the 0.85 level actually lands near 0.81 —
+  // and a page that prints "at 85% specificity" should be able to check itself.
+  sensAtSpec: Object.fromEntries(
+    ["0.85", "0.90", "0.95"].map((lvl) => {
+      const op = m.operating_points?.[`sens@spec>=${lvl}`];
+      return [
+        lvl,
+        {
+          sensitivity: r(op?.sensitivity),
+          achieved: r(op?.specificity),
+          threshold: r(op?.threshold, 5),
+        },
+      ];
+    }),
+  ),
   earlyWarning: {
     detectionRate: r(m.early_warning?.detection_rate),
     medianLeadHours: r(m.early_warning?.median_lead_time_hours, 1),

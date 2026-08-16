@@ -20,7 +20,12 @@ export interface ModelResult {
   ece: number;
   prevalence: number;
   utility: number;
-  sensAtSpec: Record<"0.85" | "0.90" | "0.95", number>;
+  /** Per level: the sensitivity reached, the specificity actually achieved
+   *  (the requested level is a target, not a guarantee), and the threshold. */
+  sensAtSpec: Record<
+    "0.85" | "0.90" | "0.95",
+    { sensitivity: number; achieved: number; threshold: number }
+  >;
   earlyWarning: {
     detectionRate: number;
     medianLeadHours: number;

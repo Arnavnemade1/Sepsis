@@ -35,7 +35,7 @@ export function ExplainerFrame() {
 function Placeholder({ label }: { label: string }) {
   return (
     <div
-      className="flex items-center justify-center rounded-lg border border-line bg-s1"
+      className="flex items-center justify-center rounded-lg border border-line bg-s1/62 backdrop-blur-xl"
       style={{ aspectRatio: `${W} / ${H}` }}
     >
       <span className="font-mono text-[11px] tracking-[0.08em] text-faint uppercase">

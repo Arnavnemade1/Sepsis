@@ -153,7 +153,7 @@ export default function TechnologyPage() {
 
       {/* ── The stack ─────────────────────────────────────────────────── */}
       <Section className="mt-20" eyebrow="The stack" title="Eight layers, signal to certificate">
-        <Stagger className="mt-10 overflow-hidden rounded-lg border border-line bg-s1">
+        <Stagger className="mt-10 overflow-hidden rounded-lg border border-line bg-s1/62 backdrop-blur-xl">
           {layers.map((l, i) => (
             <Item key={l.n}>
               <div

@@ -1,29 +1,54 @@
-import { ChartFrame } from "./chart-frame";
-import { DrawPath } from "@/components/motion/draw-path";
-import { toPath, zip } from "@/lib/scales";
+import { ChartFrame, SeriesLabel, Annotation } from "./chart-frame";
+import { DrawPath, DrawArea } from "@/components/motion/draw-path";
+import { toPath, zip, scaleX, scaleY } from "@/lib/scales";
 import { pct } from "@/lib/format";
 import type { ModelResult } from "@/lib/results";
+
+const M = { l: 44, r: 20, t: 16, b: 38 };
+const W = 460;
+const H = 320;
 
 /**
  * The chart that decides whether this is a product or a paper.
  *
- * Detection rate and false-alarm rate are plotted against the same threshold
- * axis, so you can read the trade the operating point actually buys. The
- * clinical hues ARE warranted here: these two curves are the alarm a bedside
- * nurse would or would not receive, which is exactly the "clinical state"
- * Rule 1 reserves colour for.
+ * Detection and false-alarm rate share a threshold axis, and the band BETWEEN
+ * them is the thing worth looking at: it is the margin by which catching a
+ * septic patient beats waking a nurse for a healthy one. Where the band is thin,
+ * the detector is not buying much.
+ *
+ * Clinical hues are warranted here — these two curves are literally the alarm a
+ * nurse does or does not receive, which is the "clinical state" Rule 1 reserves
+ * saturated colour for.
  */
 export function AlarmBurden({
   model,
   label,
   shippedThreshold,
+  id,
 }: {
   model: ModelResult;
   label: string;
   shippedThreshold?: number;
+  id: string;
 }) {
   const ab = model.alarmBurden;
   const xMax = Math.max(...ab.thresholds);
+  const sx = scaleX([0, xMax], W, M);
+  const sy = scaleY([0, 1], H, M);
+
+  const det = zip(ab.thresholds, ab.detectionRate);
+  const far = zip(ab.thresholds, ab.falseAlarmRate);
+
+  // the band between the two curves
+  const band = `${toPath(det, sx, sy)} L${[...far]
+    .reverse()
+    .map(([x, y], i) => `${i ? "L" : ""}${sx(x).toFixed(2)} ${sy(y).toFixed(2)}`)
+    .join(" ")} Z`;
+
+  const at = (p: readonly (readonly [number, number])[], f: number) =>
+    p[Math.max(0, Math.min(p.length - 1, Math.round(p.length * f)))];
+  const dl = at(det, 0.42);
+  const fl = at(far, 0.42);
 
   return (
     <ChartFrame
@@ -32,8 +57,17 @@ export function AlarmBurden({
       )} and the false-alarm rate is ${pct(model.earlyWarning.falseAlarmRate)}.`}
       xDomain={[0, xMax]}
       yDomain={[0, 1]}
+      width={W}
+      height={H}
+      margins={M}
       xLabel="alarm threshold"
       yLabel="rate"
+      defs={
+        <linearGradient id={`band-${id}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-low)" stopOpacity={0.22} />
+          <stop offset="100%" stopColor="var(--color-low)" stopOpacity={0.04} />
+        </linearGradient>
+      }
       table={
         <table>
           <caption>Alarm burden — {label}</caption>
@@ -58,22 +92,24 @@ export function AlarmBurden({
         </table>
       }
     >
-      {({ sx, sy, h }) => (
+      {({ h }) => (
         <>
+          <DrawArea d={band} fill={`url(#band-${id})`} />
+
           {shippedThreshold !== undefined && shippedThreshold <= xMax && (
             <>
               <line
                 x1={sx(shippedThreshold)}
-                y1={sy(1)}
+                y1={M.t}
                 x2={sx(shippedThreshold)}
-                y2={h - 34}
+                y2={h - M.b}
                 stroke="var(--color-line-bright)"
                 strokeWidth={1}
                 strokeDasharray="3 3"
               />
               <text
-                x={sx(shippedThreshold) + 4}
-                y={sy(1) + 9}
+                x={sx(shippedThreshold) + 5}
+                y={M.t + 10}
                 className="fill-dim font-mono"
                 fontSize={9}
               >
@@ -81,18 +117,34 @@ export function AlarmBurden({
               </text>
             </>
           )}
-          <DrawPath
-            d={toPath(zip(ab.thresholds, ab.detectionRate), sx, sy)}
-            stroke="var(--color-low)"
-            width={2}
-            delay={0.1}
+
+          <DrawPath d={toPath(det, sx, sy)} stroke="var(--color-low)" width={2.2} delay={0.1} />
+          <DrawPath d={toPath(far, sx, sy)} stroke="var(--color-high)" width={2.2} delay={0.2} />
+
+          <SeriesLabel
+            x={sx(dl[0]) + 6}
+            y={sy(dl[1]) - 8}
+            text="caught"
+            color="var(--color-low-ink)"
           />
-          <DrawPath
-            d={toPath(zip(ab.thresholds, ab.falseAlarmRate), sx, sy)}
-            stroke="var(--color-high)"
-            width={2}
-            delay={0.2}
+          <SeriesLabel
+            x={sx(fl[0]) + 6}
+            y={sy(fl[1]) + 14}
+            text="false alarms"
+            color="var(--color-high-ink)"
           />
+
+          {shippedThreshold !== undefined && (
+            <Annotation
+              x={sx(shippedThreshold)}
+              y={sy(model.earlyWarning.falseAlarmRate)}
+              dx={16}
+              dy={-24}
+              title={pct(model.earlyWarning.falseAlarmRate, 0)}
+              detail="of healthy patients alarmed"
+              color="var(--color-high)"
+            />
+          )}
         </>
       )}
     </ChartFrame>

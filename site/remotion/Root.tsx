@@ -1,8 +1,9 @@
 import { Composition } from "remotion";
 
 import { Explainer } from "./Explainer";
+import { GapStory, GAP_FPS, GAP_W, GAP_H, GAP_DURATION } from "./GapStory";
 import { FPS, W, H, DURATION } from "./constants";
-import { headline, operatingPoint } from "@/lib/results";
+import { headline, operatingPoint, generalization } from "@/lib/results";
 
 /**
  * Registered compositions. Consumed by the Remotion CLI (studio / render);
@@ -13,6 +14,7 @@ import { headline, operatingPoint } from "@/lib/results";
  */
 export function RemotionRoot() {
   return (
+    <>
     <Composition
       id="explainer"
       component={Explainer}
@@ -26,6 +28,20 @@ export function RemotionRoot() {
         leadHours: headline.production.medianLeadHours,
         threshold: operatingPoint.high,
       }}
-    />
+      />
+      <Composition
+        id="gap-story"
+        component={GapStory}
+        durationInFrames={GAP_DURATION}
+        fps={GAP_FPS}
+        width={GAP_W}
+        height={GAP_H}
+        defaultProps={{
+          internal: generalization.internalAuroc,
+          external: generalization.externalAuroc,
+          gap: generalization.gap,
+        }}
+      />
+    </>
   );
 }

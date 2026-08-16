@@ -119,7 +119,7 @@ export default function AboutPage() {
         eyebrow="Build record"
         title="Where it has got to"
       >
-        <Stagger className="mt-10 overflow-hidden rounded-lg border border-line bg-s1">
+        <Stagger className="mt-10 overflow-hidden rounded-lg border border-line bg-s1/62 backdrop-blur-xl">
           {phases.map((p, i) => (
             <Item key={p.n}>
               <div
