@@ -37,6 +37,8 @@ import { ThresholdSweep } from "@/components/charts/threshold-sweep";
 import { GapSlope } from "@/components/charts/gap-slope";
 import { AblationBars } from "@/components/charts/ablation-bars";
 import { GapStoryFrame } from "@/components/explainer/gap-story-frame";
+import { OutcomeWaffle } from "@/components/charts/outcome-waffle";
+import { IntegrityBars } from "@/components/charts/integrity-bars";
 
 export const metadata: Metadata = {
   title: "Research",
@@ -189,7 +191,7 @@ export default function ResearchPage() {
             title="Cross-hospital discrimination"
             lede="Four point estimates in a table look like four facts. Four confidence intervals show how much of the difference between them is real — so this leads with the intervals."
           >
-            <Reveal className="mt-8 rounded-lg border border-line bg-s1 p-5 sm:p-6">
+            <Reveal className="mt-8 rounded-lg border border-line bg-s1/62 p-5 backdrop-blur-xl sm:p-7">
               <ForestPlot
                 rows={[
                   {
@@ -303,17 +305,30 @@ export default function ResearchPage() {
             title="ROC and precision-recall"
             lede="ROC is the number everyone quotes. Precision-recall is the number that survives contact with a 1.4% prevalence problem — so both are here, side by side, for both directions."
           >
-            <div className="mt-8 grid gap-4 lg:grid-cols-2">
+            <Reveal className="mt-8">
+              <OutcomeWaffle />
+            </Reveal>
+            <SourceNote>
+              Both panels are the production model at its shipped operating point, on the
+              hospital it was not trained on. They are drawn at the same scale on purpose.
+            </SourceNote>
+
+            <div className="mt-10 space-y-4">
               {[
                 { d: AtoB, key: "AtoB" },
                 { d: BtoA, key: "BtoA" },
               ].map(({ d, key }) => (
                 <Reveal key={key}>
-                  <Panel className="p-5">
-                    <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-dim">
-                      {dirLabel(d)}
-                    </h3>
-                    <div className="mt-4 space-y-5">
+                  <Panel className="p-5 sm:p-7">
+                    <div className="flex flex-wrap items-baseline justify-between gap-3">
+                      <h3 className="font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
+                        {dirLabel(d)}
+                      </h3>
+                      <p className="num font-mono text-[11px] text-faint">
+                        AUROC {f3(d.models.stacked.auroc)} · AUPRC {f3(d.models.stacked.auprc)}
+                      </p>
+                    </div>
+                    <div className="mt-6 grid gap-9 lg:grid-cols-2">
                       <RocChart
                         id={key}
                         stacked={d.models.stacked}
@@ -426,23 +441,23 @@ export default function ResearchPage() {
             title="Is it better than treating everyone?"
             lede="Decision-curve analysis compares the model against the two strategies that need no model at all. It only earns its place in the band of thresholds where it sits above both."
           >
-            <div className="mt-8 grid gap-4 lg:grid-cols-2">
-              {[AtoB, BtoA].map((d, i) => (
-                <Reveal key={i} delay={i * 0.06}>
-                  <Panel className="p-5">
-                    <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-dim">
-                      {dirLabel(d)}
-                    </h3>
-                    <div className="mt-4">
+            <Reveal className="mt-8">
+              <Panel className="p-5 sm:p-7">
+                <div className="grid gap-9 lg:grid-cols-2">
+                  {[AtoB, BtoA].map((d, i) => (
+                    <div key={i}>
+                      <h3 className="mb-5 font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
+                        {dirLabel(d)}
+                      </h3>
                       <DecisionCurve model={d.models.stacked} label={dirLabel(d)} />
                     </div>
-                    <p className="mt-2 font-mono text-[10.5px] text-faint">
-                      accent = model · dashed = treat all / treat none
-                    </p>
-                  </Panel>
-                </Reveal>
-              ))}
-            </div>
+                  ))}
+                </div>
+                <p className="mt-4 font-mono text-[10.5px] text-faint">
+                  accent = model · dashed = treat all / treat none
+                </p>
+              </Panel>
+            </Reveal>
           </Section>
 
           {/* ── 6 · Alarm burden ──────────────────────────────────────── */}
@@ -478,14 +493,14 @@ export default function ResearchPage() {
               </Item>
             </Stagger>
 
-            <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              {[AtoB, BtoA].map((d, i) => (
-                <Reveal key={i} delay={i * 0.06}>
-                  <Panel className="p-5">
-                    <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-dim">
-                      {dirLabel(d)}
-                    </h3>
-                    <div className="mt-4">
+            <Reveal className="mt-4">
+              <Panel className="p-5 sm:p-7">
+                <div className="grid gap-9 lg:grid-cols-2">
+                  {[AtoB, BtoA].map((d, i) => (
+                    <div key={i}>
+                      <h3 className="mb-5 font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
+                        {dirLabel(d)}
+                      </h3>
                       <AlarmBurden
                         id={`ab-${i}`}
                         model={d.models.stacked}
@@ -493,14 +508,14 @@ export default function ResearchPage() {
                         shippedThreshold={operatingPoint.high}
                       />
                     </div>
-                    <p className="mt-2 font-mono text-[10.5px] text-faint">
-                      <span className="text-low-ink">●</span> detection ·{" "}
-                      <span className="text-high-ink">●</span> false alarms
-                    </p>
-                  </Panel>
-                </Reveal>
-              ))}
-            </div>
+                  ))}
+                </div>
+                <p className="mt-4 font-mono text-[10.5px] text-faint">
+                  <span className="text-low-ink">●</span> caught ·{" "}
+                  <span className="text-high-ink">●</span> false alarms
+                </p>
+              </Panel>
+            </Reveal>
 
             <Reveal className="mt-4">
               <Panel className="border-high/25 p-5">
@@ -758,7 +773,13 @@ export default function ResearchPage() {
             title="How do you know any of this is true?"
             lede="An adversarial suite plants a known lie in the evaluation and asserts that the guard catches it. It verifies the claims, not the code — and it once caught a flaw in itself."
           >
-            <Stagger className="mt-8 grid gap-3 sm:grid-cols-2">
+            <Reveal className="mt-8">
+              <Panel className="p-5 sm:p-7">
+                <IntegrityBars />
+              </Panel>
+            </Reveal>
+
+            <Stagger className="mt-4 grid gap-3 sm:grid-cols-2">
               {[
                 {
                   n: "Leakage tripwire",

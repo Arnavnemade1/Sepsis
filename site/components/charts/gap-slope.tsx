@@ -15,8 +15,8 @@ export function GapSlope() {
   const lo = 0.6;
   const hi = 0.8;
   const y = (v: number) => 40 + (1 - (v - lo) / (hi - lo)) * (H - 90);
-  const xa = 150;
-  const xb = W - 190;
+  const xa = 225;
+  const xb = W - 205;
 
   const a = generalization.internalAuroc;
   const b = generalization.externalAuroc;
@@ -35,14 +35,14 @@ export function GapSlope() {
         {[0.6, 0.65, 0.7, 0.75, 0.8].map((v) => (
           <g key={v}>
             <line
-              x1={xa - 40}
+              x1={70}
               y1={y(v)}
-              x2={xb + 40}
+              x2={xb + 30}
               y2={y(v)}
               stroke="var(--color-line-soft)"
             />
             <text
-              x={xa - 50}
+              x={60}
               y={y(v) + 3}
               textAnchor="end"
               className="fill-faint font-mono"
@@ -72,10 +72,10 @@ export function GapSlope() {
         <circle cx={xa} cy={y(a)} r={6} fill="var(--color-dim)" stroke="var(--color-bg)" strokeWidth={2} />
         <circle cx={xb} cy={y(b)} r={6} fill="var(--color-ink)" stroke="var(--color-bg)" strokeWidth={2} />
 
-        <text x={xa} y={y(a) - 20} textAnchor="middle" className="fill-ink font-mono" fontSize={22} fontWeight={500}>
+        <text x={xa} y={y(a) - 28} textAnchor="middle" className="fill-ink font-mono" fontSize={22} fontWeight={500}>
           {f3(a)}
         </text>
-        <text x={xa} y={y(a) - 6} textAnchor="middle" className="fill-dim font-mono" fontSize={10}>
+        <text x={xa} y={y(a) - 14} textAnchor="middle" className="fill-dim font-mono" fontSize={10}>
           within hospital
         </text>
         <text x={xa} y={H - 22} textAnchor="middle" className="fill-faint font-mono" fontSize={9}>
@@ -85,10 +85,10 @@ export function GapSlope() {
           40,335 patients
         </text>
 
-        <text x={xb} y={y(b) - 20} textAnchor="middle" className="fill-ink font-mono" fontSize={22} fontWeight={500}>
+        <text x={xb} y={y(b) - 28} textAnchor="middle" className="fill-ink font-mono" fontSize={22} fontWeight={500}>
           {f3(b)}
         </text>
-        <text x={xb} y={y(b) - 6} textAnchor="middle" className="fill-dim font-mono" fontSize={10}>
+        <text x={xb} y={y(b) - 14} textAnchor="middle" className="fill-dim font-mono" fontSize={10}>
           across hospitals
         </text>
         <text x={xb} y={H - 22} textAnchor="middle" className="fill-faint font-mono" fontSize={9}>
