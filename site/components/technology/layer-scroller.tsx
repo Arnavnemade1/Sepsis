@@ -17,11 +17,14 @@ const CHIP: Record<Layer["status"], { cls: string; text: string }> = {
   gated: { cls: "border-line bg-s2 text-dim", text: "Gated on credentialed data" },
 };
 
+/** Row centres, as a percentage of stage height. Symmetric about the middle so
+ *  the four rows read as one block against the stack rather than drifting. */
+const ROW_TOP = [28, 44, 60, 76];
+
 /**
- * A leader line that stretches across whatever gutter is left and ends in a
- * head at the inner edge, pointing at the stack. Built from a flexing rule plus
- * a fixed triangle rather than a scaled SVG, so the head never distorts as the
- * gutter changes width.
+ * A leader line that stretches whatever distance is left and ends in a head at
+ * the video's edge. A flexing rule plus a fixed triangle, not a scaled SVG, so
+ * the head never distorts as the gutter changes width.
  */
 function Leader({ dir }: { dir: "left" | "right" }) {
   const head = (
@@ -30,7 +33,7 @@ function Leader({ dir }: { dir: "left" | "right" }) {
     </svg>
   );
   return (
-    <span className="flex min-w-[28px] flex-1 items-center" aria-hidden="true">
+    <span className="flex min-w-[32px] flex-1 items-center" aria-hidden="true">
       {dir === "right" && head}
       <span className="h-px flex-1 bg-current" />
       {dir === "left" && head}
@@ -45,15 +48,21 @@ function Leader({ dir }: { dir: "left" | "right" }) {
  * finally erupting, so scroll drives the playhead directly and the eruption
  * lands on the last layer, "certified egress".
  *
- * The video is `object-contain`, not `cover`: it is portrait, and covering a
- * landscape viewport would crop away the top and bottom of the very stack the
- * section is about. Fitting it to the height leaves a gutter either side, which
- * is exactly where the annotations belong — so the constraint and the layout
- * want the same thing.
+ * GEOMETRY — the part that has to be exact:
  *
- * All eight callouts stay on screen, alternating sides, each with an arrow into
- * the stack. Scrolling lights the current one and dims the rest, so the section
- * reads as an annotated diagram even in a still.
+ * The video is `object-contain` (portrait footage; `cover` would crop away the
+ * top and bottom of the very stack this section is about), so its rendered
+ * width is a function of stage HEIGHT and the 464:688 aspect. That is published
+ * as `--vid-w`, and every other element is positioned from it:
+ *
+ *   · one shared container (`--stage-w`) holds the heading, both callout
+ *     columns and the rail, so all four share the same left and right edges —
+ *     previously they used three different alignment systems;
+ *   · each callout spans the FULL gutter, so its leader line reaches the video
+ *     instead of stopping a couple of hundred pixels short and pointing at
+ *     nothing. Only the prose inside is capped to a readable measure;
+ *   · the video's side edges are masked to transparent, because its own dark
+ *     background is not the page's and the seam read as a pasted-in rectangle.
  */
 export function LayerScroller({ layers }: { layers: Layer[] }) {
   const outer = useRef<HTMLDivElement>(null);
@@ -128,35 +137,52 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
 
   const glow = useTransform(scrollYProgress, [0, 0.55, 1], [0.2, 0.45, 0.85]);
 
+  // Feathers the clip's own hard side edges into the page.
+  //
+  // This has to be applied to an element sized to the VIDEO CONTENT. Masking
+  // the full-width `object-contain` element put these stops out in the empty
+  // letterbox, where there is nothing to fade — the seam stayed exactly as
+  // hard as before. Kept narrow (9%) so it softens the edge without eating
+  // into the outer discs.
+  // Feathers the clip's own hard edges into the page.
+  //
+  // This has to be applied to an element sized to the VIDEO CONTENT. Masking
+  // the full-width `object-contain` element put these stops out in the empty
+  // letterbox, where there is nothing to fade — the seam stayed exactly as hard
+  // as before.
+  //
+  // Two layers composited: sides feather narrowly (9%) so the outer discs
+  // survive, top and bottom more gently (6%) — the clip's background is a
+  // lighter grey than --bg, so without this its top edge reads as a step across
+  // the whole width.
+  const edgeMask = [
+    "linear-gradient(90deg, transparent 0%, #000 9%, #000 91%, transparent 100%)",
+    "linear-gradient(180deg, transparent 0%, #000 6%, #000 94%, transparent 100%)",
+  ].join(", ");
+
   return (
-    <div
-      ref={outer}
-      style={{ height: `${(layers.length + 1) * 62}vh` }}
-      className="relative"
-    >
+    <div ref={outer} style={{ height: `${(layers.length + 1) * 62}vh` }} className="relative">
       <div
         className="sticky top-0 h-[100svh] overflow-hidden"
         style={
           {
-            // The video is object-contain, so its rendered width is driven by
-            // the stage HEIGHT and its 464:688 aspect. Deriving the gutter from
-            // that keeps the callouts beside the stack instead of on top of it,
-            // at any viewport shape.
+            "--stage-w": "min(100vw, 1680px)",
             "--vid-w": "min(100vw, calc(100svh * 0.6744))",
-            "--gutter": "calc((100vw - var(--vid-w)) / 2)",
+            // room between the shared container edge and the video edge
+            "--gutter": "max(0px, calc((var(--stage-w) - var(--vid-w)) / 2))",
           } as React.CSSProperties
         }
       >
-        {/* ── the object, filling the stage ─────────────────────────── */}
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
           style={{
             opacity: glow,
             background:
-              "radial-gradient(46% 52% at 50% 50%, rgba(122,162,247,.20) 0%, transparent 70%)",
+              "radial-gradient(44% 52% at 50% 50%, rgba(122,162,247,.18) 0%, transparent 70%)",
           }}
         />
+
         <video
           ref={video}
           src="/media/technology.mp4"
@@ -167,99 +193,120 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
           tabIndex={-1}
           aria-hidden="true"
           onLoadedData={() => setReady(true)}
-          className="absolute inset-0 h-full w-full object-contain"
+          className="absolute left-1/2 top-0 h-full -translate-x-1/2 object-cover"
           style={{
+            // Sized to the contained width explicitly rather than relying on
+            // object-contain, so the mask percentages below resolve against the
+            // picture itself. The aspect matches exactly, so `cover` here is
+            // identical to `contain` — it just crops nothing.
+            width: "var(--vid-w)",
             opacity: ready ? 1 : 0,
             transition: "opacity .6s var(--ease-instrument)",
-          }}
-        />
-        {/* keeps type legible over the brighter frames near the eruption */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(10,11,12,.86) 0%, rgba(10,11,12,.35) 26%, transparent 44%, transparent 56%, rgba(10,11,12,.35) 74%, rgba(10,11,12,.86) 100%)",
+            maskImage: edgeMask,
+            WebkitMaskImage: edgeMask,
+            // both layers must apply, not stack additively
+            maskComposite: "intersect",
+            WebkitMaskComposite: "source-in",
           }}
         />
 
-        {/* ── heading ───────────────────────────────────────────────── */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 mx-auto max-w-6xl px-5 pt-24 sm:px-8">
-          <p className="eyebrow !text-ink/70">The stack</p>
-          <h2 className="mt-2 font-display text-[clamp(1.4rem,2.6vw,2rem)] font-semibold tracking-[-0.03em] text-ink">
-            Eight layers, signal to certificate
-          </h2>
-        </div>
+        {/* ── ONE container: heading, both columns and the rail share it ── */}
+        <div className="absolute inset-0 z-10 mx-auto w-full max-w-[1680px] px-6 sm:px-10">
+          <div className="pointer-events-none absolute left-6 top-0 pt-24 sm:left-10">
+            <p className="eyebrow !text-ink/70">The stack</p>
+            <h2 className="mt-2 font-display text-[clamp(1.4rem,2.4vw,1.9rem)] font-semibold tracking-[-0.03em] text-ink">
+              Eight layers, signal to certificate
+            </h2>
+          </div>
 
-        {/* ── side callouts (desktop) ───────────────────────────────── */}
-        <div className="absolute inset-0 z-10 hidden lg:block">
-          {layers.map((l, i) => {
-            const side: "left" | "right" = i % 2 === 0 ? "left" : "right";
-            const row = Math.floor(i / 2);
-            const top = 26 + row * 17; // % down the stage
-            const on = i === active;
-            return (
-              <motion.div
-                key={l.n}
-                initial={false}
-                animate={{ opacity: on ? 1 : 0.42, x: on ? 0 : side === "left" ? -6 : 6 }}
-                transition={{ duration: 0.32, ease: [0.2, 0.7, 0.2, 1] }}
-                className={`absolute ${side === "left" ? "left-6" : "right-6"}`}
-                style={{
-                  top: `${top}%`,
-                  width: "clamp(230px, calc(var(--gutter) - 2.5rem), 360px)",
-                }}
-              >
-                <div
-                  className={`flex items-center gap-2.5 ${
-                    side === "left" ? "" : "flex-row-reverse"
-                  }`}
-                >
-                  <span
-                    className={`num shrink-0 font-mono text-[11px] ${on ? "text-accent-ink" : "text-faint"}`}
-                  >
-                    {l.n}
-                  </span>
-                  <span
-                    className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-[2px] font-mono text-[10px] uppercase tracking-[0.08em] ${
-                      on ? CHIP[l.status].cls : "border-line text-faint"
-                    }`}
-                  >
-                    {CHIP[l.status].text}
-                  </span>
-                  <span className={on ? "text-accent" : "text-faint"}>
-                    <Leader dir={side} />
-                  </span>
-                </div>
-
-                <h3
-                  className={`mt-2.5 font-display text-[22px] font-semibold leading-tight tracking-[-0.02em] ${
-                    side === "left" ? "text-left" : "text-right"
-                  } ${on ? "text-ink" : "text-dim"}`}
-                >
-                  {l.name}
-                </h3>
-                {/* Only the active layer carries prose. Eight paragraphs
-                    competing at low opacity read as noise; eight labels with
-                    one of them expanded reads as a diagram. */}
-                <motion.p
+          {/* side callouts — desktop only */}
+          <div className="hidden [@media(min-width:1024px)_and_(min-aspect-ratio:13/10)]:block">
+            {layers.map((l, i) => {
+              const side: "left" | "right" = i % 2 === 0 ? "left" : "right";
+              const on = i === active;
+              return (
+                <motion.div
+                  key={l.n}
                   initial={false}
-                  animate={{ opacity: on ? 1 : 0 }}
-                  transition={{ duration: 0.24, ease: [0.2, 0.7, 0.2, 1] }}
-                  className={`mt-2 text-[13.5px] leading-relaxed text-muted text-pretty ${
-                    side === "left" ? "text-left" : "text-right"
-                  }`}
+                  animate={{ opacity: on ? 1 : 0.4, x: on ? 0 : side === "left" ? -6 : 6 }}
+                  transition={{ duration: 0.32, ease: [0.2, 0.7, 0.2, 1] }}
+                  className={`absolute -translate-y-1/2 ${side === "left" ? "left-6 sm:left-10" : "right-6 sm:right-10"}`}
+                  style={{
+                    top: `${ROW_TOP[Math.floor(i / 2)]}%`,
+                    // full gutter, so the leader actually reaches the video
+                    width: "max(240px, calc(var(--gutter) - 1.5rem))",
+                  }}
                 >
-                  {l.body}
-                </motion.p>
-              </motion.div>
-            );
-          })}
+                  <div
+                    className={`flex items-center gap-2.5 ${side === "left" ? "" : "flex-row-reverse"}`}
+                  >
+                    <span
+                      className={`num shrink-0 font-mono text-[11px] ${on ? "text-accent-ink" : "text-faint"}`}
+                    >
+                      {l.n}
+                    </span>
+                    <span
+                      className={`inline-flex shrink-0 items-center rounded-sm border px-2 py-[2px] font-mono text-[10px] uppercase tracking-[0.08em] ${
+                        on ? CHIP[l.status].cls : "border-line text-faint"
+                      }`}
+                    >
+                      {CHIP[l.status].text}
+                    </span>
+                    <span className={on ? "text-accent" : "text-faint"}>
+                      <Leader dir={side} />
+                    </span>
+                  </div>
+
+                  {/* prose capped to a readable measure and pinned to the OUTER
+                      edge, so both columns stay flush with the container */}
+                  <div
+                    className={`mt-2.5 max-w-[330px] ${side === "left" ? "mr-auto text-left" : "ml-auto text-right"}`}
+                  >
+                    <h3
+                      className={`font-display text-[21px] font-semibold leading-tight tracking-[-0.02em] ${
+                        on ? "text-ink" : "text-dim"
+                      }`}
+                    >
+                      {l.name}
+                    </h3>
+                    {/* Only the active layer carries prose — eight paragraphs
+                        competing at low opacity read as noise. */}
+                    <motion.p
+                      initial={false}
+                      animate={{ opacity: on ? 1 : 0 }}
+                      transition={{ duration: 0.24, ease: [0.2, 0.7, 0.2, 1] }}
+                      className="mt-2 text-[13.5px] leading-relaxed text-muted text-pretty"
+                    >
+                      {l.body}
+                    </motion.p>
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* progress rail — same container edges as everything else */}
+          <div className="absolute inset-x-6 bottom-7 hidden sm:inset-x-10 [@media(min-width:1024px)_and_(min-aspect-ratio:13/10)]:block">
+            <div className="flex items-center gap-1.5">
+              {layers.map((l, i) => (
+                <div
+                  key={l.n}
+                  className={`h-[2px] flex-1 rounded-full transition-colors duration-240 ease-instrument ${
+                    i === active ? "bg-accent" : i < active ? "bg-line-bright" : "bg-line"
+                  }`}
+                />
+              ))}
+            </div>
+            <p className="num mt-3 font-mono text-[11px] text-faint">
+              {String(active + 1).padStart(2, "0")} / {String(layers.length).padStart(2, "0")}
+              <span className="ml-3">scroll to advance</span>
+            </p>
+          </div>
         </div>
 
-        {/* ── mobile: one callout, pinned low over the video ────────── */}
-        <div className="absolute inset-x-0 bottom-0 z-10 lg:hidden">
-          <div className="border-t border-line bg-bg/85 px-5 pb-8 pt-5 backdrop-blur-xl">
+        {/* ── mobile: one callout pinned low over the video ─────────────── */}
+        <div className="absolute inset-x-0 bottom-0 z-10 [@media(min-width:1024px)_and_(min-aspect-ratio:13/10)]:hidden">
+          <div className="relative border-t border-line bg-bg/85 px-5 pb-8 pt-5 backdrop-blur-xl">
             {layers.map((l, i) => (
               <motion.div
                 key={l.n}
@@ -285,24 +332,6 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
               </motion.div>
             ))}
           </div>
-        </div>
-
-        {/* ── progress rail ─────────────────────────────────────────── */}
-        <div className="absolute inset-x-0 bottom-0 z-20 mx-auto hidden max-w-6xl px-5 pb-7 sm:px-8 lg:block">
-          <div className="flex items-center gap-1.5">
-            {layers.map((l, i) => (
-              <div
-                key={l.n}
-                className={`h-[2px] flex-1 rounded-full transition-colors duration-240 ease-instrument ${
-                  i === active ? "bg-accent" : i < active ? "bg-line-bright" : "bg-line"
-                }`}
-              />
-            ))}
-          </div>
-          <p className="num mt-3 font-mono text-[11px] text-faint">
-            {String(active + 1).padStart(2, "0")} / {String(layers.length).padStart(2, "0")}
-            <span className="ml-3">scroll to advance</span>
-          </p>
         </div>
       </div>
     </div>
