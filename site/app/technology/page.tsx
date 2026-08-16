@@ -11,6 +11,7 @@ import {
 } from "@/components/data/primitives";
 import { Reveal, Stagger, Item } from "@/components/motion/reveal";
 import { consoleUrl } from "@/lib/site-config";
+import { TechStack } from "@/components/technology/tech-stack";
 
 export const metadata: Metadata = {
   title: "Technology",
@@ -152,32 +153,11 @@ export default function TechnologyPage() {
       </header>
 
       {/* ── The stack ─────────────────────────────────────────────────── */}
-      <Section className="mt-20" eyebrow="The stack" title="Eight layers, signal to certificate">
-        <Stagger className="mt-10 overflow-hidden rounded-lg border border-line bg-s1/62 backdrop-blur-xl">
-          {layers.map((l, i) => (
-            <Item key={l.n}>
-              <div
-                className={`flex flex-col gap-3 p-5 sm:flex-row sm:items-start sm:gap-6 sm:p-6 ${
-                  i > 0 ? "border-t border-line-soft" : ""
-                }`}
-              >
-                <span className="num shrink-0 font-mono text-[12px] text-faint sm:pt-1">
-                  {l.n}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <h3 className="text-[15px] font-medium text-ink">{l.name}</h3>
-                    <StatusChip tone={chip[l.status].tone}>{chip[l.status].text}</StatusChip>
-                  </div>
-                  <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-muted text-pretty">
-                    {l.body}
-                  </p>
-                </div>
-              </div>
-            </Item>
-          ))}
-        </Stagger>
-      </Section>
+      {/* Full-bleed: the scrubbed display needs the whole viewport to pin
+          against, so it breaks out of the page's max-width container. */}
+      <div className="relative left-1/2 mt-20 w-screen -translate-x-1/2 border-y border-line">
+        <TechStack layers={layers} />
+      </div>
 
       {/* ── Formal verification ───────────────────────────────────────── */}
       <Section
