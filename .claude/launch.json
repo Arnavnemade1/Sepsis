@@ -6,6 +6,12 @@
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "uvicorn", "backend.aegis.server:app", "--host", "127.0.0.1", "--port", "8140"],
       "port": 8140
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "site", "run", "dev", "--", "--port", "3070"],
+      "port": 3070
     }
   ]
 }

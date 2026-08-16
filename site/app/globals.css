@@ -1,0 +1,187 @@
+/* ============================================================================
+   AEGIS — CLINICAL INSTRUMENT
+   ----------------------------------------------------------------------------
+   Design identity. Read this before changing a colour.
+
+   This is the public face of a medical instrument. Three rules from
+   webui/os.css:1-23 carry the whole system, and the tokens below exist to
+   enforce them:
+
+     1. COLOUR IS SIGNAL, NEVER DECORATION. Saturated colour is reserved for
+        clinical state. If a pixel is amber, a patient is amber. Chrome,
+        structure and affordances are neutral so an alarm cannot be lost in a
+        field of decorative colour.
+     2. STRUCTURE IS HAIRLINES, NOT GLOW. Depth comes from 1px borders and flat
+        panels. The ONE sanctioned gradient in this codebase is the hero scrim,
+        which exists because text over video needs contrast. Nothing else.
+     3. NUMBERS ARE THE INTERFACE. Tabular figures everywhere, tight radii, a
+        strict 4px rhythm. Nothing decorative competes with a reading.
+
+   Keep in sync with lib/tokens.ts — enforced by `npm run check:tokens`.
+   ============================================================================ */
+
+/* source("..") pins Tailwind's class-scanning root to site/.
+   Without it Tailwind scans from the process CWD, and a build launched from the
+   repo root would crawl webui/ — 1.1 MB of hand-written JS plus 44 MB of vendor
+   assets — treating every identifier in there as a candidate class name. */
+@import "tailwindcss" source("..");
+
+@theme {
+  /* ---- Rule 1, enforced by the build ------------------------------------
+     Delete Tailwind's stock palette. `text-emerald-400` then fails to compile
+     instead of quietly violating the identity. Only the colours below exist. */
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  --color-white: #fff;
+  --color-black: #000;
+
+  /* ---- surfaces: achromatic graphite, no blue cast ---- */
+  --color-bg: #0a0b0c;
+  --color-bg2: #0e0f11;
+  --color-s1: #111214;
+  --color-s2: #16181b;
+  --color-s3: #1d1f23;
+
+  /* ---- structure: hairlines do the work shadows used to ---- */
+  --color-line: rgb(255 255 255 / 0.09);
+  --color-line-soft: rgb(255 255 255 / 0.05);
+  --color-line-bright: rgb(255 255 255 / 0.18);
+
+  /* ---- text ---- */
+  --color-ink: #f2f3f5;
+  --color-muted: #a0a4ac;
+  --color-dim: #6d7178;
+  --color-faint: #4b4f56;
+
+  /* ---- CLINICAL STATE — the only saturated colour in the product ----
+     Literal hex, never var() indirection: Tailwind needs the real value to
+     compile opacity modifiers like `bg-high/10` into a color-mix(). */
+  --color-low: #40b880;
+  --color-med: #e2a33c;
+  --color-dys: #de833a;
+  --color-high: #e5544c;
+  --color-nodata: #4b4f56;
+
+  /* state ink — same hue, lifted to text-legible */
+  --color-low-ink: #7fdcae;
+  --color-med-ink: #f0c46a;
+  --color-dys-ink: #f0a76a;
+  --color-high-ink: #ff9d97;
+
+  /* ---- affordance accent. NEVER "urgent" — that is --color-high's job ---- */
+  --color-accent: #7aa2f7;
+  --color-accent-ink: #a8c4ff;
+
+  /* ---- geometry: instrument-tight, not pill-soft ---- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+
+  /* ---- motion: quick and mechanical; nothing bounces ----
+     No spacing scale override: v4 derives every spacing utility from a single
+     --spacing (0.25rem = 4px), which already matches the 4px rhythm exactly. */
+  --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  /* ---- elevation: only for things that truly float ---- */
+  --shadow-elev-1: 0 1px 2px rgb(0 0 0 / 0.5);
+  --shadow-elev: 0 16px 40px -12px rgb(0 0 0 / 0.7);
+}
+
+/* `inline` is MANDATORY for fonts, not stylistic.
+   Without it, `.font-sans` compiles to `font-family: var(--font-sans)`; since
+   --font-sans is declared in @theme (which lands on :root) while
+   --font-plex-sans arrives via a className on <html>, the indirection resolves
+   at the wrong node and the font silently never applies. `inline` bakes the
+   value into the utility instead.
+
+   --font-display reads its own name with a fallback, which is what makes the
+   headline face swappable from lib/fonts.ts alone: define --font-display there
+   and it wins; delete it and everything reverts to Plex Sans. */
+@theme inline {
+  --font-sans: var(--font-plex-sans), system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-display: var(--font-display-face, var(--font-plex-sans)), system-ui, sans-serif;
+}
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    text-rendering: optimizeLegibility;
+    /* The page must never scroll sideways. Wide things scroll inside their own
+       container instead (see .scroll-x). */
+    overflow-x: hidden;
+  }
+
+  /* Rule 3: numbers are the interface. A reading whose digits change width as
+     it updates is unreadable, so tabular figures are the default everywhere a
+     number lives, not an opt-in. */
+  .num,
+  table,
+  [data-num] {
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-accent) 28%, transparent);
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Wide content (tables, charts) scrolls inside itself so the body never does. */
+  .scroll-x {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  /* Screen-reader-only. Every chart pairs its SVG with one of these holding the
+     underlying numbers — a ROC curve means nothing read aloud, but
+     "AUROC 0.712, 95% CI 0.686-0.739" does. */
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  /* The eyebrow chip: small caps mono with a state dot. */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-dim);
+  }
+}

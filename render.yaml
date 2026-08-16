@@ -20,6 +20,16 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn backend.aegis.server:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /aegis/health
+    # Don't redeploy the backend for frontend-only commits. Every redeploy
+    # re-runs pip install and re-pulls the 7.7 MB model against a free-tier
+    # budget the keep-warm workflow already documents as tight. The marketing
+    # site (site/) and the OS shell (webui/) are both served elsewhere.
+    buildFilter:
+      ignoredPaths:
+        - "site/**"
+        - "webui/**"
+        - "docs/**"
+        - "**/*.md"
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.9"

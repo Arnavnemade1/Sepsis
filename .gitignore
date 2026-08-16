@@ -29,6 +29,27 @@ artifacts/*.log
 # (Only the public key travels, inside each exported certificate bundle.)
 artifacts/keystore/
 
+# ── Node / Next.js (site/) ──────────────────────────────────────────────
+# The marketing site in site/ is the only Node project in this repo. There is
+# deliberately NO package.json at the repo root: Cloudflare Pages builds webui/
+# with an empty build command, and a root manifest would make its build system
+# start guessing at a framework.
+node_modules/
+.next/
+out/
+.vercel/
+.turbo/
+*.tsbuildinfo
+next-env.d.ts
+.env*.local
+# Hero footage masters are hundreds of MB; the ENCODED outputs in
+# site/public/media/ are committed and must not be ignored.
+site/media-src/
+site/public/media/*.mov
+# NOTE: the unanchored `dist/` and `build/` patterns above also apply inside
+# site/. Harmless today (Next builds to .next/ and out/), but if a tool is ever
+# pointed at site/build its output will silently vanish from commits.
+
 # macOS
 .DS_Store
 
