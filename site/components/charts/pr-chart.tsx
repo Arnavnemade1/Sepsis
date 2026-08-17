@@ -5,8 +5,8 @@ import { f3, pct } from "@/lib/format";
 import type { ModelResult } from "@/lib/results";
 
 const M = { l: 50, r: 20, t: 18, b: 40 };
-const W = 560;
-const H = 400;
+const W = 620;
+const H = 440;
 
 /**
  * Precision-recall, read as "how many of your alerts are real".

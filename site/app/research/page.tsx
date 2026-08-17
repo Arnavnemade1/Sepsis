@@ -328,7 +328,7 @@ export default function ResearchPage() {
                         AUROC {f3(d.models.stacked.auroc)} · AUPRC {f3(d.models.stacked.auprc)}
                       </p>
                     </div>
-                    <div className="mt-6 grid gap-9 lg:grid-cols-2">
+                    <div className="mt-6 space-y-10">
                       <RocChart
                         id={key}
                         stacked={d.models.stacked}
@@ -383,7 +383,7 @@ export default function ResearchPage() {
             title="A probability that means what it says"
             lede="Discrimination only ranks patients. Calibration is what lets a clinician read 4% as four percent — and it is the property most likely to break when a model changes hospital."
           >
-            <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="mt-8 space-y-4">
               <Reveal>
                 <Panel className="p-5">
                   <h3 className="font-mono text-[11px] uppercase tracking-[0.08em] text-dim">
@@ -443,7 +443,7 @@ export default function ResearchPage() {
           >
             <Reveal className="mt-8">
               <Panel className="p-5 sm:p-7">
-                <div className="grid gap-9 lg:grid-cols-2">
+                <div className="space-y-10">
                   {[AtoB, BtoA].map((d, i) => (
                     <div key={i}>
                       <h3 className="mb-5 font-mono text-[11px] uppercase tracking-[0.1em] text-dim">
@@ -495,7 +495,7 @@ export default function ResearchPage() {
 
             <Reveal className="mt-4">
               <Panel className="p-5 sm:p-7">
-                <div className="grid gap-9 lg:grid-cols-2">
+                <div className="space-y-10">
                   {[AtoB, BtoA].map((d, i) => (
                     <div key={i}>
                       <h3 className="mb-5 font-mono text-[11px] uppercase tracking-[0.1em] text-dim">

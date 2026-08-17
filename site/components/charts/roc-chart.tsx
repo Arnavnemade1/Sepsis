@@ -5,8 +5,8 @@ import { f3, ci, pct } from "@/lib/format";
 import type { ModelResult } from "@/lib/results";
 
 const M = { l: 46, r: 20, t: 18, b: 40 };
-const W = 560;
-const H = 400;
+const W = 620;
+const H = 440;
 
 /**
  * ROC, with the region between the curve and the chance diagonal shaded.

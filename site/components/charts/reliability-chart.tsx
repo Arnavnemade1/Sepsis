@@ -5,8 +5,8 @@ import { f4 } from "@/lib/format";
 import type { ModelResult } from "@/lib/results";
 
 const M = { l: 48, r: 20, t: 16, b: 38 };
-const W = 460;
-const H = 320;
+const W = 620;
+const H = 400;
 
 /**
  * Calibration.
