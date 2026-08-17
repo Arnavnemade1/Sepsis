@@ -73,10 +73,21 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
   const [ready, setReady] = useState(false);
   const target = useRef(0);
 
+  /** 0 while pinned at the top, 1 when the section has been fully read. Drives
+   *  the playhead and the active layer. */
   const { scrollYProgress } = useScroll({
     target: outer,
     offset: ["start start", "end end"],
   });
+
+  /** Full travel, including the run-up before the stage pins and the run-out
+   *  after it unpins — which is where the section needs to fade rather than
+   *  hard-cut against the sections either side of it. */
+  const { scrollYProgress: through } = useScroll({
+    target: outer,
+    offset: ["start end", "end start"],
+  });
+  const stageOpacity = useTransform(through, [0, 0.08, 0.92, 1], [0, 1, 1, 0]);
 
   const idx = useTransform(scrollYProgress, (p) =>
     Math.min(layers.length - 1, Math.floor(p * layers.length + 0.0001)),
@@ -149,13 +160,6 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
 
   const glow = useTransform(scrollYProgress, [0, 0.55, 1], [0.2, 0.45, 0.85]);
 
-  // Feathers the clip's own hard side edges into the page.
-  //
-  // This has to be applied to an element sized to the VIDEO CONTENT. Masking
-  // the full-width `object-contain` element put these stops out in the empty
-  // letterbox, where there is nothing to fade — the seam stayed exactly as
-  // hard as before. Kept narrow (9%) so it softens the edge without eating
-  // into the outer discs.
   // Feathers the clip's own hard edges into the page.
   //
   // This has to be applied to an element sized to the VIDEO CONTENT. Masking
@@ -174,16 +178,21 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
 
   return (
     <div ref={outer} style={{ height: `${(layers.length + 1) * 62}vh` }} className="relative">
-      <div
+      <motion.div
         className="sticky top-0 h-[100svh] overflow-hidden"
-        style={
-          {
+        style={{
+          // Fades the whole stage in and out across the section boundaries so it
+          // does not hard-cut against the sections either side. Kept OUTSIDE the
+          // CSSProperties cast below — a MotionValue is not a valid CSS value,
+          // and casting it as one silently breaks the animation.
+          opacity: stageOpacity,
+          ...({
             "--stage-w": "min(100vw, 1680px)",
             "--vid-w": "min(100vw, calc(100svh * 0.6744))",
             // room between the shared container edge and the video edge
             "--gutter": "max(0px, calc((var(--stage-w) - var(--vid-w)) / 2))",
-          } as React.CSSProperties
-        }
+          } as React.CSSProperties),
+        }}
       >
         <motion.div
           aria-hidden="true"
@@ -240,7 +249,9 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
                 <motion.div
                   key={l.n}
                   initial={false}
-                  animate={{ opacity: on ? 1 : 0.4, x: on ? 0 : side === "left" ? -6 : 6 }}
+                  // opacity only — an x-offset on inactive items would break the
+                  // flush column edges this layout is built on
+                  animate={{ opacity: on ? 1 : 0.38 }}
                   transition={{ duration: 0.32, ease: [0.2, 0.7, 0.2, 1] }}
                   className={`absolute -translate-y-1/2 ${side === "left" ? "left-6 sm:left-10" : "right-6 sm:right-10"}`}
                   style={{
@@ -345,7 +356,7 @@ export function LayerScroller({ layers }: { layers: Layer[] }) {
             ))}
           </div>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }
