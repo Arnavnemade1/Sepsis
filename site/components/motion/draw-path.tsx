@@ -2,17 +2,22 @@
 
 import { motion } from "motion/react";
 
+import { useChartInView } from "./chart-reveal";
+
 /**
- * A curve that draws itself when it scrolls into view, like a plotter laying
- * down ink. This is the concrete reason the charts are hand-rolled SVG rather
- * than a chart library — animating `pathLength` means reaching past a library's
- * API into its internal path refs, whereas here it is one prop.
+ * A curve that draws itself like a plotter laying down ink. This is the concrete
+ * reason the charts are hand-rolled SVG rather than a chart library — animating
+ * `pathLength` means reaching past a library's API into its internal path refs,
+ * whereas here it is one prop.
  *
- * Only the finished `d` string crosses the server/client boundary. The scale
+ * These animate off `animate={...}` driven by a boolean from ChartReveal, NOT
+ * `whileInView`. Motion implements `whileInView` with an IntersectionObserver on
+ * the element itself, and IntersectionObserver does not reliably report SVG
+ * child elements — so `whileInView` here left every curve permanently invisible.
+ * See components/motion/chart-reveal.tsx.
+ *
+ * Only the finished `d` string crosses the server/client boundary; the scale
  * math and the underlying arrays stay on the server.
- *
- * Under prefers-reduced-motion, MotionConfig reducedMotion="user" (set in
- * MotionProvider) drops the transform animation and the path simply appears.
  */
 export function DrawPath({
   d,
@@ -29,6 +34,7 @@ export function DrawPath({
   delay?: number;
   duration?: number;
 }) {
+  const on = useChartInView();
   return (
     <motion.path
       d={d}
@@ -39,8 +45,7 @@ export function DrawPath({
       strokeLinecap="round"
       strokeDasharray={dash}
       initial={{ pathLength: 0, opacity: 0 }}
-      whileInView={{ pathLength: 1, opacity: 1 }}
-      viewport={{ once: true, amount: 0.3 }}
+      animate={on ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
       transition={{
         pathLength: { duration, ease: [0.2, 0.7, 0.2, 1], delay },
         opacity: { duration: 0.12, delay },
@@ -63,14 +68,14 @@ export function DrawArea({
   fill: string;
   delay?: number;
 }) {
+  const on = useChartInView();
   return (
     <motion.path
       d={d}
       fill={fill}
       stroke="none"
       initial={{ opacity: 0 }}
-      whileInView={{ opacity: 1 }}
-      viewport={{ once: true, amount: 0.3 }}
+      animate={on ? { opacity: 1 } : { opacity: 0 }}
       transition={{ duration: 0.7, ease: [0.2, 0.7, 0.2, 1], delay: delay + 0.25 }}
     />
   );
@@ -88,6 +93,7 @@ export function DrawDots({
   r?: number;
   delay?: number;
 }) {
+  const on = useChartInView();
   return (
     <>
       {pts.map(([cx, cy], i) => (
@@ -100,8 +106,7 @@ export function DrawDots({
           stroke="var(--color-s1)"
           strokeWidth={1.5}
           initial={{ opacity: 0, scale: 0.6 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={{ once: true, amount: 0.3 }}
+          animate={on ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.6 }}
           transition={{ duration: 0.2, ease: [0.2, 0.7, 0.2, 1], delay: delay + i * 0.03 }}
         />
       ))}

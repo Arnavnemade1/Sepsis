@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+import { ChartReveal } from "@/components/motion/chart-reveal";
+
 import { M, scaleX, scaleY, ticks, type Range, type Margins } from "@/lib/scales";
 import { fmtTick } from "@/lib/format";
 
@@ -63,6 +65,9 @@ export function ChartFrame({
 
   return (
     <figure className="m-0">
+      {/* The IntersectionObserver has to live on this div. Watching the SVG
+          children directly (whileInView) never fires — see chart-reveal.tsx. */}
+      <ChartReveal>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
@@ -146,6 +151,7 @@ export function ChartFrame({
 
         {children({ sx, sy, w: width, h: height, m })}
       </svg>
+      </ChartReveal>
       {table && <div className="sr-only">{table}</div>}
     </figure>
   );

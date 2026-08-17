@@ -1,6 +1,7 @@
 "use client";
 
-import { motion } from "motion/react";
+import { motion, useInView } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 
 import { f3 } from "@/lib/format";
 
@@ -28,6 +29,30 @@ export function ForestPlot({
   rows: ForestRow[];
   domain?: [number, number];
 }) {
+  const ref = useRef<HTMLElement>(null);
+  const observed = useInView(ref, { once: true, amount: 0.2 });
+
+  // Same safety net as ChartReveal: if the plot is plainly on screen but the
+  // observer never reported it, show it anyway. An un-animated forest plot is a
+  // small loss; an invisible one is the bug this file just had.
+  const [rescued, setRescued] = useState(false);
+  useEffect(() => {
+    if (observed || rescued) return;
+    const check = () => {
+      const el = ref.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < window.innerHeight && r.bottom > 0 && r.height > 0) setRescued(true);
+    };
+    const t = setTimeout(check, 900);
+    window.addEventListener("scroll", check, { passive: true });
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("scroll", check);
+    };
+  }, [observed, rescued]);
+  const inView = observed || rescued;
+
   const W = 620;
   const rh = 40;
   const H = rows.length * rh + 34;
@@ -38,7 +63,11 @@ export function ForestPlot({
   const gridVals = [0.5, 0.6, 0.7, 0.8].filter((v) => v >= domain[0] && v <= domain[1]);
 
   return (
-    <figure className="m-0">
+    // The observer must watch this DIV, not the motion.g rows inside the SVG.
+    // IntersectionObserver does not reliably report SVG child elements, so the
+    // previous `whileInView` on each row never fired and the plot rendered as
+    // bare axes with no rows at all. See components/motion/chart-reveal.tsx.
+    <figure className="m-0" ref={ref}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
@@ -87,8 +116,7 @@ export function ForestPlot({
             <motion.g
               key={r.label + i}
               initial={{ opacity: 0, x: -6 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true, amount: 0.4 }}
+              animate={inView ? { opacity: 1, x: 0 } : { opacity: 0, x: -6 }}
               transition={{ duration: 0.24, ease: [0.2, 0.7, 0.2, 1], delay: i * 0.06 }}
             >
               <text
