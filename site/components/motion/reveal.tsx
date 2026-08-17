@@ -1,7 +1,9 @@
 "use client";
 
 import { motion, type Variants } from "motion/react";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
+
+import { useSafeInView } from "./use-safe-in-view";
 
 /**
  * Scroll reveals.
@@ -9,11 +11,14 @@ import type { ReactNode } from "react";
  * y: 8, not 40 — eight pixels is two units of the 4px rhythm. A big slide-up on
  * a clinical instrument reads as a landing-page template.
  *
- * once: true — re-triggering on every scroll-past is the most common taste
- * failure in this pattern.
+ * These are driven by `useSafeInView` rather than `whileInView`. The behaviour
+ * is the same when the observer works; the difference is that content can never
+ * be left permanently at `opacity: 0` if it does not. Every element here starts
+ * invisible, so a silent observer failure is a blank page, not a missing
+ * flourish — and that has already happened once on this site.
  *
  * Under prefers-reduced-motion these collapse to a plain opacity fade
- * automatically, via MotionConfig reducedMotion="user".
+ * automatically, via MotionConfig reducedMotion="user" in MotionProvider.
  */
 const group: Variants = {
   hidden: {},
@@ -34,14 +39,17 @@ export function Stagger({
   className?: string;
   as?: "div" | "ul" | "section";
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useSafeInView(ref);
   const C = motion[as];
+
   return (
     <C
+      ref={ref as never}
       className={className}
       variants={group}
       initial="hidden"
-      whileInView="show"
-      viewport={{ once: true, amount: 0.2, margin: "0px 0px -10% 0px" }}
+      animate={inView ? "show" : "hidden"}
     >
       {children}
     </C>
@@ -75,12 +83,15 @@ export function Reveal({
   className?: string;
   delay?: number;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useSafeInView(ref);
+
   return (
     <motion.div
+      ref={ref}
       className={className}
       initial={{ opacity: 0, y: 8 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount: 0.2, margin: "0px 0px -10% 0px" }}
+      animate={inView ? { opacity: 1, y: 0 } : { opacity: 0, y: 8 }}
       transition={{ duration: 0.24, ease: [0.2, 0.7, 0.2, 1], delay }}
     >
       {children}

@@ -1,7 +1,9 @@
 "use client";
 
-import { motion, useInView } from "motion/react";
-import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { useRef } from "react";
+
+import { useSafeInView } from "@/components/motion/use-safe-in-view";
 
 import { f3 } from "@/lib/format";
 
@@ -30,28 +32,7 @@ export function ForestPlot({
   domain?: [number, number];
 }) {
   const ref = useRef<HTMLElement>(null);
-  const observed = useInView(ref, { once: true, amount: 0.2 });
-
-  // Same safety net as ChartReveal: if the plot is plainly on screen but the
-  // observer never reported it, show it anyway. An un-animated forest plot is a
-  // small loss; an invisible one is the bug this file just had.
-  const [rescued, setRescued] = useState(false);
-  useEffect(() => {
-    if (observed || rescued) return;
-    const check = () => {
-      const el = ref.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      if (r.top < window.innerHeight && r.bottom > 0 && r.height > 0) setRescued(true);
-    };
-    const t = setTimeout(check, 900);
-    window.addEventListener("scroll", check, { passive: true });
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("scroll", check);
-    };
-  }, [observed, rescued]);
-  const inView = observed || rescued;
+  const inView = useSafeInView(ref);
 
   const W = 620;
   const rh = 40;

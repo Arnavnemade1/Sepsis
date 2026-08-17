@@ -115,7 +115,7 @@ export default function AboutPage() {
 
       {/* ── Timeline ──────────────────────────────────────────────────── */}
       <Section
-        className="mt-20 border-t border-line pt-20"
+        className="border-t border-line py-20 sm:py-28"
         eyebrow="Build record"
         title="Where it has got to"
       >
@@ -149,7 +149,7 @@ export default function AboutPage() {
 
       {/* ── What it is not ────────────────────────────────────────────── */}
       <Section
-        className="mt-20 border-t border-line pt-20"
+        className="border-t border-line py-20 sm:py-28"
         eyebrow="Scope"
         title="What this is not"
       >
@@ -185,7 +185,7 @@ export default function AboutPage() {
       </Section>
 
       {/* ── Colophon ──────────────────────────────────────────────────── */}
-      <Section className="mt-20 border-t border-line pt-20" eyebrow="Colophon">
+      <Section className="border-t border-line py-20 sm:py-28" eyebrow="Colophon">
         <Reveal>
           <Panel className="p-6 sm:p-8">
             <dl className="grid gap-x-10 gap-y-5 text-[14px] sm:grid-cols-2">
