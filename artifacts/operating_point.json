@@ -1,15 +1,15 @@
 {
-  "high": 0.0725,
-  "medium": 0.0362,
+  "high": 0.055,
+  "medium": 0.0275,
   "objective": "constrained",
   "max_false_alarm_rate": 0.15,
-  "oof_utility": 0.27964408960636444,
-  "oof_detection_rate": 0.3805970149253731,
-  "oof_false_alarm_rate": 0.10599415204678363,
-  "oof_median_lead_hours": 33.5,
-  "prob_p95": 0.0857843137254902,
-  "prob_p99": 0.13953488372093023,
-  "prob_max": 0.8571428571428571,
-  "frac_above_high": 0.05653237224868066,
-  "n_patients": 3004
+  "oof_utility": 0.29110134436401214,
+  "oof_detection_rate": 0.35526315789473684,
+  "oof_false_alarm_rate": 0.07467532467532467,
+  "oof_median_lead_hours": 39.0,
+  "prob_p95": 0.05320600272851296,
+  "prob_p99": 0.16687898089171974,
+  "prob_max": 0.16687898089171974,
+  "frac_above_high": 0.04472777216305165,
+  "n_patients": 1000
 }

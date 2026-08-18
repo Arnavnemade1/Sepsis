@@ -11,6 +11,10 @@ the shipped hand-set constants, so the change is always quoted against what it r
 
 ``--save`` writes artifacts/operating_point.json, which AegisCore loads at boot. It
 refuses to save a point that loses to the incumbent on held-out utility.
+
+``--detector-objective`` must match the promoted artifact. A threshold is a reading of
+one particular score distribution: derive it against a differently-fitted detector and
+the number is meaningless even though nothing errors.
 """
 from __future__ import annotations
 
@@ -39,7 +43,12 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=4000)
     ap.add_argument("--folds", type=int, default=3)
     ap.add_argument("--holdout", type=float, default=0.25)
-    ap.add_argument("--objective", choices=["constrained", "utility"], default="constrained")
+    ap.add_argument("--objective", choices=["constrained", "utility"], default="constrained",
+                    help="how the THRESHOLD is chosen from the out-of-fold scores")
+    ap.add_argument("--detector-objective", choices=["balanced", "utility"], default="utility",
+                    help="which objective the DETECTOR itself is fitted with; must match "
+                         "the promoted artifact or the derived threshold belongs to a "
+                         "different score distribution than the one it will be applied to")
     ap.add_argument("--max-far", type=float, default=0.15,
                     help="cap on the fraction of non-septic patients ever alarmed")
     ap.add_argument("--seed", type=int, default=42)
@@ -61,8 +70,10 @@ def main() -> None:
     print(f"\nBuilding {args.folds}-fold out-of-fold predictions on train patients...")
     oof = np.zeros(len(ytr))
     for k, (a, b) in enumerate(stratified_group_folds(gtr, ytr, args.folds, args.seed)):
-        mk = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False).fit(
-            ftr.iloc[a], ytr[a], groups=gtr[a])
+        mk = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False,
+                                     objective=args.detector_objective).fit(
+            ftr.iloc[a], ytr[a], groups=gtr[a],
+            hour_index=htr[a], onset_hour=otr[a])
         oof[b] = mk.predict_proba(ftr.iloc[b])
         print(f"  fold {k+1}/{args.folds}")
 
@@ -84,7 +95,9 @@ def main() -> None:
           + f"): HIGH={op.high:.4f}  MEDIUM={op.medium:.4f}")
 
     print("\nFitting the deployed model on all train patients...")
-    m = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False).fit(ftr, ytr, groups=gtr)
+    m = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False,
+                                objective=args.detector_objective).fit(
+        ftr, ytr, groups=gtr, hour_index=htr, onset_hour=otr)
     p_te = m.predict_proba(feats.iloc[te])
 
     print("\n=== GATE — held-out patients (never used to derive the threshold) ===")

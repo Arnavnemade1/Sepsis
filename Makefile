@@ -1,7 +1,8 @@
-.PHONY: help setup verify verify-core verify-integrity verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
+SPEC ?= dev
 HOST ?= 127.0.0.1
 PORT ?= 8100
 
@@ -13,6 +14,7 @@ help:
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
@@ -25,6 +27,8 @@ help:
 	@echo "  make serve        Start the AegisOS API + web shell"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
+	@echo "  make frontier     Benchmark every detector technology on identical folds"
+	@echo "  make frontier-report  Rebuild the frontier results table from saved OOF"
 	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
 	@echo "  make operating-point  Derive the alarm thresholds from data (add --save to apply)"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
@@ -36,6 +40,16 @@ setup:
 
 verify:
 	$(PY) verify_full_system.py
+
+verify-frontier:
+	$(PY) verify_frontier.py
+
+frontier:
+	$(PY) -m backend.ml.scripts.frontier --spec $(SPEC) --out artifacts/frontier/$(SPEC).json
+
+frontier-report:
+	$(PY) -m backend.ml.scripts.frontier_report artifacts/frontier/*_oof.npz \
+		--spec $(SPEC) --baseline gbm --md docs/FRONTIER_REPORT.md
 
 verify-core:
 	$(PY) verify_system.py

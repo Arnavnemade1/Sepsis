@@ -1,0 +1,126 @@
+{
+  "created": "2026-08-18T18:46:22",
+  "feature_set": "wearable",
+  "limit": 8000,
+  "seed": 42,
+  "n_rows": 310061,
+  "n_patients": 8000,
+  "holdout_metrics": {
+    "incumbent": {
+      "auroc": 0.7622488843405567,
+      "auprc": 0.07205229998079882,
+      "ece": 0.0028063707425180747,
+      "brier": 0.0185122376960839,
+      "utility": 0.33327336253650397,
+      "utility_best": 0.3449989570296204,
+      "detect_at_far15": 0.4768211920529801,
+      "lead_at_far15": 29.0,
+      "detection_at_spec90": 0.5562913907284768,
+      "false_alarm_at_spec90": 0.2822450080949811,
+      "median_lead_at_spec90": 30.5
+    },
+    "candidate": {
+      "auroc": 0.7692096940907343,
+      "auprc": 0.07514101378144877,
+      "ece": 0.0023002553060010025,
+      "brier": 0.01792405709117795,
+      "utility": 0.3372757613683768,
+      "utility_best": 0.35011211931581143,
+      "detect_at_far15": 0.41721854304635764,
+      "lead_at_far15": 29.0,
+      "detection_at_spec90": 0.5827814569536424,
+      "false_alarm_at_spec90": 0.2908796546141392,
+      "median_lead_at_spec90": 30.0
+    }
+  },
+  "temporal_filters": {
+    "ema": {
+      "auroc": 0.761255484763562,
+      "auprc": 0.07997200637046588,
+      "ece": 0.0008741732831988543,
+      "brier": 0.017978203729979384,
+      "utility": 0.29960106382978685,
+      "utility_best": 0.31776439299123904,
+      "detect_at_far15": 0.41721854304635764,
+      "lead_at_far15": 34.0,
+      "detection_at_spec90": 0.40397350993377484,
+      "false_alarm_at_spec90": 0.1397733405288721,
+      "median_lead_at_spec90": 31.0
+    },
+    "blend": {
+      "auroc": 0.7707000062429783,
+      "auprc": 0.08385873337497993,
+      "ece": 0.0013155086815399186,
+      "brier": 0.01792564930025972,
+      "utility": 0.32034313725490227,
+      "utility_best": 0.34462088026700044,
+      "detect_at_far15": 0.4105960264900662,
+      "lead_at_far15": 31.5,
+      "detection_at_spec90": 0.4768211920529801,
+      "false_alarm_at_spec90": 0.20561252023745277,
+      "median_lead_at_spec90": 33.5
+    },
+    "cummax": {
+      "auroc": 0.7504573851231864,
+      "auprc": 0.0630469396446931,
+      "ece": 0.0137989218119374,
+      "brier": 0.018373819304186974,
+      "utility": 0.29659209428452243,
+      "utility_best": 0.32297663746349603,
+      "detect_at_far15": 0.41721854304635764,
+      "lead_at_far15": 29.0,
+      "detection_at_spec90": 0.41721854304635764,
+      "false_alarm_at_spec90": 0.15056664867781974,
+      "median_lead_at_spec90": 29.0
+    },
+    "hazard": {
+      "auroc": 0.6683182989316365,
+      "auprc": 0.027738320931310533,
+      "ece": 0.0397061921759045,
+      "brier": 0.026017955980614235,
+      "utility": -0.047262202753445136,
+      "utility_best": 0.04852680433875676,
+      "detect_at_far15": 0.23178807947019867,
+      "lead_at_far15": 38.0,
+      "detection_at_spec90": 1.0,
+      "false_alarm_at_spec90": 1.0,
+      "median_lead_at_spec90": 23.0
+    }
+  },
+  "auroc_delta": 0.0069608097501775434,
+  "auprc_delta": 0.003088713800649956,
+  "utility_delta": 0.004002398831872811,
+  "configs": {
+    "incumbent": {
+      "objective": "balanced",
+      "roster": [
+        "hgb",
+        "hgb2",
+        "et",
+        "lr"
+      ]
+    },
+    "candidate": {
+      "objective": "balanced",
+      "roster": [
+        "hgb",
+        "hgb2",
+        "et",
+        "lr",
+        "xgb@utility"
+      ]
+    }
+  },
+  "gates": {
+    "discrimination": true,
+    "decisions": true
+  },
+  "operating_point": {
+    "high": 0.055,
+    "medium": 0.0275,
+    "incumbent_high": 0.0675,
+    "gated_utility": 0.19240479697033427,
+    "incumbent_utility": 0.09175257731958757
+  },
+  "promoted": true
+}

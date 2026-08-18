@@ -8,6 +8,13 @@ scipy==1.13.1
 scikit-learn==1.6.1
 pandas==2.3.3
 joblib==1.5.3
+# The production detector's stacked ensemble now carries an XGBoost member (the one
+# base learner whose errors are genuinely decorrelated from the sklearn ones — see
+# docs/FRONTIER_REPORT.md). The artifact is a pickle of that estimator, so the server
+# cannot load the detector at all without this. Pinned to the training version: an
+# XGBoost booster unpickled by a different major version is not guaranteed to score
+# identically. ~7.5 MB installed.
+xgboost==2.1.4
 z3-solver==4.16.0.0
 supabase==2.31.0
 python-dotenv==1.2.1

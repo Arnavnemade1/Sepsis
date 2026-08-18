@@ -9,6 +9,10 @@ backend/ml/README.md). This script re-checks that on a held-out slice, then — 
 with --promote AND a real gain — refits on all data and replaces
 artifacts/gbm_<set>.joblib (backing up the previous detector). AegisCore loads that
 path transparently (the stack takes a DataFrame, like the HDC detector).
+
+``--objective utility`` (the default since the frontier work) fits the target the
+official scoring function implies rather than the raw challenge label; see
+:mod:`backend.ml.eval.utility` for why those are not the same thing.
 """
 from __future__ import annotations
 
@@ -37,6 +41,12 @@ def main() -> None:
     ap.add_argument("--feature-set", choices=["wearable", "lab"], default="wearable")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--hdc", action="store_true", help="include the HDC detector as a base learner")
+    ap.add_argument("--objective", choices=["balanced", "utility"], default="utility",
+                    help="'utility' fits the target the official scoring function implies "
+                         "(see backend.ml.eval.utility); 'balanced' is the historic "
+                         "challenge-label objective")
+    ap.add_argument("--roster", default="",
+                    help="comma-separated base learners, e.g. hgb,hgb2,et,lr[,lgbm]")
     ap.add_argument("--holdout", type=float, default=0.15)
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--promote", action="store_true",
@@ -58,10 +68,15 @@ def main() -> None:
     rep_gbm = metrics.evaluate(yte, gbm.predict_proba(feats.iloc[te].to_numpy()), gte, hte, ote)
     print("\n=== GBM (benchmark) — held-out test ===\n" + rep_gbm.pretty())
 
-    stack = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=args.hdc).fit(
-        feats.iloc[tr], ds.y[tr], groups=ds.groups[tr])
+    roster = [r.strip() for r in args.roster.split(",") if r.strip()] or None
+    mk = lambda: StackedEnsembleDetector(
+        channels=list(cfg.channels), use_hdc=args.hdc, objective=args.objective,
+        **({"roster": roster} if roster else {}))
+    stack = mk().fit(feats.iloc[tr], ds.y[tr], groups=ds.groups[tr],
+                     hour_index=ds.hour_index[tr], onset_hour=ds.onset_hour[tr])
     rep_st = metrics.evaluate(yte, stack.predict_proba(feats.iloc[te]), gte, hte, ote)
-    print("\n=== Stacked ensemble — held-out test ===\n" + rep_st.pretty())
+    print(f"\n=== Stacked ensemble [objective={args.objective}] — held-out test ===\n"
+          + rep_st.pretty())
     print(f"\nmeta weights: { {k: round(v, 2) for k, v in stack.meta_weights().items()} }")
     delta = rep_st.auroc - rep_gbm.auroc
     print(f"AUROC delta (stack - GBM): {delta:+.4f}")
@@ -72,8 +87,8 @@ def main() -> None:
             print(f"\nREFUSED to promote: gain {delta:+.4f} within noise (<=0.005).")
             return
         print("\nRefitting the stack on ALL data for the production artifact...")
-        full = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=args.hdc).fit(
-            feats, ds.y, groups=ds.groups)
+        full = mk().fit(feats, ds.y, groups=ds.groups,
+                        hour_index=ds.hour_index, onset_hour=ds.onset_hour)
         if os.path.exists(prod):
             os.replace(prod, prod + ".gbm.bak")
             print(f"Backed up previous detector -> {prod}.gbm.bak")

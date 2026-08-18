@@ -155,6 +155,66 @@ def early_warning(
     }
 
 
+def detection_at_false_alarm_rate(
+    y: np.ndarray,
+    p: np.ndarray,
+    groups: np.ndarray,
+    onset_hour: np.ndarray,
+    hour_index: np.ndarray,
+    target_far: float = 0.15,
+) -> Dict[str, float]:
+    """How many septic patients are caught when the alarm budget is fixed.
+
+    Comparing detectors at a shared *score* threshold — or at matched specificity —
+    is misleading when their scores are shaped differently: a model whose output is
+    smooth over time crosses any threshold on fewer patients, which looks like worse
+    sensitivity when it is really a different point on the same curve. A ward has an
+    alarm budget, not a threshold, so this fixes the thing the ward actually fixes —
+    the fraction of non-septic patients ever alarmed — and reports what each detector
+    buys inside it.
+
+    The threshold comes from the *non-septic* patients' peak scores alone, so it is
+    set without consulting a single septic outcome.
+    """
+    groups = np.asarray(groups)
+    order = np.lexsort((hour_index, groups))
+    g, ps, hs, os_ = groups[order], np.asarray(p)[order], np.asarray(hour_index)[order], np.asarray(onset_hour)[order]
+    starts = np.flatnonzero(np.r_[True, g[1:] != g[:-1]])
+    bounds = np.r_[starts, len(g)]
+
+    nonseptic_peak, septic = [], []
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        onset = int(os_[a])
+        if onset < 0:
+            nonseptic_peak.append(ps[a:b].max())
+        else:
+            pre = ps[a:b][hs[a:b] <= onset]
+            if pre.size:
+                septic.append((onset, hs[a:b][hs[a:b] <= onset], pre))
+    if not nonseptic_peak or not septic:
+        return {"threshold": float("nan"), "detection_rate": float("nan"),
+                "median_lead_time_hours": float("nan"), "realised_far": float("nan")}
+
+    peaks = np.sort(np.asarray(nonseptic_peak))
+    # Smallest threshold whose alarmed fraction is <= the budget.
+    k = int(np.ceil((1.0 - target_far) * len(peaks))) - 1
+    thr = float(peaks[min(max(k, 0), len(peaks) - 1)])
+    realised = float((peaks >= thr).mean())
+
+    detected, leads = 0, []
+    for onset, hours, pre in septic:
+        hit = hours[pre >= thr]
+        if hit.size:
+            detected += 1
+            leads.append(float(onset - hit.min()))
+    return {
+        "threshold": thr,
+        "detection_rate": detected / len(septic),
+        "median_lead_time_hours": float(np.median(leads)) if leads else 0.0,
+        "realised_far": realised,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Official CinC 2019 normalized utility
 # (adapted from physionetchallenges/evaluation-2019, MIT license)

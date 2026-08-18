@@ -57,7 +57,13 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `config.py` | Paths, channel taxonomy (wearable vs lab), label semantics |
 | `data/cinc2019.py` | Parallel downloader + PSV parser → `PatientRecord` |
 | `data/features.py` | **Causal** feature engineering (no future leakage) |
-| `models/stacked.py` | **Stacked ensemble** (hgb+hgb2+et+lr [+hdc]) — the gap-closing production detector that beats the single GBM |
+| `models/stacked.py` | **Stacked ensemble** (hgb+hgb2+et+lr [+hdc, +lgbm]) — the production detector; now fittable against the utility-aligned objective |
+| `eval/utility.py` | **The official utility, vectorised — and turned into a training target.** The scoring function's own decision rule, which the challenge label does not match |
+| `eval/bench.py` | **Fixed-fold benchmark harness** — identical patient-grouped folds + paired patient-level bootstrap for every candidate |
+| `models/boosters.py` | **Utility-aligned boosters** (sklearn HGB / LightGBM / XGBoost × objective) — the ablation behind the base-model upgrade |
+| `models/sequence.py` | **Causal deep sequence detectors** — dilated TCN, Mamba-2-style selective state space, causal transformer; per-patient trajectories, not flat rows |
+| `models/temporal.py` | **Causal decision-layer filters** (EMA / running max / decaying log-odds) over a row-wise detector's own score |
+| `scripts/frontier*.py` | Run the benchmark, rebuild its table from saved out-of-fold predictions, confirm cross-hospital |
 | `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |
 | `operating_point.py` | **Derived alarm thresholds** — the operating point, computed from out-of-fold predictions against the official utility, instead of guessed |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |
@@ -150,6 +156,67 @@ raw-accuracy replacement for trees. Stated, not hidden — see the
 `hdc_detector.py` / `augmented.py` / `stacked.py` docstrings for the full trail.
 
 See `artifacts/compare_*.json` for the exact, current numbers from your run.
+
+---
+
+## The accuracy frontier — the objective was wrong, but the ensemble already knew
+
+Full write-up: [`docs/FRONTIER_REPORT.md`](../../docs/FRONTIER_REPORT.md).
+
+```bash
+make frontier SPEC=dev          # every registered technology, identical folds
+make verify-frontier            # adversarial audit of the claims below
+python -m backend.ml.scripts.promote_frontier --limit 8000 --jobs 6 --promote
+```
+
+Detection had been stuck (within-site ≈0.73–0.77, cross-hospital ≈0.69) and Phase 7
+concluded the ceiling was data rather than capacity. This pass went looking outside the
+family of things already tried — LightGBM/XGBoost, deep causal sequence models, a
+tabular foundation model — and the interesting part is where it *didn't* pay off.
+
+- **The challenge label is not the scoring function.** The label flips to 1 at
+  `t_sepsis − 6h`, but the official utility pays up to **+1** for alarming in
+  `[−12h, −6h)`, where the label says 0 — on this cohort 3,419 patient-hours carrying
+  ~19% of all positive-side utility that every model had been trained to call negative.
+  `eval/utility.py` derives the target the utility actually implies (`z = sign(u₁−u₀)`,
+  `w = |u₁−u₀|`); the weighted Bayes rule under `(z,w)` *is* the utility-optimal alarm.
+  Verified to reproduce the reference utility to 3e-16.
+- **It is a large win for a single booster**: hgb 0.7283→**0.7467**, lgbm
+  0.7408→**0.7533**, xgb 0.7213→**0.7590** (4-fold grouped CV, 8k patients). Worth more
+  than the library choice. Calibration untouched (ECE ≤0.003).
+- **…and worth nothing inside the stack.** `stack-utility` vs the shipped `stack`:
+  ΔAUROC −0.0011, CI [−0.0043, +0.0020], n.s. The reason is a rank correlation of
+  **0.965** between the two — re-aiming every member is *redundant with what stacking
+  already does*. (`detect@FA15` looked like +8.1pp, but it is significant only at a 15%
+  alarm budget and vanishes at 10% and 20%; quoting it would have been metric shopping.)
+- **What the ensemble actually lacks is a disagreeing member.** `xgb-utility` is weaker
+  alone (0.7503) but rank-correlates only **0.679** with the stack, and an *unfitted*
+  50/50/50 rank average including it beats the incumbent: AUROC +0.0053, CI [+0.0015,
+  +0.0095] (significant), AUPRC 0.0834→0.0912 (**+9.4%**, the metric that matters at 2%
+  prevalence). Stacking is paid for disagreement, not for strength.
+- So `StackedEnsembleDetector` now takes a **per-member objective** (`"xgb@utility"` in
+  the roster) — the objective goes on the diverse member, not on all of them.
+- **Sequence models change the alarm economics, not the AUROC.** `models/sequence.py`
+  adds a dilated TCN, a Mamba-2-style selective state space and a causal transformer.
+  None beats the boosters on AUROC and the fanciest is the worst (SSM 0.7000). But the
+  TCN cuts **false alarms 0.498→0.299** and stretches lead **26.6h→39.5h**, paying in
+  detection at matched specificity (0.73→0.50) — hence the new `detect@FA15` metric.
+  Kept off the serving path: torch is 339 MB against xgboost's 7.5 MB.
+  NEGATIVE: causal filters (`models/temporal.py`) do **not** recover that alarm win, so
+  it is learned in the representation rather than output smoothness.
+- **A leak in the incumbent baseline.** `GBMDetector` uses
+  `early_stopping=True, validation_fraction=0.1`, and sklearn draws that split at random
+  *row* level — so a patient sits on both sides and the stopping round is chosen against
+  partly-memorised data. Controls (`hgb-*-noes`) registered; not yet run.
+- **Honest gaps** (see the report): the causal transformer, the `utility-z`/`utility-w`
+  decomposition and the early-stopping controls are unrun; TabPFN is blocked behind a
+  licence acceptance requiring a vendor account; cross-hospital confirmation of the new
+  candidates is the confirmation that still matters most.
+
+Everything here is measured by `eval/bench.py`, which owns the folds so no candidate can
+pick its own split, and bootstraps differences by resampling **patients** — hours inside
+one stay are far too correlated for a row bootstrap, which would report an interval
+several times too narrow and turn fold luck into a finding.
 
 ---
 
