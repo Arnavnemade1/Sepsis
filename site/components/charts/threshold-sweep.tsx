@@ -23,7 +23,9 @@ const H = 340;
 export function ThresholdSweep() {
   const rows = operatingPoint.heldOut.rows;
   const shipped = rows.find((r) => r.threshold === 0.12)!;
-  const derived = rows.find((r) => r.threshold === operatingPoint.high)!;
+  // Keyed off the FROZEN study's own threshold, not the live operating point:
+  // the shipped detector has since changed and re-derived its alarm elsewhere.
+  const derived = rows.find((r) => r.threshold === operatingPoint.heldOut.derivedThreshold)!;
   const optimal = rows.find((r) => r.threshold === 0.025)!;
 
   const xs = [0, 0.025, 0.05, 0.0725, 0.1, 0.12, 0.15];
@@ -47,7 +49,7 @@ export function ThresholdSweep() {
       label={`Held-out utility against alarm threshold. The shipped hand-set threshold of 0.12 returned ${signed(
         shipped.utility,
         3,
-      )}; the out-of-fold derived threshold of ${operatingPoint.high} returned ${signed(
+      )}; the out-of-fold derived threshold of ${operatingPoint.heldOut.derivedThreshold} returned ${signed(
         derived.utility,
         3,
       )} — a gain gathered entirely by moving the decision boundary, at an unchanged AUROC of ${operatingPoint.heldOut.auroc}.`}
@@ -176,7 +178,7 @@ export function ThresholdSweep() {
             dx={-14}
             dy={-34}
             anchor="end"
-            title={`derived ${operatingPoint.high}`}
+            title={`derived ${operatingPoint.heldOut.derivedThreshold}`}
             detail={`${pct(derived.detection, 0)} detection`}
             color="var(--color-low)"
           />

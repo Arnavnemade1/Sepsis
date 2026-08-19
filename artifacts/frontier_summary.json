@@ -1,0 +1,230 @@
+{
+  "protocol": "within-site patient-grouped cross-validation (identical folds for every candidate); NOT cross-hospital",
+  "spec": "dev",
+  "folds": 3,
+  "rows": 310061,
+  "patients": 8000,
+  "prevalence": 0.02095,
+  "bootstrap": 2000,
+  "baseline": "stack",
+  "production": "stack+xgb@utility",
+  "candidates": {
+    "stack": {
+      "auroc": 0.77653,
+      "auprc": 0.08342,
+      "utility": 0.40011,
+      "utility_best": 0.40631,
+      "ece": 0.00408,
+      "detect_at_far15": 0.49991,
+      "lead_at_far15": 33.33333,
+      "detection": 0.63762,
+      "false_alarm": 0.33342,
+      "aurocSd": 0.0058,
+      "perFoldAuroc": [
+        0.77205,
+        0.78473,
+        0.77282
+      ]
+    },
+    "stack-utility": {
+      "auroc": 0.77611,
+      "auprc": 0.07806,
+      "utility": 0.39948,
+      "utility_best": 0.4133,
+      "ece": 0.00385,
+      "detect_at_far15": 0.58129,
+      "lead_at_far15": 33.16667,
+      "detection": 0.61201,
+      "false_alarm": 0.29463,
+      "aurocSd": 0.00725,
+      "perFoldAuroc": [
+        0.77056,
+        0.78635,
+        0.77142
+      ]
+    },
+    "xgb-utility": {
+      "auroc": 0.75031,
+      "auprc": 0.07744,
+      "utility": 0.3381,
+      "utility_best": 0.34072,
+      "ece": 0.00396,
+      "detect_at_far15": 0.49661,
+      "lead_at_far15": 35.66667,
+      "detection": 0.69472,
+      "false_alarm": 0.44355,
+      "aurocSd": 0.00976,
+      "perFoldAuroc": [
+        0.73838,
+        0.76228,
+        0.75027
+      ]
+    },
+    "stack+xgb@utility": {
+      "auroc": 0.78113,
+      "auprc": 0.08401,
+      "utility": 0.38486,
+      "utility_best": 0.41514,
+      "ece": 0.00441,
+      "detect_at_far15": 0.55226,
+      "lead_at_far15": 33.16667,
+      "detection": 0.59311,
+      "false_alarm": 0.26164,
+      "aurocSd": 0.00788,
+      "perFoldAuroc": [
+        0.7757,
+        0.79227,
+        0.77541
+      ]
+    }
+  },
+  "comparisons": {
+    "stack-utility": {
+      "vs": "stack",
+      "deltaAuroc": -0.00114,
+      "ci": [
+        -0.00431,
+        0.00201
+      ],
+      "significant": false,
+      "rankCorr": 0.9651,
+      "detectionAtBudget": {
+        "10": {
+          "delta_detection": 0.01473,
+          "ci_lo": -0.01473,
+          "ci_hi": 0.04271,
+          "p_gt_0": 0.819,
+          "significant": false,
+          "target_far": 0.1
+        },
+        "15": {
+          "delta_detection": 0.05596,
+          "ci_lo": 0.02356,
+          "ci_hi": 0.07953,
+          "p_gt_0": 1.0,
+          "significant": true,
+          "target_far": 0.15
+        },
+        "20": {
+          "delta_detection": 0.00736,
+          "ci_lo": -0.06775,
+          "ci_hi": 0.03093,
+          "p_gt_0": 0.4625,
+          "significant": false,
+          "target_far": 0.2
+        }
+      }
+    },
+    "xgb-utility": {
+      "vs": "stack",
+      "deltaAuroc": -0.02147,
+      "ci": [
+        -0.03329,
+        -0.00919
+      ],
+      "significant": false,
+      "rankCorr": 0.6789,
+      "detectionAtBudget": {
+        "10": {
+          "delta_detection": -0.01473,
+          "ci_lo": -0.04713,
+          "ci_hi": 0.01767,
+          "p_gt_0": 0.177,
+          "significant": false,
+          "target_far": 0.1
+        },
+        "15": {
+          "delta_detection": -0.0324,
+          "ci_lo": -0.07364,
+          "ci_hi": 0.00147,
+          "p_gt_0": 0.027,
+          "significant": false,
+          "target_far": 0.15
+        },
+        "20": {
+          "delta_detection": -0.02504,
+          "ci_lo": -0.10604,
+          "ci_hi": 0.00589,
+          "p_gt_0": 0.043,
+          "significant": false,
+          "target_far": 0.2
+        }
+      }
+    },
+    "stack+xgb@utility": {
+      "vs": "stack",
+      "deltaAuroc": 0.00381,
+      "ci": [
+        0.00039,
+        0.00726
+      ],
+      "significant": true,
+      "rankCorr": 0.9676,
+      "detectionAtBudget": {
+        "10": {
+          "delta_detection": 0.01031,
+          "ci_lo": -0.01031,
+          "ci_hi": 0.06922,
+          "p_gt_0": 0.838,
+          "significant": false,
+          "target_far": 0.1
+        },
+        "15": {
+          "delta_detection": 0.02651,
+          "ci_lo": -0.01031,
+          "ci_hi": 0.05007,
+          "p_gt_0": 0.9165,
+          "significant": false,
+          "target_far": 0.15
+        },
+        "20": {
+          "delta_detection": 0.05302,
+          "ci_lo": -0.01915,
+          "ci_hi": 0.07364,
+          "p_gt_0": 0.7695,
+          "significant": false,
+          "target_far": 0.2
+        }
+      }
+    }
+  },
+  "promotion": {
+    "created": "2026-08-18T18:46:22",
+    "gates": {
+      "discrimination": true,
+      "decisions": true
+    },
+    "promoted": true,
+    "holdoutAurocDelta": 0.00696,
+    "holdoutAuprcDelta": 0.00309,
+    "operatingPoint": {
+      "high": 0.055,
+      "medium": 0.0275,
+      "incumbent_high": 0.0675,
+      "gated_utility": 0.19240479697033427,
+      "incumbent_utility": 0.09175257731958757
+    },
+    "configs": {
+      "incumbent": {
+        "objective": "balanced",
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr"
+        ]
+      },
+      "candidate": {
+        "objective": "balanced",
+        "roster": [
+          "hgb",
+          "hgb2",
+          "et",
+          "lr",
+          "xgb@utility"
+        ]
+      }
+    }
+  },
+  "crossHospitalConfirmed": false
+}

@@ -57,8 +57,55 @@ export interface Direction {
   models: { gbm: ModelResult; stacked: ModelResult };
 }
 
+/** One candidate ensemble under the frontier benchmark's shared folds. */
+export interface FrontierCandidate {
+  auroc: number;
+  aurocSd: number;
+  auprc: number;
+  falseAlarm: number;
+  detectAtFar15: number;
+}
+
+export interface FrontierComparison {
+  deltaAuroc: number;
+  ci: number[];
+  significant: boolean;
+  /** Spearman correlation of the pooled out-of-fold scores against the incumbent.
+   *  Near 1 means the candidate is a rewording of the incumbent, whatever its
+   *  headline number says — which is the whole finding of this section. */
+  rankCorr: number;
+  detectionAtBudget?: Record<
+    string,
+    { delta: number; ci: number[]; significant: boolean }
+  >;
+}
+
+export interface Frontier {
+  protocol: string;
+  rows: number;
+  patients: number;
+  folds: number;
+  bootstrap: number;
+  baseline: string;
+  production: string;
+  /** False until someone runs frontier_external.py. The page must say so. */
+  crossHospitalConfirmed: boolean;
+  candidates: Record<string, FrontierCandidate>;
+  comparisons: Record<string, FrontierComparison>;
+  promotion: {
+    created?: string;
+    gates?: Record<string, boolean>;
+    promoted?: boolean;
+    holdoutAurocDelta?: number;
+    holdoutAuprcDelta?: number;
+  };
+}
+
 export type Results = typeof raw & {
   directions: { AtoB: Direction; BtoA: Direction };
+  /** Null on a checkout whose artifacts predate the frontier work, so every
+   *  consumer has to guard rather than assume. */
+  frontier: Frontier | null;
 };
 
 export const results = raw as unknown as Results;
@@ -74,6 +121,10 @@ export const alarmPolicy = results.alarmPolicy;
 export const selfImprove = results.selfImprove;
 export const qhdc = results.qhdc;
 export const phase7 = results.phase7;
+/** The accuracy-frontier push. WITHIN-SITE cross-validation — not the
+ *  cross-hospital protocol the headline uses. Null until the summary artifact has
+ *  been generated, so every consumer must guard on it. */
+export const frontier = results.frontier;
 
 export const directions = results.directions;
 

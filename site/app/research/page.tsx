@@ -10,10 +10,11 @@ import {
   selfImprove,
   qhdc,
   phase7,
+  frontier,
   directions,
   dirLabel,
 } from "@/lib/results";
-import { f2, f3, f4, ci, pct, count, signed } from "@/lib/format";
+import { f2, f3, f4, ci, ciSigned, pct, count, signed } from "@/lib/format";
 import {
   Section,
   Panel,
@@ -55,6 +56,7 @@ const sections: NavSection[] = [
   { id: "alarms", label: "Alarm burden" },
   { id: "gap", label: "The generalization gap" },
   { id: "operating-point", label: "The operating point" },
+  { id: "objective", label: "The wrong objective" },
   { id: "negative", label: "What did not work" },
   { id: "integrity", label: "Integrity audit" },
   { id: "limits", label: "What this does not show" },
@@ -63,6 +65,16 @@ const sections: NavSection[] = [
 
 const AtoB = directions.AtoB;
 const BtoA = directions.BtoA;
+
+/* Frontier lookups hoisted: narrowing a `Record` through optional chaining does not
+   carry into the JSX body, so each value is resolved once here and guarded once. */
+const fr = frontier;
+const frProd = fr ? fr.comparisons[fr.production] : undefined;
+const frRedundant = fr ? fr.comparisons["stack-utility"] : undefined;
+const frDiverse = fr ? fr.comparisons["xgb-utility"] : undefined;
+const frBudgets = frRedundant?.detectionAtBudget;
+const frBaseCand = fr ? fr.candidates[fr.baseline] : undefined;
+const frProdCand = fr ? fr.candidates[fr.production] : undefined;
 
 export default function ResearchPage() {
   return (
@@ -654,10 +666,217 @@ export default function ResearchPage() {
             </SourceNote>
           </Section>
 
+
+          {/* ── 9 · The objective ─────────────────────────────────────── */}
+          <Section
+            id="objective"
+            eyebrow="09 · The wrong objective"
+            title="We were training on the wrong target."
+            lede={
+              <>
+                The challenge label flips to 1 six hours before onset. The scoring function
+                does not agree with it: alarming between twelve and six hours out is worth up
+                to a full point, and the label calls those hours negative. On this cohort that
+                is <strong className="font-medium text-ink">3,419 patient-hours holding
+                roughly a fifth of all the credit available</strong> — that every model here
+                had been trained to call a false positive.
+              </>
+            }
+          >
+            <Reveal className="mt-7">
+              <Panel className="p-6">
+                <p className="text-[14px] leading-relaxed text-muted text-pretty">
+                  Re-deriving the target from the scoring function itself — alarm where it
+                  pays, weighted by how much is at stake — lifts every individual booster we
+                  tested. Then it did nothing at all to the ensemble, which turned out to be
+                  the more useful result.
+                </p>
+              </Panel>
+            </Reveal>
+
+            {fr && (
+              <>
+                <Reveal className="mt-4">
+                  <Panel className="p-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusChip tone="nodata">Within-site CV — not cross-hospital</StatusChip>
+                    </div>
+                    <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                      Everything in this section is {fr.folds}-fold patient-grouped
+                      cross-validation over {count(fr.patients)} patients
+                      ({count(fr.rows)} hours), identical folds for every candidate. It is{" "}
+                      <strong className="font-medium text-ink">not</strong> the cross-hospital
+                      protocol the headline uses, so these numbers are not comparable with the
+                      ones above and are systematically more flattering. The cross-hospital
+                      confirmation of this change{" "}
+                      <strong className="font-medium text-ink">has not been run yet</strong>.
+                    </p>
+                  </Panel>
+                </Reveal>
+
+                <Reveal className="mt-6">
+                  <DataTable
+                    caption="Ensemble candidates under identical patient-grouped folds"
+                    head={["Candidate", "AUROC", "Rank corr. with incumbent", "False alarms", "ΔAUROC vs incumbent"]}
+                  >
+                    {Object.entries(fr.candidates).map(([name, c]) => {
+                      const cmp = fr.comparisons[name];
+                      const isProd = name === fr.production;
+                      return (
+                        <Row
+                          key={name}
+                          emphasis={isProd}
+                          cells={[
+                            <>
+                              {name}
+                              {isProd && (
+                                <span className="ml-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-accent-ink">
+                                  shipped
+                                </span>
+                              )}
+                              {name === fr.baseline && (
+                                <span className="ml-2 font-mono text-[10.5px] uppercase tracking-[0.08em] text-dim">
+                                  previous
+                                </span>
+                              )}
+                            </>,
+                            `${f4(c.auroc)} ± ${f4(c.aurocSd)}`,
+                            cmp ? f3(cmp.rankCorr) : "—",
+                            f3(c.falseAlarm),
+                            cmp ? (
+                              <>
+                                {signed(cmp.deltaAuroc, 4)}{" "}
+                                <span className="text-dim">{ciSigned(cmp.ci)}</span>{" "}
+                                {/* Three states, not two: an interval that excludes zero
+                                    downward means significantly WORSE, and calling that
+                                    "n.s." would hide the most interesting row here. */}
+                                {cmp.ci[0] > 0 ? (
+                                  <span className="text-accent-ink">better</span>
+                                ) : cmp.ci[1] < 0 ? (
+                                  <span className="text-high-ink">worse</span>
+                                ) : (
+                                  <span className="text-dim">n.s.</span>
+                                )}
+                              </>
+                            ) : (
+                              "—"
+                            ),
+                          ]}
+                        />
+                      );
+                    })}
+                  </DataTable>
+                  <SourceNote>
+                    artifacts/frontier_summary.json — {fr.bootstrap} paired
+                    patient-level bootstrap draws per comparison
+                  </SourceNote>
+                </Reveal>
+
+                <Reveal className="mt-6">
+                  <Panel className="p-6">
+                    <h3 className="text-[15px] font-medium text-ink">
+                      Why re-aiming the whole ensemble changed nothing
+                    </h3>
+                    <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                      Fitting every member to the new target produced a detector that ranks
+                      patients almost identically to the old one — the two agree at a rank
+                      correlation of{" "}
+                      <span className="num text-ink">
+                        {f3(frRedundant?.rankCorr)}
+                      </span>
+                      . The objective was redundant with what stacking already does. A
+                      different <em>library</em> was not: the XGBoost member agrees only{" "}
+                      <span className="num text-ink">
+                        {f3(frDiverse?.rankCorr)}
+                      </span>
+                      , and on its own it is{" "}
+                      <strong className="font-medium text-ink">significantly worse</strong>{" "}
+                      than the ensemble it was added to ({signed(frDiverse?.deltaAuroc, 4)}{" "}
+                      AUROC, <span className="text-dim">{ciSigned(frDiverse?.ci)}</span>). That is
+                      the whole point: stacking is paid for disagreement, not for strength, so
+                      the new objective earned its place on the one member whose mistakes the
+                      ensemble did not already own — not on the members that were already
+                      good.
+                    </p>
+                    <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                      The shipped detector is the four previous members left exactly as they
+                      were, plus that one. It gains{" "}
+                      <span className="num text-ink">
+                        {signed(frProd?.deltaAuroc, 4)}
+                      </span>{" "}
+                      AUROC{" "}
+                      <span className="text-dim">{ciSigned(frProd?.ci)}</span>
+                      , wins every fold individually, and cuts the false-alarm rate at matched
+                      specificity from{" "}
+                      <span className="num text-ink">
+                        {f3(frBaseCand?.falseAlarm)}
+                      </span>{" "}
+                      to{" "}
+                      <span className="num text-ink">
+                        {f3(frProdCand?.falseAlarm)}
+                      </span>
+                      .
+                    </p>
+                    <SourceNote>
+                      artifacts/detector_manifest.json — both promotion gates, on held-out
+                      patients
+                    </SourceNote>
+                  </Panel>
+                </Reveal>
+
+                <Reveal className="mt-4">
+                  <Panel className="p-6">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <StatusChip tone="high">Nearly shipped a mirage</StatusChip>
+                      <h3 className="text-[15px] font-medium text-ink">
+                        The metric that agreed with us at exactly one threshold
+                      </h3>
+                    </div>
+                    <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                      The re-aimed ensemble looked like a large win on detection at a fixed
+                      alarm budget. Swept across neighbouring budgets, it was significant at
+                      one and absent at both others. A real gain does not appear at a 15%
+                      alarm budget and vanish at 10% and 20% — so this was recorded as noise
+                      and the change was refused on its own merits.
+                    </p>
+                    {frBudgets && (
+                      <div className="mt-5">
+                        <DataTable
+                          caption="Detection gain at neighbouring alarm budgets"
+                          head={["Alarm budget", "Δ detection", "95% CI", "Verdict"]}
+                        >
+                          {Object.entries(frBudgets).map(([budget, b]) => (
+                            <Row
+                              key={budget}
+                              cells={[
+                                `${budget}% of non-septic patients`,
+                                signed(b.delta, 4),
+                                ciSigned(b.ci),
+                                b.significant ? (
+                                  <span className="text-accent-ink">significant</span>
+                                ) : (
+                                  <span className="text-dim">n.s.</span>
+                                ),
+                              ]}
+                            />
+                          ))}
+                        </DataTable>
+                      </div>
+                    )}
+                    <SourceNote>
+                      artifacts/frontier_summary.json — the same comparison at three budgets,
+                      published together so the shape is visible
+                    </SourceNote>
+                  </Panel>
+                </Reveal>
+              </>
+            )}
+          </Section>
+
           {/* ── 9 · Negative results ──────────────────────────────────── */}
           <Section
             id="negative"
-            eyebrow="09 · What did not work"
+            eyebrow="10 · What did not work"
             title="Six things that failed, and stayed failed"
             lede="A research record with no negative results is not a record of research. These are kept because each one closed off a direction that looked promising — and because the machinery that refused them is the actual contribution."
           >
@@ -769,7 +988,7 @@ export default function ResearchPage() {
           {/* ── 10 · Integrity ────────────────────────────────────────── */}
           <Section
             id="integrity"
-            eyebrow="10 · Integrity audit"
+            eyebrow="11 · Integrity audit"
             title="How do you know any of this is true?"
             lede="An adversarial suite plants a known lie in the evaluation and asserts that the guard catches it. It verifies the claims, not the code — and it once caught a flaw in itself."
           >
@@ -827,7 +1046,7 @@ export default function ResearchPage() {
           {/* ── 11 · Limits ───────────────────────────────────────────── */}
           <Section
             id="limits"
-            eyebrow="11 · What this does not show"
+            eyebrow="12 · What this does not show"
             title="Read this before quoting anything above"
           >
             <Stagger className="mt-7 space-y-3">
@@ -868,7 +1087,7 @@ export default function ResearchPage() {
           {/* ── 12 · Reproduce ────────────────────────────────────────── */}
           <Section
             id="reproduce"
-            eyebrow="12 · Reproduce it"
+            eyebrow="13 · Reproduce it"
             title="Run the evaluation yourself"
             lede="Every figure on this page is regenerated by these commands. The data is public; the code is in the repository."
           >

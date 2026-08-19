@@ -150,6 +150,14 @@ const pair = (p) => ({ mean: r(p?.[0]), sd: r(p?.[1]) });
 // ─── external_validation_wearable.json — the earlier Phase 7 protocol ────────
 const ext = read("external_validation_wearable");
 
+// ─── frontier_summary.json — the accuracy-frontier push ──────────────────────
+// WITHIN-SITE cross-validation, not cross-hospital. It is kept in its own block,
+// and labelled as such everywhere it surfaces, because the headline above is the
+// cross-hospital number and silently mixing protocols is exactly the move this
+// page exists to refuse. The production detector changed AFTER rigorous_eval.json
+// was generated, so the two describe different models — also stated on the page.
+const fr = existsSync(join(ART, "frontier_summary.json")) ? read("frontier_summary") : null;
+
 const out = {
   // provenance travels with the numbers — the research page prints it
   generatedFrom: "artifacts/*.json",
@@ -227,8 +235,16 @@ const out = {
     nPatients: op.n_patients,
     /** Held-out gate: patients never used to derive the threshold. AUROC is
      *  IDENTICAL across all three rows — the entire difference is where the
-     *  decision boundary was placed. From backend/ml/README.md. */
+     *  decision boundary was placed. From backend/ml/README.md.
+     *
+     *  FROZEN. These rows are a historical study of ONE detector, so
+     *  `derivedThreshold` is recorded here rather than read from `op.high` at
+     *  render time. They were the same number until the detector changed and the
+     *  operating point was re-derived (0.0725 -> 0.055); a chart that looked the
+     *  row up by the live value then found nothing and crashed the page. A frozen
+     *  table must carry its own key. */
     heldOut: {
+      derivedThreshold: 0.0725,
       auroc: 0.7334,
       rows: [
         { label: "shipped hand-set", threshold: 0.12, utility: 0.2946, detection: 0.352, far: 0.093, lead: 50 },
@@ -285,6 +301,65 @@ const out = {
       auroc: pair(s.auroc),
       seconds: r(s.sec, 1),
     })),
+  },
+
+  /** The accuracy-frontier push: what the detector's training objective was aimed
+   *  at, why re-aiming the whole ensemble did nothing, and the one member that
+   *  earned its place. Null until `python -m backend.ml.scripts.frontier_summary`
+   *  has been run, so the page must render without it. */
+  frontier: fr && {
+    protocol: fr.protocol,
+    rows: fr.rows,
+    patients: fr.patients,
+    folds: fr.folds,
+    bootstrap: fr.bootstrap,
+    baseline: fr.baseline,
+    production: fr.production,
+    crossHospitalConfirmed: fr.crossHospitalConfirmed,
+    // Only the fields the page prints. data/results.json is imported into the page
+    // bundle and is already near its size ceiling, so passing a summary through
+    // wholesale costs every visitor bytes for numbers nobody renders.
+    candidates: Object.fromEntries(
+      Object.entries(fr.candidates).map(([k, c]) => [
+        k,
+        {
+          auroc: c.auroc,
+          aurocSd: c.aurocSd,
+          auprc: c.auprc,
+          falseAlarm: c.false_alarm,
+          detectAtFar15: c.detect_at_far15,
+        },
+      ]),
+    ),
+    comparisons: Object.fromEntries(
+      Object.entries(fr.comparisons).map(([k, c]) => [
+        k,
+        {
+          deltaAuroc: c.deltaAuroc,
+          ci: c.ci,
+          significant: c.significant,
+          rankCorr: c.rankCorr,
+          // The budget sweep is the evidence that a one-threshold win was an
+          // artifact, so it is kept only for the candidate that produced it.
+          detectionAtBudget:
+            k === "stack-utility"
+              ? Object.fromEntries(
+                  Object.entries(c.detectionAtBudget ?? {}).map(([b, v]) => [
+                    b,
+                    { delta: v.delta_detection, ci: [v.ci_lo, v.ci_hi], significant: v.significant },
+                  ]),
+                )
+              : undefined,
+        },
+      ]),
+    ),
+    promotion: {
+      created: fr.promotion?.created,
+      gates: fr.promotion?.gates,
+      promoted: fr.promotion?.promoted,
+      holdoutAurocDelta: fr.promotion?.holdoutAurocDelta,
+      holdoutAuprcDelta: fr.promotion?.holdoutAuprcDelta,
+    },
   },
 
   /** The earlier Phase 7 protocol. Kept because README and PHASE7_REPORT quote

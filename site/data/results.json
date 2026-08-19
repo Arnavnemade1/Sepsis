@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-08-16",
+ "syncedAt": "2026-08-19",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -3421,20 +3421,21 @@
   "claim": "Post-hoc calibration is what makes the probability mean what it says — and it survives the move to a different hospital."
  },
  "operatingPoint": {
-  "high": 0.0725,
-  "medium": 0.0362,
+  "high": 0.055,
+  "medium": 0.0275,
   "objective": "constrained",
   "maxFalseAlarmRate": 0.15,
   "oof": {
-   "utility": 0.2796,
-   "detectionRate": 0.3806,
-   "falseAlarmRate": 0.106,
-   "medianLeadHours": 33.5
+   "utility": 0.2911,
+   "detectionRate": 0.3553,
+   "falseAlarmRate": 0.0747,
+   "medianLeadHours": 39
   },
-  "probP95": 0.08578,
-  "probP99": 0.13953,
-  "nPatients": 3004,
+  "probP95": 0.05321,
+  "probP99": 0.16688,
+  "nPatients": 1000,
   "heldOut": {
+   "derivedThreshold": 0.0725,
    "auroc": 0.7334,
    "rows": [
     {
@@ -3712,6 +3713,111 @@
     "seconds": 126.8
    }
   ]
+ },
+ "frontier": {
+  "protocol": "within-site patient-grouped cross-validation (identical folds for every candidate); NOT cross-hospital",
+  "rows": 310061,
+  "patients": 8000,
+  "folds": 3,
+  "bootstrap": 2000,
+  "baseline": "stack",
+  "production": "stack+xgb@utility",
+  "crossHospitalConfirmed": false,
+  "candidates": {
+   "stack": {
+    "auroc": 0.77653,
+    "aurocSd": 0.0058,
+    "auprc": 0.08342,
+    "falseAlarm": 0.33342,
+    "detectAtFar15": 0.49991
+   },
+   "stack-utility": {
+    "auroc": 0.77611,
+    "aurocSd": 0.00725,
+    "auprc": 0.07806,
+    "falseAlarm": 0.29463,
+    "detectAtFar15": 0.58129
+   },
+   "xgb-utility": {
+    "auroc": 0.75031,
+    "aurocSd": 0.00976,
+    "auprc": 0.07744,
+    "falseAlarm": 0.44355,
+    "detectAtFar15": 0.49661
+   },
+   "stack+xgb@utility": {
+    "auroc": 0.78113,
+    "aurocSd": 0.00788,
+    "auprc": 0.08401,
+    "falseAlarm": 0.26164,
+    "detectAtFar15": 0.55226
+   }
+  },
+  "comparisons": {
+   "stack-utility": {
+    "deltaAuroc": -0.00114,
+    "ci": [
+     -0.00431,
+     0.00201
+    ],
+    "significant": false,
+    "rankCorr": 0.9651,
+    "detectionAtBudget": {
+     "10": {
+      "delta": 0.01473,
+      "ci": [
+       -0.01473,
+       0.04271
+      ],
+      "significant": false
+     },
+     "15": {
+      "delta": 0.05596,
+      "ci": [
+       0.02356,
+       0.07953
+      ],
+      "significant": true
+     },
+     "20": {
+      "delta": 0.00736,
+      "ci": [
+       -0.06775,
+       0.03093
+      ],
+      "significant": false
+     }
+    }
+   },
+   "xgb-utility": {
+    "deltaAuroc": -0.02147,
+    "ci": [
+     -0.03329,
+     -0.00919
+    ],
+    "significant": false,
+    "rankCorr": 0.6789
+   },
+   "stack+xgb@utility": {
+    "deltaAuroc": 0.00381,
+    "ci": [
+     0.00039,
+     0.00726
+    ],
+    "significant": true,
+    "rankCorr": 0.9676
+   }
+  },
+  "promotion": {
+   "created": "2026-08-18T18:46:22",
+   "gates": {
+    "discrimination": true,
+    "decisions": true
+   },
+   "promoted": true,
+   "holdoutAurocDelta": 0.00696,
+   "holdoutAuprcDelta": 0.00309
+  }
  },
  "phase7": {
   "AtoB": {
