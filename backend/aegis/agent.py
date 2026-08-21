@@ -110,6 +110,27 @@ class ToolCallError(Exception):
     pass
 
 
+def _assert_unique(tools: List[Tool]) -> List[Tool]:
+    """Refuse a catalogue with two tools of the same name.
+
+    ``bind`` is keyed by name and ``get`` returns the first match, so a duplicate
+    does not raise — it silently makes one of the two dead while both keep appearing
+    in the declarations the model sees. It reaches for the shadowed one, gets the
+    other one's behaviour, and nothing anywhere reports a problem. That already
+    happened once: a scenario-lab tool was named `run_scenario`, which was taken by
+    the orchestrator's wing drill.
+    """
+    seen: Dict[str, int] = {}
+    for t in tools:
+        seen[t.name] = seen.get(t.name, 0) + 1
+    dupes = sorted(n for n, c in seen.items() if c > 1)
+    if dupes:
+        raise ValueError(
+            f"duplicate tool name(s) in the agent catalogue: {dupes}. Two tools with "
+            "one name silently shadow each other — rename one.")
+    return tools
+
+
 class ToolRegistry:
     """The catalogue plus the dispatch table. One instance per process."""
 
@@ -117,7 +138,10 @@ class ToolRegistry:
         self._tools: Dict[str, Tool] = {}
         self._log: List[Dict[str, Any]] = []
         self._seq = 0
-        for t in _catalogue():
+        # _assert_unique, not a dict comprehension: building the dict silently
+        # keeps the last of any duplicate pair, which is precisely the failure we
+        # want to be loud about.
+        for t in _assert_unique(_catalogue()):
             self._tools[t.name] = t
 
     # -- wiring ----------------------------------------------------------- #
@@ -380,6 +404,65 @@ def _catalogue() -> List[Tool]:
         "still not ordering them.",
         {"bed": _s("bed_handle from list_patients. Omit for the current patient.")}, [],
         budget=8000))
+    # ---- SCENARIO LAB: pose a situation, then be graded on it ---------- #
+    T.append(Tool(
+        "scenario_vocabulary", KIND_READ,
+        "What can be built in the scenario sandbox: the deterioration arcs "
+        "(septic shock, cold/hypothermic sepsis, occult, stable, recovering, "
+        "post-op fever), the gradeable expectations, the interventions and the "
+        "limits. Read this BEFORE create_scenario — the arc and expectation names "
+        "are a fixed vocabulary and an invented one is rejected.", {}, []))
+    T.append(Tool(
+        "list_scenarios", KIND_READ,
+        "Every scenario in the sandbox with its pass/fail state, plus the suite "
+        "report. Sandbox patients are synthetic and 'sim_'-prefixed; they are not "
+        "on the ward and must never be discussed as real people.", {}, []))
+    T.append(Tool(
+        "get_scenario", KIND_READ,
+        "One scenario's full result: every graded expectation with what was "
+        "expected and what happened, plus the hour-by-hour risk trace.",
+        {"bed": _s("Sandbox handle, e.g. 'sim_2'.")}, ["bed"]))
+    T.append(Tool(
+        "create_scenario", KIND_WRITE,
+        "Author a synthetic patient to test the OS with: choose a deterioration "
+        "arc, when it starts, how severe it is, how sparsely labs are drawn, and "
+        "what SHOULD happen. Use it to probe a suspicion — a presentation you "
+        "think might be missed, or a confounder you think might trigger a false "
+        "alarm. This creates a hand-written patient in a sandbox: it tests what "
+        "the system DOES, and can never measure how accurate it is.",
+        {"name": _s("Short label, e.g. 'hypothermic-elderly'."),
+         "arc": _s("Deterioration arc from scenario_vocabulary."),
+         "los_hours": _n("Stay length in hours (8-336)."),
+         "onset_hour": _n("Clinical onset hour, or omit for a patient who never "
+                          "becomes septic. Must exceed 6."),
+         "severity": _n("0.4 subtle, 1.0 textbook, 1.6 fulminant."),
+         "ramp_hours": _n("Hours from first drift to worst."),
+         "age": _n("Patient age."),
+         "lab_interval_hours": _n("Hours between lab draws; sparser is harder."),
+         "seed": _n("Seed — the same spec and seed always gives the same patient."),
+         "expectations": {"type": "ARRAY", "description":
+                          "What SHOULD happen: [{kind, value, because}]. Kinds come "
+                          "from scenario_vocabulary. 'because' is required reading "
+                          "on failure, so state the clinical reason.",
+                          "items": {"type": "OBJECT"}},
+         "notes": _s("Why this case is worth running.")},
+        ["name", "arc"]))
+    T.append(Tool(
+        "run_lab_scenario", KIND_WRITE,
+        "Run one SANDBOX scenario against the shipped detector and grade it. Not "
+        "to be confused with run_scenario, which drills the orchestrator on a real "
+        "wing bed.",
+        {"bed": _s("Sandbox handle from create_scenario, e.g. 'sim_0'.")}, ["bed"]))
+    T.append(Tool(
+        "run_scenario_suite", KIND_WRITE,
+        "Install and run the standing suite — the deteriorations the OS must catch "
+        "and the confounders it must ignore — and return the pass/fail report. "
+        "Replaces whatever is in the sandbox. One case is a KNOWN failure and is "
+        "meant to stay failing; read its note before treating it as a regression.",
+        {}, []))
+    T.append(Tool(
+        "reset_scenarios", KIND_WRITE,
+        "Empty the scenario sandbox.", {}, []))
     T.append(Tool(
         "get_validation", KIND_READ,
         "The detector's REAL measured performance against ground-truth labels — "

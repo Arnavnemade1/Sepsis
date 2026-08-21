@@ -275,8 +275,33 @@ class FeatureMatrix:
     onset_hour: np.ndarray       # per-row labelled onset hour (-1 if never)
 
 
-def build_dataset(records: List[PatientRecord], cfg: FeatureConfig) -> FeatureMatrix:
-    """Assemble a leakage-free stacked dataset from many patients."""
+#: Records carrying this ``set_name`` were authored, not observed
+#: (:mod:`backend.aegis.scenarios`). Duplicated here rather than imported so this
+#: guard has no dependency on the agent layer and cannot be disabled by breaking it.
+SYNTHETIC_SET = "synthetic"
+
+
+def build_dataset(records: List[PatientRecord], cfg: FeatureConfig,
+                  allow_synthetic: bool = False) -> FeatureMatrix:
+    """Assemble a leakage-free stacked dataset from many patients.
+
+    Refuses hand-written patients unless a caller says otherwise, in one line, in
+    the diff. Every evaluation in this project funnels through here, so this is the
+    single place a synthetic trajectory could turn into a reported accuracy number —
+    and that is exactly the mistake the project already made once, when a detector
+    tuned against its own simulator looked flawless and then scored near chance on
+    real patients. A scenario is a legitimate way to ask what the system DID; it can
+    never be evidence of how often the system is RIGHT, because we wrote it.
+    """
+    if not allow_synthetic:
+        fake = [r.patient_id for r in records
+                if getattr(r, "set_name", "") == SYNTHETIC_SET]
+        if fake:
+            raise ValueError(
+                f"refusing to build an evaluation dataset from {len(fake)} synthetic "
+                f"record(s) (e.g. {fake[0]}). Numbers from authored patients measure "
+                "the generator, not the world. Pass allow_synthetic=True only for "
+                "pipeline tests whose output is never reported as accuracy.")
     frames: List[np.ndarray] = []
     ys: List[np.ndarray] = []
     groups: List[np.ndarray] = []

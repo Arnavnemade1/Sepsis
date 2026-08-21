@@ -92,3 +92,56 @@ reported `UNMONITORED` — the body view must show "no data", never a false gree
 > The frontend that renders this (3D/2D body + live signal overlays) is
 > intentionally **not implemented yet** — only the functionality is built, so the
 > visualization can be layered on once the whole backend is finalized.
+
+---
+
+## Scenario Lab (`scenarios.py`) — the AI poses the case, the OS gets graded
+
+```bash
+make scenarios          # run the standing suite against the shipped detector
+make verify-scenarios    # the adversarial audit (10 checks)
+```
+
+Dr. Aegis could already read every surface of this OS and drive its actuators. It
+could not **pose a situation**: build a patient who deteriorates in a particular way,
+run the system against them, and see whether the OS did the right thing. The lab is
+that missing half plus the sandbox it runs in — seven agent tools
+(`scenario_vocabulary`, `create_scenario`, `run_lab_scenario`, `run_scenario_suite`, …)
+over eight `/aegis/scenarios/*` routes.
+
+A scenario is a small declarative spec — arc, onset hour, severity, ramp, lab
+sparsity, interventions, seed — synthesized into a `PatientRecord` that flows through
+the **real** feature pipeline and the **shipped** detector artifact at the **shipped**
+operating point. Spec + seed is a complete description, so a failing case is
+reproducible from the spec alone.
+
+**The line this cannot cross.** A synthetic patient is written by hand, by us, so
+anything measured on one measures our generator. This project has already been burned
+by exactly that — the original detector looked flawless on a simulator tuned alongside
+it and scored ~chance (AUROC 0.64) the first time it met real patients. So the split
+is enforced, not remembered:
+
+- Scenarios grade **behaviour** — did the alarm fire, how early, did the confounder
+  stay quiet. A hand-written patient is a legitimate probe for that, like any test input.
+- Scenarios never touch **accuracy**. `ScenarioResult` has no AUROC/AUPRC/utility field
+  and no place to put one; synthetic records carry `set_name="synthetic"` forever; and
+  `build_dataset` **refuses them** unless a caller opts in explicitly, in one line, in
+  the diff. Accuracy stays in `docs/FRONTIER_REPORT.md`, on real patients.
+
+The suite is half deteriorations the OS must catch and half confounders it must ignore
+— a suite of only sick patients scores a detector that alarms on everyone as perfect.
+
+**Current standing result: 7 / 8.** `cold-sepsis` fails and is *meant to*. That case is
+unambiguously shocked (qSOFA 2, MAP 60, SBP 88, lactate 5.3) but hypothermic at 35.3 °C;
+the shipped detector peaks at ~0.033 against a 0.055 alarm line and never fires, while
+`textbook-shock` — differing essentially only in the **sign of the temperature** — peaks
+at 0.101 and alarms 4 h early. That is a **hypothesis about fever-leaning raised on a
+patient we wrote**, not a measured weakness. It is settled on real hypothermic septic
+patients in CinC 2019, a run nobody has done yet. Do not "fix" it by relaxing the
+expectation: the check failing is the check working.
+
+`treated-early` / `untreated-late` is a matched pair (identical seed, one treated 10 h
+pre-onset) recorded but deliberately **ungraded** — the treated arm currently peaks
+*higher*, plausibly an artifact of how the generator applies an intervention to the
+slope features, and asserting a direction nobody has established on real data would
+bake a guess into the suite.

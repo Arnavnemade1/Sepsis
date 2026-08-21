@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -15,6 +15,8 @@ help:
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
+	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
+	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
@@ -43,6 +45,14 @@ verify:
 
 verify-frontier:
 	$(PY) verify_frontier.py
+
+verify-scenarios:
+	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py
+
+scenarios:
+	$(PY) -c "from backend.aegis.scenarios import LAB; LAB.load_suite(); \
+		[print(r.summary(), end='\n\n') for r in LAB.run_all()]; \
+		r=LAB.report(); print(f\"SUITE: {r['passed']}/{r['ran']} passed\"); print(r['caveat'])"
 
 frontier:
 	$(PY) -m backend.ml.scripts.frontier --spec $(SPEC) --out artifacts/frontier/$(SPEC).json

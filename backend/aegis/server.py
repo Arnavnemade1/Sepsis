@@ -2884,6 +2884,35 @@ def _agent_open_panel(panel: str, bed: Optional[str] = None) -> Optional[Dict[st
     return None                          # camera: a live device, nothing to read
 
 
+def _agent_create_scenario(**kw: Any) -> Dict[str, Any]:
+    """Adapt the model's loose arguments onto ScenarioIn.
+
+    The catalogue advertises numbers, and Gemini sends floats for all of them, so
+    the hour-shaped fields are coerced to int here rather than trusting the wire —
+    ScenarioSpec slices arrays with them, and a float index raises deep inside the
+    synthesizer where the message would tell the model nothing useful."""
+    def _i(v, default):
+        return default if v is None else int(round(float(v)))
+    try:
+        payload = ScenarioIn(
+            name=str(kw.get("name") or "unnamed"),
+            arc=str(kw.get("arc") or "septic_shock"),
+            los_hours=_i(kw.get("los_hours"), 48),
+            onset_hour=None if kw.get("onset_hour") in (None, "", "none")
+                       else _i(kw.get("onset_hour"), 30),
+            ramp_hours=_i(kw.get("ramp_hours"), 12),
+            severity=float(kw.get("severity") or 1.0),
+            age=float(kw.get("age") or 68.0),
+            lab_interval_hours=_i(kw.get("lab_interval_hours"), 8),
+            seed=_i(kw.get("seed"), 7),
+            notes=str(kw.get("notes") or ""),
+            expectations=list(kw.get("expectations") or []),
+        )
+    except (TypeError, ValueError) as exc:
+        return {"ok": False, "error": f"bad scenario arguments: {exc}"}
+    return _agent_await(scenarios_create(payload))
+
+
 def _bind_agent_tools() -> None:
     b = _tools.bind
     b("open_panel", _agent_open_panel)
@@ -2916,6 +2945,16 @@ def _bind_agent_tools() -> None:
         # patient's rather than a generic screen
         context={"renal_failure": bool(((getattr(cluster, "histories", {}) or {})
                                         .get(bed) or {}).get("renal_failure", False))})))
+    # -- scenario lab: the agent poses a case, the OS is graded on it.
+    #    Confined to the sandbox by construction — these handlers only ever touch
+    #    the in-memory ScenarioLab, never the cohort.
+    b("scenario_vocabulary", lambda: scenarios_vocabulary())
+    b("list_scenarios", lambda: scenarios_list())
+    b("get_scenario", lambda bed: scenarios_get(bed))
+    b("create_scenario", lambda **kw: _agent_create_scenario(**kw))
+    b("run_lab_scenario", lambda bed: _agent_await(scenarios_run(bed)))
+    b("run_scenario_suite", lambda: _agent_await(scenarios_suite()))
+    b("reset_scenarios", lambda: _agent_await(scenarios_reset()))
     b("get_validation", lambda: cohort_validation())
     b("get_orchestrator", lambda: {"status": orchestrator_status(),
                                    "attestation": orchestrator_attest()})
@@ -3331,6 +3370,134 @@ async def ppg_vasodilation(payload: VasodilationIn) -> Dict[str, Any]:
         return {"available": False}
     ppg_monitor.set_vasodilation(payload.alpha)
     return ppg_monitor.state()
+
+
+# --------------------------------------------------------------------------- #
+# Scenario Lab — the AI's sandbox for posing clinical situations
+#
+# These are ordinary /aegis routes, so the agent's generic os_read / os_write
+# primitives reach them without any special-casing; the named tools in agent.py
+# exist for discoverability, not access. Everything here is SYNTHETIC and stays in
+# memory: no scenario touches the live cohort, Supabase, or any reported metric.
+# --------------------------------------------------------------------------- #
+class ScenarioIn(BaseModel):
+    name: str
+    arc: str = "septic_shock"
+    los_hours: int = 48
+    onset_hour: Optional[int] = 30
+    ramp_hours: int = 12
+    severity: float = 1.0
+    age: float = 68.0
+    gender: str = "M"
+    weight: float = 78.0
+    lab_interval_hours: int = 8
+    vitals_dropout: float = 0.04
+    #: [[hour, kind], ...] with kind in fluids | antibiotics | vasopressors.
+    interventions: List[List[Any]] = []
+    seed: int = 7
+    notes: str = ""
+    #: [{"kind": ..., "value": ..., "because": ...}, ...]
+    expectations: List[Dict[str, Any]] = []
+
+
+@app.get("/aegis/scenarios/vocabulary")
+def scenarios_vocabulary() -> Dict[str, Any]:
+    """Everything needed to author a scenario: the deterioration arcs, the gradeable
+    expectations, the interventions, and the limits. Read this before creating one."""
+    from backend.aegis import scenarios as sc
+    return {
+        "arcs": sc.ARCS,
+        "expectations": sc.EXPECTATION_KINDS,
+        "interventions": {"fluids": "raises MAP/SBP, lowers HR",
+                          "antibiotics": "4h lag, then bends the whole arc back",
+                          "vasopressors": "raises MAP/SBP, raises HR"},
+        "limits": {"max_scenarios": sc.ScenarioLab.MAX_SCENARIOS,
+                   "los_hours": [8, 336], "label_lead_hours": sc.LABEL_LEAD},
+        "synthetic": True,
+        "caveat": "Scenarios grade BEHAVIOUR (did the alarm fire, in what order). "
+                  "They can never measure accuracy — the patients are written by "
+                  "hand, so any rate computed on them measures the generator.",
+    }
+
+
+@app.get("/aegis/scenarios")
+def scenarios_list() -> Dict[str, Any]:
+    """Every scenario in the sandbox, plus the pass/fail report for those that ran."""
+    from backend.aegis.scenarios import LAB
+    return {"scenarios": LAB.list(), "report": LAB.report()}
+
+
+@app.get("/aegis/scenarios/{bed}")
+def scenarios_get(bed: str) -> Dict[str, Any]:
+    """One scenario's full result, including the hour-by-hour risk trace."""
+    from dataclasses import asdict
+    from backend.aegis.scenarios import LAB
+    res = LAB.result(bed)
+    if res is None:
+        return {"bed": bed, "ran": False,
+                "note": "not run yet — POST /aegis/scenarios/{bed}/run"}
+    return asdict(res)
+
+
+@app.post("/aegis/scenarios/create")
+async def scenarios_create(payload: ScenarioIn) -> Dict[str, Any]:
+    """Author a scenario. Returns its sandbox bed handle (always 'sim_'-prefixed)."""
+    from backend.aegis.scenarios import LAB, Expectation, ScenarioSpec
+    try:
+        spec = ScenarioSpec(
+            name=payload.name, arc=payload.arc, los_hours=payload.los_hours,
+            onset_hour=payload.onset_hour, ramp_hours=payload.ramp_hours,
+            severity=payload.severity, age=payload.age, gender=payload.gender,
+            weight=payload.weight, lab_interval_hours=payload.lab_interval_hours,
+            vitals_dropout=payload.vitals_dropout,
+            interventions=[(int(h), str(k)) for h, k in payload.interventions],
+            seed=payload.seed, notes=payload.notes)
+        exps = [Expectation(kind=e.get("kind", ""), value=float(e.get("value", 0)),
+                            because=str(e.get("because", "")))
+                for e in payload.expectations]
+        bed = LAB.create(spec, exps)
+    except (ValueError, TypeError) as exc:
+        # Returned rather than raised: the agent gets a correctable message instead
+        # of a stack trace, and a rejected spec is a normal outcome here.
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "bed": bed, "fingerprint": spec.fingerprint(),
+            "synthetic": True}
+
+
+@app.post("/aegis/scenarios/{bed}/run")
+async def scenarios_run(bed: str) -> Dict[str, Any]:
+    """Run one scenario against the SHIPPED detector and grade its expectations."""
+    from dataclasses import asdict
+    from backend.aegis.scenarios import LAB
+    try:
+        return asdict(LAB.run(bed))
+    except KeyError as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+@app.post("/aegis/scenarios/suite")
+async def scenarios_suite() -> Dict[str, Any]:
+    """Install and run the standing suite: deteriorations the OS must catch and
+    confounders it must ignore. Replaces whatever is in the sandbox."""
+    from backend.aegis.scenarios import LAB
+    LAB.load_suite()
+    LAB.run_all()
+    return LAB.report()
+
+
+@app.post("/aegis/scenarios/run_all")
+async def scenarios_run_all() -> Dict[str, Any]:
+    """Run every scenario currently in the sandbox."""
+    from backend.aegis.scenarios import LAB
+    LAB.run_all()
+    return LAB.report()
+
+
+@app.post("/aegis/scenarios/reset")
+async def scenarios_reset() -> Dict[str, Any]:
+    """Empty the sandbox."""
+    from backend.aegis.scenarios import LAB
+    return {"ok": True, "cleared": LAB.reset()}
 
 
 @app.post("/aegis/kernel/recover")
