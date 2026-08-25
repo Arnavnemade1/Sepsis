@@ -65,3 +65,6 @@ site/public/media/*.mov
 # Bundled CC-BY real-patient sample IS committed (small, attributed)
 !data/cohort_sample/
 data/ddinter/
+
+# Derived out-of-fold scores: regenerable, and large enough to bloat the history.
+artifacts/subgroup_oof_*.npz
