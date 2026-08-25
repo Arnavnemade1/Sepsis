@@ -23,6 +23,9 @@ Run:  python verify_integrity.py
 """
 from __future__ import annotations
 
+import copy
+import json
+import os
 import sys
 import traceback
 
@@ -218,6 +221,23 @@ def check_shipped_operating_point(fx: Fixture) -> None:
         f"HIGH {op.high:.4f} is above the model's p95 {op.prob_p95:.4f} — it sits in the "
         f"sparse output tail, the exact calibration-cliff failure (the old 0.12 lived at "
         f"the 98.3rd percentile) that this derivation exists to prevent")
+    # THE second regression guard. The p95 rule above only compares the threshold to a
+    # p95 recorded in the same file, so it is satisfied by any internally consistent
+    # artifact — INCLUDING one whose evidence was measured on a different detector than
+    # the one it governs. Nothing in the artifact used to say which detector that was,
+    # so the mismatch was not merely undetected, it was undetectABLE: the one script
+    # that could have installed such a point (derive_operating_point.py) defaulted to a
+    # roster and objective that no longer matched the promoted one, and would have
+    # written a perfectly self-consistent file. A threshold is a reading of one score
+    # distribution; this asserts it is a reading of the RIGHT one.
+    with open(os.path.join("artifacts", "detector_manifest.json")) as fh:
+        promoted = json.load(fh)["configs"]["candidate"]
+    expect = f"{promoted['objective']}:{'+'.join(promoted['roster'])}"
+    _detail(f"artifact detector '{op.detector}' vs promoted '{expect}'")
+    assert op.detector == expect, (
+        f"the operating point was derived on detector '{op.detector}' but the promoted "
+        f"detector is '{expect}' — every number in operating_point.json describes a model "
+        f"that is not the one deployed, so the alarm threshold is unvalidated")
     # and it must still beat the old hand-set 0.12 on THIS held-out fold
     u_new = metrics.normalized_utility(
         fx.yte, (fx.p_te >= op.high).astype(int), fx.groups[fx.te], fx.hour[fx.te])
@@ -270,6 +290,80 @@ def check_mutation_stays_legal(_fx: Fixture) -> None:
 
 
 # --------------------------------------------------------------------------- #
+# 9. Subgroup-audit claims — a published disparity must survive its own arithmetic.
+# --------------------------------------------------------------------------- #
+def check_subgroup_claims(_fx: "Fixture") -> None:
+    """The lie this catches is a *fabricated fairness finding*.
+
+    Subgroup results are the easiest numbers in the project to overstate: split a
+    cohort eight ways, test eight metrics, and something will look damning by
+    chance. So this guard does not re-run the audit — it interrogates the claim
+    file the audit publishes, the way a reviewer would, and asserts the internal
+    arithmetic of every claim holds:
+
+      * a gap marked significant must have an ADJUSTED interval excluding zero,
+      * the correction must actually be Bonferroni over the pre-specified family,
+      * a post-hoc selected comparison must never be marked significant,
+      * an underpowered cell must never appear on either side of a claim.
+
+    Then it plants the lie — flips one straddling-zero gap to significant — and
+    asserts the same guard rejects it.
+    """
+    print("[9] Subgroup claims — a published disparity must survive its own arithmetic")
+    path = os.path.join("artifacts", "subgroup_audit.json")
+    if not os.path.exists(path):
+        _detail(f"planted: nothing — {path} absent; run `make subgroup-audit` first")
+        _ok("skipped (no published subgroup claims to audit)")
+        return
+    with open(path) as fh:
+        rep = json.load(fh)
+
+    def violations(r):
+        """Every way a claim in this report contradicts its own numbers."""
+        bad = []
+        small = {c["name"] for c in r["cells"] if c["metrics"].get("underpowered")}
+        fam = [g for g in r["gaps"] if not g.get("selected")]
+        expect_alpha = 0.05 / max(len(fam), 1)
+        for g in r["gaps"]:
+            if g.get("significant_adj"):
+                if not (g["ci_lo_adj"] > 0 or g["ci_hi_adj"] < 0):
+                    bad.append(f"{g['metric']} {g['a']}-{g['b']}: significant but "
+                               f"adjusted CI [{g['ci_lo_adj']:+.4f},{g['ci_hi_adj']:+.4f}] "
+                               f"straddles zero")
+                if g.get("selected"):
+                    bad.append(f"{g['metric']} {g['a']}-{g['b']}: post-hoc selected cell "
+                               f"claimed as significant")
+                if g["a"] in small or g["b"] in small:
+                    bad.append(f"{g['metric']} {g['a']}-{g['b']}: claim rests on an "
+                               f"underpowered cell")
+            if abs(g.get("alpha_adj", expect_alpha) - expect_alpha) > 1e-12:
+                bad.append(f"{g['metric']} {g['a']}-{g['b']}: alpha {g.get('alpha_adj')} "
+                           f"!= 0.05/{len(fam)}")
+        return bad
+
+    found = violations(rep)
+    n_sig = sum(1 for g in rep["gaps"] if g.get("significant_adj"))
+    _detail(f"planted: nothing yet — auditing {len(rep['gaps'])} published gaps "
+            f"({n_sig} claimed significant) for self-consistency")
+    assert not found, "the published subgroup report contradicts itself: " + "; ".join(found)
+
+    # Now the lie: promote a gap whose interval straddles zero.
+    forged = copy.deepcopy(rep)
+    victim = next((g for g in forged["gaps"]
+                   if not g.get("selected") and g["ci_lo_adj"] <= 0 <= g["ci_hi_adj"]), None)
+    assert victim is not None, ("no straddling gap available to forge — cannot prove the "
+                               "guard fires, so this check would be vacuous")
+    victim["significant_adj"] = True
+    caught = violations(forged)
+    _detail(f"planted: '{victim['metric']} {victim['a']} - {victim['b']}' "
+            f"[{victim['ci_lo_adj']:+.4f},{victim['ci_hi_adj']:+.4f}] forged to significant")
+    assert caught, ("a gap whose adjusted interval includes zero was accepted as a "
+                    "significant disparity — the fairness claims are unguarded")
+    _ok(f"{len(rep['gaps'])} published gaps self-consistent; forged claim rejected "
+        f"({caught[0].split(':')[-1].strip()})")
+
+
+# --------------------------------------------------------------------------- #
 CHECKS = [
     ("model", check_label_shuffle_collapse),
     ("model", check_oof_necessity),
@@ -279,6 +373,7 @@ CHECKS = [
     ("model", check_shipped_operating_point),
     ("model", check_detection_monotonic),
     ("pure",  check_mutation_stays_legal),
+    ("pure",  check_subgroup_claims),
 ]
 
 

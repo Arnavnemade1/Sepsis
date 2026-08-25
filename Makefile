@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -18,6 +18,8 @@ help:
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
+	@echo "  make verify-subgroup   Subgroup audit: global threshold, patient bootstrap, multiplicity"
+	@echo "  make verify-op         Operating point: in-range rule, cap margin, detector identity"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -33,6 +35,7 @@ help:
 	@echo "  make frontier-report  Rebuild the frontier results table from saved OOF"
 	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
 	@echo "  make operating-point  Derive the alarm thresholds from data (add --save to apply)"
+	@echo "  make subgroup-audit   Per-subgroup fairness + calibration audit of the shipped detector"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
 	@echo "  make clean-cache  Remove regenerated feature caches"
 
@@ -152,6 +155,23 @@ verify-alarm:
 # still lets a genuine winner through.
 verify-selfimprove:
 	$(PY) -m backend.ml.scripts.verify_selfimprove
+
+# Who does the shipped detector serve worse? Reports every metric per age x sex
+# cell at the DEPLOYED threshold — never re-tuned per group, because a re-tuned
+# audit measures a system that does not exist and hides the real disparity.
+verify-subgroup:
+	$(PY) -m backend.ml.scripts.verify_subgroup
+
+# Each of these three constraints was once enforced somewhere other than where it
+# could be broken: the in-range rule lived in the integrity audit, the detector
+# identity was not recorded at all, and the false-alarm cap was imposed only on the
+# scores used to pick the threshold.
+verify-op:
+	$(PY) -m backend.ml.scripts.verify_operating_point
+
+subgroup-audit:
+	$(PY) -m backend.ml.scripts.subgroup_audit --candidate 'stack+xgb@utility' \
+		--spec $(SPEC) --folds 3 --boot 400 --jobs 6
 
 alarm-policy:
 	$(PY) -m backend.ml.scripts.search_alarm_policy --save

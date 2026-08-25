@@ -93,8 +93,17 @@ def main() -> None:
                   f"Rerun with more data/folds if you believe the gain is real.")
             return
         os.replace(prod_out, prod_out + ".bak") if os.path.exists(prod_out) else None
-        aug_full.save(prod_out)
-        print(f"PROMOTED: {exp_out} -> {prod_out} (previous backed up to .bak)")
+        # Promote the model that was MEASURED, not the full-data refit. The held-out
+        # report above describes `aug`; `aug_full` is a different fit, and this
+        # ensemble's score scale is unstable across fits (false-alarm rate swings
+        # 0.085-0.209 at a FIXED threshold on FIXED patients as the fit grows, with no
+        # monotone trend to correct for), so shipping the refit would put a model into
+        # production whose alarm behaviour nothing here has measured.
+        aug.save(prod_out)
+        print(f"PROMOTED: the held-out-measured fit ({len(set(ds.groups[tr].tolist())):,} "
+              f"train patients) -> {prod_out} (previous backed up to .bak)")
+        print(f"  NOTE: {exp_out} is the full-data refit and is NOT promoted — it has "
+              f"no measured operating point.")
 
 
 if __name__ == "__main__":

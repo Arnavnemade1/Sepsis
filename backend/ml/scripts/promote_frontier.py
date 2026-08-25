@@ -175,11 +175,13 @@ def main() -> None:
     # ---------------- fit 1 + 2: the same ensemble under both objectives -------- #
     scores: Dict[str, Dict[str, float]] = {}
     preds: Dict[str, np.ndarray] = {}
+    models: Dict[str, object] = {}
     for name in ("incumbent", "candidate"):
         t0 = time.time()
         print(f"fitting {name} ...", flush=True)
         with _cpu_cap(args.jobs):
             m = mk(name).fit(feats.iloc[tr], ytr, groups=gtr, hour_index=htr, onset_hour=otr)
+        models[name] = m
         preds[name] = m.predict_proba(feats.iloc[te])
         scores[name] = _score(yte, preds[name], gte, hte, ote)
         print(_line(f"{name} ({time.time()-t0:.0f}s)", scores[name]))
@@ -212,9 +214,25 @@ def main() -> None:
     # The holdout is split by PATIENT: the threshold is chosen on one half and judged
     # on the other, so no threshold is ever quoted on the patients that produced it.
     ha, hb = stratified_group_split(gte, yte, 0.5, args.seed + 1)
-    points = {n: opmod.derive(yte[ha], preds[n][ha], gte[ha], hte[ha], ote[ha],
-                              objective="constrained", max_false_alarm_rate=args.max_far)
-              for n in ("incumbent", "candidate")}
+    try:
+        points = {n: opmod.derive(yte[ha], preds[n][ha], gte[ha], hte[ha], ote[ha],
+                                  objective="constrained", max_false_alarm_rate=args.max_far,
+                                  seed=args.seed, detector=_detector_id(configs[n]))
+                  for n in ("incumbent", "candidate")}
+    except opmod.Infeasible as e:
+        # Not a crash and not something to tune around. The alarm budget is a clinical
+        # values judgement, so an unsatisfiable one is a question for a person: here is
+        # what each budget would actually buy, and which of them need a threshold out
+        # in the sparse tail where this detector's behaviour is not dependable.
+        print(f"\nOPERATING POINT INFEASIBLE — {e}")
+        print("\nWhat each alarm budget would buy on these patients:")
+        print(e.frontier())
+        print("\nREFUSED to promote: no lawful operating point exists under the "
+              f"requested cap (--max-far {args.max_far}). Raise the budget deliberately, "
+              f"or improve the detector — do not widen the guard.")
+        _write_manifest(manifest_stub(scores, filters, configs, args, accuracy_ok),
+                        promoted=False)
+        return
     op = points["candidate"]
 
     def gate_row(name, thr):
@@ -245,6 +263,10 @@ def main() -> None:
         "auroc_delta": float(delta), "auprc_delta": float(d_auprc),
         "utility_delta": float(d_util), "configs": configs,
         "gates": {"discrimination": bool(accuracy_ok), "decisions": bool(op_ok)},
+        # Recorded so a later reader can tell whether the shipped model and the shipped
+        # threshold came from the same fit. They must, or the alarm numbers are fiction.
+        "shipped_fit": {"train_patients": int(len(set(gtr.tolist()))),
+                        "threshold_derived_on_same_fit": True},
         "operating_point": {"high": float(op.high), "medium": float(op.medium),
                             "incumbent_high": float(points["incumbent"].high),
                             "gated_utility": float(u_new),
@@ -260,30 +282,73 @@ def main() -> None:
         _write_manifest(manifest, promoted=False)
         return
 
-    # ---------------- fit 3: the production artifact --------------------------- #
-    print("\nRefitting on ALL patients for the production artifact ...", flush=True)
-    t0 = time.time()
-    with _cpu_cap(args.jobs):
-        full = mk("candidate").fit(feats, ds.y, groups=ds.groups,
-                                hour_index=ds.hour_index, onset_hour=ds.onset_hour)
+    # ---------------- ship the model the threshold was validated ON ------------ #
+    # This used to refit the candidate on ALL patients and ship that instead. It is a
+    # tempting move — more data, a slightly better model — and it silently invalidated
+    # every alarm number in the same breath, because the threshold above was derived
+    # and gated against the TRAIN-fitted model's scores, not the refit's.
+    #
+    # That is not a theoretical objection. This ensemble's output scale is not stable
+    # across fits: holding the threshold at 0.055 and the scored patients fixed, the
+    # false-alarm rate measures 0.085 / 0.178 / 0.209 / 0.165 for fits on 750 / 1500 /
+    # 2250 / 3000 patients — a 2.5x swing, and NOT a monotone trend that could be
+    # corrected with an offset. (The isotonic calibrator's output is piecewise
+    # constant with few distinct values at the top; the height of that top step is
+    # what moves, and it moves erratically.) A threshold validated against one fit
+    # therefore says nothing dependable about how another fit will alarm.
+    #
+    # So the artifact shipped here is the one whose alarm behaviour was measured: the
+    # candidate fitted on TRAIN. It gives up the holdout patients' worth of training
+    # data, and in exchange the operating point beside it means what it claims.
     prod = os.path.join(config.ARTIFACTS_DIR, f"gbm_{args.feature_set}.joblib")
     if os.path.exists(prod):
         os.replace(prod, prod + ".balanced.bak")
         print(f"  backed up the incumbent -> {prod}.balanced.bak")
-    full.save(prod)
-    print(f"  PROMOTED -> {prod} ({os.path.getsize(prod)/1e6:.1f} MB, {time.time()-t0:.0f}s)")
+    models["candidate"].save(prod)
+    n_train = len(set(gtr.tolist()))
+    print(f"\n  PROMOTED -> {prod} ({os.path.getsize(prod)/1e6:.1f} MB)")
+    print(f"  fitted on {n_train:,} train patients — the same fit whose scores produced "
+          f"and gated HIGH={op.high:.4f}")
 
     opmod.save(op)
     print(f"  operating point -> {opmod.DEFAULT_PATH}  HIGH={op.high:.4f} MEDIUM={op.medium:.4f}")
     _write_manifest(manifest, promoted=True)
 
 
+def _detector_id(cfg: dict) -> str:
+    """The identity a threshold is only meaningful against: objective + roster."""
+    return f"{cfg['objective']}:{'+'.join(cfg['roster'])}"
+
+
+def manifest_stub(scores, filters, configs, args, accuracy_ok) -> dict:
+    """The manifest for a run that never reached a shippable point."""
+    return {
+        "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "feature_set": args.feature_set, "limit": args.limit, "seed": args.seed,
+        "holdout_metrics": scores, "temporal_filters": filters,
+        "configs": configs,
+        "gates": {"discrimination": bool(accuracy_ok), "decisions": False},
+        "refused": "no operating point satisfied the alarm cap",
+    }
+
+
 def _write_manifest(manifest: dict, promoted: bool) -> None:
+    """Record the run — but only overwrite the shipped manifest if something shipped.
+
+    ``detector_manifest.json`` is the record of what is CURRENTLY DEPLOYED: the
+    operating-point derivation reads the promoted roster from it, and the integrity
+    audit asserts the shipped threshold was measured on that detector. A run that
+    promotes nothing leaves the deployed artifact untouched on disk, so rewriting the
+    manifest would leave the record describing a model that was never installed —
+    which is the same detector/evidence mismatch this whole pass exists to remove.
+    A refused or measure-only run therefore writes its findings alongside instead.
+    """
     manifest["promoted"] = promoted
-    path = os.path.join(config.ARTIFACTS_DIR, "detector_manifest.json")
+    name = "detector_manifest.json" if promoted else "promotion_attempt.json"
+    path = os.path.join(config.ARTIFACTS_DIR, name)
     with open(path, "w") as fh:
         json.dump(manifest, fh, indent=2)
-    print(f"  manifest -> {path}")
+    print(f"  {'manifest' if promoted else 'attempt (shipped manifest untouched)'} -> {path}")
 
 
 if __name__ == "__main__":
