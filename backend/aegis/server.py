@@ -758,7 +758,18 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
         "risk": {"level": level, "ml_probability": round(personalized, 4), "ns_risk_level": level,
                  "population_risk": round(fused, 4), "personalized_risk": round(personalized, 4),
                  "susceptibility": _susc or None,
-                 "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0},
+                 "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0,
+                 # The conformal bands describe the CALIBRATED DETECTOR's output
+                 # distribution and nothing else. A cohort bed's risk is a fused
+                 # cohort score read against entirely different bands (0.35/0.6, not
+                 # the detector's 0.0525), so no conformal claim covers it. Said out
+                 # loud rather than omitted: a missing field reads as "resolved",
+                 # and quietly applying the bands to a differently-scaled score is
+                 # the threshold/fit-coupling error this repo already paid for once.
+                 "certainty": {"unavailable": True, "state": "no_claim",
+                               "reason": "cohort bed risk is a fused cohort score, not "
+                                         "the calibrated detector probability the "
+                                         "conformal bands were derived from"}},
         "vitals": v, "detection": det, "triggered_rules": [],
         "body_state": body, "reasoning": reasoning, "whatif": adv["whatif"], "consensus": None,
         "history": {"t": [], "channels": {}, "risk": [], "probability": [], "region_severity": {}},

@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -20,6 +20,7 @@ help:
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
 	@echo "  make verify-subgroup   Subgroup audit: global threshold, patient bootstrap, multiplicity"
 	@echo "  make verify-op         Operating point: in-range rule, cap margin, detector identity"
+	@echo "  make verify-conformal  Conformal abstention: plants leakage/shift/degeneracy, asserts each shows"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -36,6 +37,8 @@ help:
 	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
 	@echo "  make operating-point  Derive the alarm thresholds from data (add --save to apply)"
 	@echo "  make subgroup-audit   Per-subgroup fairness + calibration audit of the shipped detector"
+	@echo "  make conformal        Derive the abstention layer (add --save to apply)"
+	@echo "  make conformal-external  Calibrate on hospital A, measure coverage on hospital B"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
 	@echo "  make clean-cache  Remove regenerated feature caches"
 
@@ -168,6 +171,26 @@ verify-subgroup:
 # scores used to pick the threshold.
 verify-op:
 	$(PY) -m backend.ml.scripts.verify_operating_point
+
+# Three of these checks pass by demonstrating a LOSS of coverage — row-level
+# calibration flattering itself, distribution shift breaking the guarantee, and the
+# non-class-conditional taxonomy going degenerate at 2% prevalence. A run where
+# everything passes by looking healthy would be evidence of nothing.
+verify-conformal:
+	$(PY) -m backend.ml.scripts.verify_conformal
+
+# alpha is a REQUEST, not a result: on correlated ICU hours the delivered coverage
+# does not track it, so the level is chosen on a select split and confirmed on a
+# locked one. Reports only; add --save to write artifacts/conformal.json.
+conformal:
+	$(PY) -m backend.ml.scripts.derive_conformal \
+		--oof artifacts/subgroup_oof_dev_stack+xgb@utility.npz:stack+xgb@utility \
+		--auto-alpha --sweep 0.03,0.04,0.05,0.06,0.08,0.10
+
+# Exchangeability is what the guarantee trades on, and a different hospital is the
+# textbook violation of it. This measures how far coverage actually falls.
+conformal-external:
+	$(PY) -m backend.ml.scripts.derive_conformal --external --alpha 0.06 --jobs 6
 
 subgroup-audit:
 	$(PY) -m backend.ml.scripts.subgroup_audit --candidate 'stack+xgb@utility' \

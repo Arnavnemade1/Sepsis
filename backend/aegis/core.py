@@ -23,6 +23,7 @@ from backend.core.neurosymbolic import NeurosymbolicEngine
 from backend.ml import config
 from backend.ml.data.features import FeatureConfig
 from backend.ml.operating_point import load as load_operating_point
+from backend.ml import conformal
 from backend.aegis.streaming_features import StreamingFeatureBuilder
 
 
@@ -47,6 +48,11 @@ class AegisAssessment:
     whatif: Optional[Dict[str, Any]] = None        # predictive treatment projections (scheduler)
     reasoning: Optional[Dict[str, Any]] = None     # multi-agent debate + consensus
     consensus: Optional[Dict[str, Any]] = None     # BFT specialist consensus (auto on HIGH)
+    #: Conformal prediction set for this hour — whether the detector can separate the
+    #: two classes here at all. Deliberately NOT a fourth risk_level: abstention is
+    #: orthogonal to severity, and _escalate() plus the clinical DSL both treat the
+    #: bands as an ordered triple. None when the layer has not been derived.
+    certainty: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -82,6 +88,13 @@ class AegisCore:
         # write a point that loses to the old constants on held-out patients.
         # Explicit arguments still win, so callers can pin a point for a study.
         self.operating_point = load_operating_point()
+        # Conformal abstention layer (artifacts/conformal.json, written by
+        # `python -m backend.ml.scripts.derive_conformal --save`). Absent is a normal
+        # state, not an error: the OS then serves exactly as it did before the layer
+        # existed and reports `certainty: None` rather than inventing confidence.
+        self.conformal = conformal.load()
+        self._conformal_ready: Optional[bool] = None   # decided on the first row
+        self._last_feats = None                        # the row _certainty() reads
         if high_threshold is None:
             high_threshold = self.operating_point.high if self.operating_point else 0.12
         if medium_threshold is None:
@@ -101,6 +114,10 @@ class AegisCore:
 
         self.model = self._load_model(model_path, feature_set)
         self.model_feature_names = getattr(self.model, "feature_names", None) if self.model else None
+        # Readiness is checked against the first real feature row, not here: the
+        # shipped StackedEnsembleDetector exposes `feature_names_`, not
+        # `feature_names`, so `model_feature_names` is None for it and any check
+        # keyed on that list would silently never run.
 
         # Lazy heavy/optional collaborators.
         self._optimizer = None
@@ -180,6 +197,14 @@ class AegisCore:
             reasoning=consensus.to_dict(),
         )
 
+        # Conformal abstention: can the detector separate the two classes for this
+        # hour at all? Orthogonal to the band above, and never applied over a hard
+        # clinical override.
+        assessment.certainty = self._certainty(
+            ml_prob,
+            "qsofa>=2" if qsofa >= 2 else
+            "shock_signal" if detection.get("shock_signal") else None)
+
         # 4) Body-state model (organ systems / regions / channels) for the
         #    anatomical visualization layer — built every tick, cheap.
         from backend.aegis.body_state import build_body_state
@@ -218,8 +243,15 @@ class AegisCore:
         if self.model is None or not self.features.ready():
             return None
         try:
-            feats = self.features.latest_features(self.model_feature_names)
+            # Built once, then reindexed here rather than inside the builder. The
+            # stratum must be read from the UN-reindexed row: reindexing fills any
+            # column the model does not list with 0.0, and a stratum column arriving
+            # as a plausible zero would put every hour in one cell with nothing to
+            # show for it. Scoring behaviour is unchanged — same reindex, same fill.
+            feats = self.features.latest_features(None)
+            self._last_feats = feats               # read by _certainty(), same row
             if self.model_feature_names:           # GBMDetector expects an array
+                feats = feats.reindex(columns=self.model_feature_names, fill_value=0.0)
                 return float(self.model.predict_proba(feats.to_numpy())[0])
             return float(self.model.predict_proba(feats)[0])   # HDCDetector takes a frame
         except Exception as exc:  # pragma: no cover
@@ -249,6 +281,44 @@ class AegisCore:
         if ns_risk in {"MEDIUM", "HIGH"} or sirs >= 2:
             return "MEDIUM"
         return "LOW"
+
+    def _certainty(self, ml_prob: Optional[float], override: Optional[str]) -> Optional[Dict[str, Any]]:
+        """The conformal prediction set for this hour, or None when unavailable.
+
+        ``override`` names a hard clinical rule that fired (qSOFA >= 2, shock). Those
+        escalations are not model predictions, so no conformal claim covers them: the
+        set is still reported for transparency, but ``abstain`` is forced false. An
+        abstention badge on a rule-driven escalation would suggest the system is
+        unsure about a decision it did not make with the model at all.
+        """
+        if self.conformal is None or ml_prob is None or self._conformal_ready is False:
+            return None
+        feats = self._last_feats
+        if feats is None or feats.empty:
+            return None
+        if self._conformal_ready is None:          # first real row decides, once
+            missing = [c for c in self.conformal.spec.channels_needed()
+                       if c not in feats.columns]
+            self._conformal_ready = not missing
+            if missing:
+                print(f"[aegis] conformal layer idle: feature row lacks {missing}")
+                return None
+        try:
+            spec = self.conformal.spec
+            row = feats.iloc[0]
+            stratum = spec.assign_one(
+                float(row["n_measured_this_hour"]),
+                max(float(row[f"{ch}__age"]) for ch in spec.channels))
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+        out = conformal.predict_set(self.conformal, float(ml_prob), stratum)
+        cov = (self.conformal.coverage or {}).get("locked", {}).get("overall", {})
+        out["measured_coverage"] = {"septic": cov.get("micro_pos"),
+                                    "non_septic": cov.get("micro_neg")}
+        if override:
+            out["abstain"] = False
+            out["override"] = override
+        return out
 
     # ------------------------------------------------------------------ #
     def _attach_protocol(self, a: AegisAssessment) -> None:

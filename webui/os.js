@@ -193,6 +193,35 @@ function renderRisk(d) {
   $("#rs-qsofa").textContent = d.risk?.qsofa_score ?? 0;
   $("#rs-sq").textContent = pct(d.risk?.signal_quality);
   $("#twin-risk").textContent = lvl === "LOW" ? "monitoring" : lvl.toLowerCase() + " risk";
+  renderCertainty(d.risk?.certainty);
+}
+
+/* Conformal abstention. The band above says how bad; this says whether the detector
+   can tell at all. Hidden entirely when the layer has not been derived — an empty
+   chip would read as "resolved", which is the one thing it must never imply. */
+const CERT_WORD = { uncertain: "UNRESOLVED", not_septic: "RULED OUT",
+                    septic: "RULED IN", conflicting: "CONFLICT" };
+function renderCertainty(c) {
+  const el = $("#risk-certainty"); if (!el) return;
+  if (!c) { el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  if (c.unavailable) {
+    el.textContent = "NO CLAIM";
+    el.classList.remove("resolved");
+    el.title = c.reason || "the conformal layer has no claim over this score";
+    return;
+  }
+  const word = c.override ? "RULE OVERRIDE" : (CERT_WORD[c.state] || "—");
+  el.textContent = word;
+  el.classList.toggle("resolved", !c.abstain);
+  const cov = c.measured_coverage || {};
+  el.title = c.override
+    ? `escalated by ${c.override} — a clinical rule, not a model prediction, so no `
+      + `conformal claim applies`
+    : `conformal prediction set ${JSON.stringify(c.set)} at alpha ${c.alpha}\n`
+      + `stratum ${c.stratum}${c.fallback_used ? " (marginal fallback)" : ""}\n`
+      + `admits sepsis at p>=${c.lo}, rules it out at p<=${c.hi}\n`
+      + `measured coverage: septic ${cov.septic ?? "?"}, non-septic ${cov.non_septic ?? "?"}`;
 }
 
 /* ---------------- MULTI-ORGAN DYSFUNCTION HUD (SOFA · qSOFA · MODS) ---------- */

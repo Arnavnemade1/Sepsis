@@ -149,6 +149,9 @@ class AegisSession:
                 "sirs_score": a.sirs_score if a else 0,
                 "qsofa_score": a.qsofa_score if a else 0,
                 "signal_quality": a.signal_quality if a else 0.0,
+                # Conformal prediction set: whether the detector can separate the two
+                # classes for this hour at all. Orthogonal to `level`, never a band.
+                "certainty": a.certainty if a else None,
             },
             "vitals": self.core.twin.latest_vitals,
             "detection": a.detection if a else {},

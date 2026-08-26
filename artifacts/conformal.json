@@ -1,0 +1,387 @@
+{
+  "alpha": 0.06,
+  "spec": {
+    "measured_edges": [
+      5.0,
+      6.0
+    ],
+    "staleness_edges": [
+      2.0,
+      48.0
+    ],
+    "channels": [
+      "HR",
+      "O2Sat",
+      "Temp",
+      "SBP",
+      "MAP",
+      "DBP",
+      "Resp"
+    ]
+  },
+  "cells": {
+    "m0/s0": {
+      "stratum": "m0/s0",
+      "lo": 0.006776789495976265,
+      "hi": 0.0569777043765483,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.0569777043765483,
+      "n_hours_pos": 17,
+      "n_hours_neg": 859,
+      "n_patients_pos": 17,
+      "n_patients_neg": 568,
+      "fallback_pos": true,
+      "fallback_neg": false
+    },
+    "m0/s1": {
+      "stratum": "m0/s1",
+      "lo": 0.006776789495976265,
+      "hi": 0.05437737901033171,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.05437737901033171,
+      "n_hours_pos": 157,
+      "n_hours_neg": 7661,
+      "n_patients_pos": 49,
+      "n_patients_neg": 1399,
+      "fallback_pos": true,
+      "fallback_neg": false
+    },
+    "m0/s2": {
+      "stratum": "m0/s2",
+      "lo": 0.006776789495976265,
+      "hi": 0.07923497267759563,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.07923497267759563,
+      "n_hours_pos": 352,
+      "n_hours_neg": 17909,
+      "n_patients_pos": 104,
+      "n_patients_neg": 2951,
+      "fallback_pos": false,
+      "fallback_neg": false
+    },
+    "m1/s0": {
+      "stratum": "m1/s0",
+      "lo": 0.006776789495976265,
+      "hi": 0.08838133068520357,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.08838133068520357,
+      "n_hours_pos": 21,
+      "n_hours_neg": 715,
+      "n_patients_pos": 19,
+      "n_patients_neg": 549,
+      "fallback_pos": true,
+      "fallback_neg": false
+    },
+    "m1/s1": {
+      "stratum": "m1/s1",
+      "lo": 0.006776789495976265,
+      "hi": 0.059602649006622516,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.059602649006622516,
+      "n_hours_pos": 135,
+      "n_hours_neg": 7134,
+      "n_patients_pos": 59,
+      "n_patients_neg": 1263,
+      "fallback_pos": true,
+      "fallback_neg": false
+    },
+    "m1/s2": {
+      "stratum": "m1/s2",
+      "lo": 0.006154128777441037,
+      "hi": 0.0569777043765483,
+      "q_pos": 0.993845871222559,
+      "q_neg": 0.0569777043765483,
+      "n_hours_pos": 585,
+      "n_hours_neg": 30044,
+      "n_patients_pos": 125,
+      "n_patients_neg": 2053,
+      "fallback_pos": false,
+      "fallback_neg": false
+    },
+    "m2/s0": {
+      "stratum": "m2/s0",
+      "lo": 0.006776789495976265,
+      "hi": 0.08838133068520357,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.08838133068520357,
+      "n_hours_pos": 1113,
+      "n_hours_neg": 47251,
+      "n_patients_pos": 222,
+      "n_patients_neg": 2405,
+      "fallback_pos": false,
+      "fallback_neg": false
+    },
+    "m2/s1": {
+      "stratum": "m2/s1",
+      "lo": 0.006776789495976265,
+      "hi": 0.08838133068520357,
+      "q_pos": 0.9932232105040237,
+      "q_neg": 0.08838133068520357,
+      "n_hours_pos": 730,
+      "n_hours_neg": 25724,
+      "n_patients_pos": 204,
+      "n_patients_neg": 2180,
+      "fallback_pos": false,
+      "fallback_neg": false
+    },
+    "m2/s2": {
+      "stratum": "m2/s2",
+      "lo": 0.006154128777441037,
+      "hi": 0.05437737901033171,
+      "q_pos": 0.993845871222559,
+      "q_neg": 0.05437737901033171,
+      "n_hours_pos": 207,
+      "n_hours_neg": 15503,
+      "n_patients_pos": 102,
+      "n_patients_neg": 2449,
+      "fallback_pos": false,
+      "fallback_neg": false
+    }
+  },
+  "marginal": {
+    "stratum": "marginal",
+    "lo": 0.006776789495976265,
+    "hi": 0.07413509060955518,
+    "q_pos": 0.9932232105040237,
+    "q_neg": 0.07413509060955518,
+    "n_hours_pos": 3317,
+    "n_hours_neg": 152800,
+    "n_patients_pos": 348,
+    "n_patients_neg": 3964,
+    "fallback_pos": false,
+    "fallback_neg": false
+  },
+  "detector": "balanced:hgb+hgb2+et+lr+xgb@utility",
+  "n_calib_hours": 156117,
+  "n_calib_patients": 4004,
+  "min_cell_hours": 200,
+  "min_cell_patients": 25,
+  "coverage": {
+    "locked": {
+      "alpha": 0.06,
+      "nominal": 0.94,
+      "n_hours": 76011,
+      "n_patients": 1995,
+      "overall": {
+        "micro": 0.9625,
+        "macro": 0.9765,
+        "micro_pos": 0.935,
+        "macro_pos": 0.9363,
+        "micro_neg": 0.9631,
+        "macro_neg": 0.9771
+      },
+      "abstain_rate": 0.7231,
+      "conflicting_rate": 0.0,
+      "state_counts": {
+        "not_septic": 17882,
+        "uncertain": 54965,
+        "septic": 3164,
+        "conflicting": 0
+      },
+      "per_stratum": {
+        "m0/s0": {
+          "micro": 0.9534,
+          "macro": 0.9708,
+          "micro_pos": 1.0,
+          "macro_pos": 1.0,
+          "micro_neg": 0.9527,
+          "macro_neg": 0.9704,
+          "n_hours": 515,
+          "abstain_rate": 0.6816,
+          "unseen": false
+        },
+        "m0/s1": {
+          "micro": 0.9524,
+          "macro": 0.9658,
+          "micro_pos": 1.0,
+          "macro_pos": 1.0,
+          "micro_neg": 0.9513,
+          "macro_neg": 0.9642,
+          "n_hours": 3890,
+          "abstain_rate": 0.653,
+          "unseen": false
+        },
+        "m0/s2": {
+          "micro": 0.9516,
+          "macro": 0.9788,
+          "micro_pos": 0.9072,
+          "macro_pos": 0.8623,
+          "micro_neg": 0.9526,
+          "macro_neg": 0.9798,
+          "n_hours": 8466,
+          "abstain_rate": 0.6326,
+          "unseen": false
+        },
+        "m1/s0": {
+          "micro": 0.9691,
+          "macro": 0.9842,
+          "micro_pos": 1.0,
+          "macro_pos": 1.0,
+          "micro_neg": 0.9681,
+          "macro_neg": 0.9833,
+          "n_hours": 388,
+          "abstain_rate": 0.7371,
+          "unseen": false
+        },
+        "m1/s1": {
+          "micro": 0.9408,
+          "macro": 0.9764,
+          "micro_pos": 1.0,
+          "macro_pos": 1.0,
+          "micro_neg": 0.9396,
+          "macro_neg": 0.9733,
+          "n_hours": 3448,
+          "abstain_rate": 0.6995,
+          "unseen": false
+        },
+        "m1/s2": {
+          "micro": 0.9538,
+          "macro": 0.9444,
+          "micro_pos": 0.8959,
+          "macro_pos": 0.8846,
+          "micro_neg": 0.9547,
+          "macro_neg": 0.9435,
+          "n_hours": 14493,
+          "abstain_rate": 0.6586,
+          "unseen": false
+        },
+        "m2/s0": {
+          "micro": 0.9783,
+          "macro": 0.9893,
+          "micro_pos": 0.9516,
+          "macro_pos": 0.9684,
+          "micro_neg": 0.9788,
+          "macro_neg": 0.9899,
+          "n_hours": 24462,
+          "abstain_rate": 0.7853,
+          "unseen": false
+        },
+        "m2/s1": {
+          "micro": 0.9719,
+          "macro": 0.99,
+          "micro_pos": 0.9831,
+          "macro_pos": 0.988,
+          "micro_neg": 0.9716,
+          "macro_neg": 0.9901,
+          "n_hours": 12547,
+          "abstain_rate": 0.8219,
+          "unseen": false
+        },
+        "m2/s2": {
+          "micro": 0.9412,
+          "macro": 0.9573,
+          "micro_pos": 0.8013,
+          "macro_pos": 0.8471,
+          "micro_neg": 0.9439,
+          "macro_neg": 0.9582,
+          "n_hours": 7802,
+          "abstain_rate": 0.6346,
+          "unseen": false
+        }
+      },
+      "reported_only": {
+        "age_band": {
+          "age 45-64": {
+            "micro": 0.9673,
+            "macro": 0.9777,
+            "micro_pos": 0.8913,
+            "macro_pos": 0.8937,
+            "micro_neg": 0.9686,
+            "macro_neg": 0.9795,
+            "n_hours": 27803,
+            "abstain_rate": 0.697
+          },
+          "age 65-79": {
+            "micro": 0.9684,
+            "macro": 0.9774,
+            "micro_pos": 0.932,
+            "macro_pos": 0.9322,
+            "micro_neg": 0.9692,
+            "macro_neg": 0.9773,
+            "n_hours": 26452,
+            "abstain_rate": 0.7536
+          },
+          "age 80+": {
+            "micro": 0.9472,
+            "macro": 0.9728,
+            "micro_pos": 0.953,
+            "macro_pos": 0.9551,
+            "micro_neg": 0.9471,
+            "macro_neg": 0.9738,
+            "n_hours": 11702,
+            "abstain_rate": 0.752
+          },
+          "age <45": {
+            "micro": 0.9518,
+            "macro": 0.9747,
+            "micro_pos": 0.9966,
+            "macro_pos": 0.9967,
+            "micro_neg": 0.9504,
+            "macro_neg": 0.9731,
+            "n_hours": 10054,
+            "abstain_rate": 0.6815
+          }
+        },
+        "sex": {
+          "female": {
+            "micro": 0.9592,
+            "macro": 0.9732,
+            "micro_pos": 0.8929,
+            "macro_pos": 0.8955,
+            "micro_neg": 0.9605,
+            "macro_neg": 0.9758,
+            "n_hours": 32191,
+            "abstain_rate": 0.6962
+          },
+          "male": {
+            "micro": 0.965,
+            "macro": 0.9788,
+            "micro_pos": 0.9646,
+            "macro_pos": 0.965,
+            "micro_neg": 0.965,
+            "macro_neg": 0.9781,
+            "n_hours": 43820,
+            "abstain_rate": 0.7429
+          }
+        }
+      }
+    },
+    "alpha_sweep": "    alpha  nominal     cov+     cov-   macro+  abstain  miss/req  holds?\n    0.030    0.970   0.9341   0.9739   0.9343    0.766      2.20      NO\n    0.040    0.960   0.9231   0.9636   0.9234    0.739      1.92      NO\n    0.050    0.950   0.9231   0.9602   0.9234    0.735      1.54      NO\n    0.060    0.940   0.9231   0.9544   0.9234    0.729      1.28     yes\n    0.080    0.920   0.9036   0.9346   0.9045    0.661      1.21     yes\n    0.100    0.900   0.8786   0.9146   0.8797    0.562      1.21     yes",
+    "alpha_selected_on": "select split",
+    "conversion": {
+      "threshold": 0.0525,
+      "policies": [
+        {
+          "policy": "shipped (p >= thr)",
+          "utility": 0.37036712008190714,
+          "detection": 0.58125,
+          "false_alarm": 0.23051771117166212,
+          "lead_h": 27.0,
+          "alarm_hours": 0.09667021878412335
+        },
+        {
+          "policy": "UNCERTAIN silenced",
+          "utility": 0.2587489639705524,
+          "detection": 0.41875,
+          "false_alarm": 0.09863760217983651,
+          "lead_h": 30.0,
+          "alarm_hours": 0.0416255541961032
+        },
+        {
+          "policy": "UNCERTAIN escalated",
+          "utility": -0.14547316074301514,
+          "detection": 0.975,
+          "false_alarm": 0.9493188010899183,
+          "lead_h": 27.5,
+          "alarm_hours": 0.7647445764428833
+        }
+      ]
+    },
+    "gate": {
+      "worst_coverage": 0.935,
+      "miscoverage_ratio": 1.0833333333333326,
+      "overrun_limit": 1.5,
+      "passed": true
+    }
+  }
+}

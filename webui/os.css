@@ -456,6 +456,14 @@ b{color:var(--ink)}
   color:var(--low);transition:color var(--t) ease}
 .risk-tier-badge.MEDIUM{color:var(--med)}
 .risk-tier-badge.HIGH{color:var(--high)}
+/* Conformal state. Deliberately ACHROMATIC: colour on this panel means clinical
+   severity, and "the model cannot separate the two classes here" is not a severity —
+   giving it a hue would make an epistemic statement compete with the alarm. A
+   hairline chip in mono reads as instrument annotation, which is what it is. */
+.risk-certainty{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--line);border-radius:var(--r-sm);
+  padding:2px 5px;line-height:1;align-self:flex-start;white-space:nowrap}
+.risk-certainty.resolved{color:var(--muted);border-color:var(--line-bright)}
 /* segmented band meter: which clinical band the patient is in */
 .risk-bands{display:flex;gap:3px}
 .rb-seg{flex:1;text-align:center;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.08em;

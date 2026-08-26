@@ -1,0 +1,321 @@
+{
+  "generated": "2026-08-26 22:42:57 UTC",
+  "detector": "balanced:hgb+hgb2+et+lr+xgb@utility",
+  "alpha": 0.06,
+  "external_limit": 6000,
+  "within_setA": {
+    "alpha": 0.06,
+    "nominal": 0.94,
+    "n_hours": 117681,
+    "n_patients": 2993,
+    "overall": {
+      "micro": 0.9666,
+      "macro": 0.9824,
+      "micro_pos": 0.9293,
+      "macro_pos": 0.9298,
+      "micro_neg": 0.9675,
+      "macro_neg": 0.9852
+    },
+    "abstain_rate": 0.7162,
+    "conflicting_rate": 0.0,
+    "state_counts": {
+      "not_septic": 29166,
+      "uncertain": 84281,
+      "septic": 4234,
+      "conflicting": 0
+    },
+    "per_stratum": {
+      "m0/s0": {
+        "micro": 0.9402,
+        "macro": 0.9709,
+        "micro_pos": 0.7333,
+        "macro_pos": 0.7333,
+        "micro_neg": 0.945,
+        "macro_neg": 0.9784,
+        "n_hours": 669,
+        "abstain_rate": 0.4993,
+        "unseen": false
+      },
+      "m0/s1": {
+        "micro": 0.9493,
+        "macro": 0.9723,
+        "micro_pos": 0.8117,
+        "macro_pos": 0.881,
+        "micro_neg": 0.9534,
+        "macro_neg": 0.9759,
+        "n_hours": 5364,
+        "abstain_rate": 0.3147,
+        "unseen": false
+      },
+      "m0/s2": {
+        "micro": 0.9685,
+        "macro": 0.9885,
+        "micro_pos": 0.8631,
+        "macro_pos": 0.7907,
+        "micro_neg": 0.971,
+        "macro_neg": 0.9946,
+        "n_hours": 13485,
+        "abstain_rate": 0.4987,
+        "unseen": false
+      },
+      "m1/s0": {
+        "micro": 0.9783,
+        "macro": 0.9841,
+        "micro_pos": 0.7857,
+        "macro_pos": 0.75,
+        "micro_neg": 0.9829,
+        "macro_neg": 0.9892,
+        "n_hours": 598,
+        "abstain_rate": 0.6304,
+        "unseen": false
+      },
+      "m1/s1": {
+        "micro": 0.948,
+        "macro": 0.9751,
+        "micro_pos": 0.9231,
+        "macro_pos": 0.9213,
+        "micro_neg": 0.9484,
+        "macro_neg": 0.9751,
+        "n_hours": 5188,
+        "abstain_rate": 0.4855,
+        "unseen": false
+      },
+      "m1/s2": {
+        "micro": 0.9505,
+        "macro": 0.9541,
+        "micro_pos": 0.9816,
+        "macro_pos": 0.9822,
+        "micro_neg": 0.9498,
+        "macro_neg": 0.9504,
+        "n_hours": 23171,
+        "abstain_rate": 0.8696,
+        "unseen": false
+      },
+      "m2/s0": {
+        "micro": 0.978,
+        "macro": 0.9899,
+        "micro_pos": 0.9336,
+        "macro_pos": 0.9278,
+        "micro_neg": 0.9791,
+        "macro_neg": 0.9945,
+        "n_hours": 37408,
+        "abstain_rate": 0.7204,
+        "unseen": false
+      },
+      "m2/s1": {
+        "micro": 0.9739,
+        "macro": 0.9903,
+        "micro_pos": 0.9313,
+        "macro_pos": 0.928,
+        "micro_neg": 0.9751,
+        "macro_neg": 0.9942,
+        "n_hours": 20047,
+        "abstain_rate": 0.7579,
+        "unseen": false
+      },
+      "m2/s2": {
+        "micro": 0.9647,
+        "macro": 0.975,
+        "micro_pos": 0.9952,
+        "macro_pos": 0.9943,
+        "micro_neg": 0.9641,
+        "macro_neg": 0.9735,
+        "n_hours": 11751,
+        "abstain_rate": 0.8806,
+        "unseen": false
+      }
+    },
+    "reported_only": {}
+  },
+  "across_setB": {
+    "alpha": 0.06,
+    "nominal": 0.94,
+    "n_hours": 227995,
+    "n_patients": 6000,
+    "overall": {
+      "micro": 0.9678,
+      "macro": 0.9835,
+      "micro_pos": 0.7389,
+      "macro_pos": 0.7369,
+      "micro_neg": 0.9711,
+      "macro_neg": 0.9922
+    },
+    "abstain_rate": 0.3784,
+    "conflicting_rate": 0.0,
+    "state_counts": {
+      "not_septic": 134590,
+      "uncertain": 86262,
+      "septic": 7143,
+      "conflicting": 0
+    },
+    "per_stratum": {
+      "m0/s0": {
+        "micro": 0.9668,
+        "macro": 0.9821,
+        "micro_pos": 0.7692,
+        "macro_pos": 0.77,
+        "micro_neg": 0.9686,
+        "macro_neg": 0.9853,
+        "n_hours": 7140,
+        "abstain_rate": 0.3308,
+        "unseen": false
+      },
+      "m0/s1": {
+        "micro": 0.9687,
+        "macro": 0.9839,
+        "micro_pos": 0.6414,
+        "macro_pos": 0.7287,
+        "micro_neg": 0.9731,
+        "macro_neg": 0.9882,
+        "n_hours": 17983,
+        "abstain_rate": 0.274,
+        "unseen": false
+      },
+      "m0/s2": {
+        "micro": 0.9863,
+        "macro": 0.9926,
+        "micro_pos": 0.4811,
+        "macro_pos": 0.5106,
+        "micro_neg": 0.992,
+        "macro_neg": 0.9996,
+        "n_hours": 9470,
+        "abstain_rate": 0.4591,
+        "unseen": false
+      },
+      "m1/s0": {
+        "micro": 0.9657,
+        "macro": 0.9788,
+        "micro_pos": 0.9375,
+        "macro_pos": 0.9318,
+        "micro_neg": 0.9663,
+        "macro_neg": 0.9796,
+        "n_hours": 2480,
+        "abstain_rate": 0.6379,
+        "unseen": false
+      },
+      "m1/s1": {
+        "micro": 0.9522,
+        "macro": 0.9745,
+        "micro_pos": 0.878,
+        "macro_pos": 0.9117,
+        "micro_neg": 0.9534,
+        "macro_neg": 0.9753,
+        "n_hours": 9866,
+        "abstain_rate": 0.5796,
+        "unseen": false
+      },
+      "m1/s2": {
+        "micro": 0.9877,
+        "macro": 0.9893,
+        "micro_pos": 0.75,
+        "macro_pos": 0.8472,
+        "micro_neg": 0.9917,
+        "macro_neg": 0.9915,
+        "n_hours": 1957,
+        "abstain_rate": 0.7343,
+        "unseen": false
+      },
+      "m2/s0": {
+        "micro": 0.9694,
+        "macro": 0.9836,
+        "micro_pos": 0.7448,
+        "macro_pos": 0.7215,
+        "micro_neg": 0.9727,
+        "macro_neg": 0.993,
+        "n_hours": 102145,
+        "abstain_rate": 0.3558,
+        "unseen": false
+      },
+      "m2/s1": {
+        "micro": 0.9615,
+        "macro": 0.9823,
+        "micro_pos": 0.7365,
+        "macro_pos": 0.7205,
+        "micro_neg": 0.9646,
+        "macro_neg": 0.9918,
+        "n_hours": 67306,
+        "abstain_rate": 0.3443,
+        "unseen": false
+      },
+      "m2/s2": {
+        "micro": 0.9883,
+        "macro": 0.9889,
+        "micro_pos": 0.7952,
+        "macro_pos": 0.7834,
+        "micro_neg": 0.9917,
+        "macro_neg": 0.9928,
+        "n_hours": 9648,
+        "abstain_rate": 0.6601,
+        "unseen": false
+      }
+    },
+    "reported_only": {
+      "age_band": {
+        "age 45-64": {
+          "micro": 0.9624,
+          "macro": 0.9821,
+          "micro_pos": 0.7552,
+          "macro_pos": 0.7509,
+          "micro_neg": 0.9654,
+          "macro_neg": 0.9907,
+          "n_hours": 87657,
+          "abstain_rate": 0.3961
+        },
+        "age 65-79": {
+          "micro": 0.9712,
+          "macro": 0.985,
+          "micro_pos": 0.7338,
+          "macro_pos": 0.7333,
+          "micro_neg": 0.9744,
+          "macro_neg": 0.993,
+          "n_hours": 76776,
+          "abstain_rate": 0.3615
+        },
+        "age 80+": {
+          "micro": 0.9833,
+          "macro": 0.9881,
+          "micro_pos": 0.7328,
+          "macro_pos": 0.7338,
+          "micro_neg": 0.9866,
+          "macro_neg": 0.9957,
+          "n_hours": 27176,
+          "abstain_rate": 0.3066
+        },
+        "age <45": {
+          "micro": 0.9623,
+          "macro": 0.9803,
+          "micro_pos": 0.7165,
+          "macro_pos": 0.715,
+          "micro_neg": 0.9662,
+          "macro_neg": 0.9913,
+          "n_hours": 36386,
+          "abstain_rate": 0.4247
+        }
+      },
+      "sex": {
+        "female": {
+          "micro": 0.976,
+          "macro": 0.9855,
+          "micro_pos": 0.7237,
+          "macro_pos": 0.7233,
+          "micro_neg": 0.9796,
+          "macro_neg": 0.9947,
+          "n_hours": 100916,
+          "abstain_rate": 0.33
+        },
+        "male": {
+          "micro": 0.9614,
+          "macro": 0.9818,
+          "micro_pos": 0.7511,
+          "macro_pos": 0.7478,
+          "micro_neg": 0.9644,
+          "macro_neg": 0.9901,
+          "n_hours": 127079,
+          "abstain_rate": 0.4167
+        }
+      }
+    }
+  },
+  "delta_micro_pos": -0.1904,
+  "delta_micro_neg": 0.0035999999999999366
+}

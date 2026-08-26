@@ -495,6 +495,48 @@ def test_z3_concurrency() -> None:
     _ok("6 threads x 8 verifications, no context corruption; allergy guard intact")
 
 
+def test_conformal_abstention() -> None:
+    print("[21] Conformal abstention — coverage holds, and shift is seen to break it")
+    from backend.ml import conformal as cf
+    rng = np.random.default_rng(0)
+    # One hour per patient: rows are exchangeable, which is the setting the
+    # conformal guarantee is stated in. Anything that fails HERE is the machinery,
+    # not the assumption.
+    z = -3.9 + rng.normal(0, 1.0, size=40000)
+    p = 1 / (1 + np.exp(-z))
+    y = (rng.random(p.size) < p).astype(int)
+    g = np.arange(p.size)
+    st = np.array([f"m{i % 3}/s0" for i in range(p.size)], dtype=object)
+    half = p.size // 2
+    b = cf.calibrate(y[:half], p[:half], g[:half], st[:half], alpha=0.05,
+                     min_hours=0, min_patients=0)
+    rep = cf.coverage_report(b, y[half:], p[half:], g[half:], st[half:])
+    assert rep["overall"]["micro_neg"] >= 0.94, rep["overall"]
+    assert rep["overall"]["micro_pos"] >= 0.92, rep["overall"]
+    _ok(f"coverage {rep['overall']['micro_pos']:.3f}/+ {rep['overall']['micro_neg']:.3f}/- "
+        f"at nominal 0.95")
+
+    # The same bands on shifted scores must LOSE coverage. A layer that still
+    # reported nominal here would be reporting its parameter, not a measurement.
+    shifted = np.clip(1 / (1 + np.exp(-(z[half:] - 1.6))), 1e-6, 1 - 1e-6)
+    rep2 = cf.coverage_report(b, y[half:], shifted, g[half:], st[half:])
+    assert rep2["overall"]["micro_pos"] < rep["overall"]["micro_pos"] - 0.05, rep2["overall"]
+    _ok(f"shift drops septic coverage to {rep2['overall']['micro_pos']:.3f} — the "
+        f"guarantee is conditional and says so")
+
+    # And the serving path: a derived artifact, if present, must produce a state for
+    # a live-shaped score rather than silently returning nothing.
+    live = cf.load()
+    if live is None:
+        _skip("artifacts/conformal.json not derived — serving path not exercised")
+    else:
+        out = cf.predict_set(live, 0.05, next(iter(live.cells)))
+        assert out["state"] in ("not_septic", "uncertain", "septic", "conflicting")
+        assert isinstance(out["abstain"], bool)
+        _ok(f"shipped bands (alpha {live.alpha:g}) classify a live score as "
+            f"{out['state']!r}")
+
+
 def main() -> int:
     print("=" * 64)
     print("AEGIS-OS — END-TO-END VERIFICATION")
@@ -505,7 +547,7 @@ def main() -> int:
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
              test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection,
-             test_z3_concurrency]
+             test_z3_concurrency, test_conformal_abstention]
     failed = 0
     for t in tests:
         try:
