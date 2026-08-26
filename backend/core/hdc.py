@@ -6,6 +6,19 @@ class HDCEngine:
         self.D = dimensions
         # Seed for reproducible random vectors
         self.rng = np.random.default_rng(42)
+        # A FIXED tie-break pattern for bundling. Ties (a dimension summing to exactly
+        # zero) have to resolve to something, and drawing fresh randomness each time
+        # made `encode` non-deterministic: the same clinical state produced a different
+        # hypervector on every call, so the associative memory returned different
+        # precedents for an unchanged patient. It bit hardest where it matters least
+        # to be noisy — ties only occur when an EVEN number of features contribute, i.e.
+        # on beds with MISSING data, which on a 30-bed cohort was 16 of 30 beds and
+        # ~12% of each of their vectors.
+        #
+        # Drawn from its own generator so the main `rng` stream is untouched and every
+        # previously generated id/level vector is bit-identical to before.
+        self._tie_break = np.random.default_rng(4242).choice(
+            [-1, 1], size=self.D).astype(np.int8)
         
         # Item memory for feature IDs
         self.feature_ids = {
@@ -72,9 +85,11 @@ class HDCEngine:
         stacked = np.stack(vectors)
         summed = np.sum(stacked, axis=0)
         
-        # Resolve ties (0 values) to prevent losing information
+        # Resolve ties (0 values) to prevent losing information. Deterministically:
+        # the same state must always bundle to the same hypervector, or retrieval from
+        # the associative memory is not reproducible. See `_tie_break` in __init__.
         zero_indices = summed == 0
-        summed[zero_indices] = self.rng.choice([-1, 1], size=np.sum(zero_indices))
+        summed[zero_indices] = self._tie_break[zero_indices]
         
         return np.sign(summed).astype(np.int8)
 

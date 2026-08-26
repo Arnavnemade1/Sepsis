@@ -125,15 +125,76 @@ class HDCBioMemory:
         return out
 
     # ---- retrieval ---- #
+    def _rank(self, sims: np.ndarray, k: int, exclude_pid: Optional[str]):
+        """Indices of the best candidates, most-similar first, without a full sort."""
+        n = sims.shape[0]
+        window = min(n, max(4 * k, k + 64))
+        if window >= n:
+            return np.argsort(-sims)
+        idx = np.argpartition(-sims, window - 1)[:window]
+        idx = idx[np.argsort(-sims[idx])]
+        if exclude_pid is None:
+            return idx
+        survivors = sum(1 for i in idx if self.meta[int(i)]["pid"] != exclude_pid)
+        if survivors >= k:
+            return idx
+        return np.argsort(-sims)          # exact fallback; correctness over speed
+
     def query(self, state: Dict[str, float], k: int = 16, exclude_pid: Optional[str] = None) -> Dict[str, Any]:
         """Return the k most similar historical states + a similarity-weighted
         case-based resemblance score (soft k-NN P(septic-soon))."""
         if self.mem is None or not len(self.meta):
-            return {"resemblance": 0.0, "k": 0, "n_septic": 0, "lead_h": None, "top": []}
+            return self._empty()
         q = np.ascontiguousarray(self.encode(state), dtype=np.float32)
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             sims = (self._M @ q) / float(self.eng.D)
-        order = np.argsort(-sims)
+        # Rank without sorting the whole store. This asks for the 16 nearest cases and
+        # used to pay a full ``argsort`` over every stored patient-hour to get them —
+        # O(N log N) per bed per tick, against an N that grows with every bed-hour the
+        # OS observes. At 100 beds that single line was 83% of the tick. argpartition
+        # is O(N) and only the small candidate window is then sorted.
+        #
+        # The window is oversized because ``exclude_pid`` may discard many of the top
+        # hits (a patient's own recent hours are its nearest neighbours by construction),
+        # and it falls back to the exact full ordering if the window somehow cannot
+        # supply k survivors — so this is a speedup, not an approximation.
+        return self._finish(sims, k, exclude_pid)
+
+    def query_batch(self, states: List[Dict[str, float]], k: int = 16,
+                    exclude_pids: Optional[List[Optional[str]]] = None
+                    ) -> List[Dict[str, Any]]:
+        """Answer the whole ward's queries in one matrix multiply.
+
+        Every bed scores against the SAME case matrix on the same tick, so B separate
+        ``(N,D)@(D,)`` matvecs are B passes over the same N*D floats — memory-bound,
+        cache-hostile, and single-threaded. One ``(N,D)@(D,B)`` GEMM reads the matrix
+        once and hands BLAS a shape it can actually use.
+
+        This is the difference between an OS that runs a ward and one that runs a bed:
+        the per-bed query cost grows with the case store, and the case store grows with
+        the number of beds, so the naive loop is quadratic in ward size. Results are
+        identical to calling :meth:`query` per bed — same similarities, same neighbours.
+        """
+        n = len(states)
+        if self.mem is None or not len(self.meta) or n == 0:
+            return [self._empty() for _ in range(n)]
+        if exclude_pids is None:
+            exclude_pids = [None] * n
+        Q = np.empty((self.eng.D, n), dtype=np.float32)
+        for j, st in enumerate(states):
+            Q[:, j] = self.encode(st)
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            S = (self._M @ Q) / float(self.eng.D)        # (N, B) — one GEMM
+        return [self._finish(np.ascontiguousarray(S[:, j]), k, exclude_pids[j])
+                for j in range(n)]
+
+    @staticmethod
+    def _empty() -> Dict[str, Any]:
+        return {"resemblance": 0.0, "k": 0, "n_septic": 0, "lead_h": None, "top": []}
+
+    def _finish(self, sims: np.ndarray, k: int, exclude_pid: Optional[str]) -> Dict[str, Any]:
+        """Turn one column of similarities into the case-based verdict."""
+        order = self._rank(sims, k, exclude_pid)
         nbrs: List[Tuple[float, Dict[str, Any]]] = []
         for i in order:
             m = self.meta[int(i)]
@@ -144,7 +205,7 @@ class HDCBioMemory:
             if len(nbrs) >= k:
                 break
         if not nbrs:
-            return {"resemblance": 0.0, "k": 0, "n_septic": 0, "lead_h": None, "top": []}
+            return self._empty()
         # similarity-weighted vote (shifted so only positive correlation contributes)
         w = np.array([max(s, 0.0) + 1e-6 for s, _ in nbrs])
         soon = np.array([m["soon"] for _, m in nbrs])

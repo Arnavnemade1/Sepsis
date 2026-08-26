@@ -1,0 +1,376 @@
+{
+ "generated": "2026-08-26 00:03:13 UTC",
+ "host": {
+  "machine": "arm64",
+  "python": "3.9.6",
+  "cpu_count": 10
+ },
+ "note": "real CohortCluster.tick() over real CinC patients; no mocks in the path",
+ "levels": [
+  {
+   "beds_requested": 1,
+   "beds_built": 1,
+   "build_seconds": 0.91,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 1.5518749999996473,
+    "p95": 1.6788329999997131,
+    "p99": 1.7012919999999099,
+    "mean": 1.57411331999997,
+    "max": 1.7012919999999099
+   },
+   "bed_ticks_per_s": 635.199590382647,
+   "ms_per_bed_tick": 1.574308320000011,
+   "cpu_utilisation": 1.0001090510656732,
+   "peak_rss_mb": 147.84375,
+   "rss_growth_mb": 5.828125,
+   "phases": {
+    "sched_decide": {
+     "ms_per_tick": 0.8536784799999353,
+     "share_of_tick": 0.5422562208144396,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 0.8453799999999845,
+     "share_of_tick": 0.5369850297176723,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "resonance_gate": {
+     "ms_per_tick": 0.38997655999997605,
+     "share_of_tick": 0.24771295117081854,
+     "calls_per_tick": 1.0
+    },
+    "hdc_memory": {
+     "ms_per_tick": 0.238476640000016,
+     "share_of_tick": 0.15148026404384013,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 0.03618160000000259,
+     "share_of_tick": 0.022982537499390426,
+     "calls_per_tick": 1.0
+    },
+    "fusion": {
+     "ms_per_tick": 0.01440836000000445,
+     "share_of_tick": 0.009152184370088542,
+     "calls_per_tick": 1.0
+    },
+    "sample_vitals": {
+     "ms_per_tick": 0.0033599599999689644,
+     "share_of_tick": 0.0021342452156823647,
+     "calls_per_tick": 1.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.0011400400000027844,
+     "share_of_tick": 0.0007241529410216015,
+     "calls_per_tick": 1.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.0002148799999801554,
+     "share_of_tick": 0.0001364916879688179,
+     "calls_per_tick": 1.0
+    }
+   },
+   "phase_coverage": 0.9765790477432501,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 1.5111249999999465,
+    "max": 1.5618750000001569,
+    "rel_range": 0.03358425014490009
+   }
+  },
+  {
+   "beds_requested": 50,
+   "beds_built": 50,
+   "build_seconds": 2.91,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 66.62108300000114,
+    "p95": 71.32399999999883,
+    "p99": 71.67554199999948,
+    "mean": 66.17337167999992,
+    "max": 71.67554199999948
+   },
+   "bed_ticks_per_s": 755.5874557460058,
+   "ms_per_bed_tick": 1.3234735335999999,
+   "cpu_utilisation": 1.04024142912411,
+   "peak_rss_mb": 574.84375,
+   "rss_growth_mb": 0.53125,
+   "phases": {
+    "resonance_gate": {
+     "ms_per_tick": 22.916450400000343,
+     "share_of_tick": 0.34630764904931594,
+     "calls_per_tick": 50.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 20.627433399999973,
+     "share_of_tick": 0.31171659842552324,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 20.508793159999996,
+     "share_of_tick": 0.3099237368837097,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "hdc_memory": {
+     "ms_per_tick": 17.47660988000021,
+     "share_of_tick": 0.26410214388589737,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 2.106696560000003,
+     "share_of_tick": 0.0318358698759853,
+     "calls_per_tick": 1.0
+    },
+    "fusion": {
+     "ms_per_tick": 0.7478250799989183,
+     "share_of_tick": 0.01130094499078872,
+     "calls_per_tick": 50.0
+    },
+    "sample_vitals": {
+     "ms_per_tick": 0.23427872000013394,
+     "share_of_tick": 0.003540361239606642,
+     "calls_per_tick": 50.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.06875680000241857,
+     "share_of_tick": 0.0010390355115812884,
+     "calls_per_tick": 50.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.014496199999527448,
+     "share_of_tick": 0.00021906293751256393,
+     "calls_per_tick": 50.0
+    }
+   },
+   "phase_coverage": 0.9700616659162111,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 66.29170799999784,
+    "max": 71.26954200000046,
+    "rel_range": 0.0750898438158024
+   }
+  },
+  {
+   "beds_requested": 100,
+   "beds_built": 100,
+   "build_seconds": 4.36,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 132.728457999999,
+    "p95": 140.06224999999972,
+    "p99": 140.35641699999957,
+    "mean": 131.02815339999992,
+    "max": 140.35641699999957
+   },
+   "bed_ticks_per_s": 763.1930026191638,
+   "ms_per_bed_tick": 1.3102845500000002,
+   "cpu_utilisation": 1.053386762440265,
+   "peak_rss_mb": 1325.484375,
+   "rss_growth_mb": 4.921875,
+   "phases": {
+    "resonance_gate": {
+     "ms_per_tick": 43.84460011999721,
+     "share_of_tick": 0.3346189201421722,
+     "calls_per_tick": 100.0
+    },
+    "hdc_memory": {
+     "ms_per_tick": 39.78242344000023,
+     "share_of_tick": 0.3036166719664078,
+     "calls_per_tick": 1.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 37.51676155999931,
+     "share_of_tick": 0.286325299035231,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 37.275259999999975,
+     "share_of_tick": 0.28448217602809994,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "device_pump": {
+     "ms_per_tick": 3.786184960000014,
+     "share_of_tick": 0.028895898680939298,
+     "calls_per_tick": 1.0
+    },
+    "fusion": {
+     "ms_per_tick": 1.4784359200011465,
+     "share_of_tick": 0.01128331948965701,
+     "calls_per_tick": 100.0
+    },
+    "sample_vitals": {
+     "ms_per_tick": 0.49215811999360426,
+     "share_of_tick": 0.003756116333613216,
+     "calls_per_tick": 100.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.1367365199942583,
+     "share_of_tick": 0.0010435635526211333,
+     "calls_per_tick": 100.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.02993323999845643,
+     "share_of_tick": 0.00022844839312542018,
+     "calls_per_tick": 100.0
+    }
+   },
+   "phase_coverage": 0.9697682375937671,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 130.07408399999676,
+    "max": 137.35962500000198,
+    "rel_range": 0.056010703869384205
+   }
+  },
+  {
+   "beds_requested": 250,
+   "beds_built": 250,
+   "build_seconds": 9.21,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 372.3898329999997,
+    "p95": 389.3220420000034,
+    "p99": 391.6024169999872,
+    "mean": 360.6713683600008,
+    "max": 391.6024169999872
+   },
+   "bed_ticks_per_s": 693.1511431711831,
+   "ms_per_bed_tick": 1.4426867932799996,
+   "cpu_utilisation": 1.093695351859899,
+   "peak_rss_mb": 2238.875,
+   "rss_growth_mb": 113.5,
+   "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 136.6434499199977,
+     "share_of_tick": 0.3788582540756028,
+     "calls_per_tick": 1.0
+    },
+    "resonance_gate": {
+     "ms_per_tick": 110.15326663999531,
+     "share_of_tick": 0.30541145078221155,
+     "calls_per_tick": 250.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 87.22323160000087,
+     "share_of_tick": 0.24183553077850187,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 86.79554492000022,
+     "share_of_tick": 0.2406497247338557,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "device_pump": {
+     "ms_per_tick": 10.79853324000112,
+     "share_of_tick": 0.029940062639515184,
+     "calls_per_tick": 1.0
+    },
+    "fusion": {
+     "ms_per_tick": 3.7924231600072744,
+     "share_of_tick": 0.010514889794991652,
+     "calls_per_tick": 250.0
+    },
+    "sample_vitals": {
+     "ms_per_tick": 1.3406206800362952,
+     "share_of_tick": 0.0037170110277043476,
+     "calls_per_tick": 250.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.36159640002210836,
+     "share_of_tick": 0.0010025638321676353,
+     "calls_per_tick": 250.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.08019787999842265,
+     "share_of_tick": 0.00022235700880324807,
+     "calls_per_tick": 250.0
+    }
+   },
+   "phase_coverage": 0.9715021199394983,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 363.8007499999958,
+    "max": 373.35425000000555,
+    "rel_range": 0.02626025372407801
+   }
+  },
+  {
+   "beds_requested": 400,
+   "beds_built": 400,
+   "build_seconds": 13.53,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 535.8684589999996,
+    "p95": 579.7081249999962,
+    "p99": 623.9652080000155,
+    "mean": 517.9586366399963,
+    "max": 623.9652080000155
+   },
+   "bed_ticks_per_s": 772.2619095820693,
+   "ms_per_bed_tick": 1.2948974792,
+   "cpu_utilisation": 1.1554297726522293,
+   "peak_rss_mb": 2541.296875,
+   "rss_growth_mb": 0.0,
+   "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 228.97867335999987,
+     "share_of_tick": 0.44207876885640607,
+     "calls_per_tick": 1.0
+    },
+    "resonance_gate": {
+     "ms_per_tick": 142.47894532002078,
+     "share_of_tick": 0.27507765597019623,
+     "calls_per_tick": 400.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 109.77538672000264,
+     "share_of_tick": 0.21193837443374844,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 109.17697828000543,
+     "share_of_tick": 0.21078305432229272,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "device_pump": {
+     "ms_per_tick": 15.475534959999777,
+     "share_of_tick": 0.02987791545003375,
+     "calls_per_tick": 1.0
+    },
+    "fusion": {
+     "ms_per_tick": 5.044907360062325,
+     "share_of_tick": 0.009739974478865918,
+     "calls_per_tick": 400.0
+    },
+    "sample_vitals": {
+     "ms_per_tick": 2.059526920056669,
+     "share_of_tick": 0.003976235480296603,
+     "calls_per_tick": 400.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.5258037599878662,
+     "share_of_tick": 0.001015145539384154,
+     "calls_per_tick": 400.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.11091651997730878,
+     "share_of_tick": 0.00021414150880468555,
+     "calls_per_tick": 400.0
+    }
+   },
+   "phase_coverage": 0.9739182117177358,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 525.5836249999959,
+    "max": 559.4535409999963,
+    "rel_range": 0.06444248714940598
+   }
+  }
+ ]
+}

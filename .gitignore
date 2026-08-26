@@ -68,3 +68,6 @@ data/ddinter/
 
 # Derived out-of-fold scores: regenerable, and large enough to bloat the history.
 artifacts/subgroup_oof_*.npz
+
+# Scale sweeps: regenerable measurement output.
+artifacts/scale_limit.json

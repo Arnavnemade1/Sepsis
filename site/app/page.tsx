@@ -5,7 +5,7 @@ import { ExplainerFrame } from "@/components/explainer/explainer-frame";
 import { Section, Panel, MetricTile, SourceNote, StatusChip } from "@/components/data/primitives";
 import { Reveal, Stagger, Item } from "@/components/motion/reveal";
 import { Counter } from "@/components/motion/counter";
-import { headline, generalization, meta } from "@/lib/results";
+import { headline, generalization, meta, scale, scaleCeiling, subgroup } from "@/lib/results";
 import { f3, pct, count } from "@/lib/format";
 import { consoleUrl, disclaimer } from "@/lib/site-config";
 
@@ -36,6 +36,8 @@ const capabilities = [
   },
 ];
 
+const homeCeiling = scaleCeiling();
+
 export default function Home() {
   return (
     <>
@@ -62,7 +64,7 @@ export default function Home() {
             </div>
           </div>
 
-          <Stagger className="mt-14 grid gap-3 sm:grid-cols-3">
+          <Stagger className="mt-14 grid gap-3 sm:grid-cols-4">
             <Item>
               <MetricTile
                 value={<Counter to={headline.production.medianLeadHours} decimals={1} suffix=" h" />}
@@ -83,6 +85,13 @@ export default function Home() {
                 value={`${meta.bootstrap}×`}
                 label="Bootstrap resamples"
                 detail="patient-level, behind every confidence interval"
+              />
+            </Item>
+            <Item>
+              <MetricTile
+                value={count(homeCeiling ? homeCeiling.beds : 0)}
+                label="Beds it runs in real time"
+                detail="measured on the real tick loop, not projected from one bed"
               />
             </Item>
           </Stagger>

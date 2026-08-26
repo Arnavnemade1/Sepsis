@@ -82,8 +82,10 @@ class MemoryArena:
         n = int(np.prod(shape)) if shape else 0
         if self._top + n > self.buffer.size:
             raise MemoryError(
-                f"arena exhausted: need {n} cells, have "
-                f"{self.buffer.size - self._top} of {self.buffer.size}")
+                f"arena exhausted allocating {name!r}: need {n} cells, have "
+                f"{self.buffer.size - self._top} of {self.buffer.size}. The arena is "
+                f"sized once at boot and never grows — construct MemFabric with a "
+                f"larger capacity_cells (see backend.aegis.cohort.arena_cells_for).")
         off = self._top
         self._top += n
         self.regions[name] = Region(name, off, n, shape)

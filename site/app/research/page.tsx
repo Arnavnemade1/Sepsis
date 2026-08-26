@@ -13,6 +13,9 @@ import {
   frontier,
   directions,
   dirLabel,
+  subgroup,
+  scale,
+  scaleCeiling,
 } from "@/lib/results";
 import { f2, f3, f4, ci, ciSigned, pct, count, signed } from "@/lib/format";
 import {
@@ -57,6 +60,8 @@ const sections: NavSection[] = [
   { id: "gap", label: "The generalization gap" },
   { id: "operating-point", label: "The operating point" },
   { id: "objective", label: "The wrong objective" },
+  { id: "fairness", label: "Who it serves worse" },
+  { id: "scale", label: "Does it scale" },
   { id: "negative", label: "What did not work" },
   { id: "integrity", label: "Integrity audit" },
   { id: "limits", label: "What this does not show" },
@@ -75,6 +80,8 @@ const frDiverse = fr ? fr.comparisons["xgb-utility"] : undefined;
 const frBudgets = frRedundant?.detectionAtBudget;
 const frBaseCand = fr ? fr.candidates[fr.baseline] : undefined;
 const frProdCand = fr ? fr.candidates[fr.production] : undefined;
+
+const ceiling = scaleCeiling();
 
 export default function ResearchPage() {
   return (
@@ -873,10 +880,274 @@ export default function ResearchPage() {
             )}
           </Section>
 
+          {/* ── Fairness ─────────────────────────────────────────────── */}
+          <Section
+            id="fairness"
+            eyebrow="10 · Who it serves worse"
+            title="Every number above is a cohort average"
+            lede="A cohort average is the shape of number that hides a disparity. Age and sex have been in the feature matrix since the first fit; this is the first pass that asks what the shipped detector does to different people at the one threshold it actually alarms on."
+          >
+            <Stagger className="mt-8 grid gap-3 sm:grid-cols-3">
+              <Item>
+                <MetricTile
+                  value={pct(subgroup.cells.find((c) => c.name === "cohort")!.falseAlarm)}
+                  label="Cohort false-alarm rate"
+                  detail={`share of never-septic patients alarmed at least once, at threshold ${f3(subgroup.threshold)}`}
+                />
+              </Item>
+              <Item>
+                <MetricTile
+                  value={pct(subgroup.cells.find((c) => c.name === subgroup.worstCell)!.falseAlarm)}
+                  label={`Worst cell — ${subgroup.worstCell}`}
+                  detail="the same threshold, a different group of people"
+                  tone="high"
+                />
+              </Item>
+              <Item>
+                <MetricTile
+                  value={subgroup.familySize}
+                  label="Pre-specified tests"
+                  detail={`Bonferroni-corrected at α = ${subgroup.alphaAdjusted.toFixed(4)}; only corrected findings are claimed`}
+                />
+              </Item>
+            </Stagger>
+
+            <Panel className="mt-8 overflow-x-auto p-0">
+              <table className="w-full min-w-[46rem] border-collapse text-[13px]">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.08em] text-faint">
+                    <th className="px-4 py-3 font-medium">Subgroup</th>
+                    <th className="px-4 py-3 text-right font-medium">Patients</th>
+                    <th className="px-4 py-3 text-right font-medium">AUROC</th>
+                    <th className="px-4 py-3 text-right font-medium">Calibration</th>
+                    <th className="px-4 py-3 text-right font-medium">Detection</th>
+                    <th className="px-4 py-3 text-right font-medium">False alarms</th>
+                    <th className="px-4 py-3 text-right font-medium">Lead</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {subgroup.cells.map((c) => {
+                    const worst = c.name === subgroup.worstCell;
+                    return (
+                      <tr
+                        key={c.name}
+                        className={`border-b border-line/60 last:border-0 ${
+                          c.kind === "all" ? "bg-s2/40 font-medium" : ""
+                        }`}
+                      >
+                        <td className={`px-4 py-3 ${worst ? "text-high-ink" : "text-ink"}`}>
+                          {c.name}
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted">{count(c.patients)}</td>
+                        <td className="px-4 py-3 text-right text-muted">{f3(c.auroc)}</td>
+                        <td className="px-4 py-3 text-right text-muted">{c.calibration.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-right text-muted">{pct(c.detection)}</td>
+                        <td className={`px-4 py-3 text-right ${worst ? "text-high-ink" : "text-muted"}`}>
+                          {pct(c.falseAlarm)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted">{c.leadHours} h</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+            <SourceNote>
+              Calibration is mean predicted risk &divide; observed rate: above 1.00 the model
+              over-states risk for that group, which at a shared threshold becomes more alarms.
+              Intersectional cells are omitted except the worst one; the full table is in
+              <code className="mx-1">artifacts/subgroup_audit.json</code>.
+            </SourceNote>
+
+            <div className="mt-10 grid gap-3 lg:grid-cols-2">
+              <Panel className="p-5">
+                <StatusChip tone="high">Survives correction</StatusChip>
+                <h4 className="mt-3 text-[14px] font-medium text-ink">
+                  The alarm burden is not evenly shared
+                </h4>
+                <ul className="mt-3 space-y-2.5">
+                  {subgroup.significant.map((g) => (
+                    <li key={`${g.metric}-${g.a}`} className="text-[13.5px] leading-relaxed text-muted">
+                      <span className="text-ink">
+                        {g.a} &minus; {g.b}
+                      </span>{" "}
+                      <span className="tabular-nums">
+                        {g.delta > 0 ? "+" : "−"}
+                        {Math.abs(g.delta * 100).toFixed(1)} pts
+                      </span>{" "}
+                      <span className="text-faint tabular-nums">
+                        [{(g.ci[0] * 100).toFixed(1)}, {(g.ci[1] * 100).toFixed(1)}]
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 text-[13px] leading-relaxed text-muted text-pretty">
+                  Discrimination is statistically flat: every AUROC, detection and lead-time gap
+                  has an interval including zero after correction. What is not flat is who absorbs
+                  the false alarms.
+                </p>
+              </Panel>
+
+              <Panel className="p-5">
+                <StatusChip tone="med">Exploratory</StatusChip>
+                <h4 className="mt-3 text-[14px] font-medium text-ink">
+                  {subgroup.worstCell} — a hypothesis, not a finding
+                </h4>
+                <ul className="mt-3 space-y-2.5">
+                  {subgroup.exploratory.map((g) => (
+                    <li key={g.metric} className="text-[13.5px] leading-relaxed text-muted">
+                      <span className="text-ink">{g.metric.replace(/_/g, " ")}</span>{" "}
+                      <span className="tabular-nums">
+                        {g.delta > 0 ? "+" : "−"}
+                        {Math.abs(g.delta).toFixed(3)}
+                      </span>{" "}
+                      <span className="text-faint tabular-nums">
+                        [{g.ci[0].toFixed(3)}, {g.ci[1].toFixed(3)}]
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-4 text-[13px] leading-relaxed text-muted text-pretty">
+                  This cell was chosen by looking at the results, and nothing here corrects for
+                  that choice. It is compared against its complement rather than the cohort that
+                  contains it, held out of the correction family, and reported as a place to look
+                  next — not as an established disparity.
+                </p>
+              </Panel>
+            </div>
+
+            <SourceNote>
+              The threshold is global and never re-tuned per subgroup: re-tuning inside each group
+              measures a system that does not exist and launders the disparity into the threshold.
+              CinC 2019 carries age and sex and nothing else, so race, ethnicity, insurance and
+              language &mdash; the axes a policy reviewer asks about first &mdash; are absent. This
+              is a floor on what should be reported, not a complete fairness assessment.
+            </SourceNote>
+          </Section>
+
+          {/* ── Scale ────────────────────────────────────────────────── */}
+          <Section
+            id="scale"
+            eyebrow="11 · Does it scale"
+            title="An operating system is a capacity claim"
+            lede="The console had always been demonstrated at twelve beds, because the cohort builder defaults to twelve and nothing had asked for more. These numbers come from the real tick loop over real patients &mdash; the same code the live server runs, with no mock anywhere in the path."
+          >
+            <Stagger className="mt-8 grid gap-3 sm:grid-cols-3">
+              <Item>
+                <MetricTile
+                  value={ceiling ? count(ceiling.beds) : "—"}
+                  label="Beds within the real-time budget"
+                  detail={`largest MEASURED ward whose p99 tick stays under ${scale.tickBudgetMs} ms — the crossing itself lies between this level and the next`}
+                  tone="accent"
+                />
+              </Item>
+              <Item>
+                <MetricTile
+                  value={`${scale.levels[scale.levels.length - 1].msPerBed.toFixed(2)} ms`}
+                  label="Cost per bed per tick"
+                  detail={`flat across a ${Math.round(scale.levels[scale.levels.length - 1].beds / scale.levels[0].beds)}× range in ward size, after the quadratic was removed`}
+                />
+              </Item>
+              <Item>
+                <MetricTile
+                  value={`${scale.levels[scale.levels.length - 1].peakRssMb.toFixed(0)} MB`}
+                  label="Peak resident memory"
+                  detail="process high-water mark, not per-level cost — the honest ceiling on a small host"
+                />
+              </Item>
+            </Stagger>
+
+            <Panel className="mt-8 overflow-x-auto p-0">
+              <table className="w-full min-w-[40rem] border-collapse text-[13px]">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.08em] text-faint">
+                    <th className="px-4 py-3 font-medium">Beds</th>
+                    <th className="px-4 py-3 text-right font-medium">Tick p50</th>
+                    <th className="px-4 py-3 text-right font-medium">Run spread</th>
+                    <th className="px-4 py-3 text-right font-medium">Tick p99</th>
+                    <th className="px-4 py-3 text-right font-medium">ms / bed</th>
+                    <th className="px-4 py-3 font-medium">Dominant phase</th>
+                  </tr>
+                </thead>
+                <tbody className="tabular-nums">
+                  {scale.levels.map((l) => {
+                    const over = l.p99 > scale.tickBudgetMs;
+                    return (
+                      <tr key={l.beds} className="border-b border-line/60 last:border-0">
+                        <td className="px-4 py-3 text-ink">{count(l.beds)}</td>
+                        <td className="px-4 py-3 text-right text-muted">{l.p50.toFixed(1)} ms</td>
+                        <td className="px-4 py-3 text-right text-faint">
+                          {l.spreadPct === null ? "—" : `±${l.spreadPct}%`}
+                        </td>
+                        <td className={`px-4 py-3 text-right ${over ? "text-high-ink" : "text-muted"}`}>
+                          {l.p99.toFixed(1)} ms{over ? " ✗" : ""}
+                        </td>
+                        <td className="px-4 py-3 text-right text-muted">{l.msPerBed.toFixed(2)}</td>
+                        <td className="px-4 py-3 text-muted">
+                          {l.topPhase.replace(/_/g, " ")}{" "}
+                          <span className="text-faint">{pct(l.topPhaseShare)}</span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+            <SourceNote>
+              Median of {scale.levels[0].repeats} rebuilt runs per level, with the run-to-run
+              spread beside it &mdash; a single run of this harness moves by tens of percent, which
+              is larger than several of the differences between rows. Measured on one core of a{" "}
+              {scale.host.machine} host; these are numbers for this machine and this tick rate, not
+              a deployment guarantee.
+            </SourceNote>
+
+            <div className="mt-10 grid gap-3 lg:grid-cols-2">
+              <Panel className="p-5">
+                <StatusChip tone="low">Removed</StatusChip>
+                <h4 className="mt-3 text-[14px] font-medium text-ink">
+                  The bottleneck was not the prover
+                </h4>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
+                  The obvious suspect was the process-wide lock every SMT call serialises through.
+                  Profiling said otherwise: verification runs once per tick, so its share{" "}
+                  <em>falls</em> as the ward grows &mdash; 53% of the tick at one bed, 20% at five
+                  hundred. The real cost was associative memory retrieval, which every bed ran
+                  separately against a case store that itself grows with the ward. That is
+                  quadratic in ward size, and it was 83% of the tick at a hundred beds.
+                </p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
+                  One matrix multiply for the whole ward replaced one per bed. Per-bed cost went
+                  from climbing &mdash; 1.40 to 4.59 ms as the ward grew &mdash; to flat.
+                </p>
+              </Panel>
+
+              <Panel className="p-5">
+                <StatusChip tone="med">Found while measuring</StatusChip>
+                <h4 className="mt-3 text-[14px] font-medium text-ink">
+                  A correctness bug the profiler surfaced
+                </h4>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
+                  The batched retrieval disagreed with the per-bed one. The cause was not the
+                  batching: hypervector bundling resolved ties &mdash; dimensions summing to exactly
+                  zero &mdash; with fresh randomness on every call. Ties only occur when an{" "}
+                  <em>even</em> number of features contribute, which is to say on beds with missing
+                  data. On a thirty-bed ward that was sixteen beds and roughly 12% of each of their
+                  vectors.
+                </p>
+                <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
+                  The associative memory was returning different precedents for an unchanged
+                  patient, concentrated on the least-instrumented ones. Tie-breaking is now a fixed
+                  pattern drawn once. The memory&rsquo;s previously published retrieval AUROC was
+                  measured through that noise and is being re-measured.
+                </p>
+              </Panel>
+            </div>
+          </Section>
+
           {/* ── 9 · Negative results ──────────────────────────────────── */}
           <Section
             id="negative"
-            eyebrow="10 · What did not work"
+            eyebrow="12 · What did not work"
             title="Six things that failed, and stayed failed"
             lede="A research record with no negative results is not a record of research. These are kept because each one closed off a direction that looked promising — and because the machinery that refused them is the actual contribution."
           >
@@ -988,7 +1259,7 @@ export default function ResearchPage() {
           {/* ── 10 · Integrity ────────────────────────────────────────── */}
           <Section
             id="integrity"
-            eyebrow="11 · Integrity audit"
+            eyebrow="13 · Integrity audit"
             title="How do you know any of this is true?"
             lede="An adversarial suite plants a known lie in the evaluation and asserts that the guard catches it. It verifies the claims, not the code — and it once caught a flaw in itself."
           >
@@ -1046,7 +1317,7 @@ export default function ResearchPage() {
           {/* ── 11 · Limits ───────────────────────────────────────────── */}
           <Section
             id="limits"
-            eyebrow="12 · What this does not show"
+            eyebrow="14 · What this does not show"
             title="Read this before quoting anything above"
           >
             <Stagger className="mt-7 space-y-3">
@@ -1087,7 +1358,7 @@ export default function ResearchPage() {
           {/* ── 12 · Reproduce ────────────────────────────────────────── */}
           <Section
             id="reproduce"
-            eyebrow="13 · Reproduce it"
+            eyebrow="15 · Reproduce it"
             title="Run the evaluation yourself"
             lede="Every figure on this page is regenerated by these commands. The data is public; the code is in the repository."
           >

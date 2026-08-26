@@ -101,6 +101,25 @@ export interface Frontier {
   };
 }
 
+export interface SubgroupCell {
+  name: string; kind: string; patients: number; septic: number;
+  auroc: number; aurocCi: [number, number];
+  calibration: number; detection: number;
+  falseAlarm: number; falseAlarmCi: [number, number];
+  leadHours: number; underpowered: boolean;
+}
+
+export interface SubgroupGap {
+  metric: string; a: string; b: string;
+  delta: number; ci: [number, number];
+}
+
+export interface ScaleLevel {
+  beds: number; p50: number; p99: number; spreadPct: number | null;
+  msPerBed: number; peakRssMb: number; repeats: number;
+  topPhase: string; topPhaseShare: number;
+}
+
 export type Results = typeof raw & {
   directions: { AtoB: Direction; BtoA: Direction };
   /** Null on a checkout whose artifacts predate the frontier work, so every
@@ -127,6 +146,30 @@ export const phase7 = results.phase7;
 export const frontier = results.frontier;
 
 export const directions = results.directions;
+
+/** Per-subgroup behaviour of the SHIPPED detector at the DEPLOYED threshold.
+ *  ``significant`` holds only the gaps that survived Bonferroni over the
+ *  pre-specified family; ``exploratory`` holds the worst cell, whose comparison
+ *  was chosen after seeing the results and therefore claims nothing. */
+export const subgroup = results.subgroup as unknown as {
+  threshold: number; thresholdPolicy: string; patients: number;
+  familySize: number; alphaAdjusted: number; worstCell: string;
+  cells: SubgroupCell[]; significant: SubgroupGap[]; exploratory: SubgroupGap[];
+};
+
+/** Measured runtime capacity. Real tick loop, real patients, median of repeated
+ *  runs — ``spreadPct`` is how much the level moved between runs, so a reader can
+ *  tell whether a difference between rows is bigger than the noise inside one. */
+export const scale = results.scale as unknown as {
+  host: { machine: string; python: string; cpu_count: number };
+  note: string; tickBudgetMs: number; levels: ScaleLevel[];
+};
+
+/** The largest ward whose p99 tick still fits the real-time budget. */
+export function scaleCeiling(): ScaleLevel | null {
+  const ok = scale.levels.filter((l) => l.p99 <= scale.tickBudgetMs);
+  return ok.length ? ok[ok.length - 1] : null;
+}
 
 /** The four (direction × model) cells, in the order the tables read them. */
 export const cells = [

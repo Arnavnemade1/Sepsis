@@ -380,6 +380,22 @@ def _clinical_history(rec: cinc2019.PatientRecord) -> Dict[str, Any]:
     return h
 
 
+#: Arena cells one bed occupies: four feeds, each a 512-slot ring holding a value
+#: matrix plus a timestamp vector. Measured, not estimated — see
+#: ``backend.aegis.scale.loadgen``.
+CELLS_PER_BED = 6144
+
+
+def arena_cells_for(n_beds: int, headroom: float = 1.35) -> int:
+    """How large the biometric arena must be to mount ``n_beds``.
+
+    Headroom covers feeds with wider channel sets than the cohort's average; the
+    allocator is a bump allocator with no reclaim, so under-sizing fails at boot and
+    over-sizing costs only address space (float64 cells, 8 bytes each).
+    """
+    return max(1 << 20, int(n_beds * CELLS_PER_BED * headroom))
+
+
 class CohortCluster:
     FEEDS = ("optical", "thermal", "bedside", "labs")
     EDGE_KEYS = ("hr", "perfusion")
@@ -390,7 +406,12 @@ class CohortCluster:
                  ebpf_optical: int = 0):
         self.patients = build_cohort(n, seed=seed)
         self.bus = DevBio()
-        self.fabric = MemFabric()
+        # Size the biometric arena to the ward. MemFabric's default is a fixed
+        # 1Mi-cell (8 MiB) budget that has nothing to do with how many beds are
+        # mounted, and at ~6.1k cells per bed it silently capped this OS at 170 beds.
+        # The failure mode was a MemoryError out of the bump allocator during boot —
+        # not a capacity check anyone could read in advance.
+        self.fabric = MemFabric(capacity_cells=arena_cells_for(len(self.patients)))
         self.sched = CognitiveScheduler(lane_budget=lane_budget)
         self.fusion = FusionEngine()
         self.learner = CohortLearner()                # per-patient behavioural baselines
@@ -570,12 +591,16 @@ class CohortCluster:
             foresight = float(ef["ews"][min(pp.icu_hour, pp.los_total - 1)]) if ef is not None else 0.0
             # the system acts on the PERSONALIZED risk; foresight reprioritises compute
             self.sched.observe(nid, risk, vit, foresight)
-            # HDC associative retrieval — how does this bio-state resemble real precedent?
-            self._hdc_query(nid)
             # Cross-modal resonance — assessed on the same enriched state as the HDC
             # query (so it matches the gate's calibration), with an optional injected
             # camera artifact so the gate can be seen rejecting an uncorroborated spike.
             self._resonance_query(nid)
+        # HDC associative retrieval for the WHOLE ward in one matrix multiply. Done
+        # after the per-bed loop rather than inside it because every bed scores against
+        # the same case matrix on this tick: one GEMM reads it once, where B matvecs
+        # read it B times. The case store grows with the ward, so the per-bed loop was
+        # quadratic in ward size and became 83% of the tick at 100 beds.
+        self._hdc_query_all()
         return self.sched.schedule()
 
     def frame_for(self, nid: str) -> Dict[str, float]:
@@ -601,6 +626,18 @@ class CohortCluster:
             est = dict(est); bad = 185.0
             est["hr__tr"] = bad - float(est.get("hr", 80.0)); est["hr"] = bad
         self.resonance_state[nid] = self.resonance.assess(est)
+
+    def _hdc_query_all(self) -> None:
+        """Every bed's precedent lookup, batched into a single matmul."""
+        nids = list(self.node_ids)
+        states = [self.frame_for(nid) for nid in nids]
+        live = [(nid, st) for nid, st in zip(nids, states) if st]
+        if not live:
+            return
+        res = self.hdc.query_batch([st for _, st in live], k=16,
+                                   exclude_pids=[nid for nid, _ in live])
+        for (nid, _), r in zip(live, res):
+            self.hdc_state[nid] = r
 
     def _hdc_query(self, nid: str) -> None:
         from backend.aegis.hdc_memory import enrich_series, TREND_WIN

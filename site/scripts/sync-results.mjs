@@ -43,8 +43,21 @@ const r = (v, n = 4) =>
   typeof v === "number" && Number.isFinite(v) ? Number(v.toFixed(n)) : v;
 const arr = (a, n = 4) => (a ?? []).map((v) => r(v, n));
 
+/** Evenly downsample a monotone curve, always keeping both endpoints.
+ *  These curves are drawn a few hundred CSS pixels wide, so points beyond that
+ *  are bytes in the page bundle that no one can see. Endpoints are kept because
+ *  an ROC that does not reach (1,1) reads as a broken chart, not a sparse one. */
+const thin = (a, keep) => {
+  if (!a || a.length <= keep) return a ?? [];
+  const out = [];
+  for (let i = 0; i < keep; i++) out.push(a[Math.round((i * (a.length - 1)) / (keep - 1))]);
+  return out;
+};
+
 // ─── rigorous_eval.json — the judge-facing cross-hospital evaluation ─────────
 const rig = read("rigorous_eval");
+const sub = read("subgroup_audit");
+const scale = read("scale");
 
 const model = (m) => ({
   auroc: r(m.auroc),
@@ -84,10 +97,11 @@ const model = (m) => ({
     septicPatients: m.early_warning?.septic_patients,
     nonsepticPatients: m.early_warning?.nonseptic_patients,
   },
-  // curve arrays are already small (roc 42, pr 150, dc 40, alarm 30, rel 2),
-  // so they are kept whole — only the precision is trimmed.
-  roc: { fpr: arr(m.roc?.fpr), tpr: arr(m.roc?.tpr) },
-  pr: { recall: arr(m.pr?.recall), precision: arr(m.pr?.precision, 5) },
+  // Curves are downsampled to what a chart this size can actually render. The
+  // ROC/PR pairs across two directions and several models were 22 KB of the
+  // bundle — more than every headline number on the site combined.
+  roc: { fpr: thin(arr(m.roc?.fpr), 88), tpr: thin(arr(m.roc?.tpr), 88) },
+  pr: { recall: thin(arr(m.pr?.recall), 88), precision: thin(arr(m.pr?.precision, 5), 88) },
   reliability: {
     meanPred: arr(m.reliability?.mean_pred, 5),
     obsFreq: arr(m.reliability?.obs_freq, 5),
@@ -360,6 +374,67 @@ const out = {
       holdoutAurocDelta: fr.promotion?.holdoutAurocDelta,
       holdoutAuprcDelta: fr.promotion?.holdoutAuprcDelta,
     },
+  },
+
+  /** Subgroup fairness + calibration audit — who the shipped detector serves worse.
+   *  Only the cells and the gaps that carry a claim; the full artifact (every cell's
+   *  interval, every gap's adjusted CI) stays in artifacts/subgroup_audit.json. */
+  subgroup: {
+    threshold: sub.threshold.value,
+    thresholdPolicy: sub.threshold.policy,
+    patients: sub.cohort.patients,
+    familySize: sub.multiplicity.family_size,
+    alphaAdjusted: sub.multiplicity.alpha_adjusted,
+    worstCell: sub.worst_cell,
+    cells: sub.cells
+      .filter((c) => c.kind !== "age\u00d7sex" || c.name === sub.worst_cell)
+      .map((c) => ({
+        name: c.name,
+        kind: c.kind,
+        patients: c.metrics.n_patients,
+        septic: c.metrics.n_septic_patients,
+        auroc: r(c.metrics.auroc),
+        aurocCi: [r(c.ci.auroc.lo), r(c.ci.auroc.hi)],
+        calibration: r(c.metrics.calibration_ratio),
+        detection: r(c.metrics.detection_rate),
+        falseAlarm: r(c.metrics.false_alarm_rate),
+        falseAlarmCi: [r(c.ci.false_alarm_rate.lo), r(c.ci.false_alarm_rate.hi)],
+        leadHours: c.metrics.median_lead_hours,
+        underpowered: Boolean(c.metrics.underpowered),
+      })),
+    /** Gaps that survived the Bonferroni correction — the only ones the page claims. */
+    significant: sub.gaps
+      .filter((g) => g.significant_adj)
+      .map((g) => ({
+        metric: g.metric, a: g.a, b: g.b,
+        delta: r(g.delta, 4), ci: [r(g.ci_lo, 4), r(g.ci_hi, 4)],
+      })),
+    /** The worst cell, flagged for what it is: chosen after seeing the results. */
+    exploratory: sub.gaps
+      .filter((g) => g.selected && (g.metric === "false_alarm_rate" || g.metric === "auroc"))
+      .map((g) => ({
+        metric: g.metric, a: g.a, b: g.b,
+        delta: r(g.delta, 4), ci: [r(g.ci_lo, 4), r(g.ci_hi, 4)],
+      })),
+  },
+
+  /** Measured capacity of the runtime — the real CohortCluster.tick() over real
+   *  patients, median of repeated runs with the spread beside it. */
+  scale: {
+    host: scale.host,
+    note: scale.note,
+    tickBudgetMs: 600,
+    levels: scale.levels.map((l) => ({
+      beds: l.beds_built,
+      p50: r(l.tick_ms.p50, 1),
+      p99: r(l.tick_ms.p99, 1),
+      spreadPct: l.p50_spread ? r(l.p50_spread.rel_range * 100, 0) : null,
+      msPerBed: r(l.ms_per_bed_tick, 2),
+      peakRssMb: r(l.peak_rss_mb, 0),
+      repeats: l.repeats ?? 1,
+      topPhase: Object.keys(l.phases)[0],
+      topPhaseShare: r(Object.values(l.phases)[0].share_of_tick, 3),
+    })),
   },
 
   /** The earlier Phase 7 protocol. Kept because README and PHASE7_REPORT quote
