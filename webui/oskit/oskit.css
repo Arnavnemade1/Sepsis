@@ -1,0 +1,190 @@
+/* ============================================================================
+   oskit.css — shell chrome for AegisOS
+   ----------------------------------------------------------------------------
+   Every colour here is a token from os.css. Nothing in this file is saturated:
+   window chrome, the taskbar, the shell and the system monitor are all furniture,
+   and furniture competing with an alarm is the exact failure the Clinical
+   Instrument identity exists to prevent. The ONE exception is the audit verdict,
+   where a refusal is genuine signal.
+   ============================================================================ */
+
+/* ---- window chrome ------------------------------------------------------- */
+.wm-win{position:relative;min-width:0;min-height:0}
+.wm-win.wm-offscreen{display:none}
+
+.wm-bar{display:flex;align-items:center;gap:8px;height:26px;padding:0 8px;
+  background:var(--s2);border-bottom:1px solid var(--line-soft);
+  border-radius:8px 8px 0 0;flex:0 0 auto;user-select:none}
+.wm-title{font:600 10.5px/1 "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--dim);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;flex:1 1 auto;min-width:0}
+.wm-acts{display:flex;gap:2px;flex:0 0 auto}
+.wm-act{width:20px;height:18px;display:grid;place-items:center;background:transparent;
+  border:0;border-radius:4px;color:var(--faint);font-size:11px;cursor:pointer;line-height:1}
+.wm-act:hover{background:var(--s3);color:var(--ink)}
+
+/* Focus is a hairline, not a glow — the identity's second rule. */
+.wm-win.wm-focus{box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.34)}
+.wm-win.wm-focus > .wm-bar .wm-title{color:var(--muted)}
+
+.wm-win.wm-float{position:fixed;border:1px solid var(--line-bright);border-radius:10px;
+  background:var(--panel-solid);box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden;
+  display:flex;flex-direction:column}
+.wm-win.wm-float > .wm-bar{cursor:move}
+
+/* ---- taskbar ------------------------------------------------------------- */
+.wm-taskbar{display:flex;flex-wrap:wrap;gap:4px;align-items:center;min-width:0}
+.wm-task{padding:3px 9px;border:1px solid var(--line);border-radius:6px;
+  background:var(--s1);color:var(--dim);cursor:pointer;
+  font:500 11px/1.5 "IBM Plex Sans",system-ui,sans-serif;white-space:nowrap}
+.wm-task:hover{background:var(--s3);color:var(--ink)}
+.wm-task.on{border-color:rgba(var(--accent-rgb),.45);color:var(--accent-ink);background:var(--s2)}
+.wm-task.float::after{content:" ⧉";opacity:.6}
+.wm-task-empty{font:11px/1.5 "IBM Plex Mono",monospace;color:var(--faint)}
+
+/* ---- shell --------------------------------------------------------------- */
+.sh{position:fixed;inset:0;z-index:120;display:none;
+  background:rgba(6,7,8,.72);backdrop-filter:blur(3px)}
+.sh.open{display:grid;place-items:start center;padding-top:9vh}
+.sh-frame{width:min(920px,94vw);max-height:74vh;display:flex;flex-direction:column;
+  background:var(--panel-solid);border:1px solid var(--line-bright);border-radius:12px;
+  box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
+.sh-head{display:flex;align-items:center;gap:8px;padding:8px 12px;
+  border-bottom:1px solid var(--line-soft);background:var(--s2);flex:0 0 auto}
+.sh-head b{font:600 10.5px/1 "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--muted)}
+.sh-head span{font:11px/1 "IBM Plex Mono",monospace;color:var(--faint);margin-left:auto}
+.sh-out{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 12px;
+  font:12px/1.65 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted)}
+.sh-line{white-space:pre-wrap;word-break:break-word}
+.sh-echo{color:var(--ink)}
+.sh-sys{color:var(--ink);margin-top:6px}
+.sh-dim,.sh-line .sh-dim{color:var(--faint)}
+.sh-err{color:var(--high-ink)}
+.sh-row{display:flex;gap:10px}
+.sh-cmd{color:var(--accent-ink);min-width:170px;display:inline-block}
+.sh-key{color:var(--dim)}
+.sh-prompt{color:var(--low-ink)}
+.sh-cand{color:var(--muted);margin-right:6px}
+.sh-ok{color:var(--low-ink)}
+.sh-deny{color:var(--high-ink)}
+.sh-inwrap{display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-top:1px solid var(--line-soft);background:var(--s2);flex:0 0 auto}
+.sh-p{font:12px/1 "IBM Plex Mono",monospace;color:var(--low-ink);white-space:nowrap}
+.sh-in{flex:1 1 auto;min-width:0;background:transparent;border:0;outline:0;color:var(--ink);
+  font:12px/1.5 "IBM Plex Mono",ui-monospace,monospace;caret-color:var(--accent)}
+
+/* ---- system monitor ------------------------------------------------------ */
+.sm-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;
+  border-bottom:1px solid var(--line-soft);flex:0 0 auto;flex-wrap:wrap}
+.sm-tab{padding:3px 9px;border:1px solid transparent;border-radius:6px;background:transparent;
+  color:var(--dim);cursor:pointer;font:500 11px/1.5 "IBM Plex Sans",system-ui,sans-serif}
+.sm-tab:hover{background:var(--s2);color:var(--ink)}
+.sm-tab.on{background:var(--s2);border-color:var(--line);color:var(--ink)}
+.sm-src{margin-left:auto;font:10.5px/1 "IBM Plex Mono",monospace;color:var(--faint);white-space:nowrap}
+.sm-body{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 10px}
+.sm-empty{font:11.5px/1.6 "IBM Plex Mono",monospace;color:var(--faint);padding:8px 2px}
+.sm-empty.sm-err{color:var(--high-ink)}
+
+.sm-tbl{width:100%;border-collapse:collapse;font:11.5px/1.6 "IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums slashed-zero}
+.sm-tbl th{text-align:left;padding:3px 8px 5px 0;color:var(--faint);font-weight:500;
+  border-bottom:1px solid var(--line-soft);white-space:nowrap;
+  font-size:10px;letter-spacing:.07em;text-transform:uppercase}
+.sm-tbl td{padding:3px 8px 3px 0;color:var(--muted);border-bottom:1px solid var(--line-soft);
+  white-space:nowrap}
+.sm-tbl td.num{text-align:right;padding-right:14px}
+.sm-state{color:var(--dim)}
+.sm-verdict.ok{color:var(--low-ink)}
+.sm-verdict.deny{color:var(--high-ink)}   /* a refusal is signal, not furniture */
+
+.sm-kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px 14px}
+.sm-kv > div{display:flex;justify-content:space-between;gap:10px;padding:2px 0;
+  border-bottom:1px solid var(--line-soft);
+  font:11.5px/1.7 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums slashed-zero}
+.sm-kv span{color:var(--faint)}
+.sm-kv b{color:var(--ink);font-weight:500}
+
+.sm-bar{display:block;height:5px;border-radius:3px;background:var(--s3);overflow:hidden;
+  flex:1 1 auto;min-width:40px}
+.sm-bar > i{display:block;height:100%;background:var(--dim);border-radius:3px}
+.sm-bar > i.hot{background:var(--high)}
+.sm-lanes{margin-top:10px;display:flex;flex-direction:column;gap:3px}
+.sm-lane{display:flex;align-items:center;gap:9px;
+  font:11px/1.6 "IBM Plex Mono",monospace;font-variant-numeric:tabular-nums slashed-zero}
+.sm-lane > span{color:var(--dim);min-width:76px;flex:0 0 auto}
+.sm-lane > b{color:var(--muted);font-weight:500;min-width:34px;text-align:right;flex:0 0 auto}
+.sm-arena-head{display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;
+  font:11.5px/1.6 "IBM Plex Mono",monospace}
+.sm-arena-head span{color:var(--faint)}
+.sm-arena-head b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums slashed-zero}
+.sm-note{margin-top:7px;font:10.5px/1.6 "IBM Plex Mono",monospace;color:var(--faint)}
+
+/* ---- session / privilege ring -------------------------------------------- */
+.ses{position:relative;flex:0 0 auto}
+.ses-trigger{display:flex;align-items:center;gap:7px;padding:3px 9px;border:1px solid var(--line);
+  border-radius:7px;background:var(--s1);cursor:pointer;
+  font:500 11px/1.5 "IBM Plex Sans",system-ui,sans-serif;color:var(--muted)}
+.ses-trigger:hover{background:var(--s3)}
+.ses-ring{display:grid;place-items:center;min-width:22px;height:16px;padding:0 4px;border-radius:4px;
+  background:var(--s3);color:var(--accent-ink);
+  font:600 9.5px/1 "IBM Plex Mono",monospace;letter-spacing:.04em}
+.ses-ring.none{color:var(--faint)}
+.ses-role{white-space:nowrap}
+.ses-menu{position:absolute;right:0;top:calc(100% + 6px);min-width:250px;z-index:130;
+  background:var(--panel-solid);border:1px solid var(--line-bright);border-radius:10px;
+  box-shadow:0 16px 40px rgba(0,0,0,.5);padding:5px;display:flex;flex-direction:column;gap:1px}
+.ses-menu.hidden{display:none}
+.ses-head{padding:5px 8px 3px;font:600 9.5px/1 "IBM Plex Sans",system-ui,sans-serif;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.ses-opt{display:flex;align-items:center;gap:8px;padding:5px 8px;border:0;border-radius:6px;
+  background:transparent;color:var(--muted);cursor:pointer;text-align:left;
+  font:12px/1.4 "IBM Plex Sans",system-ui,sans-serif}
+.ses-opt:hover{background:var(--s2);color:var(--ink)}
+.ses-opt.on{background:var(--s2);color:var(--ink)}
+.ses-caps{margin-left:auto;color:var(--faint);font:10.5px/1 "IBM Plex Mono",monospace}
+.ses-out{color:var(--faint);border-top:1px solid var(--line-soft);border-radius:0;margin-top:3px}
+.ses-foot{padding:6px 8px 3px;font:10px/1.5 "IBM Plex Mono",monospace;color:var(--faint);
+  border-top:1px solid var(--line-soft);margin-top:3px}
+
+@media(max-width:900px){
+  .sh-frame{width:96vw;max-height:80vh}
+  .sm-kv{grid-template-columns:1fr}
+}
+
+/* ---- tiling ---------------------------------------------------------------
+   Attribute-driven so these compose with the responsive breakpoints already in
+   os.css rather than overriding them from JS. Slots are the desk's DIRECT
+   children: the twin, the two panel columns, and the system monitor.
+   `minmax(0,…)` on every track is load-bearing — a bare `fr` keeps a min-content
+   floor, so a tile whose contents are wide refuses to shrink and bursts the desk
+   instead of scrolling inside itself.
+--------------------------------------------------------------------------- */
+.desk[data-wm-layout="wide"]{
+  grid-template-columns:minmax(300px,340px) minmax(0,1fr);
+  grid-template-areas:"left twin";}
+.desk[data-wm-layout="wide"] > .col-right{display:none}
+
+.desk[data-wm-layout="focus"]{
+  grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"twin";}
+.desk[data-wm-layout="focus"] > *{display:none}
+.desk[data-wm-layout="focus"] > .wm-slot-focus{display:flex;grid-area:twin;min-width:0}
+
+.desk[data-wm-layout="monitor"]{
+  grid-template-columns:minmax(0,1fr) minmax(360px,1fr);
+  grid-template-areas:"twin mon";}
+.desk[data-wm-layout="monitor"] > .col-left,
+.desk[data-wm-layout="monitor"] > .col-right{display:none}
+.desk[data-wm-layout="monitor"] > .win-sysmon{grid-area:mon}
+
+/* The system monitor is a desk slot, but it belongs to the `monitor` layout.
+   Left visible in the other layouts it became an unplaced fourth grid child, and
+   the grid duly invented a column for it — `wide` resolved to
+   "340px 804px 0px 391px", a phantom zero-width track wedged between the panels.
+   A grid child with nowhere to go does not vanish; it makes a new track. */
+.win-sysmon{display:flex;flex-direction:column;min-height:0;min-width:0}
+.win-sysmon .sysmon-body{display:flex;flex-direction:column;flex:1 1 auto;min-height:0;padding:0}
+.desk[data-wm-layout="triple"] > .win-sysmon,
+.desk[data-wm-layout="wide"] > .win-sysmon{display:none}
+.desk[data-wm-layout="focus"] > .win-sysmon.wm-slot-focus{display:flex}

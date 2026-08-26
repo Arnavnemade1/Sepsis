@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="doctor.css?v=11" />
 <link rel="stylesheet" href="summon.css?v=1" />
 <link rel="stylesheet" href="hyperscan.css?v=2" />
+<link rel="stylesheet" href="oskit/oskit.css?v=2" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -54,6 +55,7 @@
     </div>
     <div class="sysbar-r">
       <a class="sysbar-tactical" href="tactical.html" title="Open the Global ICU Tactical Sphere — multi-patient kernel cockpit">◎ TACTICAL SPHERE</a>
+      <span class="ses" id="ses-mount"></span>
       <span class="sysbar-risk" id="sb-risk">LOW</span>
       <span class="sysbar-conn" id="sb-conn"><i></i>link</span>
       <span class="sysbar-clock" id="sb-clock">00:00:00</span>
@@ -216,6 +218,9 @@
     </section>
 
     </div><!-- /col-right -->
+    <section class="win win-sysmon hidden" id="sysmon-win" data-win="sysmon">
+      <div class="win-body sysmon-body" id="sysmon-body"></div>
+    </section>
   </main>
 
   <!-- dock -->
@@ -240,8 +245,28 @@
       <button class="dock-btn accent" id="launch-hyperscan" title="Hyperscan — sweep every subsystem and produce a situation report">◎ Hyperscan</button>
       <button class="dock-btn" id="launch-summon" title="Ask Dr. Aegis from anywhere — ⌘K / Ctrl-K">◈ Ask <span class="dock-kbd">⌘K</span></button>
     </div>
+    <div class="dock-grp dock-grp-sys">
+      <span class="dock-label">system</span>
+      <button class="dock-btn" id="launch-shell" title="Command shell — the kernel's process table, scheduler, memory and audit">❯_ Shell <span class="dock-kbd">⌘K</span></button>
+      <button class="dock-btn" id="launch-sysmon" title="System monitor — /proc, live">▦ Monitor</button>
+    </div>
+    <div class="dock-grp dock-grp-tasks"><span class="dock-label">windows</span>
+      <span class="wm-taskbar" id="wm-taskbar"></span></div>
     <div class="dock-grp dock-status"><span id="dock-tick">tick —</span></div>
   </footer>
+</div>
+
+<!-- ===================== COMMAND SHELL ===================== -->
+<div class="sh" id="sh" aria-hidden="true">
+  <div class="sh-frame">
+    <div class="sh-head"><b>AegisOS shell</b><span>read-only kernel access · Esc to close</span></div>
+    <div class="sh-out" id="sh-out"></div>
+    <div class="sh-inwrap">
+      <span class="sh-p" id="sh-prompt">aegis@icu-wing<b>:~$</b></span>
+      <input class="sh-in" id="sh-in" autocomplete="off" autocapitalize="off" spellcheck="false"
+             aria-label="command input" />
+    </div>
+  </div>
 </div>
 
 <!-- hidden full-res processing feed shared by all camera views -->
@@ -1176,5 +1201,11 @@
 <script src="doctor.js?v=11"></script>
 <script src="summon.js?v=2"></script>
 <script src="hyperscan.js?v=3"></script>
+<script src="oskit/shell.js?v=2"></script>
+<script src="oskit/wm.js?v=3"></script>
+<script src="oskit/sysmon.js?v=2"></script>
+<script src="oskit/session.js?v=2"></script>
+<script src="oskit/cmds-core.js?v=2"></script>
+<script src="oskit/boot.js?v=2"></script>
 </body>
 </html>
