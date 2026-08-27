@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -22,6 +22,9 @@ help:
 	@echo "  make verify-op         Operating point: in-range rule, cap margin, detector identity"
 	@echo "  make verify-conformal  Conformal abstention: plants leakage/shift/degeneracy, asserts each shows"
 	@echo "  make verify-minirocket Causal MiniRocket: plants a future spike, asserts no earlier hour moves"
+	@echo "  make verify-shift      Label-free transfer: label vs covariate vs concept shift, and which remedy fails"
+	@echo "  make transfer          Two-hospital deployment transfer under a locked gate"
+	@echo "  make verify-coupling   Cardio-respiratory coupling on real BIDMC (mechanism, not detection)"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -178,6 +181,21 @@ verify-op:
 # error, which is why it is planted here rather than trusted.
 verify-minirocket:
 	$(PY) -m backend.ml.scripts.verify_minirocket
+
+# Three of these checks pass by showing a correction FAIL where it should: prior
+# correction actively breaks a covariate-shifted site, and nothing label-free touches
+# concept shift. A suite where every remedy always works would be evidence of nothing.
+verify-shift:
+	$(PY) -m backend.ml.scripts.verify_shift
+
+# Mechanism validation only: BIDMC has no sepsis labels, so no AUROC/lead-time claim is
+# testable here. Proves the estimators measure coupling and fall when it is destroyed.
+verify-coupling:
+	$(PY) -m backend.physio.verify_coupling
+
+# Fits on one hospital, adapts on the other's UNLABELLED half, reports on a locked half.
+transfer:
+	$(PY) -m backend.ml.scripts.derive_transfer --limit 4000 --boot 200 --jobs 4
 
 # Three of these checks pass by demonstrating a LOSS of coverage — row-level
 # calibration flattering itself, distribution shift breaking the guarantee, and the

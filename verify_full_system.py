@@ -537,6 +537,26 @@ def test_conformal_abstention() -> None:
             f"{out['state']!r}")
 
 
+def test_shift_diagnosis() -> None:
+    print("[22] Shift diagnosis — label vs covariate shift are distinguishable")
+    from backend.ml import shift
+    rng = np.random.default_rng(0)
+    # pure covariate shift: P(X) moves, P(Y|X) does not
+    Xs = rng.normal(0.0, 1.0, size=(20000, 3))
+    Xt = rng.normal(1.2, 1.0, size=(20000, 3))
+    _, auc_cov = shift.covariate_weights(Xs, Xt, seed=1)
+    _, auc_same = shift.covariate_weights(Xs, rng.normal(0.0, 1.0, size=(20000, 3)), seed=2)
+    assert auc_cov > 0.70, f"covariate shift not detected: {auc_cov}"
+    assert auc_same < 0.60, f"phantom shift on identical distributions: {auc_same}"
+    _ok(f"domain AUC {auc_cov:.3f} shifted vs {auc_same:.3f} identical")
+    # prior correction is monotone: it moves decisions, never the ranking
+    p = rng.beta(1.5, 40, size=5000)
+    adj = shift.adjust_for_prior(p, 0.03, 0.015)
+    assert np.all(np.diff(np.argsort(p)) == np.diff(np.argsort(adj))) or \
+        np.allclose(np.argsort(p), np.argsort(adj)), "prior correction reordered scores"
+    _ok("prior correction preserves rank order (moves the decision, not the score)")
+
+
 def main() -> int:
     print("=" * 64)
     print("AEGIS-OS — END-TO-END VERIFICATION")
@@ -547,7 +567,7 @@ def main() -> int:
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
              test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection,
-             test_z3_concurrency, test_conformal_abstention]
+             test_z3_concurrency, test_conformal_abstention, test_shift_diagnosis]
     failed = 0
     for t in tests:
         try:
