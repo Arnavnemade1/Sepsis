@@ -186,6 +186,94 @@ REGISTRY["stack+xgb@utility"] = _stack("balanced", ["hgb", "hgb2", "et", "lr", "
 
 
 # --------------------------------------------------------------------------- #
+# Forest-VSA — tree-leaf TOPOLOGY as the representation
+# --------------------------------------------------------------------------- #
+# Three candidates, deliberately, because the interesting question is not "does the
+# hypervector form score well" but "does the topology carry anything the incumbent
+# does not already have". The VSA vector is a random projection of the leaf one-hot,
+# so the one-hot is the ceiling; and the donor booster's own score is the floor,
+# since any representation read off its leaves starts from what it already knew.
+def _forest_rep(kind: str, mode: str, donor_obj: str = "utility"):
+    def run(ds, tr, te):
+        from backend.ml.models.boosters import UtilityAlignedBooster
+        from backend.ml.models.forest_vsa import leaf_matrix, LeafOneHot, ForestVSA
+        from backend.ml.eval.utility import utility_target
+        from sklearn.linear_model import LogisticRegression
+
+        # Donor: fitted on the TRAINING fold only, exactly as it would be shipped.
+        # No n_jobs here: UtilityAlignedBooster._make() already sets it, and passing
+        # it through `params` collides. --jobs caps the pools via threadpool_limits.
+        donor = UtilityAlignedBooster(kind=kind, objective=donor_obj,
+                                      feature_names=ds.feature_names)
+        donor.fit(ds.X[tr], ds.y[tr], groups=ds.groups[tr],
+                  hour_index=ds.hour_index[tr], onset_hour=ds.onset_hour[tr])
+        Ltr = leaf_matrix(donor.model_, ds.X[tr])
+        Lte = leaf_matrix(donor.model_, ds.X[te])
+
+        if mode == "donor":                      # the floor: the booster on its own
+            return donor.predict_proba(ds.X[te])
+
+        z, w = utility_target(ds.y[tr], ds.groups[tr], ds.hour_index[tr], ds.onset_hour[tr])
+        if mode == "onehot":                     # the ceiling: lossless topology
+            enc = LeafOneHot().fit(Ltr)
+            head = LogisticRegression(max_iter=400, C=0.05, solver="liblinear")
+            head.fit(enc.transform(Ltr), z, sample_weight=w)
+            raw = head.predict_proba(enc.transform(Lte))[:, 1]
+        elif mode == "vsa":                      # the proposal: lossy topology
+            fv = ForestVSA(dimensions=10000, seed=42).fit(Ltr, z, sample_weight=w)
+            s_tr, s_te = fv.score(Ltr), fv.score(Lte)
+            # The resonance is a similarity, not a probability; a 1-D logistic map
+            # makes it comparable to every other candidate on this bench.
+            head = LogisticRegression(max_iter=1000)
+            head.fit(s_tr.reshape(-1, 1), z, sample_weight=w)
+            raw = head.predict_proba(s_te.reshape(-1, 1))[:, 1]
+        else:
+            raise ValueError(mode)
+
+        # NOT calibrated here. The bench scores AUROC/AUPRC (rank-only) and utility
+        # at a swept threshold, so an isotonic map fitted inside the fold would add a
+        # step that changes nothing measured while adding a place to leak. The
+        # comparison is between representations, not between calibrators.
+        return raw
+    return run
+
+
+# --------------------------------------------------------------------------- #
+# Causal MiniRocket — a fixed random basis over trajectory SHAPE
+# --------------------------------------------------------------------------- #
+# Paired against the identical learner on the base features alone, so the only thing
+# that differs is the 336 added columns. Phase 7 showed hand-authored temporal
+# aggregates bought nothing; this asks whether a random convolutional basis differs.
+def _minirocket(kind: str, objective: str = "utility"):
+    def run(ds, tr, te):
+        from backend.ml.models.boosters import UtilityAlignedBooster
+        from backend.ml.models.minirocket import CausalMiniRocket
+        # Biases are fitted on the TRAINING patients only. The transform itself reads
+        # nothing but each patient's own prior hours, so applying it to test rows is
+        # not leakage — but the quantiles that define "an event" are parameters, and
+        # they come from `tr`.
+        mr = CausalMiniRocket(channels=list(config.WEARABLE_CHANNELS))
+        mr.fit(ds.X[tr], ds.feature_names, ds.groups[tr], ds.hour_index[tr])
+        F = mr.transform(ds.X, ds.feature_names, ds.groups, ds.hour_index)
+        Xa = np.hstack([ds.X.astype(np.float32), F])
+        del F
+        names = list(ds.feature_names) + mr.feature_names_
+        m = UtilityAlignedBooster(kind=kind, objective=objective, feature_names=names)
+        m.fit(Xa[tr], ds.y[tr], groups=ds.groups[tr],
+              hour_index=ds.hour_index[tr], onset_hour=ds.onset_hour[tr])
+        return m.predict_proba(Xa[te])
+    return run
+
+
+REGISTRY["mr-xgb@utility"] = _minirocket("xgb", "utility")
+
+
+REGISTRY["xgb@u-donor"] = _forest_rep("xgb", "donor")
+REGISTRY["forest-onehot"] = _forest_rep("xgb", "onehot")
+REGISTRY["forest-vsa"] = _forest_rep("xgb", "vsa")
+
+
+# --------------------------------------------------------------------------- #
 # Causal sequence models — a different inductive bias, not more features
 # --------------------------------------------------------------------------- #
 def _seq(arch: str, objective: str = "utility", **kw):

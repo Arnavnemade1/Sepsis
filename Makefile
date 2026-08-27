@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -21,6 +21,7 @@ help:
 	@echo "  make verify-subgroup   Subgroup audit: global threshold, patient bootstrap, multiplicity"
 	@echo "  make verify-op         Operating point: in-range rule, cap margin, detector identity"
 	@echo "  make verify-conformal  Conformal abstention: plants leakage/shift/degeneracy, asserts each shows"
+	@echo "  make verify-minirocket Causal MiniRocket: plants a future spike, asserts no earlier hour moves"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -171,6 +172,12 @@ verify-subgroup:
 # scores used to pick the threshold.
 verify-op:
 	$(PY) -m backend.ml.scripts.verify_operating_point
+
+# Standard MiniRocket is centred and pools PPV over the whole stay, so it reads
+# forward in time. That failure would show up as a superb lead time rather than as an
+# error, which is why it is planted here rather than trusted.
+verify-minirocket:
+	$(PY) -m backend.ml.scripts.verify_minirocket
 
 # Three of these checks pass by demonstrating a LOSS of coverage — row-level
 # calibration flattering itself, distribution shift breaking the guarantee, and the

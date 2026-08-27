@@ -63,7 +63,11 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `models/boosters.py` | **Utility-aligned boosters** (sklearn HGB / LightGBM / XGBoost × objective) — the ablation behind the base-model upgrade |
 | `models/sequence.py` | **Causal deep sequence detectors** — dilated TCN, Mamba-2-style selective state space, causal transformer; per-patient trajectories, not flat rows |
 | `models/temporal.py` | **Causal decision-layer filters** (EMA / running max / decaying log-odds) over a row-wise detector's own score |
+| `models/minirocket.py` | **Causal MiniRocket** — fixed random convolutional kernels over trajectory *shape*; strictly causal, memory-bounded (tested, no gain — see below) |
+| `models/forest_vsa.py` | **Forest-VSA** — tree-leaf topology as a representation, with its own lossless ceiling for comparison (tested, no gain — see below) |
+| `conformal.py` | **Mondrian conformal abstention** — the alarm's third state; see `docs/CONFORMAL.md` |
 | `scripts/frontier*.py` | Run the benchmark, rebuild its table from saved out-of-fold predictions, confirm cross-hospital |
+| `scripts/verify_minirocket.py` | 17 adversarial checks on the MiniRocket transform — causality, patient isolation, memory honesty |
 | `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |
 | `operating_point.py` | **Derived alarm thresholds** — the operating point, computed from out-of-fold predictions against the official utility, instead of guessed |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |
@@ -371,6 +375,119 @@ What is honestly NOT achieved (the CV-checked result):
 The contribution is the **novel, verified, citable framework and its rigorous honest
 ablation**, not a benchmark-beating number. The production detector remains the
 classical calibrated GBM.
+
+---
+
+## Architectures proposed, tested, and not adopted
+
+A 2024–2026 "Forest-VSA" proposal argued the ceiling was structural: boosters and HDC
+trained in isolation and blended only as scalars, HDC's isotropic linear quantisation,
+and no fast multi-scale temporal kernel. **Its three diagnoses of the code were all
+correct** — the meta-learner really is `LogisticRegression` (`models/stacked.py`), HDC
+quantisation really is linear (`models/hdc_detector.py`), and leaf-index features had
+never been tried. Two of its four remedies were then ruled out on structure and two
+were built and benchmarked. None is adopted.
+
+**Everything below is `--spec dev`, 3 patient-grouped folds, 310,061 hours / 8,000
+patients — the same protocol as `artifacts/frontier_summary.json`, so these rows are
+directly comparable to that table.** Reference points from it: production
+`stack+xgb@utility` **0.7811**, `stack` 0.7765, `xgb-utility` **0.7503**.
+
+| candidate | AUROC | AUPRC | utility | detect@FA15 | cost |
+|---|---|---|---|---|---|
+| `xgb@u-donor` (= `xgb-utility`, the paired baseline) | **0.7503 ± 0.0098** | 0.0774 | **+0.3381** | **0.497** | 22 s |
+| `mr-xgb@utility` (base features + 336 causal MiniRocket) | 0.7495 ± 0.0088 | 0.0728 | +0.3246 | 0.468 | 162 s |
+
+> Paired patient-bootstrap vs the baseline: **+0.0012 AUROC, 95% CI [−0.0090, +0.0129],
+> n.s.** AUPRC, utility and detection all move *down*; the cost moves up 7.4×.
+
+### 1. Causal MiniRocket — built, tested, no gain (`models/minirocket.py`)
+
+A fixed bank of length-9 dilated kernels with weights from {−1, +2} (exactly three
++2s), summarised by PPV. No weights are learned. Phase 7 had already shown that
+*hand-authored* temporal aggregates bought nothing; this was the different bet — a
+random basis over trajectory **shape** rather than more human-chosen summaries. It is
+the one proposal that was genuinely untried, and it was worth running. It does not help
+on this data.
+
+Two things the textbook version gets wrong here, both fixed in this implementation:
+
+- **It is not causal.** Standard MiniRocket centres the convolution and pools PPV over
+  the whole series, so hour 20 reads hour 60. Used as-is for hour-by-hour prediction it
+  would post a superb lead time made entirely of hindsight. Here the kernel's last tap
+  sits on hour *t*, the left edge is padded with the series' own first value, and PPV is
+  a trailing window. `verify_minirocket.py` plants a future spike and asserts **no**
+  earlier hour moves — and asserts the same spike *does* move hours at and after it, so
+  the check cannot pass vacuously.
+- **It does not fit in memory.** The standard bank emits 9,996 features: on this cohort
+  that is 310,061 × 9,996 float32 = **11.6 GB for the transform alone**. The bank is
+  subsampled deterministically instead; the shipped default emits 336 features
+  (**0.39 GB**, 31 s for the full cohort), and `estimate_bytes()` prices any other
+  configuration before you run it.
+
+A useful property that fell out: the kernels are **zero-sum** (3×(+2) + 6×(−1) = 0), so
+they respond to shape and are blind to level — a constant series convolves to exactly
+zero. That is asserted, not assumed.
+
+`make verify-minirocket` → 17 checks. All 17 were mutation-audited: a centred
+convolution, whole-series PPV pooling, a missing per-patient split, a missing hour sort
+and a lying `estimate_bytes` each make the matching check fail (5/5 non-vacuous). **The
+negative result is therefore evidence about the data, not a symptom of a broken
+transform.**
+
+### 2. Forest-VSA — built, tested, dominated (`models/forest_vsa.py`)
+
+The proposal: bind tree-id ⊗ leaf-id into a 10,000-D hypervector and retrieve
+associatively. The module implements it **and its own ceiling**, because the
+hypervector is a random projection of the exact leaf one-hot and cannot carry
+information the one-hot does not. Measuring only the lossy form would leave the result
+uninterpretable — which is how a representation with no information gain ships as an
+architecture.
+
+On the first fold the *lossless* one-hot read of the topology scored **0.7146 against
+the donor booster's 0.7384 on the identical fold** — i.e. the leaf indices, read
+perfectly, are already worse than the model that produced them. That is expected in
+hindsight: leaf *indices* discard the fitted leaf *values*, which is where a booster
+keeps most of what it learned. If the ceiling loses to the donor, the lossy projection
+underneath it cannot win.
+
+### 3. Quantile-warped VSA encoding — cannot move the shipped number
+
+Ruled out on structure, without a run:
+
+- **GBMs are invariant to monotone transforms of their features**, so warping the input
+  distribution does nothing to the trees either way.
+- `HistGradientBoosting` **already bins by quantiles internally** — the proposal
+  describes what the incumbent does by construction.
+- It could therefore only affect the HDC channel, and the shipped roster is
+  `['hgb','hgb2','et','lr','xgb@utility']` with `use_hdc=False`. **HDC is not in the
+  production detector.**
+
+### 4. Energy-based meta-learner — a rename of an existing configuration
+
+`σ(w₁·p_GBM + w₂·exp(−E) + b)` is a logistic regression over two features, which is
+structurally what the current meta-learner already *is* once an HDC member joins the
+roster. That configuration exists behind `use_hdc=True` and was not selected on merit.
+The conformal half of the proposal is built and documented separately in
+`docs/CONFORMAL.md`.
+
+### On the proposal's cost figures
+
+The quoted "≈1.4 ms per bed tick" is not the measured number: `artifacts/scale.json`
+records **1.57 ms** at one bed and **1.69 ms** at 350. The "≈1.8 ms" for the proposed
+system is an estimate of something never built. For scale, HDC already consumes
+**43% of the tick budget** (257 ms of 593 ms at 350 beds) and the HDC-based resonance
+gate another 28% — so hyperdimensional work is ~71% of the runtime while contributing
+nothing to the shipped detector.
+
+### What this run actually adds
+
+A third independent line of evidence for the same conclusion. Phase 7 ruled out richer
+hand-authored temporal features; `selfimprove.py` searched 16 champion mutations and
+admitted none; this pass ruled out a random convolutional temporal basis **and** tree
+topology as a representation. Different mechanisms, same answer: **the ceiling is the
+data, not the architecture.** The remaining honest levers are new signal (waveforms,
+HRV, multi-site) and better decisions — see the operating-point result below.
 
 ---
 
