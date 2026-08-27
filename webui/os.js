@@ -1031,7 +1031,9 @@ window.AegisPatient = (function () {
     if (!e.target.closest("#patient-select")) close();
   });
 
-  return { load, current, set, bed };
+  // `all` exists for the command palette: without it the palette would have to
+  // scrape the rendered menu, which is a DOM contract nobody agreed to.
+  return { load, current, set, bed, all: () => list };
 })();
 
 window.AegisStory = (function () {

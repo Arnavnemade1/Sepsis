@@ -104,8 +104,174 @@
     sh.register("sysmon", function () { wm.open("sysmon"); sh.hide(); },
       { help: "open the system monitor" });
 
-    sh.mount((e) => (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k");
+    // Ctrl-` — the terminal gesture on every platform that has one. ⌘K now belongs
+    // to the palette, which is where the terminal is also one row.
+    sh.mount((e) => e.ctrlKey && (e.key === "`" || e.code === "Backquote"));
     window.AegisShell = sh;
+
+    /* ---- command palette ------------------------------------------------- */
+    const pal = Palette.create({
+      root: "#pl", input: "#pl-in", list: "#pl-list", scrim: "#pl-scrim",
+    });
+
+    // Windows. Read live, so the verb offered is the one that applies right now —
+    // a palette that says "open" for a window already on screen is worse than none.
+    pal.source(() => wm.list().map((w) => ({
+      group: "windows", icon: w.open ? "▣" : "▢",
+      title: (w.open ? "Close " : "Open ") + (w.title || w.id).toLowerCase(),
+      hint: w.open ? (w.floating ? "floating" : "tiled") : "closed",
+      run: () => wm.toggle(w.id),
+    })));
+    pal.source(() => wm.list().filter((w) => w.open).map((w) => ({
+      group: "windows", icon: "⧉",
+      title: (w.floating ? "Dock " : "Float ") + (w.title || w.id).toLowerCase(),
+      run: () => wm.toggleFloat(w.id),
+    })));
+
+    // Layouts.
+    pal.source(() => Object.keys(WM.LAYOUTS).map((k) => ({
+      group: "layout", icon: "▤", title: "Layout: " + k,
+      hint: WM.LAYOUTS[k].label + (wm.layout === k ? " · current" : ""),
+      run: () => wm.setLayout(k),
+    })));
+
+    // Patients. The top-bar selector is the only other way to switch scope, and it
+    // is a mouse target in a corner; this makes it a keystroke.
+    pal.source(() => {
+      const P = window.AegisPatient;
+      const all = (P && P.all && P.all()) || [];
+      const cur = (P && P.current && P.current()) || null;
+      return all.map((p) => ({
+        group: "patient", icon: p.kind === "live" ? "◉" : "◍",
+        title: "Go to " + p.name,
+        hint: (p.kind === "live" ? "live monitor" : "bed " + String(p.id).replace("bed_", ""))
+          + (p.septic ? " · septic course" : "") + (cur && cur.id === p.id ? " · current" : ""),
+        run: () => P.set(p.id),
+      }));
+    });
+
+    // Apps — read off the dock rather than listed again here, so a launcher added to
+    // the dock is in the palette without anyone remembering to add it twice.
+    pal.source(() => [].slice.call(document.querySelectorAll(".dock-grp-apps .dock-btn, .dock-grp-sys .dock-btn"))
+      .map((btn) => ({
+        group: "apps", icon: "◆",
+        title: (btn.textContent || "").replace(/[◉◔◈◎▦❯_]/g, "").replace(/⌘K/g, "").trim(),
+        hint: (btn.getAttribute("title") || "").split(" — ")[1] || "",
+        run: () => btn.click(),
+      })).filter((r) => r.title));
+
+    // Kernel verbs. Every shell command is reachable without opening the shell; the
+    // shell is opened to SHOW the result, which is what a palette entry cannot do.
+    pal.source(() => Object.keys(sh.cmds).sort().map((name) => ({
+      group: "kernel", icon: "❯", title: name, hint: sh.cmds[name].help || "",
+      run: () => { sh.show(); sh.run(name); },
+    })));
+
+    pal.mount((e) => (e.metaKey || e.ctrlKey) && (e.key || "").toLowerCase() === "k");
+    window.AegisPalette = pal;
+
+    /* ---- keyboard sheet --------------------------------------------------- */
+    // Every binding in this list is one that is actually registered somewhere in
+    // this codebase; there is no aspirational row. ⌘\, ⌘1-9 and ⌘W in particular
+    // have been live in wm.js since it was written with nothing anywhere naming them.
+    const KEYS = [
+      ["System", [
+        ["Command palette", "⌘K"],
+        ["Terminal", "⌃`"],
+        ["Ask Dr. Aegis", "⌥A"],
+        ["Keyboard shortcuts", "?"],
+        ["Dismiss the top overlay", "esc"],
+      ]],
+      ["Windows", [
+        ["Cycle the tiling", "⌘\\"],
+        ["Focus the nth open window", "⌘1…9"],
+        ["Close the focused window", "⌘W"],
+        ["Window menu", "right-click its title bar", true],
+        ["Workspace menu", "right-click the desk", true],
+      ]],
+      ["Terminal", [
+        ["Complete", "tab"],
+        ["Accept the suggestion", "→"],
+        ["History", "↑ ↓"],
+        ["Clear the screen", "⌃L"],
+        ["Interrupt", "⌃C"],
+      ]],
+      ["Palette", [
+        ["Select", "↑ ↓"],
+        ["Run", "⏎"],
+        ["Dismiss", "esc"],
+      ]],
+    ];
+    const ks = document.getElementById("ks");
+    function ksRender() {
+      const body = document.getElementById("ks-body");
+      if (!body) return;
+      // A mouse gesture is not a key. Rendering "right-click its title bar" inside a
+      // <kbd> chip both lies about what it is and overflows the chip, which clipped
+      // the end of the sentence.
+      body.innerHTML = KEYS.map(([sec, rows]) =>
+        '<div class="ks-sec">' + sec + "</div>" + rows.map(([label, key, gesture]) =>
+          '<div class="ks-row"><i>' + Palette.esc(label) + "</i>"
+          + (gesture ? '<span class="ks-gest">' + Palette.esc(key) + "</span>"
+                     : "<kbd>" + Palette.esc(key) + "</kbd>")
+          + "</div>").join("")).join("");
+    }
+    function ksShow() { ksRender(); ks.classList.add("open"); ks.setAttribute("aria-hidden", "false"); }
+    function ksHide() { ks.classList.remove("open"); ks.setAttribute("aria-hidden", "true"); }
+    if (ks) {
+      document.getElementById("ks-scrim").addEventListener("click", ksHide);
+      document.addEventListener("keydown", (e) => {
+        const t = e.target;
+        const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+        if (e.key === "?" && !typing && !e.metaKey && !e.ctrlKey) { e.preventDefault(); ksShow(); return; }
+        if (e.key === "Escape" && ks.classList.contains("open")) ksHide();
+      });
+    }
+
+    // System rows — the verbs that are not a window, an app or a kernel node.
+    pal.source(() => [
+      { group: "system", icon: "⌨", title: "Keyboard shortcuts", kbd: "?", run: ksShow },
+      { group: "system", icon: "❯", title: "Open terminal", kbd: "⌃`", run: () => sh.show() },
+      { group: "system", icon: "▦", title: "System monitor", run: () => wm.open("sysmon") },
+    ]);
+
+    /* ---- context menus ---------------------------------------------------- */
+    function layoutItems() {
+      return Object.keys(WM.LAYOUTS).map((k) => ({
+        label: "Layout: " + k, hint: wm.layout === k ? "current" : "",
+        disabled: wm.layout === k, run: () => wm.setLayout(k),
+      }));
+    }
+    document.addEventListener("contextmenu", function (e) {
+      // A window's own title bar: verbs for THAT window. Until now float and close
+      // existed only as 20px glyphs inside a 26px bar.
+      const bar = e.target.closest(".wm-bar, .win-bar");
+      const win = bar && bar.closest("[data-wm-id]");
+      if (win && wm.byId[win.dataset.wmId]) {
+        e.preventDefault();
+        const w = wm.byId[win.dataset.wmId];
+        Menu.open(e.clientX, e.clientY, [
+          { label: w.floating ? "Dock into the tiling" : "Float this window",
+            run: () => wm.toggleFloat(w.id) },
+          { label: "Focus only this", hint: "layout", run: () => { wm.focus(w.id); wm.setLayout("focus"); } },
+          { sep: true },
+          { label: "Close", hint: "⌘W", run: () => wm.close(w.id) },
+        ]);
+        return;
+      }
+      // The desk itself: the workspace verbs. Right-clicking a chart or a reading
+      // is left alone — the browser's own menu is the right answer over content.
+      if (e.target.closest(".desk") && !e.target.closest(".win-body, .wm-win .win-body")) {
+        e.preventDefault();
+        Menu.open(e.clientX, e.clientY, layoutItems().concat([
+          { sep: true },
+          { label: "Open terminal", hint: "⌃`", run: () => sh.show() },
+          { label: "Command palette", hint: "⌘K", run: () => pal.show() },
+          { label: "System monitor", run: () => wm.open("sysmon") },
+          { label: "Keyboard shortcuts", hint: "?", run: ksShow },
+        ]));
+      }
+    });
 
     // The dock button and Cmd-K reach the same shell — and the button reflects its
     // state whichever of the two opened it, so the dock never claims the terminal is

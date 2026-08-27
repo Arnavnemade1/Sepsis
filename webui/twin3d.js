@@ -457,6 +457,12 @@ function loadBody() {
     modelGroup.traverse((o) => { if (o.isBone && !wristBone && /lefthand|leftwrist/i.test(o.name)) wristBone = o; });
     if (!wristBone) modelGroup.traverse((o) => { if (o.isBone && !wristBone && /hand/i.test(o.name)) wristBone = o; });
     scene.add(modelGroup);
+    // The body is the mesh the panel is empty without; the organs land after it and
+    // are visible arriving, which is fine. This module owns #twin-stage, so it
+    // clears its own placeholder rather than announcing to a listener that then has
+    // to be kept in sync with it.
+    const ld = document.getElementById("twin-loading");
+    if (ld) { ld.classList.add("done"); setTimeout(() => ld.remove(), 600); }
     poseArms(modelGroup);
     normalizeBySkeleton(modelGroup);
     bodyMetrics = computeBodyMetrics(modelGroup);   // seat the organs in the REAL torso

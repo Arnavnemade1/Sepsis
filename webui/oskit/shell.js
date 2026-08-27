@@ -433,7 +433,12 @@
         const t = e.target;
         const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
         if (openMatch && openMatch(e) && !typing) { e.preventDefault(); self.toggle(); return; }
-        if (e.key === "Escape" && self.open) { self.hide(); }
+        // Escape dismisses the TOPMOST surface. Without this the palette and the
+        // terminal both took the same Escape, so dismissing a palette you opened over
+        // your terminal also threw the terminal away — and the terminal is a place
+        // you were working, not a momentary prompt.
+        if (e.key === "Escape" && self.open &&
+            !document.querySelector(".pl.open, .ks.open, .cm")) { self.hide(); }
       });
       return this;
     },

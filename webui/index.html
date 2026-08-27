@@ -8,12 +8,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=57" />
+<link rel="stylesheet" href="os.css?v=59" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 <link rel="stylesheet" href="doctor.css?v=11" />
 <link rel="stylesheet" href="summon.css?v=1" />
 <link rel="stylesheet" href="hyperscan.css?v=2" />
-<link rel="stylesheet" href="oskit/oskit.css?v=5" />
+<link rel="stylesheet" href="oskit/oskit.css?v=9" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -73,6 +73,10 @@
         <div id="twin-stage" class="twin-stage"></div>
         <div id="organ-hud" class="organ-hud hidden" aria-live="polite"></div>
         <div id="twin-optical" class="twin-optical hidden">◉ optical-linked · webcam driving anatomy</div>
+        <div class="twin-loading" id="twin-loading">
+          <div class="twin-loading-bar"><i></i></div>
+          <div class="twin-loading-txt">loading anatomy</div>
+        </div>
         <div class="twin-hint">drag to rotate · scroll to zoom</div>
         <div class="twin-legend">
           <span><i class="lg normal"></i>normal</span>
@@ -244,11 +248,11 @@
       <button class="dock-btn" id="launch-story">◔ Clinical Story <span id="story-count" class="story-pill">0</span></button>
       <button class="dock-btn" id="launch-doctor" title="Call Dr. Aegis and talk this case through — grounded in the selected patient">◈ Consult</button>
       <button class="dock-btn accent" id="launch-hyperscan" title="Hyperscan — sweep every subsystem and produce a situation report">◎ Hyperscan</button>
-      <button class="dock-btn" id="launch-summon" title="Ask Dr. Aegis from anywhere — ⌘K / Ctrl-K">◈ Ask <span class="dock-kbd">⌘K</span></button>
+      <button class="dock-btn" id="launch-summon" title="Ask Dr. Aegis from anywhere — ⌥A, or ⌘K then Ask">◈ Ask <span class="dock-kbd">⌥A</span></button>
     </div>
     <div class="dock-grp dock-grp-sys">
       <span class="dock-label">system</span>
-      <button class="dock-btn" id="launch-shell" title="Command shell — the kernel's process table, scheduler, memory and audit">❯_ Shell <span class="dock-kbd">⌘K</span></button>
+      <button class="dock-btn" id="launch-shell" title="Command shell — the kernel's process table, scheduler, memory and audit">❯_ Shell <span class="dock-kbd">⌃`</span></button>
       <button class="dock-btn" id="launch-sysmon" title="System monitor — /proc, live">▦ Monitor</button>
     </div>
     <div class="dock-grp dock-grp-tasks"><span class="dock-label">windows</span>
@@ -258,6 +262,36 @@
 </div>
 
 <!-- ===================== COMMAND SHELL ===================== -->
+<!-- ===================== KEYBOARD SHEET ===================== -->
+<!-- The WM has bound ⌘\ , ⌘1-9 and ⌘W since it was written and nothing anywhere
+     said so. A binding nobody can discover is a binding nobody has. -->
+<div class="ks" id="ks" aria-hidden="true">
+  <div class="ks-scrim" id="ks-scrim"></div>
+  <div class="ks-frame" role="dialog" aria-label="keyboard shortcuts">
+    <div class="ks-head"><b>Keyboard</b><span>? to open · esc to dismiss</span></div>
+    <div class="ks-body" id="ks-body"></div>
+  </div>
+</div>
+
+<!-- ===================== COMMAND PALETTE ===================== -->
+<!-- The one command gesture. ⌘K reached two overlays at once before this existed;
+     both of them are now rows in here. -->
+<div class="pl" id="pl" aria-hidden="true">
+  <div class="pl-scrim" id="pl-scrim"></div>
+  <div class="pl-frame" role="dialog" aria-label="command palette">
+    <div class="pl-inwrap">
+      <span class="pl-sigil">⌘</span>
+      <input class="pl-in" id="pl-in" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="run a command, open a window, switch patient…" aria-label="command" />
+    </div>
+    <div class="pl-list" id="pl-list" role="listbox"></div>
+    <div class="pl-foot">
+      <span><b>↑↓</b> select</span><span><b>⏎</b> run</span><span><b>esc</b> dismiss</span>
+      <span class="pl-foot-r"><b>⌃`</b> terminal</span>
+    </div>
+  </div>
+</div>
+
 <!-- A WINDOW, not a modal. The layer is click-through (pointer-events:none) so the
      desktop behind stays live and usable while the terminal is open — which is the
      difference between an OS and a dialog box. Drag the title bar, resize from the
@@ -1223,19 +1257,21 @@
   </footer>
 </div>
 
-<script type="module" src="twin3d.js?v=11"></script>
+<script type="module" src="twin3d.js?v=12"></script>
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=54"></script>
+<script src="os.js?v=55"></script>
 <script src="doctor.js?v=11"></script>
-<script src="summon.js?v=2"></script>
+<script src="summon.js?v=3"></script>
 <script src="hyperscan.js?v=3"></script>
-<script src="oskit/shell.js?v=5"></script>
+<script src="oskit/menu.js?v=1"></script>
+<script src="oskit/palette.js?v=1"></script>
+<script src="oskit/shell.js?v=6"></script>
 <script src="oskit/wm.js?v=3"></script>
 <script src="oskit/sysmon.js?v=2"></script>
 <script src="oskit/session.js?v=2"></script>
 <script src="oskit/cmds-core.js?v=6"></script>
-<script src="oskit/boot.js?v=4"></script>
+<script src="oskit/boot.js?v=8"></script>
 </body>
 </html>

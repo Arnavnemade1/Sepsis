@@ -228,6 +228,10 @@ b{color:var(--ink)}
    row was `1fr` and the box stayed tall around empty space. As stacks, each column
    decides internally who absorbs slack, and the answer is the panel whose content
    actually improves with height. */
+/* No wallpaper here, and that is a finding rather than an omission: a dot-grid
+   "desktop surface" was added and then removed, because the tiling covers the desk
+   completely in EVERY layout including `focus` — the ground was never once visible.
+   Decoration you cannot see is still weight. */
 .desk{flex:1;display:grid;gap:12px;padding:14px;min-height:0;overflow:hidden;
   grid-template-columns:minmax(300px,340px) minmax(0,1fr) minmax(340px,400px);
   grid-template-rows:minmax(0,1fr);
@@ -757,6 +761,22 @@ b{color:var(--ink)}
    wraps instead: one row on wide displays, two on a laptop, always fully visible.
    Height is intentionally auto (the .os flex column lets the desk absorb the change)
    and overflow is left visible so the buttons' hover lift isn't sheared off. */
+/* The twin's meshes are ~20s of GLB over a cold connection, during which the largest
+   panel on screen was an empty black rectangle captioned "drag to rotate" — an
+   instruction for a thing that was not there. It now says what it is doing, and the
+   bar is INDETERMINATE on purpose: the loader reports no total, so a percentage
+   would be invented. */
+.twin-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:11px;pointer-events:none;z-index:2;
+  transition:opacity .5s ease}
+.twin-loading.done{opacity:0}
+.twin-loading-txt{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint)}
+.twin-loading-bar{width:132px;height:2px;border-radius:2px;background:var(--s3);overflow:hidden}
+.twin-loading-bar i{display:block;width:38%;height:100%;border-radius:2px;background:var(--dim);
+  animation:twinload 1.5s ease-in-out infinite}
+@keyframes twinload{0%{transform:translateX(-110%)}100%{transform:translateX(370%)}}
+
 .dock{min-height:52px;display:flex;align-items:center;justify-content:flex-start;
   gap:8px 14px;padding:7px 14px;flex-wrap:wrap;
   background:var(--s1);border-top:1px solid var(--line)}

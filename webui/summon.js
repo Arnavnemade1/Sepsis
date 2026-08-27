@@ -167,9 +167,11 @@
   /* ---------------- wiring ---------------- */
   document.addEventListener("keydown", function (e) {
     var k = (e.key || "").toLowerCase();
-    // ⌘K / Ctrl-K is the near-universal "command" gesture; ⌥A is a one-hand
-    // alternative for when the cursor is already in a field.
-    if ((e.metaKey || e.ctrlKey) && k === "k") { e.preventDefault(); toggle(); return; }
+    // ⌘K is NOT bound here any more. It was, and so was the terminal in
+    // oskit/boot.js — both called preventDefault, both fired, and the single
+    // most-used key in the product opened two overlays stacked on each other. ⌘K
+    // now belongs to the command palette, which offers this panel as a row. ⌥A
+    // stays: a one-hand alternative for when the cursor is already in a field.
     if (e.altKey && k === "a") { e.preventDefault(); toggle(); return; }
     if (!S.open) return;
     if (e.key === "Escape") { e.preventDefault(); close(); return; }
