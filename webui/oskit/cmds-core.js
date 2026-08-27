@@ -15,16 +15,49 @@
   "use strict";
 
   const esc = (s) => Shell.esc(s);
-  const API = () => (global.AEGIS_BACKEND || "");
+  // Route through the app's own resolver rather than reading AEGIS_BACKEND raw:
+  // that global is only the BUILD-time default, and every other fetch in the product
+  // goes through AEGIS.http(), which also honours the localStorage override used to
+  // point a page at a different kernel. Reading the global directly meant the shell
+  // silently talked to a different backend than the rest of the page.
+  const API = () => ((global.AEGIS && global.AEGIS.base && global.AEGIS.base())
+    || global.AEGIS_BACKEND || "");
 
   const PROC = ["sched", "mem", "audit", "cage", "kthreads", "ksched", "llm", "models"];
 
+  //: A kernel that has not answered in this long is not going to. Without a bound,
+  //: a cold or unreachable backend leaves the verb pending forever and the terminal
+  //: shows nothing at all — indistinguishable, to the operator, from a node that
+  //: legitimately holds no rows. That exact confusion is what prompted this.
+  const TIMEOUT_MS = 12000;
+
   async function getJSON(url) {
-    const r = await fetch(API() + url);
-    if (!r.ok) throw new Error("HTTP " + r.status);
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), TIMEOUT_MS);
+    let r;
+    try {
+      r = await fetch(API() + url, { signal: ac.signal });
+    } catch (e) {
+      throw new Error(e && e.name === "AbortError"
+        ? "no answer from " + API() + url + " within " + (TIMEOUT_MS / 1000) + "s"
+        : "cannot reach " + (API() || location.origin) + " — " + (e && e.message ? e.message : e));
+    } finally {
+      clearTimeout(t);
+    }
+    if (!r.ok) throw new Error("HTTP " + r.status + " " + url);
     const d = await r.json();
     // /aegis/proc/<node> answers {path, value}; unwrap so verbs see the node.
     return (d && Object.prototype.hasOwnProperty.call(d, "value")) ? d.value : d;
+  }
+
+  /** Rows as an aligned table. `cells` are [value, cssClass] pairs. */
+  function table(head, rows) {
+    return "<table class=\"sh-tbl\"><thead><tr>"
+      + head.map((h) => "<th>" + esc(h) + "</th>").join("")
+      + "</tr></thead><tbody>"
+      + rows.map((r) => "<tr>" + r.map(([v, c]) =>
+          "<td" + (c ? ' class="' + c + '"' : "") + ">" + esc(v) + "</td>").join("") + "</tr>").join("")
+      + "</tbody></table>";
   }
 
   function dump(sh, obj, depth) {
@@ -57,6 +90,8 @@
        ["mem", "biometric arena occupancy"],
        ["audit", "hash-chained syscall log, refusals included"],
        ["sys", "system health snapshot"],
+       ["cd &lt;node&gt;", "change directory in /proc"],
+       ["pwd", "print the working directory"],
       ].forEach(([c, d]) => sh.print('<span class="sh-cmd">' + esc(c) + "</span><span class=\"sh-dim\">" + esc(d) + "</span>", "row"));
       sh.print("<b>WINDOWS</b>", "sys");
       [["win", "list windows and their state"],
@@ -72,33 +107,88 @@
       ].forEach(([c, d]) => sh.print('<span class="sh-cmd">' + esc(c) + "</span><span class=\"sh-dim\">" + esc(d) + "</span>", "row"));
     }, { help: "list commands", alias: ["?"] });
 
+    /* The /proc namespace is navigable, not just addressable. `cd` was the missing
+       half of a working directory the shell already tracked and displayed in the
+       title bar — without it the cwd was permanently `~` and the field was
+       decoration. Two levels deep is the whole namespace, so that is all this
+       resolves; pretending to a deeper tree would invent paths that do not exist. */
+    function node(sh) {                       // the /proc node the cwd names, or ""
+      return sh.cwd === "~" ? "" : sh.cwd.replace(/^\/?proc\/?/, "");
+    }
+    /** An argument read relative to the cwd. `emptyIsHome` is what a MISSING argument
+     *  means, and the two callers genuinely differ: bare `cd` goes home, bare `ls`
+     *  lists where you are standing. Collapsing them made `ls` inside /proc/sched
+     *  print the root listing instead of the node. */
+    function resolve(sh, arg, emptyIsHome) {
+      const a = (arg || "").trim();
+      const base = node(sh);
+      if (!a) return emptyIsHome ? "" : base;
+      if (a === "~" || a === "/" || a === "/proc") return "";
+      if (a === "..") return base.split("/").slice(0, -1).join("/");
+      if (a.startsWith("/")) return a.replace(/^\/?proc\/?/, "");
+      return base ? base + "/" + a : a;
+    }
+    /** The kernel answers a bad /proc path with HTTP 200 and an `error` body, so a
+     *  status check alone reports success for a path that does not exist. Read the
+     *  body. It also carries the list of paths that DO exist, which is the one thing
+     *  worth printing when someone has just mistyped one. */
+    function bad(sh, d) {
+      if (!d || !d.error) return false;
+      sh.print("error: " + esc(d.error), "err");
+      if (Array.isArray(d.available)) {
+        sh.print('<span class="sh-dim">available: ' +
+          d.available.map((n) => esc(n)).join("  ") + "</span>");
+      }
+      return true;
+    }
+
+    sh.register("cd", async function (arg) {
+      const t = resolve(sh, arg, true);
+      if (!t) { sh.setCwd("~"); return; }
+      // Verified before it is ENTERED, and verified whole: checking only the first
+      // segment happily accepted `/proc/sched/nonexistent`, after which every later
+      // `ls` failed on a path the operator never typed.
+      if (bad(sh, await getJSON("/aegis/proc/" + t))) return;
+      sh.setCwd("/proc/" + t);
+    }, { help: "change directory in /proc", alias: ["chdir"] });
+
+    sh.register("pwd", function () { sh.print(sh.cwd); }, { help: "working directory" });
+
     sh.register("ls", async function (arg) {
-      const p = (arg || "").replace(/^\/?proc\/?/, "").trim();
+      const p = resolve(sh, arg, false);
       if (!p) {
         const d = await getJSON("/aegis/proc").catch(() => null);
         const nodes = (d && (d.nodes || d.paths)) || PROC.map((n) => "/proc/" + n);
         nodes.forEach((n) => sh.print('<span class="sh-cmd">' + esc(n) + "</span>", "row"));
         return;
       }
-      dump(sh, await getJSON("/aegis/proc/" + p), 0);
+      const d = await getJSON("/aegis/proc/" + p);
+      if (!bad(sh, d)) dump(sh, d, 0);
     }, { help: "list /proc", alias: ["dir"] });
 
     sh.register("cat", async function (arg) {
-      if (!arg) return sh.print("usage: cat &lt;node&gt; — try <b>ls</b>", "dim");
-      dump(sh, await getJSON("/aegis/proc/" + arg.replace(/^\/?proc\/?/, "")), 0);
+      const p = resolve(sh, arg, false);
+      if (!p) return sh.print("usage: cat &lt;node&gt; — try <b>ls</b>", "dim");
+      const d = await getJSON("/aegis/proc/" + p);
+      if (!bad(sh, d)) dump(sh, d, 0);
     }, { help: "read a /proc node", alias: ["proc", "read"] });
 
     sh.register("ps", async function () {
       const d = await getJSON("/aegis/proc/kthreads");
       const rows = Array.isArray(d) ? d : (d.ps || []);
       if (!rows.length) return sh.print("no kernel threads reported", "dim");
-      sh.print('<span class="sh-key">PID  TASK                 STATE      PRIO  CPU</span>', "row");
-      rows.forEach((r) => sh.print(
-        String(r.pid ?? r.id ?? "—").padEnd(5) +
-        String(r.name ?? r.task ?? r.bed ?? "—").padEnd(21) +
-        String(r.state ?? "—").padEnd(11) +
-        String(r.prio ?? r.priority ?? "—").padEnd(6) +
-        (r.cpu_us != null ? Number(r.cpu_us).toFixed(0) + "µs" : ""), "row"));
+      // A real table, not padEnd. Column alignment that depends on every value being
+      // shorter than its pad breaks the first time a bed gets a long name, and the
+      // breakage looks like a data bug rather than a formatting one.
+      sh.print(table(
+        ["PID", "TASK", "STATE", "PRIO", "CPU"],
+        rows.map((r) => [
+          [r.pid ?? r.id ?? "—", ""],
+          [r.name ?? r.task ?? r.bed ?? "—", "name"],
+          [r.state ?? "—", ""],
+          [r.prio ?? r.priority ?? "—", "num"],
+          [r.cpu_us != null ? Number(r.cpu_us).toFixed(0) + "µs" : "—", "num"],
+        ])));
     }, { help: "process table" });
 
     sh.register("top", async function () {
@@ -186,7 +276,7 @@
       const v = line.trim().split(/\s+/)[0];
       if (/^(open|close|float|detach)$/.test(v) && wm) return Object.keys(wm.byId);
       if (v === "layout") return Object.keys(WM.LAYOUTS);
-      if (/^(cat|proc|read|ls|dir)$/.test(v)) return PROC;
+      if (/^(cat|proc|read|ls|dir|cd|chdir)$/.test(v)) return PROC;
       if (v === "can" && session && session.policy) return Object.keys(session.policy.cap_min_ring || {});
       return [];
     });
@@ -194,5 +284,5 @@
     return sh;
   }
 
-  global.CoreCmds = { install, PROC };
+  global.CoreCmds = { install, PROC, table };
 })(window);

@@ -776,6 +776,10 @@ b{color:var(--ink)}
 .dock-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 /* The one destructive control in the dock; it is allowed to be red because it is a
    real hazard, not because it is important. */
+/* A dock button whose window is on screen reads as running — the same affordance
+   .wm-task already carries in the taskbar, so the two rows agree about what is open
+   instead of only one of them knowing. */
+.dock-btn.on{border-color:rgba(var(--accent-rgb),.45);color:var(--accent-ink);background:var(--s3)}
 .dock-btn.warn{background:rgba(var(--high-rgb),.1);border-color:rgba(var(--high-rgb),.35);color:var(--high-ink)}
 .dock-btn.warn:hover{background:rgba(var(--high-rgb),.22);box-shadow:none}
 .dock-status{font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap;flex:0 0 auto;margin-left:auto;padding-left:12px}

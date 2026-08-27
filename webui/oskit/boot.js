@@ -60,9 +60,34 @@
     /* ---- shell ----------------------------------------------------------- */
     const sh = Shell.create({
       root: "#sh", out: "#sh-out", input: "#sh-in", prompt: "#sh-prompt",
+      frame: "#sh-frame", head: "#sh-head", grip: "#sh-grip", close: "#sh-close",
+      status: "#sh-status", ghost: "#sh-ghost", titlePath: "#sh-title-path",
+      chipRing: "#sh-chip-ring", segKernel: "#sh-seg-kernel", segHost: "#sh-seg-host",
+      segWin: "#sh-seg-win", segCmds: "#sh-seg-cmds", segUp: "#sh-seg-up",
       histKey: "aegis_console_hist",
     });
     CoreCmds.install(sh, { wm, session });
+
+    // The status line reads the running system, never a literal. `host` is where the
+    // kernel actually is, which on a split deploy is not this page's origin — the one
+    // fact an operator most needs when a verb comes back empty.
+    sh.bar(function () {
+      let host = "local";
+      try {
+        const b = (window.AEGIS && AEGIS.base && AEGIS.base()) || location.origin;
+        host = new URL(b, location.href).host;
+      } catch (e) {}
+      // The kernel version is read from the system bar that already displays it,
+      // rather than from a new global: one element owns that fact and stays live.
+      const ver = (document.getElementById("sb-ver") || {}).textContent || "";
+      return {
+        kernel: ver.trim(),
+        host: host,
+        windows: wm.list().filter((w) => w.open).length,
+        role: session.role || "",
+        ring: session.ring,
+      };
+    });
 
     // `ask` was the whole of what Cmd-K did before this: it opened an LLM prompt.
     // It survives as one verb among forty rather than being removed — the shell is
@@ -82,9 +107,18 @@
     sh.mount((e) => (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k");
     window.AegisShell = sh;
 
-    // The dock button and Cmd-K reach the same shell.
+    // The dock button and Cmd-K reach the same shell — and the button reflects its
+    // state whichever of the two opened it, so the dock never claims the terminal is
+    // closed while it is sitting on screen.
     const sb = document.getElementById("launch-shell");
-    if (sb) sb.addEventListener("click", () => sh.toggle());
+    if (sb) {
+      sb.addEventListener("click", () => sh.toggle());
+      const markDock = () => sb.classList.toggle("on", sh.open);
+      const prevShow = sh.o.onShow, prevHide = sh.o.onHide;
+      sh.o.onShow = (s) => { markDock(); if (prevShow) prevShow(s); };
+      sh.o.onHide = (s) => { markDock(); if (prevHide) prevHide(s); };
+      markDock();
+    }
     const smb = document.getElementById("launch-sysmon");
     if (smb) smb.addEventListener("click", () => wm.toggle("sysmon"));
   }

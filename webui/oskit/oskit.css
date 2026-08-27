@@ -43,36 +43,136 @@
 .wm-task-empty{font:11px/1.5 "IBM Plex Mono",monospace;color:var(--faint)}
 
 /* ---- shell --------------------------------------------------------------- */
-.sh{position:fixed;inset:0;z-index:120;display:none;
-  background:rgba(6,7,8,.72);backdrop-filter:blur(3px)}
-.sh.open{display:grid;place-items:start center;padding-top:9vh}
-.sh-frame{width:min(920px,94vw);max-height:74vh;display:flex;flex-direction:column;
-  background:var(--panel-solid);border:1px solid var(--line-bright);border-radius:12px;
-  box-shadow:0 24px 60px rgba(0,0,0,.6);overflow:hidden}
-.sh-head{display:flex;align-items:center;gap:8px;padding:8px 12px;
-  border-bottom:1px solid var(--line-soft);background:var(--s2);flex:0 0 auto}
-.sh-head b{font:600 10.5px/1 "IBM Plex Sans",system-ui,sans-serif;letter-spacing:.1em;
-  text-transform:uppercase;color:var(--muted)}
-.sh-head span{font:11px/1 "IBM Plex Mono",monospace;color:var(--faint);margin-left:auto}
-.sh-out{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px 12px;
-  font:12px/1.65 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted)}
+/* A terminal WINDOW over a live desktop. The layer is click-through and carries no
+   scrim: dimming the ward to read a process table is a dialog's behaviour, not an
+   OS's, and an operator must be able to watch a patient while typing. Only the
+   frame itself takes pointer events. */
+.sh{position:fixed;inset:0;z-index:120;display:none;pointer-events:none}
+.sh.open{display:block}
+.sh-frame{position:absolute;left:50%;top:9vh;transform:translateX(-50%);
+  width:min(880px,94vw);height:min(560px,74vh);
+  display:flex;flex-direction:column;pointer-events:auto;
+  background:var(--panel-solid);border:1px solid var(--line-bright);border-radius:11px;
+  box-shadow:0 24px 64px rgba(0,0,0,.62);overflow:hidden}
+/* Once dragged, the frame owns its own coordinates and the centring transform must
+   not fight them — otherwise every drag lands 50% of the width to the left. */
+.sh-frame.sh-placed{transform:none}
+
+/* Inactive window chrome — the oldest signal in any windowing system, and here it
+   also answers "is this thing listening to my keyboard?", which matters more in a
+   terminal than anywhere else. A hairline accent when focused, matching
+   .wm-win.wm-focus; recessed furniture when not. No glow either way. */
+.sh-frame.sh-active{box-shadow:0 24px 64px rgba(0,0,0,.62),
+  inset 0 0 0 1px rgba(var(--accent-rgb),.30)}
+.sh-frame:not(.sh-active){border-color:var(--line)}
+.sh-frame:not(.sh-active) .sh-head{background:var(--s1)}
+.sh-frame:not(.sh-active) .sh-title,
+.sh-frame:not(.sh-active) .sh-title b{color:var(--faint)}
+.sh-frame:not(.sh-active) .dots{opacity:.42}
+
+/* title bar — the same furniture every other window in this OS wears */
+.sh-head{display:flex;align-items:center;gap:9px;height:29px;padding:0 9px;flex:0 0 auto;
+  background:var(--s2);border-bottom:1px solid var(--line-soft);cursor:move;user-select:none}
+.sh-title{font:12px/1 "IBM Plex Mono",ui-monospace,monospace;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-title b{color:var(--muted);font-weight:400}
+.sh-head-r{margin-left:auto;display:flex;align-items:center;gap:7px;flex:0 0 auto}
+.sh-chip{font:10px/1 "IBM Plex Mono",monospace;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--faint);border:1px solid var(--line);border-radius:4px;padding:3px 6px;white-space:nowrap}
+.sh-chip.held{color:var(--muted);border-color:var(--line-bright)}
+.sh-x{width:19px;height:19px;display:grid;place-items:center;background:transparent;border:0;
+  border-radius:4px;color:var(--faint);font-size:10px;cursor:pointer;line-height:1}
+.sh-x:hover{background:var(--s3);color:var(--ink)}
+
+/* scrollback */
+.sh-out{flex:1 1 auto;min-height:0;overflow-y:auto;padding:11px 13px;
+  font:12.5px/1.62 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted);
+  font-variant-numeric:tabular-nums slashed-zero;scrollbar-width:thin;
+  scrollbar-color:var(--s3) transparent}
+.sh-out::-webkit-scrollbar{width:9px}
+.sh-out::-webkit-scrollbar-track{background:transparent}
+.sh-out::-webkit-scrollbar-thumb{background:var(--s3);border-radius:5px;
+  border:2px solid var(--panel-solid)}
+.sh-out::-webkit-scrollbar-thumb:hover{background:var(--line-bright)}
 .sh-line{white-space:pre-wrap;word-break:break-word}
-.sh-echo{color:var(--ink)}
+
+/* An echoed command opens a block. The hairline gutter is the only way to see, in a
+   long scrollback, where one command's output ends and the next begins — the thing
+   a wall of monospace is worst at. */
+.sh-echo{color:var(--ink);margin-top:9px;padding-top:7px;border-top:1px solid var(--line-soft)}
+.sh-echo:first-child{margin-top:0;padding-top:0;border-top:0}
 .sh-sys{color:var(--ink);margin-top:6px}
 .sh-dim,.sh-line .sh-dim{color:var(--faint)}
 .sh-err{color:var(--high-ink)}
-.sh-row{display:flex;gap:10px}
-.sh-cmd{color:var(--accent-ink);min-width:170px;display:inline-block}
+/* Two columns that actually align, instead of an inline-block min-width that only
+   aligns while every label happens to be shorter than 170px. */
+.sh-row{display:grid;grid-template-columns:minmax(0,190px) minmax(0,1fr);gap:4px 14px;
+  align-items:baseline}
+.sh-cmd{color:var(--accent-ink)}
 .sh-key{color:var(--dim)}
 .sh-prompt{color:var(--low-ink)}
 .sh-cand{color:var(--muted);margin-right:6px}
 .sh-ok{color:var(--low-ink)}
 .sh-deny{color:var(--high-ink)}
-.sh-inwrap{display:flex;align-items:center;gap:8px;padding:9px 12px;
-  border-top:1px solid var(--line-soft);background:var(--s2);flex:0 0 auto}
-.sh-p{font:12px/1 "IBM Plex Mono",monospace;color:var(--low-ink);white-space:nowrap}
-.sh-in{flex:1 1 auto;min-width:0;background:transparent;border:0;outline:0;color:var(--ink);
-  font:12px/1.5 "IBM Plex Mono",ui-monospace,monospace;caret-color:var(--accent)}
+
+/* a real table for tabular verbs (ps, audit) */
+/* Content-width, not 100%: a five-column table stretched across an 880px terminal
+   puts a hand's width of dead space between PID and TASK, and the eye stops being
+   able to associate a row's cells. Columns are sized by their contents, like every
+   real `ps`. */
+.sh-tbl{width:auto;border-collapse:collapse;margin:3px 0 2px;
+  font:12px/1.6 "IBM Plex Mono",ui-monospace,monospace;
+  font-variant-numeric:tabular-nums slashed-zero}
+.sh-tbl th{text-align:left;padding:2px 22px 4px 0;color:var(--faint);font-weight:500;
+  font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;
+  border-bottom:1px solid var(--line-soft)}
+.sh-tbl td{padding:2px 22px 2px 0;color:var(--muted);white-space:nowrap}
+.sh-tbl th:last-child,.sh-tbl td:last-child{padding-right:0}
+.sh-tbl td.num{text-align:right;color:var(--ink)}
+.sh-tbl td.name{color:var(--ink)}
+
+/* input row */
+.sh-inwrap{display:flex;align-items:center;gap:8px;padding:9px 13px;flex:0 0 auto;
+  border-top:1px solid var(--line-soft);background:var(--s2)}
+/* The chevron carries the LAST command's exit status. It is the one place in this
+   window where colour is allowed, because "that failed" is signal — and it means the
+   operator does not have to scroll back up to find out. */
+.sh-st{font:12.5px/1 "IBM Plex Mono",monospace;color:var(--faint);flex:0 0 auto;
+  transition:color .18s ease}
+.sh-st[data-st="ok"]{color:var(--low-ink)}
+.sh-st[data-st="err"]{color:var(--high-ink)}
+.sh-st[data-st="busy"]{color:var(--accent-ink);animation:sh-pulse 1s ease-in-out infinite}
+@keyframes sh-pulse{50%{opacity:.35}}
+.sh-p{font:12.5px/1 "IBM Plex Mono",monospace;color:var(--low-ink);white-space:nowrap;flex:0 0 auto}
+.sh-p b{color:var(--muted);font-weight:400}
+.sh-field{position:relative;flex:1 1 auto;min-width:0;display:flex;align-items:center}
+.sh-in,.sh-ghost{font:12.5px/1.5 "IBM Plex Mono",ui-monospace,monospace;
+  letter-spacing:normal;white-space:pre}
+.sh-in{position:relative;z-index:1;width:100%;min-width:0;background:transparent;border:0;
+  outline:0;color:var(--ink);caret-color:var(--accent);padding:0}
+/* Inline completion, shown behind the input in identical metrics: the typed prefix is
+   rendered transparent so the suggested tail lands exactly where the caret is. */
+.sh-ghost{position:absolute;left:0;top:50%;transform:translateY(-50%);pointer-events:none;
+  color:var(--faint);z-index:0;overflow:hidden;max-width:100%}
+.sh-ghost i{color:transparent;font-style:normal}
+
+/* status bar — the tmux line. Every field is a real number read from the running
+   system; a status bar of decorations would be the worst thing this window could wear. */
+.sh-bar{display:flex;align-items:center;gap:12px;flex:0 0 auto;padding:0 11px;height:23px;
+  border-top:1px solid var(--line-soft);background:var(--s1);
+  font:10.5px/1 "IBM Plex Mono",monospace;color:var(--faint);
+  font-variant-numeric:tabular-nums slashed-zero;overflow:hidden}
+.sh-bar-l,.sh-bar-r{display:flex;align-items:center;gap:12px;min-width:0}
+.sh-bar-r{margin-left:auto;flex:0 0 auto}
+.sh-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-seg b{color:var(--dim);font-weight:500}
+
+/* resize grip — two hairlines, the platform-standard read, no glyph */
+.sh-grip{position:absolute;right:0;bottom:0;width:15px;height:15px;cursor:nwse-resize;z-index:2}
+.sh-grip::before,.sh-grip::after{content:"";position:absolute;right:3px;
+  background:var(--line-bright)}
+.sh-grip::before{bottom:3px;width:9px;height:1px}
+.sh-grip::after{bottom:3px;width:1px;height:9px}
 
 /* ---- system monitor ------------------------------------------------------ */
 .sm-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;
@@ -148,7 +248,11 @@
   border-top:1px solid var(--line-soft);margin-top:3px}
 
 @media(max-width:900px){
-  .sh-frame{width:96vw;max-height:80vh}
+  /* On a narrow screen a draggable window is a liability, so the terminal pins
+     itself back to the viewport and the stored geometry is ignored. */
+  .sh-frame,.sh-frame.sh-placed{left:2vw;right:2vw;top:6vh;width:auto;height:80vh;
+    transform:none}
+  .sh-grip{display:none}
   .sm-kv{grid-template-columns:1fr}
 }
 
