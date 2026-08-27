@@ -346,6 +346,11 @@ b{color:var(--ink)}
 /* The two panels whose content is a viewport rather than a document state their own
    height: a 3D stage and a video feed have no intrinsic content height to report to
    an `auto` grid row, and would otherwise collapse to nothing. */
+/* No CSS backdrop here, and it is not an oversight: the renderer is alpha:true, but
+   it draws through an EffectComposer whose render targets are opaque, so the
+   composed frame covers whatever this element paints. A 45%-opacity red gradient
+   was tried as a probe and was completely invisible. The twin's backdrop is a
+   scene-space gradient in twin3d.js instead. */
 .twin-stage{flex:1 1 auto;width:100%;min-height:300px;position:relative;cursor:grab}
 .twin-stage:active{cursor:grabbing}
 /* focus/status HUD tag on the twin (was unstyled here → cramped "DYSFUNCTIONRESPIRATORY") */

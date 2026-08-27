@@ -14,6 +14,10 @@
    A holo-platform (rings + radial grid), a drifting cellular particle
    field, and a slow diagnostic reticle complete the console look.
 
+   The vascular-tree mesh is intentionally absent — see ORGAN_FILES for the
+   measurement that removed it. The `vascular` code path is kept: it is correct, and
+   it costs nothing while no entry sets the flag.
+
    Public API (unchanged):  window.AegisTwin = { start, update, resize, setOptical }
    Auto-mounts into #twin-stage. Spin / zoom via OrbitControls.
    ============================================================ */
@@ -59,9 +63,18 @@ const ORGAN_FILES = [
   { key: "bladder",   file: "VH_M_Urinary_Bladder.glb", region: "kidneys",   calExclude: true },
   { key: "cord",      file: "VH_M_Spinal_Cord.glb",     region: "brain",     calExclude: true },
   { key: "thymus",    file: "VH_M_Thymus.glb",          region: "immune" },
-  // the vascular tree — a systemic vessel network, rendered as glowing lines and
-  // driven by the OVERALL circulatory severity (loaded last; it is the big mesh).
-  { key: "vessels",   file: "VH_M_Blood_Vasculature.glb", region: "vessels", vascular: true, defer: true },
+  // VH_M_Blood_Vasculature.glb is DELIBERATELY NOT LOADED. It was, and it was
+  // described here as "a systemic vessel network" reaching the limbs. It is not:
+  // rendered with a magenta probe at full opacity it resolves to a small cluster in
+  // the pelvis — the CCF reference mesh covers abdominal/pelvic vessels, not a
+  // whole-body tree. At its shipped settings (0.16 additive over dark grey) nothing
+  // was visible at all, so 7.1 MiB — 27% of the twin's entire 25.9 MiB asset
+  // payload, and a large share of the ~25s before the body appears — was downloaded
+  // on every page load to draw nothing anyone could see.
+  //
+  // The file is still in vendor/; restoring the line below re-enables it. Doing so
+  // is only worth it with a mesh that actually spans the body.
+  // { key: "vessels", file: "VH_M_Blood_Vasculature.glb", region: "vessels", vascular: true, defer: true },
 ];
 // placement of the assembled organ atlas inside the body (tuned to the Xbot mesh)
 let ORGAN_SPAN = 0.44;       // vertical extent of the organ stack in body units
@@ -135,6 +148,32 @@ let started = false, pendingData = null;
 let hr = 72, resp = 15, overall = 0, tNow = 0;
 
 /* ---------------- helpers ---------------- */
+/* Scene backdrop. The body used to stand in flat black, so its dark legs and the
+   panel behind them were the same value and the silhouette simply stopped at the
+   hips. This is a vertical gradient with a soft lift behind the figure — no hue
+   beyond the interface accent's faintest trace at the floor, because a coloured
+   backdrop would tint every organ colour judged against it.
+
+   It lives in the SCENE and not in CSS: the renderer draws through an
+   EffectComposer whose targets are opaque, so anything painted behind the canvas is
+   covered by the composed frame. (Verified — a 45% red CSS gradient was invisible.) */
+function backdropTexture() {
+  const c = document.createElement("canvas");
+  c.width = 2; c.height = 256;                       // 1-D gradient, stretched by three
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0.00, "#07080a");                   // top: near-black, keeps the head crisp
+  g.addColorStop(0.42, "#101319");
+  g.addColorStop(0.72, "#161a22");                   // horizon behind the torso
+  g.addColorStop(0.93, "#0d1016");
+  g.addColorStop(1.00, "#08090c");                   // floor, darker again
+  x.fillStyle = g; x.fillRect(0, 0, 2, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter;
+  return tex;
+}
+
 function glowTexture() {
   const c = document.createElement("canvas"); c.width = c.height = 128;
   const x = c.getContext("2d"), g = x.createRadialGradient(64, 64, 1, 64, 64, 64);
@@ -190,8 +229,17 @@ function bodyMaterial() {
         float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 2.4);
         // horizontal scanlines drifting downward
         float sl = 0.86 + 0.14*sin(vWY*150.0 - uTime*2.2);
-        // rising diagnostic sweep band
-        float sweep = exp(-pow((h - uScan)*8.0, 2.0));
+        // Rising diagnostic sweep. The width coefficient is load-bearing: at 8.0 the
+        // Gaussian was ~25cm of body tall, so for a large fraction of every cycle the
+        // band sat over the TORSO and its alpha term rendered the chest an opaque
+        // white slab — erasing the heart, lungs and liver, which are the only things
+        // on this body carrying clinical meaning. An animated decoration that
+        // periodically deletes the signal is not a decoration worth having.
+        // Narrow enough to read as an instrument line rather than a wash.
+        float sweep = exp(-pow((h - uScan)*26.0, 2.0));
+        // A second, much wider and fainter halo keeps the sense of a volume being
+        // scanned without ever approaching opacity.
+        float sweepGlow = exp(-pow((h - uScan)*7.0, 2.0));
         // Weighted toward the FRESNEL rim rather than the flat fill. The old mix was
         // 0.42 flat + 0.55 edge, which lit the whole surface fairly evenly — the shell
         // read as milk, not glass, so the organ atlas underneath it was a vague smudge.
@@ -207,11 +255,17 @@ function bodyMaterial() {
         vec3 outc = col*(0.26 + 0.52*fres) + uRim*fres*0.55;
         outc *= sl;
         outc += col*0.07;                          // faint volumetric luminescence
-        outc += col*sweep*0.9 + vec3(0.55,0.85,1.0)*sweep*0.5;
+        // The scan tint is the interface accent (--accent 122,162,247), not an ad-hoc
+        // cyan: a sweep is an instrument affordance, and the OS already has one hue
+        // reserved for those.
+        outc += col*sweep*0.55 + vec3(0.48,0.64,0.97)*sweep*0.62;
+        outc += col*sweepGlow*0.10;
         outc *= (1.0 + 0.08*uPulse);
         // capped below 1.0: the shell is a window onto the anatomy and must never
         // resolve to an opaque surface, however steep the viewing angle gets.
-        float a = clamp(0.13 + fres*0.42 + sweep*0.30, 0.0, 0.68);
+        // The sweep's contribution to ALPHA is what turned it into a slab. It now
+        // brightens the shell it crosses without closing the window through it.
+        float a = clamp(0.13 + fres*0.42 + sweep*0.10 + sweepGlow*0.03, 0.0, 0.68);
         gl_FragColor = vec4(outc, a);`);
     shellU = sh.uniforms;
   };
@@ -244,7 +298,7 @@ function makeOrganMat() {
    MeshBasic so it self-illuminates (and blooms) regardless of scene lighting. */
 function makeVascularMat() {
   return new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0x6b7078), transparent: true, opacity: 0.26,
+    color: new THREE.Color(0x8f97a3), transparent: true, opacity: 0.34,
     blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide });
 }
 function loadOrgans() {
@@ -687,6 +741,7 @@ function start(el) {
   if (started || !el) return;
   container = el; ensureHud(el); const w = el.clientWidth || 480, h = el.clientHeight || 560;
   scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x05070d, 0.10);
+  scene.background = backdropTexture();
   camera = new THREE.PerspectiveCamera(33, w / h, 0.1, 100);
   camera.position.set(0.2, H * 0.56, H * 1.9);
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -814,16 +869,23 @@ function applyRegions() {
   }
   for (const k in organs) organs[k].worst = (k === worstKey);
 
-  // vascular tree: a systemic web that floods with the overall tier colour and
-  // brightens as circulatory stress rises (stays a faint blue network when calm).
+  // Vascular tree, if one is ever loaded again: floods with the overall tier colour
+  // and brightens as circulatory stress rises. No ORGAN_FILES entry currently sets
+  // `vascular`, so this loop is a no-op — kept because the path is correct and the
+  // only thing wrong with it was the mesh it was pointed at.
   const vcol = overall >= 0.75 ? new THREE.Color(TIER_HEX.CRITICAL)
              : overall >= 0.45 ? new THREE.Color(TIER_HEX.DYSFUNCTION)
-             : overall >= 0.2 ? new THREE.Color(TIER_HEX.STRESS) : new THREE.Color(0x6b7078);
+             : overall >= 0.2 ? new THREE.Color(TIER_HEX.STRESS) : new THREE.Color(0x8f97a3);
   for (const k in organs) {
     const o = organs[k]; if (!o.vascular || !o.mat) continue;
     o.mon = true; o.sev = overall;
     o.mat.color.copy(vcol);
-    o.mat.opacity = 0.16 + 0.44 * overall;
+    // The calm floor was 0.16 additive over a dark grey, which is invisible: this
+    // block's own comment promised "a faint network when calm" and the 7.1 MiB mesh
+    // that delivers it was being downloaded on every load to render nothing anyone
+    // could see. It is the only anatomy that reaches the limbs, and the limbs are
+    // where peripheral perfusion shows, so it should always be legible.
+    o.mat.opacity = 0.34 + 0.34 * overall;
   }
 
   // Body shell: NEUTRAL, always. It used to wash 40% toward the tier colour from the
