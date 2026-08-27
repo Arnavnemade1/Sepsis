@@ -1,0 +1,173 @@
+{
+  "generated": "2026-08-27 23:16:11 UTC",
+  "limit_per_site": 4000,
+  "detector": "stack",
+  "directions": [
+    {
+      "direction": "A->B",
+      "shift": {
+        "pi_source": 0.024394618834080718,
+        "pi_target_true": 0.013661958829502446,
+        "pi_target_em": 0.04842052469151851,
+        "pi_target_bbse": NaN,
+        "em_iterations": 151,
+        "domain_auc": 0.8927511343156096,
+        "weight_mean": 1.0107665002123662,
+        "weight_ess_frac": 0.15890278880752495,
+        "prior_ratio_true": 0.5600398564299716,
+        "prior_ratio_em": 1.9848854790824684,
+        "covariate_shift_detected": true
+      },
+      "conformal": {
+        "plain (transferred)": {
+          "cov_pos": 0.9577,
+          "cov_neg": 0.9852,
+          "abstain": 0.8221
+        },
+        "weighted": {
+          "cov_pos": 0.9545,
+          "cov_neg": 0.9643,
+          "abstain": 0.8034
+        },
+        "oracle": {
+          "cov_pos": 0.9577,
+          "cov_neg": 0.9681,
+          "abstain": 0.7927
+        }
+      },
+      "thresholds": {
+        "source": 0.0225,
+        "prior_corrected": 0.0225,
+        "rate_matched": 0.021490626428898034,
+        "oracle": 0.0525
+      },
+      "locked": {
+        "unadapted": {
+          "utility": -0.15722474325292551,
+          "detection": 0.75,
+          "false_alarm": 0.7891692954784437,
+          "lead_h": 44.0
+        },
+        "prior_corrected": {
+          "utility": -0.641497492237879,
+          "detection": 0.92,
+          "false_alarm": 0.944794952681388,
+          "lead_h": 25.5
+        },
+        "rate_matched": {
+          "utility": -0.5264827641111376,
+          "detection": 0.87,
+          "false_alarm": 0.9153522607781283,
+          "lead_h": 26.0
+        },
+        "oracle": {
+          "utility": 0.27530451397181754,
+          "detection": 0.4,
+          "false_alarm": 0.1740273396424816,
+          "lead_h": 49.0
+        }
+      },
+      "prior_corrected": {
+        "delta": -0.4903363422730303,
+        "ci": [
+          -0.6411961628174936,
+          -0.36967319955653083
+        ],
+        "significant": true,
+        "recovered": -1.1196300386526787
+      },
+      "rate_matched": {
+        "delta": -0.3753951165054935,
+        "ci": [
+          -0.4895135018121119,
+          -0.279975456115335
+        ],
+        "significant": true,
+        "recovered": -0.8537180195104002
+      }
+    },
+    {
+      "direction": "B->A",
+      "shift": {
+        "pi_source": 0.011798712389961897,
+        "pi_target_true": 0.023436210595807888,
+        "pi_target_em": 0.35785670964875765,
+        "pi_target_bbse": 0.17707292279238382,
+        "em_iterations": 153,
+        "domain_auc": 0.9014014785617308,
+        "weight_mean": 0.5920086256245009,
+        "weight_ess_frac": 0.1600628399382506,
+        "prior_ratio_true": 1.9863362900299981,
+        "prior_ratio_em": 30.330149411321766,
+        "covariate_shift_detected": true
+      },
+      "conformal": {
+        "plain (transferred)": {
+          "cov_pos": 0.8677,
+          "cov_neg": 0.9513,
+          "abstain": 0.6929
+        },
+        "weighted": {
+          "cov_pos": 0.7965,
+          "cov_neg": 0.9767,
+          "abstain": 0.589
+        },
+        "oracle": {
+          "cov_pos": 0.8695,
+          "cov_neg": 1.0,
+          "abstain": 0.7319
+        }
+      },
+      "thresholds": {
+        "source": 0.035,
+        "prior_corrected": 0.035,
+        "rate_matched": 0.03586206896551724,
+        "oracle": 0.0325
+      },
+      "locked": {
+        "unadapted": {
+          "utility": 0.25523148148148145,
+          "detection": 0.7664670658682635,
+          "false_alarm": 0.7110868377935554,
+          "lead_h": 26.5
+        },
+        "prior_corrected": {
+          "utility": -0.39451157407407433,
+          "detection": 1.0,
+          "false_alarm": 1.0,
+          "lead_h": 21.0
+        },
+        "rate_matched": {
+          "utility": 0.25527314814814817,
+          "detection": 0.7664670658682635,
+          "false_alarm": 0.7110868377935554,
+          "lead_h": 26.5
+        },
+        "oracle": {
+          "utility": 0.25581018518518517,
+          "detection": 0.7664670658682635,
+          "false_alarm": 0.7110868377935554,
+          "lead_h": 26.5
+        }
+      },
+      "prior_corrected": {
+        "delta": -0.6705305276060382,
+        "ci": [
+          -0.8961968753590936,
+          -0.4742139550048859
+        ],
+        "significant": true,
+        "recovered": -1122.7559999999685
+      },
+      "rate_matched": {
+        "delta": 4.689960917475977e-05,
+        "ci": [
+          0.0,
+          0.00011161368229456735
+        ],
+        "significant": false,
+        "recovered": 0.07200000000008595
+      }
+    }
+  ]
+}

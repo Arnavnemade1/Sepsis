@@ -25,7 +25,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from backend.ml import config, shift
+from backend.ml import config, conformal as cf, shift
 from backend.ml.eval import metrics
 from backend.ml.eval.bench import _load_cached
 from backend.ml.eval.splits import stratified_group_split
@@ -103,11 +103,29 @@ def run_direction(src: str, tgt: str, args) -> Dict[str, object]:
 
     # ---- fit on source, holding out source rows for the confusion matrix ------ #
     s_fit, s_hold = stratified_group_split(S.groups, S.y, 0.25, args.seed)
-    m = UtilityAlignedBooster(kind="xgb", objective="utility", feature_names=S.feature_names)
-    m.fit(S.X[s_fit], S.y[s_fit], groups=S.groups[s_fit],
-          hour_index=S.hour_index[s_fit], onset_hour=S.onset_hour[s_fit])
-    p_hold = m.predict_proba(S.X[s_hold])
-    p_tgt = m.predict_proba(T.X)
+    if args.detector == "stack":
+        # The PROMOTED detector. Worth switching to because the conformal coverage
+        # numbers this script produces disagreed with artifacts/conformal_external.json,
+        # and the detector is the main thing that differed between the two runs.
+        import pandas as pd
+        from backend.ml.models.stacked import StackedEnsembleDetector
+        fs_ = pd.DataFrame(S.X, columns=S.feature_names)
+        ft_ = pd.DataFrame(T.X, columns=T.feature_names)
+        m = StackedEnsembleDetector(channels=list(config.WEARABLE_CHANNELS), use_hdc=False,
+                                    objective="balanced",
+                                    roster=["hgb", "hgb2", "et", "lr", "xgb@utility"],
+                                    params={k: {"n_jobs": int(os.environ.get("FRONTIER_JOBS", -1))}
+                                            for k in ("et", "lgbm", "xgb")})
+        m.fit(fs_.iloc[s_fit], S.y[s_fit], groups=S.groups[s_fit],
+              hour_index=S.hour_index[s_fit], onset_hour=S.onset_hour[s_fit])
+        p_hold = m.predict_proba(fs_.iloc[s_hold])
+        p_tgt = m.predict_proba(ft_)
+    else:
+        m = UtilityAlignedBooster(kind="xgb", objective="utility", feature_names=S.feature_names)
+        m.fit(S.X[s_fit], S.y[s_fit], groups=S.groups[s_fit],
+              hour_index=S.hour_index[s_fit], onset_hour=S.onset_hour[s_fit])
+        p_hold = m.predict_proba(S.X[s_hold])
+        p_tgt = m.predict_proba(T.X)
     print(f"  source held-out AUROC {metrics.auroc(S.y[s_hold], p_hold):.4f} | "
           f"target AUROC {metrics.auroc(T.y, p_tgt):.4f}")
 
@@ -188,7 +206,41 @@ def run_direction(src: str, tgt: str, args) -> Dict[str, object]:
     print(f"  reachable gap = oracle {oracle['utility']:+.4f} - unadapted "
           f"{base['utility']:+.4f} = {gap:+.4f}")
 
-    return {"direction": f"{src}->{tgt}", "shift": rep.to_json(),
+    # ---- secondary pre-registered criterion: conformal coverage transfer ----- #
+    # This is the remedy the diagnosis actually licenses. Prior correction needs LABEL
+    # shift, which these hospitals do not have; weighted conformal needs COVARIATE
+    # shift, which at domain AUC ~0.90 is exactly what they do have.
+    chans = list(config.WEARABLE_CHANNELS)
+    nm_s, st_s = cf.StratumSpec.features_from_matrix(S.X[s_hold], S.feature_names, chans)
+    spec = cf.StratumSpec.fit(nm_s, st_s, chans)
+    strata_s = spec.assign(nm_s, st_s)
+    nm_t, st_t = cf.StratumSpec.features_from_matrix(T.X, T.feature_names, chans)
+    strata_t = spec.assign(nm_t, st_t)
+
+    ALPHA = 0.06
+    w_src, _ = shift.covariate_weights(S.X[s_hold], T.X[t_adapt], seed=args.seed)
+    plain = cf.calibrate(S.y[s_hold], p_hold, S.groups[s_hold], strata_s, alpha=ALPHA,
+                         spec=spec, min_hours=0, min_patients=0)
+    wtd = cf.calibrate(S.y[s_hold], p_hold, S.groups[s_hold], strata_s, alpha=ALPHA,
+                       spec=spec, min_hours=0, min_patients=0, weights=w_src)
+    # Ceiling: a hospital that HAD labels would calibrate on its own adapt half.
+    orc = cf.calibrate(T.y[t_adapt], p_tgt[t_adapt], T.groups[t_adapt], strata_t[t_adapt],
+                       alpha=ALPHA, spec=spec, min_hours=0, min_patients=0)
+
+    cov = {}
+    for nmz, b in (("plain (transferred)", plain), ("weighted", wtd), ("oracle", orc)):
+        r = cf.coverage_report(b, T.y[t_lock], p_tgt[t_lock], T.groups[t_lock],
+                               strata_t[t_lock])
+        cov[nmz] = {"cov_pos": r["overall"]["micro_pos"], "cov_neg": r["overall"]["micro_neg"],
+                    "abstain": r["abstain_rate"]}
+    print(f"\n  CONFORMAL COVERAGE on locked target (alpha {ALPHA}, nominal "
+          f"{1 - ALPHA:.2f})")
+    print(f"  {'bands':<22}{'cov+':>9}{'cov-':>9}{'abstain':>9}{'|cov+ - nominal|':>18}")
+    for nmz, c in cov.items():
+        print(f"  {nmz:<22}{c['cov_pos']:>9.4f}{c['cov_neg']:>9.4f}{c['abstain']:>9.3f}"
+              f"{abs(c['cov_pos'] - (1 - ALPHA)):>18.4f}")
+
+    return {"direction": f"{src}->{tgt}", "shift": rep.to_json(), "conformal": cov,
             "thresholds": {"source": thr_src, "prior_corrected": float(thr_adj),
                            "rate_matched": thr_rate, "oracle": thr_or},
             "locked": {"unadapted": base, "prior_corrected": adapt,
@@ -204,6 +256,8 @@ def main() -> None:
     ap.add_argument("--limit", type=int, default=6000, help="patients per hospital")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--boot", type=int, default=300)
+    ap.add_argument("--detector", default="xgb", choices=["xgb", "stack"],
+                    help="xgb@utility (fast) or the promoted stack+xgb@utility")
     ap.add_argument("--jobs", type=int, default=0)
     ap.add_argument("--out", default=os.path.join(config.ARTIFACTS_DIR, "transfer.json"))
     args = ap.parse_args()
@@ -216,7 +270,8 @@ def main() -> None:
     out = [run_direction("A", "B", args), run_direction("B", "A", args)]
     with open(args.out, "w") as fh:
         json.dump({"generated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-                   "limit_per_site": args.limit, "directions": out}, fh, indent=2)
+                   "limit_per_site": args.limit, "detector": args.detector,
+                   "directions": out}, fh, indent=2)
     print(f"\nwrote {args.out}")
 
 

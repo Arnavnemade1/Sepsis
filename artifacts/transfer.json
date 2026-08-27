@@ -1,5 +1,5 @@
 {
-  "generated": "2026-08-27 03:44:35 UTC",
+  "generated": "2026-08-27 23:14:02 UTC",
   "limit_per_site": 4000,
   "directions": [
     {
@@ -8,7 +8,7 @@
         "pi_source": 0.024394618834080718,
         "pi_target_true": 0.013661958829502446,
         "pi_target_em": 0.002781472707010159,
-        "pi_target_bbse": 1e-12,
+        "pi_target_bbse": NaN,
         "em_iterations": 364,
         "domain_auc": 0.8927511343156096,
         "weight_mean": 1.0107665002123662,
@@ -16,6 +16,23 @@
         "prior_ratio_true": 0.5600398564299716,
         "prior_ratio_em": 0.11401992898221791,
         "covariate_shift_detected": true
+      },
+      "conformal": {
+        "plain (transferred)": {
+          "cov_pos": 0.926,
+          "cov_neg": 0.9713,
+          "abstain": 0.729
+        },
+        "weighted": {
+          "cov_pos": 0.9207,
+          "cov_neg": 0.9592,
+          "abstain": 0.7061
+        },
+        "oracle": {
+          "cov_pos": 0.9408,
+          "cov_neg": 0.963,
+          "abstain": 0.7414
+        }
       },
       "thresholds": {
         "source": 0.0275,
@@ -82,6 +99,23 @@
         "prior_ratio_true": 1.9863362900299981,
         "prior_ratio_em": 29.12139981188408,
         "covariate_shift_detected": true
+      },
+      "conformal": {
+        "plain (transferred)": {
+          "cov_pos": 0.9481,
+          "cov_neg": 0.9536,
+          "abstain": 0.8178
+        },
+        "weighted": {
+          "cov_pos": 0.8151,
+          "cov_neg": 1.0,
+          "abstain": 0.6086
+        },
+        "oracle": {
+          "cov_pos": 0.9722,
+          "cov_neg": 1.0,
+          "abstain": 0.9217
+        }
       },
       "thresholds": {
         "source": 0.045,

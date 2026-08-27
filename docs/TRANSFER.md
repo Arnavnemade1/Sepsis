@@ -89,6 +89,27 @@ under covariate and concept shift, where no label-free method reaches — consis
 the proven impossibility boundary that no label-free procedure is uniformly valid under
 joint shift.
 
+## Secondary criterion: conformal coverage transfer
+
+Pre-registered as "cov+ recovering from 0.739 toward nominal 0.94". **The premise was
+false.** The 0.739 came from a two-fit bug in `derive_conformal.py --external` (bands
+calibrated on one fit, applied to another). With a single consistent fit, septic
+coverage goes 0.9526 -> 0.9250 across hospitals — a 2.8-point drop, a 1.25x miscoverage
+overrun, inside the gate the layer already uses at home.
+
+Weighted conformal was implemented anyway, because covariate shift is the one thing the
+diagnosis *did* license. It works on synthetic covariate shift (0.657 -> 0.889 against
+nominal 0.90) and is neutral-to-harmful on the real pair in all four cells, since there
+is no gap left to close. Full table in `docs/CONFORMAL.md`.
+
+**That is now three separate manifestations of threshold/fit coupling in one
+investigation**: the shipped operating point derived against a different fit, the
+external utility comparison scored with that constant, and the conformal bands
+calibrated on a different fit than they served. The lesson is not about any one of them.
+Any quantity derived from a model's score distribution — a threshold, a band, a
+quantile, a prior — is only valid against the exact fit it was derived from, and this
+repo has now paid for that three times.
+
 ## Honesty boundary
 
 - Nothing here is installed. `artifacts/operating_point.json` and

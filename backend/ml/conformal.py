@@ -295,9 +295,41 @@ def conformal_quantile(scores: np.ndarray, alpha: float) -> float:
     return float(s[k - 1])
 
 
+def conformal_quantile_weighted(scores: np.ndarray, weights: np.ndarray,
+                                alpha: float) -> float:
+    """Weighted conformal quantile (Tibshirani/Barber/Candes) under covariate shift.
+
+    Ordinary split conformal assumes calibration and test points are exchangeable. Under
+    covariate shift they are not, but weighting each calibration point by the density
+    ratio ``w(x) = dP_target/dP_source`` restores it: the quantile is taken over the
+    normalised weights rather than over counts.
+
+    The test point contributes its own mass, which is what the ``+1`` does in the
+    unweighted form. Its weight is unknown at calibration time, so the standard
+    conservative substitute is the mean calibration weight.
+
+    Returns ``inf`` when the cumulative weight never reaches ``1 - alpha`` — that is,
+    when the reweighted calibration set cannot express the requested level at all.
+    Admitting the label always is the only sound answer there, and it is visible rather
+    than silently approximated by the largest score on hand.
+    """
+    s = np.asarray(scores, dtype=float)
+    w = np.clip(np.asarray(weights, dtype=float), 0.0, None)
+    if s.size == 0 or w.sum() <= 0:
+        return float("inf")
+    order = np.argsort(s)
+    s, w = s[order], w[order]
+    cw = np.cumsum(w) / (w.sum() + float(w.mean()))
+    idx = int(np.searchsorted(cw, 1.0 - alpha, side="left"))
+    if idx >= s.size:
+        return float("inf")
+    return float(s[idx])
+
+
 def _cell_band(stratum: str, y: np.ndarray, p: np.ndarray, groups: np.ndarray,
                alpha: float, fallback: Optional[CellBand],
-               min_hours: int, min_patients: int) -> CellBand:
+               min_hours: int, min_patients: int,
+               w: Optional[np.ndarray] = None) -> CellBand:
     pos, neg = y == 1, y == 0
     n_hp, n_hn = int(pos.sum()), int(neg.sum())
     n_pp = int(len(set(groups[pos].tolist()))) if n_hp else 0
@@ -308,8 +340,15 @@ def _cell_band(stratum: str, y: np.ndarray, p: np.ndarray, groups: np.ndarray,
     use_pos = bool(small_pos and fallback is not None)
     use_neg = bool(small_neg and fallback is not None)
 
-    q_pos = fallback.q_pos if use_pos else conformal_quantile(1.0 - p[pos], alpha)
-    q_neg = fallback.q_neg if use_neg else conformal_quantile(p[neg], alpha)
+    # Uniform weights reduce this to the unweighted estimator exactly, which
+    # verify_conformal asserts rather than assumes — so adding the weighted path
+    # cannot silently change the shipped, unweighted bands.
+    def q(scores, mask):
+        return (conformal_quantile(scores, alpha) if w is None
+                else conformal_quantile_weighted(scores, w[mask], alpha))
+
+    q_pos = fallback.q_pos if use_pos else q(1.0 - p[pos], pos)
+    q_neg = fallback.q_neg if use_neg else q(p[neg], neg)
     return CellBand(
         stratum=stratum,
         lo=1.0 - q_pos, hi=q_neg, q_pos=q_pos, q_neg=q_neg,
@@ -322,7 +361,8 @@ def _cell_band(stratum: str, y: np.ndarray, p: np.ndarray, groups: np.ndarray,
 def calibrate(y: np.ndarray, p: np.ndarray, groups: np.ndarray, strata: np.ndarray,
               *, alpha: float = 0.05, min_hours: int = MIN_CELL_HOURS,
               min_patients: int = MIN_CELL_PATIENTS, spec: Optional[StratumSpec] = None,
-              detector: str = "unknown") -> ConformalBands:
+              detector: str = "unknown",
+              weights: Optional[np.ndarray] = None) -> ConformalBands:
     """Fit class-conditional conformal quantiles per stratum.
 
     ``p`` **must** come from models that never saw these patients — out-of-fold or a
@@ -344,12 +384,14 @@ def calibrate(y: np.ndarray, p: np.ndarray, groups: np.ndarray, strata: np.ndarr
     if np.isnan(p).any():
         raise ValueError("scores contain NaN — every calibration row must be scored")
 
-    marginal = _cell_band("marginal", y, p, groups, alpha, None, 0, 0)
+    w = None if weights is None else np.asarray(weights, dtype=float)
+    marginal = _cell_band("marginal", y, p, groups, alpha, None, 0, 0, w)
     cells: Dict[str, CellBand] = {}
     for s in sorted(set(strata.tolist())):
         m = strata == s
         cells[s] = _cell_band(s, y[m], p[m], groups[m], alpha, marginal,
-                              min_hours, min_patients)
+                              min_hours, min_patients,
+                              None if w is None else w[m])
     return ConformalBands(
         alpha=alpha,
         spec=spec if spec is not None else StratumSpec([], [], []),

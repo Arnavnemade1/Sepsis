@@ -291,6 +291,70 @@ def check_input_guards():
     check("missing stratum column rejected (never silently one cell)", ok_col)
 
 
+def check_weighted_reduces_to_unweighted():
+    """8. Uniform weights reproduce the unweighted bands EXACTLY.
+
+    This is the compatibility guarantee. The weighted path was added under the shipped
+    one; if it changed the bands at uniform weights, every artifact already derived
+    would silently mean something else.
+    """
+    X, g, h = None, None, None
+    y, p, groups, strata = cohort(n_patients=1200, hours=20, seed=20)
+    a = cf.calibrate(y, p, groups, strata, alpha=0.05, min_hours=0, min_patients=0)
+    b = cf.calibrate(y, p, groups, strata, alpha=0.05, min_hours=0, min_patients=0,
+                     weights=np.ones(len(y)))
+    same = all(abs(a.cells[k].lo - b.cells[k].lo) < 1e-9
+               and abs(a.cells[k].hi - b.cells[k].hi) < 1e-9 for k in a.cells)
+    check("uniform weights reproduce the unweighted bands exactly", same,
+          f"{len(a.cells)} cells identical")
+    # ...and non-uniform weights must actually move them, or the plumbing is inert.
+    rng = np.random.default_rng(21)
+    w = rng.uniform(0.2, 5.0, size=len(y))
+    c = cf.calibrate(y, p, groups, strata, alpha=0.05, min_hours=0, min_patients=0,
+                     weights=w)
+    moved = any(abs(a.cells[k].hi - c.cells[k].hi) > 1e-9 for k in a.cells)
+    check("...and non-uniform weights change them", moved)
+
+
+def check_weighted_restores_coverage_under_covariate_shift():
+    """9. THE reason the weighted path exists: it moves coverage back toward nominal.
+
+    Calibrate on a source, serve a covariate-shifted target, both directions of shift.
+    Plain conformal misses nominal; weighting the calibration scores by the density
+    ratio brings it back.
+
+    The test is deliberately direction-agnostic. The first version asserted
+    *under*-coverage and failed, because a rightward covariate shift on this
+    conditional produces the opposite — 0.979 against a nominal 0.90. Over-coverage is
+    not a free pass: it means wider prediction sets and more hours abstained on for a
+    guarantee that was never requested. Being wrong in either direction is the defect.
+    """
+    n = 60000
+    st = np.array(["m0/s0"] * n, dtype=object)
+    g = np.arange(n)
+
+    def mk(mu, seed):
+        r = np.random.default_rng(seed)
+        x = r.normal(mu, 1.0, n)
+        pr = 1 / (1 + np.exp(-(-3.2 + 1.3 * x)))
+        return x, (r.random(n) < pr).astype(int), pr
+
+    for mu, tag in ((0.9, "shift +0.9"), (-0.9, "shift -0.9")):
+        xs, ys, ps = mk(0.0, 23)
+        xt, yt, pt = mk(mu, 24)
+        plain = cf.calibrate(ys, ps, g, st, alpha=0.10, min_hours=0, min_patients=0)
+        w = np.exp(mu * xs - 0.5 * mu ** 2)          # true Gaussian density ratio
+        wtd = cf.calibrate(ys, ps, g, st, alpha=0.10, min_hours=0, min_patients=0,
+                           weights=w)
+        rp = cf.coverage_report(plain, yt, pt, g, st)
+        rw = cf.coverage_report(wtd, yt, pt, g, st)
+        cp_, cw_ = rp["overall"]["micro_pos"], rw["overall"]["micro_pos"]
+        check(f"weighted conformal is closer to nominal than plain ({tag})",
+              abs(cw_ - 0.90) < abs(cp_ - 0.90),
+              f"|{cp_:.4f}-0.90|={abs(cp_ - 0.90):.4f} -> "
+              f"|{cw_:.4f}-0.90|={abs(cw_ - 0.90):.4f}")
+
+
 def check_roundtrip_and_absence():
     """The artifact survives a round-trip; its absence is not a failure."""
     y, p, groups, strata = cohort(n_patients=900, hours=20, seed=14)
@@ -319,7 +383,10 @@ def main() -> None:
                check_macro_exposes_correlation, check_small_cell_fallback,
                check_shift_breaks_coverage, check_class_conditional_is_required,
                check_serve_matches_derivation, check_stored_edges_are_used,
-               check_unseen_stratum, check_input_guards, check_roundtrip_and_absence):
+               check_unseen_stratum, check_input_guards,
+               check_weighted_reduces_to_unweighted,
+               check_weighted_restores_coverage_under_covariate_shift,
+               check_roundtrip_and_absence):
         fn()
     n = len(results)
     ok = sum(results)

@@ -268,11 +268,17 @@ def external(args) -> None:
     # Calibration scores must be out-of-sample WITHIN A, so A is split again.
     a_fit, a_cal = stratified_group_split(ds.groups[a_idx], ds.y[a_idx], 0.4, args.seed)
     a_fit, a_cal = a_idx[a_fit], a_idx[a_cal]
-    print("fit 1/2: A-train -> A-calibration ...", flush=True)
+    # ONE fit, scoring both the calibration rows and the target. The previous version
+    # fitted twice — A-train -> A-calibration, then all-of-A -> B — so the bands were
+    # calibrated on one model's score distribution and applied to a DIFFERENT model's
+    # scores. That is the threshold/fit-coupling failure this repo has now hit three
+    # times, and it is what produced the reported 0.929 -> 0.739 cross-hospital
+    # "coverage collapse": an artifact of the mismatch, not a property of the transfer.
+    # Scoring B from a model fitted on 60% of A rather than 100% is the cheaper error.
+    print("fit 1/1: A-train -> A-calibration and -> B (same model) ...", flush=True)
     p = np.full(len(ds.y), np.nan)
-    p[a_cal] = cand(ds, a_fit, a_cal)
-    print("fit 2/2: all of A -> B ...", flush=True)
-    p[b_idx] = cand(ds, a_idx, b_idx)
+    both = np.concatenate([a_cal, b_idx])
+    p[both] = cand(ds, a_fit, both)
 
     n_meas, stale = cf.StratumSpec.features_from_matrix(ds.X, ds.feature_names, chans)
     spec = cf.StratumSpec.fit(n_meas[a_cal], stale[a_cal], chans)

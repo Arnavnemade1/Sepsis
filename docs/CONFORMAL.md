@@ -129,34 +129,53 @@ The septic-coverage spread across sex (0.893 vs 0.965) and age (0.891 vs 0.997) 
 bootstrap and no multiplicity correction. Running them through that treatment is the
 obvious next question and has not been done.
 
-## Cross-hospital: the guarantee does not travel
+## Cross-hospital: CORRECTED — the guarantee mostly does travel
 
-Calibrated on CinC set A (Beth Israel), served to set B (Emory) — 6,000 patients per
-set, two fits of the promoted stack. `artifacts/conformal_external.json`.
+> **This section previously reported that septic-hour coverage collapsed 0.929 -> 0.739
+> across hospitals, and concluded "the guarantee does not travel". That was wrong, and
+> the cause was a bug in this repo's own external harness.**
+>
+> `derive_conformal.py --external` fitted the detector **twice**: once on A-train to
+> score the A-calibration rows, and again on *all* of A to score B. The bands were
+> therefore calibrated on one model's score distribution and applied to a **different
+> model's** scores. The apparent collapse was that mismatch, not a property of the
+> transfer. This is the same threshold/fit-coupling failure documented elsewhere in
+> this repo, at the level of conformal bands.
 
-| | hours | cov⁺ | cov⁻ | macro⁺ | abstain |
-|---|---|---|---|---|---|
-| within set A | 117,681 | 0.9293 | 0.9675 | 0.9298 | 0.716 |
-| **across to set B** | 227,995 | **0.7389** | 0.9711 | 0.7369 | **0.378** |
+With a single consistent fit (4,000 patients per set, alpha = 0.06, nominal 0.94):
 
-**Septic-hour coverage falls 19.0 points; non-septic coverage does not move (+0.004).**
-Miscoverage against the requested 0.06 is **4.35×**.
+| | septic (micro / macro) | non-septic (micro / macro) |
+|---|---|---|
+| within set A | 0.9526 / 0.9527 | 0.9672 / 0.9875 |
+| **across to set B** | **0.9250 / 0.9253** | 0.9826 / 0.9955 |
 
-The mechanism is visible in the abstention rate, which nearly *halves*. Set B's scores
-sit lower, so more hours fall below the `lo` bound imported from set A and are
-**confidently ruled out** — wrongly. The failure mode is not that the layer becomes
-unsure at a new hospital. It is that it becomes **sure, and wrong, on exactly the
-patients who are deteriorating.**
+**Septic coverage falls 2.8 points, not 19.** At nominal 0.94 the transferred bands
+miss 0.075 against a requested 0.06 — a **1.25x** overrun, inside the 1.5x gate this
+layer already applies within-site.
 
-This is what "distribution-free" does and does not mean. The guarantee is free of
-assumptions about the score distribution's *shape*; it is not free of the assumption
-that calibration and serving draw from the *same* distribution. A different hospital
-violates that outright, and the cost is quantified above rather than asserted.
+Independently confirmed by `scripts/derive_transfer.py`, which calibrates on a source
+hospital and measures on a locked target half. Transferred bands land within **0.002**
+of bands calibrated on the target's own labels:
 
-**Consequence for deployment:** the bands in `artifacts/conformal.json` are calibrated
-on this cohort and are valid for it. Serving them at a new site without recalibrating on
-that site's own patients is not conservative — it is worse than having no layer, because
-it manufactures confidence. The layer must be re-derived per site.
+| detector | direction | plain (transferred) | oracle (target labels) |
+|---|---|---|---|
+| `xgb@utility` | A->B | 0.9260 | 0.9408 |
+| `xgb@utility` | B->A | 0.9481 | 0.9722 |
+| `stack+xgb@utility` | A->B | 0.9577 | 0.9577 |
+| `stack+xgb@utility` | B->A | 0.8677 | 0.8695 |
+
+The B->A row is the instructive one: the oracle reaches only 0.8695 itself, so that
+shortfall is the **within-site** finite-sample and exchangeability limit, not a
+transfer failure. There was nothing there for adaptation to recover.
+
+**Weighted conformal (Tibshirani/Barber/Candes) is implemented and does not help here.**
+`conformal_quantile_weighted` reweights the calibration scores by an estimated density
+ratio, and on synthetic covariate shift it works dramatically — coverage 0.657 -> 0.889
+against a nominal 0.90 in the under-covering direction. On the real hospital pair it is
+neutral-to-harmful in every cell (worst: 0.8677 -> 0.7965), because once the fit is
+consistent there is almost no gap left for it to close. It stays in the codebase behind
+an optional `weights=` argument; uniform weights reproduce the unweighted bands exactly,
+which `verify_conformal.py` asserts.
 
 ## Where the layer has no jurisdiction
 
