@@ -1,0 +1,386 @@
+{
+  "generated": "2026-08-28 02:53:46 UTC",
+  "n_mutations": 23,
+  "n_killed": 22,
+  "coverage": 0.9565,
+  "suites": {
+    "backend.ml.scripts.verify_conformal": {
+      "checks": 24,
+      "green": 24,
+      "error": null,
+      "mutations": 6,
+      "killed": 6
+    },
+    "backend.ml.scripts.verify_fitid": {
+      "checks": 13,
+      "green": 13,
+      "error": null,
+      "mutations": 3,
+      "killed": 3
+    },
+    "backend.ml.scripts.verify_minirocket": {
+      "checks": 17,
+      "green": 17,
+      "error": null,
+      "mutations": 5,
+      "killed": 5
+    },
+    "backend.ml.scripts.verify_operating_point": {
+      "checks": 14,
+      "green": 14,
+      "error": null,
+      "mutations": 3,
+      "killed": 2
+    },
+    "backend.ml.scripts.verify_shift": {
+      "checks": 20,
+      "green": 20,
+      "error": null,
+      "mutations": 6,
+      "killed": 6
+    }
+  },
+  "families": {
+    "causality": {
+      "n": 2,
+      "killed": 2
+    },
+    "class-conditioning": {
+      "n": 1,
+      "killed": 1
+    },
+    "exchangeability": {
+      "n": 4,
+      "killed": 4
+    },
+    "fit-identity": {
+      "n": 7,
+      "killed": 6
+    },
+    "floor-removal": {
+      "n": 2,
+      "killed": 2
+    },
+    "label-leak": {
+      "n": 2,
+      "killed": 2
+    },
+    "naive-statistic": {
+      "n": 5,
+      "killed": 5
+    }
+  },
+  "survivors": [
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_operating_point",
+      "name": "operating_point_no_margin",
+      "killed": false,
+      "caught_by": [],
+      "missed": [
+        "setting it on the upper bound breaches strictly less"
+      ],
+      "collateral": [],
+      "error": null
+    }
+  ],
+  "killed_detail": [
+    {
+      "family": "causality",
+      "suite": "backend.ml.scripts.verify_minirocket",
+      "name": "centred_convolution",
+      "killed": true,
+      "caught_by": [
+        "a future spike moves NO earlier hour"
+      ],
+      "missed": [],
+      "collateral": [
+        "...and that patient's own features did change \u2014 0.0000",
+        "an impulse is visible exactly (K-1)*d hours later \u2014 reach = 40h, y[40] = 0.00"
+      ],
+      "error": null
+    },
+    {
+      "family": "causality",
+      "suite": "backend.ml.scripts.verify_minirocket",
+      "name": "whole_series_ppv",
+      "killed": true,
+      "caught_by": [
+        "a future spike moves NO earlier hour"
+      ],
+      "missed": [],
+      "collateral": [
+        "hour 0 averages exactly one value \u2014 p[0]=0.6666666865348816",
+        "hour 1 averages two \u2014 p[1]=0.6666666865348816"
+      ],
+      "error": null
+    },
+    {
+      "family": "exchangeability",
+      "suite": "backend.ml.scripts.verify_minirocket",
+      "name": "no_patient_split",
+      "killed": true,
+      "caught_by": [
+        "rewriting one patient leaves every other patient"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "exchangeability",
+      "suite": "backend.ml.scripts.verify_minirocket",
+      "name": "no_hour_sort",
+      "killed": true,
+      "caught_by": [
+        "a shuffled row order yields identical per-row"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "exchangeability",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "conformal_row_split",
+      "killed": true,
+      "caught_by": [
+        "row-split calibration overstates coverage"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "exchangeability",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "macro_equals_micro",
+      "killed": true,
+      "caught_by": [
+        "macro (per-patient) coverage differs from micro"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "class-conditioning",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "pooled_quantile",
+      "killed": true,
+      "caught_by": [
+        "...while class-conditional does admit it"
+      ],
+      "missed": [],
+      "collateral": [
+        "coverage >= nominal at alpha=0.05 (exchangeable) \u2014 pos 0.000 neg 0.978 vs 0.95",
+        "coverage >= nominal at alpha=0.1 (exchangeable) \u2014 pos 0.000 neg 0.926 vs 0.90",
+        "undersized cell falls back to marginal \u2014 fallback_pos=False fallback_neg=False",
+        "...and non-uniform weights change them",
+        "weighted conformal is closer to nominal than plain (shift +0.9) \u2014 |0.0419-0.90|=0.8581 -> |0.0419-0.90|=0.8581",
+        "weighted conformal is closer to nominal than plain (shift -0.9) \u2014 |0.0000-0.90|=0.9000 -> |0.0000-0.90|=0.9000"
+      ],
+      "error": null
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "plain_empirical_quantile",
+      "killed": true,
+      "caught_by": [
+        "(n+1) correction reaches nominal"
+      ],
+      "missed": [],
+      "collateral": [
+        "uniform weights reproduce the unweighted bands exactly \u2014 3 cells identical"
+      ],
+      "error": null
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "em_mis_anchored",
+      "killed": true,
+      "caught_by": [
+        "EM recovers the target prior"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "weighted_quantile_ignores_weights",
+      "killed": true,
+      "caught_by": [
+        "...and lopsided weights move it"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "bbse_echoes_source",
+      "killed": true,
+      "caught_by": [
+        "BBSE recovers it too"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "prior_correction_identity",
+      "killed": true,
+      "caught_by": [
+        "...while changing how many rows cross"
+      ],
+      "missed": [],
+      "collateral": [
+        "EM recovers the target prior under pure label shift \u2014 true 0.0175  EM 0.0302  (src 0.0319)",
+        "...and mis-anchoring to the label prior is what used to collapse it \u2014 unanchored EM = 0.03016 vs true 0.0175 \u2014 collapses, as documented",
+        "prior correction moves mean calibration toward 1 under label shift \u2014 cal ratio 1.984 -> 1.984",
+        "...and applying it there ACTIVELY breaks calibration (diagnose first) \u2014 cal ratio 1.014 -> 1.014"
+      ],
+      "error": null
+    },
+    {
+      "family": "label-leak",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "safe_prior_ignores_nan",
+      "killed": true,
+      "caught_by": [
+        "...and the true target prior is recorded for scoring only"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "label-leak",
+      "suite": "backend.ml.scripts.verify_shift",
+      "name": "domain_auc_always_high",
+      "killed": true,
+      "caught_by": [
+        "pure label shift is nearly invisible to a domain"
+      ],
+      "missed": [],
+      "collateral": [
+        "...so the two shift types are separable from unlabeled data alone \u2014 gap +0.000",
+        "...and the domain classifier sees nothing, because P(X) never moved \u2014 domain AUC 0.950 \u2014 the shift is invisible to covariates",
+        "a same-distribution pair yields a chance-level domain classifier \u2014 domain AUC 0.950",
+        "...and is reported as NO covariate shift"
+      ],
+      "error": null
+    },
+    {
+      "family": "floor-removal",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "no_small_cell_fallback",
+      "killed": true,
+      "caught_by": [
+        "undersized cell falls back to marginal"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "floor-removal",
+      "suite": "backend.ml.scripts.verify_minirocket",
+      "name": "estimate_bytes_lies",
+      "killed": true,
+      "caught_by": [
+        "estimate_bytes matches the real output size"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_conformal",
+      "name": "conformal_forgets_detector",
+      "killed": true,
+      "caught_by": [
+        "save/load round-trips bands, spec and detector identity"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_operating_point",
+      "name": "operating_point_forgets_detector",
+      "killed": true,
+      "caught_by": [
+        "the detector whose scores these are is recorded"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_operating_point",
+      "name": "operating_point_no_in_range",
+      "killed": true,
+      "caught_by": [
+        "the in-range rule pulls it back"
+      ],
+      "missed": [],
+      "collateral": [
+        "a grid that cannot satisfy the in-range rule raises"
+      ],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_fitid",
+      "name": "unknown_reads_as_compatible",
+      "killed": true,
+      "caught_by": [
+        "an absent fingerprint is refused, not assumed compatible"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_fitid",
+      "name": "digest_ignores_spec",
+      "killed": true,
+      "caught_by": [
+        "all three of this session's false findings are now refused"
+      ],
+      "missed": [],
+      "collateral": [
+        "changing spec changes the digest",
+        "...and names the differing fields \u2014 n_patients"
+      ],
+      "error": null
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_fitid",
+      "name": "digest_is_random",
+      "killed": true,
+      "caught_by": [
+        "identical fits produce identical digests"
+      ],
+      "missed": [],
+      "collateral": [
+        "a stamped artifact round-trips through JSON \u2014 f76e074fe279 -> 5fb2e3dacfb9",
+        "...while a genuinely matched pair still compares cleanly"
+      ],
+      "error": null
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -25,6 +25,9 @@ help:
 	@echo "  make verify-shift      Label-free transfer: label vs covariate vs concept shift, and which remedy fails"
 	@echo "  make transfer          Two-hospital deployment transfer under a locked gate"
 	@echo "  make verify-coupling   Cardio-respiratory coupling on real BIDMC (mechanism, not detection)"
+	@echo "  make falsify           Falsification audit: prove the checks themselves can FAIL"
+	@echo "  make verify-falsify    The engine audited by its own rule"
+	@echo "  make verify-fitid      Fit fingerprints: a cross-fit read must be refused"
 	@echo "  make verify-pk    PBPK treatment-projection checks (mass balance, Vd/CL/t½ recovery)"
 	@echo "  make verify-ae    Adverse-event checks (anchoring to published rates, evidence firewall)"
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
@@ -187,6 +190,22 @@ verify-minirocket:
 # concept shift. A suite where every remedy always works would be evidence of nothing.
 verify-shift:
 	$(PY) -m backend.ml.scripts.verify_shift
+
+# A check that cannot fail is a lie with a green tick. This mutates the SCIENTIFIC
+# invariant — causality, the exchangeability unit, class conditioning, fit identity —
+# and asserts a NAMED check notices. The number to read is the survivor list: claims
+# nothing is actually defending. --gate fails only on regression.
+falsify:
+	$(PY) -m backend.ml.scripts.falsify_audit --save
+
+verify-falsify:
+	$(PY) -m backend.ml.scripts.verify_falsify
+
+# Three false findings in one investigation were one arithmetic mistake: a quantity
+# read off one model's scores and applied to another's. This refuses that at the
+# point of use, and treats a MISSING fingerprint as unknown rather than compatible.
+verify-fitid:
+	$(PY) -m backend.ml.scripts.verify_fitid
 
 # Mechanism validation only: BIDMC has no sepsis labels, so no AUROC/lead-time claim is
 # testable here. Proves the estimators measure coupling and fall when it is destroyed.

@@ -19,6 +19,7 @@ import {
   conformal,
   transfer,
   negatives,
+  falsification,
 } from "@/lib/results";
 import { f2, f3, f4, ci, ciSigned, pct, count, signed } from "@/lib/format";
 import {
@@ -65,6 +66,7 @@ const sections: NavSection[] = [
   { id: "objective", label: "The wrong objective" },
   { id: "fairness", label: "Who it serves worse" },
   { id: "scale", label: "Does it scale" },
+  { id: "invention", label: "What we invented" },
   { id: "abstention", label: "When it declines to answer" },
   { id: "corrections", label: "Three findings that were bugs" },
   { id: "negative", label: "What did not work" },
@@ -1150,6 +1152,106 @@ export default function ResearchPage() {
           </Section>
 
           {/* ── 9 · Negative results ──────────────────────────────────── */}
+          <Section
+            id="invention"
+            eyebrow="12 · What we invented"
+            title="Most of this is assembled. Some of it is not."
+            lede="Saying which is which is what makes the rest credible. Stacked ensembles, conformal prediction, MiniRocket, hyperdimensional computing, label-shift estimation, Z3, federated averaging, transfer entropy, rPPG — all standard, none ours, none claimed. Four things are ours."
+          >
+            <Reveal className="mt-8">
+              <div className="grid gap-4 md:grid-cols-2">
+                {[
+                  ["The refusal architecture",
+                   "Verification that tests claims, not code. The integrity audit plants known lies and asserts the guards fire. The self-improvement search admitted 0 of 16 candidates. The alarm-policy artifact records a refusal as its result. Three derive scripts refuse to save an artifact that loses."],
+                  ["Cross-modal HDC resonance gate",
+                   "Hyperdimensional geometry used to arbitrate agreement between physically independent acquisition pathways rather than to classify. Real deterioration moves every pathway; a sensor glitch moves one. 91% artifact false-alarm removal, leave-one-patient-out."],
+                  ["Portable proof certificates",
+                   "Ed25519-signed SMT-LIB2 a third party re-checks without trusting this system — a signed lie is caught by the re-check, not by taking our word for the signature."],
+                  ["Physiologic-liveness consensus",
+                   "Byzantine fault-tolerant consensus whose liveness is established from physiology rather than from a timeout."],
+                ].map(([t, d]) => (
+                  <Panel key={t} className="p-5">
+                    <h3 className="text-[14px] font-medium text-ink">{t}</h3>
+                    <p className="mt-2 text-[13.5px] leading-relaxed text-muted text-pretty">{d}</p>
+                  </Panel>
+                ))}
+              </div>
+            </Reveal>
+
+            <Reveal className="mt-10">
+              <Panel className="p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusChip tone="low">
+                    {pct(falsification.coverage)} falsification coverage
+                  </StatusChip>
+                  <h3 className="text-[15px] font-medium text-ink">
+                    Proving our own checks can fail
+                  </h3>
+                </div>
+                <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                  There are 452 named checks in this repository and, until this,
+                  nothing proved a single one was <em>capable</em> of failing. A check
+                  that cannot fail is not a weak check — it is a lie with a green tick,
+                  and it is worse than no check because it is counted as evidence. Four
+                  such checks were found by hand in one session.
+                </p>
+                <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                  This is <strong>not</strong> code-coverage mutation testing. That
+                  perturbs syntax and asks whether any test fails. This perturbs the{" "}
+                  <em>scientific invariant</em> — causality, the exchangeability unit,
+                  class conditioning, fit identity — and asks whether a{" "}
+                  <em>specific named check</em> fails. A surviving syntactic mutant
+                  means weak coverage; a surviving semantic mutant means a published
+                  claim nobody is defending. So the deliverable is the survivor list,
+                  not the percentage.
+                </p>
+
+                <div className="scroll-x mt-6">
+                  <DataTable
+                    caption="Falsification coverage by suite"
+                    head={["Suite", "Checks", "Mutations", "Killed", "Coverage"]}
+                  >
+                    {falsification.suites.map((s) => (
+                      <Row
+                        key={s.suite}
+                        cells={[
+                          s.suite, count(s.checks), count(s.mutations), count(s.killed),
+                          s.mutations ? pct(s.killed / s.mutations) : "—",
+                        ]}
+                      />
+                    ))}
+                  </DataTable>
+                </div>
+
+                <div className="mt-6 rounded-md border border-med/30 bg-med/5 p-4">
+                  <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-med-ink">
+                    {falsification.survivors.length} survivor
+                    {falsification.survivors.length === 1 ? "" : "s"} · published, not quietly fixed
+                  </p>
+                  {falsification.survivors.map((s) => (
+                    <p key={s.name} className="mt-2 text-[13.5px] leading-relaxed text-muted text-pretty">
+                      <code className="font-mono text-[12.5px] text-ink">{s.suite}</code>{" "}
+                      does not defend its own bootstrap margin. Disabling it ships a
+                      false-alarm cap that holds only on the patients used to choose it —
+                      and every check in the suite still passes, because the check that
+                      looks like it defends this calls the margin function directly
+                      rather than through the code path that uses it.
+                    </p>
+                  ))}
+                </div>
+
+                <p className="mt-4 text-[14px] leading-relaxed text-dim text-pretty">
+                  Coverage is over {count(falsification.mutations)} mutations across{" "}
+                  {count(falsification.suites.length)} suites — not over all 452 checks.
+                  The rest are unaudited. {pct(falsification.coverage)} is{" "}
+                  {pct(falsification.coverage)} <em>of what was attempted</em>, and
+                  saying otherwise would be the same species of lie the apparatus exists
+                  to catch.
+                </p>
+              </Panel>
+            </Reveal>
+          </Section>
+
           <Section
             id="abstention"
             eyebrow="12 · When it declines to answer"

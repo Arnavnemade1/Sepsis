@@ -226,3 +226,16 @@ export const negatives = results.negatives as unknown as {
                 shippedFeatures: number; shippedGb: number; checks: number; mutationAudited: number };
   forestVsa: { losslessCeiling: number; donorSameFold: number };
 };
+
+
+/** Falsification coverage — the audit that proves this project's own checks can fail.
+ *  NOT code-coverage mutation testing: this perturbs the scientific invariant and
+ *  asserts a NAMED check fails. `survivors` is the deliverable, not `coverage`: a
+ *  surviving mutant is a published claim nothing is defending. */
+export const falsification = results.falsification as unknown as {
+  generated: string;
+  mutations: number; killed: number; coverage: number;
+  suites: { suite: string; checks: number; mutations: number; killed: number }[];
+  families: { family: string; n: number; killed: number }[];
+  survivors: { family: string; suite: string; name: string; missed: string[]; reason: string }[];
+};

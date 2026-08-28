@@ -557,6 +557,25 @@ def test_shift_diagnosis() -> None:
     _ok("prior correction preserves rank order (moves the decision, not the score)")
 
 
+def test_fit_identity() -> None:
+    print("[23] Fit identity — a cross-fit read is refused at the point of use")
+    from backend.ml.fitid import fingerprint, require_same, FitMismatch, stamp, read
+    a = fingerprint(["hgb", "xgb@utility"], "balanced", "wearable", "dev", 42)
+    b = fingerprint(["hgb", "xgb@utility"], "balanced", "wearable", "setB", 42)
+    require_same(a, a, "same")                      # must not raise
+    for x, y, what in ((a, b, "different spec"), (a, None, "unstamped")):
+        try:
+            require_same(x, y, what)
+            raise AssertionError(f"{what} compared cleanly — it must not")
+        except FitMismatch:
+            pass
+    _ok("a different fit, and a MISSING fingerprint, are both refused")
+    art = stamp({"high": 0.0525}, a)
+    assert read(art).digest() == a.digest()
+    assert read({"high": 0.0525}) is None, "an unstamped artifact must read as None"
+    _ok("stamp/read round-trips; unstamped reads as None, not as a default fit")
+
+
 def main() -> int:
     print("=" * 64)
     print("AEGIS-OS — END-TO-END VERIFICATION")
@@ -567,7 +586,8 @@ def main() -> int:
              test_mimic_adapter, test_body_state, test_streaming_contract,
              test_aegis_os, test_reasoning_plane, test_camera_detection,
              test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection,
-             test_z3_concurrency, test_conformal_abstention, test_shift_diagnosis]
+             test_z3_concurrency, test_conformal_abstention, test_shift_diagnosis,
+             test_fit_identity]
     failed = 0
     for t in tests:
         try:

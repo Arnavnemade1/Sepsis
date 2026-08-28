@@ -66,8 +66,15 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `models/minirocket.py` | **Causal MiniRocket** — fixed random convolutional kernels over trajectory *shape*; strictly causal, memory-bounded (tested, no gain — see below) |
 | `models/forest_vsa.py` | **Forest-VSA** — tree-leaf topology as a representation, with its own lossless ceiling for comparison (tested, no gain — see below) |
 | `conformal.py` | **Mondrian conformal abstention** — the alarm's third state; see `docs/CONFORMAL.md` |
+| `falsify.py` | **Falsification engine** — mutates the *scientific invariant* and asserts a NAMED check fails; the survivor list is the deliverable. `docs/FALSIFICATION.md` |
+| `mutations.py` | The mutation catalogue — one entry per failure mode this repo has actually suffered |
+| `fitid.py` | **Fit fingerprints** — a quantity is valid only against the fit it came from; refuses cross-fit reads at the point of use |
+| `shift.py` | Label/covariate/concept shift diagnosis (label-free); see `docs/TRANSFER.md` |
 | `scripts/frontier*.py` | Run the benchmark, rebuild its table from saved out-of-fold predictions, confirm cross-hospital |
 | `scripts/verify_minirocket.py` | 17 adversarial checks on the MiniRocket transform — causality, patient isolation, memory honesty |
+| `scripts/falsify_audit.py` | Run the falsification audit; `--gate` fails only on regression |
+| `scripts/verify_falsify.py` | The engine held to its own rule (a crash is not a kill; the wrong check is not a kill) |
+| `scripts/verify_fitid.py` | Fit fingerprints, incl. the regression test that this session's three false findings are now impossible |
 | `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |
 | `operating_point.py` | **Derived alarm thresholds** — the operating point, computed from out-of-fold predictions against the official utility, instead of guessed |
 | `quantum/qhdc.py` | **Quantum HDC primitives** (exact statevector sim: LCU bundling, phase binding, Hadamard/SWAP overlap) — Cumbo et al. 2026 |

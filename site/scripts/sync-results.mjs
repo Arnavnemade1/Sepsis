@@ -62,6 +62,7 @@ const transfer = read("transfer");
 const transferStack = read("transfer_stack");
 const conf = read("conformal");
 const confExt = read("conformal_external");
+const fals = read("falsification");
 
 const model = (m) => ({
   auroc: r(m.auroc),
@@ -104,8 +105,12 @@ const model = (m) => ({
   // Curves are downsampled to what a chart this size can actually render. The
   // ROC/PR pairs across two directions and several models were 22 KB of the
   // bundle — more than every headline number on the site combined.
-  roc: { fpr: thin(arr(m.roc?.fpr), 88), tpr: thin(arr(m.roc?.tpr), 88) },
-  pr: { recall: thin(arr(m.pr?.recall), 88), precision: thin(arr(m.pr?.precision, 5), 88) },
+  // 88 -> 64 points. These curves are drawn a few hundred CSS pixels wide, so the
+  // difference is invisible; what it buys is headroom under the 60 KB refusal ceiling
+  // this script enforces on itself. The four (direction x model) cells were 18 KB of
+  // a 32 KB payload, and pretty-printing nearly doubles that on disk.
+  roc: { fpr: thin(arr(m.roc?.fpr), 64), tpr: thin(arr(m.roc?.tpr), 64) },
+  pr: { recall: thin(arr(m.pr?.recall), 64), precision: thin(arr(m.pr?.precision, 5), 64) },
   reliability: {
     meanPred: arr(m.reliability?.mean_pred, 5),
     obsFreq: arr(m.reliability?.obs_freq, 5),
@@ -552,6 +557,29 @@ const out = {
       checks: 17, mutationAudited: 5,
     },
     forestVsa: { losslessCeiling: 0.7146, donorSameFold: 0.7384 },
+  },
+
+  /** Falsification coverage (docs/FALSIFICATION.md). Not code-coverage mutation
+   *  testing: this perturbs the SCIENTIFIC invariant and asserts a NAMED check fails.
+   *  A surviving mutant is not weak coverage — it is a published claim nothing is
+   *  defending, which is why `survivors` is carried and the percentage is not the
+   *  point. */
+  falsification: {
+    generated: fals.generated,
+    mutations: fals.n_mutations,
+    killed: fals.n_killed,
+    coverage: r(fals.coverage, 3),
+    suites: Object.entries(fals.suites).map(([k, v]) => ({
+      suite: k.split(".").pop(), checks: v.checks,
+      mutations: v.mutations, killed: v.killed,
+    })),
+    families: Object.entries(fals.families).map(([k, v]) => ({
+      family: k, n: v.n, killed: v.killed,
+    })),
+    survivors: fals.survivors.map((x) => ({
+      family: x.family, suite: x.suite.split(".").pop(), name: x.name,
+      missed: x.missed, reason: x.error || (x.caught_by.length ? "wrong check" : "caught nothing"),
+    })),
   },
 
   /** The earlier Phase 7 protocol. Kept because README and PHASE7_REPORT quote
