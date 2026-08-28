@@ -8,7 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="tactical.css?v=51" />
+<link rel="stylesheet" href="oskit/oskit.css?v=9" />
+<link rel="stylesheet" href="tactical.css?v=53" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
 </head>
 <body>
@@ -32,17 +33,15 @@
 
 <!-- ============ TOP BAR ============ -->
 <header class="topbar">
-  <div class="brand">
+  <div class="sysbar-l">
     <span class="brand-mark">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M12 2.5l7.5 3.6v5.5c0 4.1-3 7.7-7.5 9.4-4.5-1.7-7.5-5.3-7.5-9.4V6.1L12 2.5z"/>
         <path d="M12 8v8M8 12h8" stroke-width="1" opacity=".45"/>
       </svg>
     </span>
-    <div class="brand-text">
-      <div class="brand-name">Aegis<b>OS</b></div>
-      <div class="brand-sub">Bio-Kernel Runtime</div>
-    </div>
+    <span class="brand-name">Aegis<b>OS</b></span>
+    <span class="brand-sub">tactical</span>
   </div>
 
   <nav class="tabs" id="tabs">
@@ -51,19 +50,17 @@
     <button class="tab" data-view="devices">Devices</button>
   </nav>
 
-  <div class="metrics" id="metrics">
-    <div class="metric"><span class="m-k">Cost Σwᵢ·Pᵢ</span><span class="m-v" id="s-cost">0.00</span></div>
-    <div class="metric"><span class="m-k">Scheduler</span><span class="m-v" id="s-mode">Normal</span></div>
-    <div class="metric"><span class="m-k">Interrupts</span><span class="m-v" id="s-int">0</span></div>
-    <div class="metric"><span class="m-k">Safety cage</span><span class="m-v" id="s-cage">0·100%</span></div>
-    <div class="metric"><span class="m-k">Tick</span><span class="m-v" id="s-tick">0</span></div>
-  </div>
-
-  <div class="topbar-right">
-    <button class="cmd-open" id="cmd-open" title="Command console — press /">❯_ CONSOLE</button>
+  <div class="sysbar-r">
+    <div class="metrics" id="metrics">
+      <div class="metric"><span class="m-k">cost</span><span class="m-v" id="s-cost">0.00</span></div>
+      <div class="metric"><span class="m-k">sched</span><span class="m-v" id="s-mode">Normal</span></div>
+      <div class="metric"><span class="m-k">int</span><span class="m-v" id="s-int">0</span></div>
+      <div class="metric"><span class="m-k">cage</span><span class="m-v" id="s-cage">0·100%</span></div>
+      <div class="metric"><span class="m-k">tick</span><span class="m-v" id="s-tick">0</span></div>
+    </div>
     <span class="conn" id="conn"><i></i><span id="conn-txt">Connecting</span></span>
     <span class="clock" id="s-clock">--:--:--</span>
-    <a class="to-clinical" href="index.html" title="Camera &amp; detection live in the Clinical Console">Clinical →</a>
+    <a class="to-clinical" href="index.html" title="Camera &amp; detection live in the Clinical Console">Clinical &rarr;</a>
   </div>
 </header>
 
@@ -74,18 +71,18 @@
   <section class="view view-ops active" id="view-ops">
     <main class="board">
       <section class="card span-ops">
-        <div class="card-hd"><span class="hd-dot"></span>
+        <div class="card-hd wm-bar"><span class="hd-dot"></span>
           <h2>ICU Operations Grid</h2><span class="hd-meta" id="a-meta">real ICU cohort</span></div>
         <div class="card-body"><div class="opgrid" id="opgrid"></div></div>
       </section>
       <section class="card span-learn">
-        <div class="card-hd"><span class="hd-dot"></span>
+        <div class="card-hd wm-bar"><span class="hd-dot"></span>
           <h2>Per-Patient Baseline Learning</h2>
           <span class="hd-meta" id="b-meta">deviation from each patient's <em>own</em> learned norm</span></div>
         <div class="card-body"><canvas id="cv-learn"></canvas></div>
       </section>
       <section class="card span-blind">
-        <div class="card-hd"><span class="hd-dot"></span>
+        <div class="card-hd wm-bar"><span class="hd-dot"></span>
           <h2>Personalization Map</h2>
           <span class="hd-meta" id="d-meta">where learning changes the call</span></div>
         <div class="card-body"><canvas id="cv-blind"></canvas></div>
@@ -93,7 +90,7 @@
     </main>
 
     <section class="terminal" id="terminal">
-      <div class="term-bar">
+      <div class="term-bar wm-bar">
         <span class="term-dot"></span>
         <span class="term-title">Neurosymbolic Protocol Terminal</span>
         <span class="term-sub" id="term-sub">Layer-4 formal verification · standing by</span>
@@ -104,91 +101,104 @@
       </div>
     </section>
 
-    <footer class="control">
-      <h3>ICU Command</h3>
-      <p>Click any bed to open its dossier — fast-forward a patient to sepsis onset, inspect its trajectory, memory &amp; latency.</p>
-      <div class="legend">
-        <span><i style="background:var(--ok)"></i>stable</span>
-        <span><i style="background:var(--watch)"></i>watch</span>
-        <span><i style="background:var(--crit)"></i>critical</span>
+    <footer class="control dock">
+      <div class="dock-grp">
+        <span class="dock-label">windows</span>
+        <span class="wm-taskbar" id="wm-taskbar"></span>
       </div>
-      <div class="eventlog"><span class="el-k">Interrupt log</span><span class="el-v" id="tk-body">No events</span></div>
+      <div class="dock-grp dock-grp-sys">
+        <span class="dock-label">system</span>
+        <button class="dock-btn" id="cmd-open" title="Command shell — the kernel's process table, scheduler, memory and audit">&#10095;_ Shell <span class="dock-kbd">&#8963;`</span></button>
+        <button class="dock-btn" id="dock-palette" title="Command palette — every verb on this page">&#8984; Palette <span class="dock-kbd">&#8984;K</span></button>
+        <button class="dock-btn" id="dock-keys" title="Keyboard shortcuts">Keys <span class="dock-kbd">?</span></button>
+      </div>
+      <div class="dock-grp dock-legend">
+        <span class="dock-label">state</span>
+        <span class="legend">
+          <span><i style="background:var(--ok)"></i>stable</span>
+          <span><i style="background:var(--watch)"></i>watch</span>
+          <span><i style="background:var(--crit)"></i>critical</span>
+        </span>
+      </div>
+      <div class="dock-grp dock-status">
+        <span class="el-k">interrupt log</span><span class="el-v" id="tk-body">No events</span>
+      </div>
     </footer>
   </section>
 
   <!-- ===== SYSTEM HEALTH ===== -->
   <section class="view view-val" id="view-val">
-    <div class="sh">
-      <header class="sh-head">
+    <div class="hz">
+      <header class="hz-head">
         <div>
           <h1>System Health</h1>
           <p>How well AegisOS actually detects sepsis, measured against expert ground
              truth on real ICU stays — what it does well, where it falls short, and
              how that has moved.</p>
         </div>
-        <div class="sh-status" id="sh-status"><i></i><span>checking…</span></div>
+        <div class="hz-status" id="hz-status"><i></i><span>checking…</span></div>
       </header>
 
-      <div class="sh-hero">
-        <div class="sh-hero-main">
-          <span class="sh-k">Discrimination · AUROC</span>
-          <div class="sh-auroc"><b id="sh-auroc">—</b><em id="sh-auroc-ci">—</em></div>
-          <div class="sh-delta" id="sh-auroc-delta"></div>
-          <div class="sh-bar"><i id="sh-auroc-bar"></i><u id="sh-auroc-ref"></u></div>
-          <div class="sh-scale"><span>0.5 · chance</span><span>1.0 · perfect</span></div>
+      <div class="hz-hero">
+        <div class="hz-hero-main">
+          <span class="hz-k">Discrimination · AUROC</span>
+          <div class="hz-auroc"><b id="hz-auroc">—</b><em id="hz-auroc-ci">—</em></div>
+          <div class="hz-delta" id="hz-auroc-delta"></div>
+          <div class="hz-bar"><i id="hz-auroc-bar"></i><u id="hz-auroc-ref"></u></div>
+          <div class="hz-scale"><span>0.5 · chance</span><span>1.0 · perfect</span></div>
         </div>
-        <div class="sh-hero-side" id="sh-hero-side"></div>
+        <div class="hz-hero-side" id="hz-hero-side"></div>
       </div>
 
-      <div class="sh-grid">
-        <section class="sh-card">
-          <div class="sh-card-h"><h2>Where it performs</h2><span id="sh-str-meta"></span></div>
-          <div id="sh-strengths" class="sh-list"></div>
+      <div class="hz-grid">
+        <section class="hz-card">
+          <div class="hz-card-h"><h2>Where it performs</h2><span id="hz-str-meta"></span></div>
+          <div id="hz-strengths" class="hz-list"></div>
         </section>
-        <section class="sh-card">
-          <div class="sh-card-h"><h2>Where it falls short</h2><span id="sh-gap-meta"></span></div>
-          <div id="sh-gaps" class="sh-list"></div>
+        <section class="hz-card">
+          <div class="hz-card-h"><h2>Where it falls short</h2><span id="hz-gap-meta"></span></div>
+          <div id="hz-gaps" class="hz-list"></div>
         </section>
-        <section class="sh-card sh-card-wide">
-          <div class="sh-card-h"><h2>Generalisation</h2>
+        <section class="hz-card hz-card-wide">
+          <div class="hz-card-h"><h2>Generalisation</h2>
             <span>the number that predicts whether it survives deployment</span></div>
-          <div id="sh-gen" class="sh-gen"></div>
+          <div id="hz-gen" class="hz-gen"></div>
         </section>
-        <section class="sh-card">
-          <div class="sh-card-h"><h2>How it got here</h2>
+        <section class="hz-card">
+          <div class="hz-card-h"><h2>How it got here</h2>
             <span>every rung measured the same way</span></div>
-          <div id="sh-ladder" class="sh-ladder"></div>
-          <p class="sh-note">The hyperdimensional encoder is not a rung here. It scores
+          <div id="hz-ladder" class="hz-ladder"></div>
+          <p class="hz-note">The hyperdimensional encoder is not a rung here. It scores
             0.696, but on an internal split &mdash; ranking it against cross-hospital
             numbers would show it winning something it was never measured on.</p>
         </section>
-        <section class="sh-card">
-          <div class="sh-card-h"><h2>Last improvement run</h2><span id="sh-imp-meta"></span></div>
-          <div id="sh-improve"></div>
+        <section class="hz-card">
+          <div class="hz-card-h"><h2>Last improvement run</h2><span id="hz-imp-meta"></span></div>
+          <div id="hz-improve"></div>
         </section>
-        <section class="sh-card sh-card-wide">
-          <div class="sh-card-h"><h2>Search transcript</h2>
+        <section class="hz-card hz-card-wide">
+          <div class="hz-card-h"><h2>Search transcript</h2>
             <span>every mutation the search tried, and what happened to it</span></div>
-          <div id="sh-trials" class="sh-trials"></div>
-          <p class="sh-note" id="sh-trials-note"></p>
+          <div id="hz-trials" class="hz-trials"></div>
+          <p class="hz-note" id="hz-trials-note"></p>
         </section>
-        <section class="sh-card sh-card-wide">
-          <div class="sh-card-h"><h2>Alarm policy</h2>
+        <section class="hz-card hz-card-wide">
+          <div class="hz-card-h"><h2>Alarm policy</h2>
             <span>can the false-alarm rate be fixed by how we alarm?</span></div>
-          <div id="sh-alarm"></div>
+          <div id="hz-alarm"></div>
         </section>
-        <section class="sh-card sh-card-wide">
-          <div class="sh-card-h"><h2>Subsystem status</h2><span>live</span></div>
-          <div id="sh-subsystems" class="sh-subs"></div>
+        <section class="hz-card hz-card-wide">
+          <div class="hz-card-h"><h2>Subsystem status</h2><span>live</span></div>
+          <div id="hz-subsystems" class="hz-subs"></div>
         </section>
-        <section class="sh-card sh-card-wide">
-          <div class="sh-card-h"><h2>Detection on this cohort</h2>
-            <span id="sh-cohort-meta">per stay, first alarm vs labelled onset</span></div>
-          <div id="sh-cohort" class="sh-cohort"></div>
+        <section class="hz-card hz-card-wide">
+          <div class="hz-card-h"><h2>Detection on this cohort</h2>
+            <span id="hz-cohort-meta">per stay, first alarm vs labelled onset</span></div>
+          <div id="hz-cohort" class="hz-cohort"></div>
         </section>
       </div>
 
-      <p class="sh-foot" id="sh-foot"></p>
+      <p class="hz-foot" id="hz-foot"></p>
     </div>
   </section>
 
@@ -497,6 +507,52 @@
 </div>
 
 <script src="pktwin_ui.js?v=13"></script>
-<script src="tactical.js?v=39"></script>
+<!-- ===================== COMMAND PALETTE ===================== -->
+<div class="pl" id="pl" aria-hidden="true">
+  <div class="pl-scrim" id="pl-scrim"></div>
+  <div class="pl-frame" role="dialog" aria-label="command palette">
+    <div class="pl-inwrap">
+      <span class="pl-sigil">&#8984;</span>
+      <input class="pl-in" id="pl-in" autocomplete="off" autocapitalize="off" spellcheck="false"
+             placeholder="open a bed, switch view, run a kernel verb&hellip;" aria-label="command" />
+    </div>
+    <div class="pl-list" id="pl-list" role="listbox"></div>
+    <div class="pl-foot">
+      <span><b>&uarr;&darr;</b> select</span><span><b>&#9166;</b> run</span><span><b>esc</b> dismiss</span>
+      <span class="pl-foot-r"><b>&#8963;`</b> terminal</span>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== KEYBOARD SHEET ===================== -->
+<div class="ks" id="ks" aria-hidden="true">
+  <div class="ks-scrim" id="ks-scrim"></div>
+  <div class="ks-frame" role="dialog" aria-label="keyboard shortcuts">
+    <div class="ks-head"><b>Keyboard</b><span>? to open &middot; esc to dismiss</span></div>
+    <div class="ks-body" id="ks-body"></div>
+  </div>
+</div>
+
+<!-- ===================== KERNEL SHELL ===================== -->
+<div class="sh" id="sh" aria-hidden="true">
+  <div class="sh-frame">
+    <div class="sh-head"><b>AegisOS shell</b><span>read-only kernel access &middot; Esc to close</span></div>
+    <div class="sh-out" id="sh-out"></div>
+    <div class="sh-inwrap">
+      <span class="sh-p" id="sh-prompt">aegis@icu-wing<b>:~$</b></span>
+      <input class="sh-in" id="sh-in" autocomplete="off" autocapitalize="off" spellcheck="false"
+             aria-label="command input" />
+    </div>
+  </div>
+</div>
+
+<script src="tactical.js?v=40"></script>
+<script src="oskit/menu.js?v=1"></script>
+<script src="oskit/palette.js?v=1"></script>
+<script src="oskit/shell.js?v=6"></script>
+<script src="oskit/wm.js?v=3"></script>
+<script src="oskit/session.js?v=2"></script>
+<script src="oskit/cmds-core.js?v=6"></script>
+<script src="tactical-os.js?v=1"></script>
 </body>
 </html>

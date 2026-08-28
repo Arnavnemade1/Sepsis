@@ -1646,7 +1646,7 @@ function kpiHTML(cls,k,v,unit,s){ return '<div class="kpi'+(cls?" "+cls:"")+'"><
 function loadValidation(){
   fetch(window.AEGIS.http("/aegis/health/system")).then(function(r){return r.json();})
     .then(function(d){ valData=d; renderHealth(d); }).catch(function(){
-      var st=$("sh-status"); if(st){ st.className="sh-status bad";
+      var st=$("hz-status"); if(st){ st.className="hz-status bad";
         st.innerHTML='<i></i><span>unreachable</span>'; } });
 }
 function pctTxt(v){ return v==null?"—":Math.round(v*100)+"%"; }
@@ -1654,9 +1654,9 @@ function pctTxt(v){ return v==null?"—":Math.round(v*100)+"%"; }
 function pct1(v){ return v==null?"—":(v*100).toFixed(1)+"%"; }
 function renderHealth(d){
   if(!d || d.status!=="ok"){
-    var st0=$("sh-status"); if(st0){ st0.className="sh-status warn";
+    var st0=$("hz-status"); if(st0){ st0.className="hz-status warn";
       st0.innerHTML='<i></i><span>no evaluation</span>'; }
-    $("sh-strengths").innerHTML='<div class="sh-empty">'+esc((d&&d.note)||
+    $("hz-strengths").innerHTML='<div class="hz-empty">'+esc((d&&d.note)||
       "No cross-hospital evaluation artefact found.")+'</div>';
     return;
   }
@@ -1665,64 +1665,64 @@ function renderHealth(d){
   // ---- status chip: the grade the numbers earn, not a fixed "operational" ----
   var grade=d.grade||"fair";
   var cls=grade==="healthy"?"ok":grade==="fair"?"warn":"bad";
-  $("sh-status").className="sh-status "+cls;
-  $("sh-status").innerHTML='<i></i><span>'+esc(grade)+' · externally validated</span>';
+  $("hz-status").className="hz-status "+cls;
+  $("hz-status").innerHTML='<i></i><span>'+esc(grade)+' · externally validated</span>';
 
   // ---- hero ----
-  $("sh-auroc").textContent=(h.auroc!=null?h.auroc.toFixed(3):"—");
-  $("sh-auroc-ci").textContent=(h.auroc_lo!=null
+  $("hz-auroc").textContent=(h.auroc!=null?h.auroc.toFixed(3):"—");
+  $("hz-auroc-ci").textContent=(h.auroc_lo!=null
     ? "95% CI "+h.auroc_lo.toFixed(3)+"–"+h.auroc_hi.toFixed(3) : "");
-  var dEl=$("sh-auroc-delta");
+  var dEl=$("hz-auroc-delta");
   if(h.delta!=null){
-    dEl.className="sh-delta "+(h.delta>0?"up":"down");
+    dEl.className="hz-delta "+(h.delta>0?"up":"down");
     dEl.innerHTML='<b>'+(h.delta>0?"+":"")+h.delta.toFixed(3)+'</b> vs the '+
       esc(h.baseline)+' baseline ('+h.baseline_auroc.toFixed(3)+')';
   } else dEl.textContent="";
   // The bar starts at chance. An AUROC of 0.5 is worth nothing, so a bar anchored
   // at zero would render a useless model as half full.
   var frac=Math.max(0,Math.min(1,((h.auroc||0.5)-0.5)/0.5));
-  $("sh-auroc-bar").style.width=(frac*100).toFixed(1)+"%";
+  $("hz-auroc-bar").style.width=(frac*100).toFixed(1)+"%";
   var refFrac=Math.max(0,Math.min(1,((h.baseline_auroc||0.5)-0.5)/0.5));
-  $("sh-auroc-ref").style.left=(refFrac*100).toFixed(1)+"%";
-  $("sh-auroc-ref").title="baseline "+(h.baseline_auroc||0).toFixed(3);
+  $("hz-auroc-ref").style.left=(refFrac*100).toFixed(1)+"%";
+  $("hz-auroc-ref").title="baseline "+(h.baseline_auroc||0).toFixed(3);
 
-  $("sh-hero-side").innerHTML=[
+  $("hz-hero-side").innerHTML=[
     ["Detection rate", pctTxt(m.detection_rate), "of septic stays caught"],
     ["False alarms", pctTxt(m.false_alarm_rate), "of stable stays alarmed"],
     ["Median lead", (m.median_lead_hours!=null?m.median_lead_hours+"<em>h</em>":"—"),
      "before labelled onset"],
     ["Calibration", (m.ece!=null?m.ece.toFixed(3):"—"), "expected calibration error"]
   ].map(function(x){
-    return '<div class="sh-stat"><span>'+x[0]+'</span><b>'+x[1]+'</b><i>'+x[2]+'</i></div>';
+    return '<div class="hz-stat"><span>'+x[0]+'</span><b>'+x[1]+'</b><i>'+x[2]+'</i></div>';
   }).join("");
 
   // ---- strengths / gaps, both generated from the evaluation ----
   function items(list,kind){
-    if(!list||!list.length) return '<div class="sh-empty">Nothing crossed a '+
+    if(!list||!list.length) return '<div class="hz-empty">Nothing crossed a '+
       'reporting threshold.</div>';
     return list.map(function(f){
-      return '<div class="sh-item '+kind+'"><i>'+(kind==="good"?"↑":"↓")+'</i><div>'+
-        '<div class="sh-item-t">'+esc(f.title)+'</div>'+
-        '<span class="sh-item-s">'+esc(f.detail)+'</span></div></div>';
+      return '<div class="hz-item '+kind+'"><i>'+(kind==="good"?"↑":"↓")+'</i><div>'+
+        '<div class="hz-item-t">'+esc(f.title)+'</div>'+
+        '<span class="hz-item-s">'+esc(f.detail)+'</span></div></div>';
     }).join("");
   }
-  $("sh-strengths").innerHTML=items(d.strengths,"good");
-  $("sh-gaps").innerHTML=items(d.gaps,"bad");
-  $("sh-str-meta").textContent=(d.strengths||[]).length+" findings";
-  $("sh-gap-meta").textContent=(d.gaps||[]).length+" findings";
+  $("hz-strengths").innerHTML=items(d.strengths,"good");
+  $("hz-gaps").innerHTML=items(d.gaps,"bad");
+  $("hz-str-meta").textContent=(d.strengths||[]).length+" findings";
+  $("hz-gap-meta").textContent=(d.gaps||[]).length+" findings";
 
   // ---- generalisation: internal vs external, side by side ----
   var g=d.generalization;
   if(g){
     var f=function(v){ return Math.max(0,Math.min(1,(v-0.5)/0.5))*100; };
-    $("sh-gen").innerHTML=
-      '<div class="sh-gen-row"><span class="sh-gen-k">Inside the training hospital</span>'+
-        '<span class="sh-gen-track"><i style="width:'+f(g.internal_auroc).toFixed(1)+'%"></i></span>'+
+    $("hz-gen").innerHTML=
+      '<div class="hz-gen-row"><span class="hz-gen-k">Inside the training hospital</span>'+
+        '<span class="hz-gen-track"><i style="width:'+f(g.internal_auroc).toFixed(1)+'%"></i></span>'+
         '<b>'+g.internal_auroc.toFixed(3)+'</b></div>'+
-      '<div class="sh-gen-row ext"><span class="sh-gen-k">A hospital it has never seen</span>'+
-        '<span class="sh-gen-track"><i style="width:'+f(g.external_auroc).toFixed(1)+'%"></i></span>'+
+      '<div class="hz-gen-row ext"><span class="hz-gen-k">A hospital it has never seen</span>'+
+        '<span class="hz-gen-track"><i style="width:'+f(g.external_auroc).toFixed(1)+'%"></i></span>'+
         '<b>'+g.external_auroc.toFixed(3)+'</b></div>'+
-      '<div class="sh-gen-note"><b>−'+g.gap.toFixed(3)+' AUROC</b> is what moving hospital '+
+      '<div class="hz-gen-note"><b>−'+g.gap.toFixed(3)+' AUROC</b> is what moving hospital '+
         'costs. '+esc(g.note)+'. The upper bar is the figure a paper would quote; the '+
         'lower one is what a new ICU would actually get.</div>';
   }
@@ -1731,27 +1731,27 @@ function renderHealth(d){
   var lad=d.ladder||[];
   if(lad.length){
     var floor=lad[0].auroc;
-    $("sh-ladder").innerHTML=lad.map(function(x,i){
+    $("hz-ladder").innerHTML=lad.map(function(x,i){
       var w=Math.max(0,Math.min(1,(x.auroc-0.5)/0.5))*100;
       var dv=x.auroc-floor;
-      return '<div class="sh-rung'+(x.production?" on":"")+'">'+
-        '<div class="sh-rung-t"><span>'+esc(x.name)+'</span>'+
+      return '<div class="hz-rung'+(x.production?" on":"")+'">'+
+        '<div class="hz-rung-t"><span>'+esc(x.name)+'</span>'+
           (x.production?'<em>production</em>':'')+
           (i&&dv>0?'<u>+'+dv.toFixed(3)+'</u>':'')+
           '<b>'+x.auroc.toFixed(3)+'</b></div>'+
-        '<div class="sh-rung-bar"><i style="width:'+w.toFixed(1)+'%"></i></div>'+
-        '<span class="sh-rung-s">'+esc(x.scope)+' · '+esc(x.note)+'</span></div>';
+        '<div class="hz-rung-bar"><i style="width:'+w.toFixed(1)+'%"></i></div>'+
+        '<span class="hz-rung-s">'+esc(x.scope)+' · '+esc(x.note)+'</span></div>';
     }).join("");
   }
 
   // ---- improvement attempts, including the ones that failed ----
   var imp=d.improvement;
   if(imp){
-    $("sh-imp-meta").textContent=imp.trials+" mutations tried";
-    $("sh-improve").innerHTML=
-      '<div class="sh-imp-n"><b>'+imp.accepted+'</b> of '+imp.trials+' accepted</div>'+
-      '<div class="sh-imp-v">'+esc(imp.verdict||"")+'</div>'+
-      '<div class="sh-imp-s">A search that promotes nothing is the gate working, not '+
+    $("hz-imp-meta").textContent=imp.trials+" mutations tried";
+    $("hz-improve").innerHTML=
+      '<div class="hz-imp-n"><b>'+imp.accepted+'</b> of '+imp.trials+' accepted</div>'+
+      '<div class="hz-imp-v">'+esc(imp.verdict||"")+'</div>'+
+      '<div class="hz-imp-s">A search that promotes nothing is the gate working, not '+
       'a gap in it — every candidate was measured on locked patients the search never '+
       'saw, and none beat the shipped configuration.</div>';
   }
@@ -1761,9 +1761,9 @@ function renderHealth(d){
   if(tt.length){
     var OUT={accepted:"accepted","not-significant":"gain not significant",
              "no-gain":"no gain",untested:"not tested",refused:"refused"};
-    $("sh-trials").innerHTML=tt.map(function(t){
+    $("hz-trials").innerHTML=tt.map(function(t){
       var d=t.delta==null?0:t.delta;
-      return '<div class="sh-trial '+esc(t.outcome)+'">'+
+      return '<div class="hz-trial '+esc(t.outcome)+'">'+
         '<span class="st-id">#'+t.id+'</span>'+
         '<span class="st-mut">'+t.mutation.map(esc).join('<i> · </i>')+'</span>'+
         '<span class="st-d '+(d>0?"up":d<0?"dn":"")+'">'+(d>=0?"+":"\u2212")+
@@ -1773,7 +1773,7 @@ function renderHealth(d){
     }).join("");
     var n={}; tt.forEach(function(t){ n[t.outcome]=(n[t.outcome]||0)+1; });
     var untested=n.untested||0;
-    $("sh-trials-note").innerHTML=
+    $("hz-trials-note").innerHTML=
       'Sorted by measured gain. '+
       (untested? '<b>'+untested+' of '+tt.length+'</b> were evaluated but never tested: '+
         'only the best challenger of each round is put to the paired test, so the rest '+
@@ -1784,24 +1784,24 @@ function renderHealth(d){
   // ---- alarm policy ----
   var ap=d.alarm_policy;
   if(ap){
-    $("sh-alarm").innerHTML=
-      '<div class="sh-ap-v">'+esc(ap.verdict)+'</div>'+
-      '<div class="sh-ap-row"><span>searched</span><b>'+ap.families.map(esc).join(' · ')+'</b></div>'+
-      '<div class="sh-ap-row"><span>shipped</span><b>'+esc(ap.shipped||"—")+'</b></div>'+
-      '<div class="sh-ap-row"><span>best challenger</span><b>'+esc(ap.challenger||"—")+'</b></div>'+
-      '<div class="sh-ap-row"><span>on locked patients</span><b>'+
+    $("hz-alarm").innerHTML=
+      '<div class="hz-ap-v">'+esc(ap.verdict)+'</div>'+
+      '<div class="hz-ap-row"><span>searched</span><b>'+ap.families.map(esc).join(' · ')+'</b></div>'+
+      '<div class="hz-ap-row"><span>shipped</span><b>'+esc(ap.shipped||"—")+'</b></div>'+
+      '<div class="hz-ap-row"><span>best challenger</span><b>'+esc(ap.challenger||"—")+'</b></div>'+
+      '<div class="hz-ap-row"><span>on locked patients</span><b>'+
         'false alarm '+pct1(ap.champion_far)+' \u2192 '+pct1(ap.challenger_far)+
         ' · detection '+pct1(ap.champion_detection)+' \u2192 '+pct1(ap.challenger_detection)+'</b></div>'+
-      '<div class="sh-ap-tag '+(ap.promoted?"on":"")+'">'+
+      '<div class="hz-ap-tag '+(ap.promoted?"on":"")+'">'+
         (ap.promoted?"PROMOTED":"REFUSED")+'</div>'+
-      '<div class="sh-note">'+esc(ap.reason||"")+'</div>';
+      '<div class="hz-note">'+esc(ap.reason||"")+'</div>';
   }
 
   // ---- live subsystem state ----
-  $("sh-subsystems").innerHTML=(d.subsystems||[]).map(function(sub){
-    return '<div class="sh-sub'+(sub.ok?"":" bad")+'"><i></i><div>'+
-      '<div class="sh-sub-n">'+esc(sub.name)+'</div>'+
-      '<span class="sh-sub-s">'+esc(sub.note)+'</span></div></div>';
+  $("hz-subsystems").innerHTML=(d.subsystems||[]).map(function(sub){
+    return '<div class="hz-sub'+(sub.ok?"":" bad")+'"><i></i><div>'+
+      '<div class="hz-sub-n">'+esc(sub.name)+'</div>'+
+      '<span class="hz-sub-s">'+esc(sub.note)+'</span></div></div>';
   }).join("");
 
   // ---- the demo cohort, labelled as what it is ----
@@ -1809,16 +1809,16 @@ function renderHealth(d){
   if(c&&c.patients){
     var maxH=Math.max.apply(null,c.patients.map(function(p){
       return Math.max(p.onset_hour||0,p.first_alarm||0,1); }));
-    $("sh-cohort-meta").textContent=c.summary.n+" demo stays · illustrative only, "+
+    $("hz-cohort-meta").textContent=c.summary.n+" demo stays · illustrative only, "+
       "not the source of the numbers above";
-    $("sh-cohort").innerHTML=c.patients.slice().sort(function(a,b){
+    $("hz-cohort").innerHTML=c.patients.slice().sort(function(a,b){
       return (b.lead==null?-99:b.lead)-(a.lead==null?-99:a.lead); }).map(function(p){
       var alarm=p.first_alarm, onset=p.onset_hour;
       var caught=p.septic&&alarm!=null&&(onset==null||alarm<=onset);
-      var v=!p.septic?(alarm!=null?'<span class="sh-row-v fp">false alarm</span>'
-                                  :'<span class="sh-row-v none">stable</span>')
-            :(p.lead!=null&&p.lead>=0?'<span class="sh-row-v">+'+p.lead+' h early</span>'
-                                     :'<span class="sh-row-v none">missed</span>');
+      var v=!p.septic?(alarm!=null?'<span class="hz-row-v fp">false alarm</span>'
+                                  :'<span class="hz-row-v none">stable</span>')
+            :(p.lead!=null&&p.lead>=0?'<span class="hz-row-v">+'+p.lead+' h early</span>'
+                                     :'<span class="hz-row-v none">missed</span>');
       var bar='';
       if(alarm!=null){
         var x0=100*Math.min(alarm,onset==null?alarm:onset)/maxH;
@@ -1826,9 +1826,9 @@ function renderHealth(d){
         bar='<b style="left:'+x0.toFixed(1)+'%;width:'+Math.max(1,x1-x0).toFixed(1)+'%"></b>';
       }
       var onsetMark=onset!=null?'<u style="left:'+(100*onset/maxH).toFixed(1)+'%"></u>':'';
-      return '<div class="sh-row"><span class="sh-row-n">'+esc(p.name)+
+      return '<div class="hz-row"><span class="hz-row-n">'+esc(p.name)+
         (p.septic?'<em>septic</em>':'')+'</span>'+
-        '<span class="sh-track'+(caught?"":" miss")+'">'+bar+onsetMark+'</span>'+v+'</div>';
+        '<span class="hz-track'+(caught?"":" miss")+'">'+bar+onsetMark+'</span>'+v+'</div>';
     }).join("");
   }
 
@@ -1838,7 +1838,7 @@ function renderHealth(d){
   if(ev.generated) prov.push("last run "+ev.generated);
   if(ev.bootstrap) prov.push(ev.bootstrap+" bootstrap resamples");
   if(d.model_id) prov.push(d.model_id);
-  $("sh-foot").innerHTML=esc(d.honesty||"")+
+  $("hz-foot").innerHTML=esc(d.honesty||"")+
     (prov.length?'<i>'+esc(prov.join("  ·  "))+'</i>':'');
 }
 
