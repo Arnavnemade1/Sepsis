@@ -184,3 +184,45 @@ export function dirLabel(d: Direction): string {
   const strip = (s: string) => s.replace(/\s*\(set [AB]\)\s*/i, "").trim();
   return `${strip(d.train)} → ${strip(d.test)}`;
 }
+
+
+/** ── 2026-08 additions ─────────────────────────────────────────────────────
+ *  The conformal abstention layer, the label-free transfer investigation, the
+ *  HDC usage record, and the architectures that were built and then refused.
+ *  All four came out of one pass and three of the four are negatives. */
+
+export interface ConformalResults {
+  alpha: number; nominal: number; detector: string;
+  lockedCovPos: number; lockedCovNeg: number; lockedMacroPos: number;
+  abstainRate: number; miscoverageRatio: number; overrunLimit: number;
+  conversion: { policy: string; utility: number; detection: number; falseAlarm: number; leadHours: number }[];
+  external: { withinCovPos: number; acrossCovPos: number; delta: number; corrected: boolean; supersedes: string };
+}
+export const conformal = results.conformal as unknown as ConformalResults;
+
+export interface TransferDirection {
+  direction: string; domainAuc: number; priorRatioTrue: number; priorRatioEm: number;
+  unadapted: number; priorCorrected: number; rateMatched: number; oracle: number;
+  reachableGap: number; priorDelta: number; priorCi: number[]; priorSignificant: boolean;
+}
+export const transfer = results.transfer as unknown as {
+  limitPerSite: number;
+  directions: TransferDirection[];
+  coverage: { detector: string; direction: string; plain: number; weighted: number; oracle: number }[];
+};
+
+export const hdc = results.hdc as unknown as {
+  inProductionDetector: boolean;
+  shippedRoster: string[];
+  ablation: { name: string; auroc: number; aurocSd: number; utility: number }[];
+  runtime: { beds: number; phases: { phase: string; share: number; msPerTick: number }[] };
+};
+
+export const negatives = results.negatives as unknown as {
+  protocol: string;
+  rows: { name: string; auroc: number; aurocSd: number; auprc: number; utility: number;
+          detectAtFar15: number; seconds: number; verdict: string }[];
+  minirocket: { delta: number; ci: number[]; significant: boolean; standardBankGb: number;
+                shippedFeatures: number; shippedGb: number; checks: number; mutationAudited: number };
+  forestVsa: { losslessCeiling: number; donorSameFold: number };
+};

@@ -8,7 +8,7 @@
         "pi_source": 0.024394618834080718,
         "pi_target_true": 0.013661958829502446,
         "pi_target_em": 0.002781472707010159,
-        "pi_target_bbse": NaN,
+        "pi_target_bbse": null,
         "em_iterations": 364,
         "domain_auc": 0.8927511343156096,
         "weight_mean": 1.0107665002123662,

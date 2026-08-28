@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-08-26",
+ "syncedAt": "2026-08-27",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -3518,6 +3518,236 @@
     "topPhaseShare": 0.442
    }
   ]
+ },
+ "conformal": {
+  "alpha": 0.06,
+  "nominal": 0.94,
+  "detector": "balanced:hgb+hgb2+et+lr+xgb@utility",
+  "lockedCovPos": 0.935,
+  "lockedCovNeg": 0.9631,
+  "lockedMacroPos": 0.9363,
+  "abstainRate": 0.723,
+  "miscoverageRatio": 1.08,
+  "overrunLimit": 1.5,
+  "conversion": [
+   {
+    "policy": "shipped (p >= thr)",
+    "utility": 0.3704,
+    "detection": 0.581,
+    "falseAlarm": 0.231,
+    "leadHours": 27
+   },
+   {
+    "policy": "UNCERTAIN silenced",
+    "utility": 0.2587,
+    "detection": 0.419,
+    "falseAlarm": 0.099,
+    "leadHours": 30
+   },
+   {
+    "policy": "UNCERTAIN escalated",
+    "utility": -0.1455,
+    "detection": 0.975,
+    "falseAlarm": 0.949,
+    "leadHours": 27.5
+   }
+  ],
+  "external": {
+   "withinCovPos": 0.9526,
+   "acrossCovPos": 0.925,
+   "delta": -0.0276,
+   "corrected": true,
+   "supersedes": "0.929 -> 0.739 (two-fit artifact)"
+  }
+ },
+ "transfer": {
+  "limitPerSite": 4000,
+  "directions": [
+   {
+    "direction": "A->B",
+    "domainAuc": 0.893,
+    "priorRatioTrue": 0.56,
+    "priorRatioEm": 0.11,
+    "unadapted": 0.2369,
+    "priorCorrected": -0.0001,
+    "rateMatched": -0.0993,
+    "oracle": 0.2436,
+    "reachableGap": 0.0068,
+    "priorDelta": -0.2391,
+    "priorCi": [
+     -0.3317,
+     -0.1259
+    ],
+    "priorSignificant": true
+   },
+   {
+    "direction": "B->A",
+    "domainAuc": 0.901,
+    "priorRatioTrue": 1.99,
+    "priorRatioEm": 29.12,
+    "unadapted": 0.1684,
+    "priorCorrected": -0.3496,
+    "rateMatched": 0.1684,
+    "oracle": 0.2025,
+    "reachableGap": 0.0341,
+    "priorDelta": -0.5342,
+    "priorCi": [
+     -0.7438,
+     -0.3256
+    ],
+    "priorSignificant": true
+   }
+  ],
+  "coverage": [
+   {
+    "direction": "A->B",
+    "plain": 0.926,
+    "weighted": 0.9207,
+    "oracle": 0.9408
+   },
+   {
+    "direction": "B->A",
+    "plain": 0.9481,
+    "weighted": 0.8151,
+    "oracle": 0.9722
+   },
+   {
+    "detector": "stack",
+    "direction": "A->B",
+    "plain": 0.9577,
+    "weighted": 0.9545,
+    "oracle": 0.9577
+   },
+   {
+    "detector": "stack",
+    "direction": "B->A",
+    "plain": 0.8677,
+    "weighted": 0.7965,
+    "oracle": 0.8695
+   }
+  ]
+ },
+ "hdc": {
+  "inProductionDetector": false,
+  "shippedRoster": [
+   "hgb",
+   "hgb2",
+   "et",
+   "lr",
+   "xgb@utility"
+  ],
+  "ablation": [
+   {
+    "name": "GBM (trees)",
+    "auroc": 0.6901,
+    "aurocSd": 0.0347,
+    "utility": 0.3377
+   },
+   {
+    "name": "HDC (classical)",
+    "auroc": 0.5938,
+    "aurocSd": 0.0308,
+    "utility": 0.0931
+   },
+   {
+    "name": "GB-QHDC (N=8)",
+    "auroc": 0.5931,
+    "aurocSd": 0.0084,
+    "utility": 0.0108
+   }
+  ],
+  "runtime": {
+   "beds": 400,
+   "phases": [
+    {
+     "phase": "hdc_memory",
+     "share": 0.442,
+     "msPerTick": 229
+    },
+    {
+     "phase": "resonance_gate",
+     "share": 0.275,
+     "msPerTick": 142.5
+    },
+    {
+     "phase": "sched_decide",
+     "share": 0.212,
+     "msPerTick": 109.8
+    },
+    {
+     "phase": "z3_verify",
+     "share": 0.211,
+     "msPerTick": 109.2
+    },
+    {
+     "phase": "device_pump",
+     "share": 0.03,
+     "msPerTick": 15.5
+    },
+    {
+     "phase": "fusion",
+     "share": 0.01,
+     "msPerTick": 5
+    },
+    {
+     "phase": "sample_vitals",
+     "share": 0.004,
+     "msPerTick": 2.1
+    },
+    {
+     "phase": "sched_observe",
+     "share": 0.001,
+     "msPerTick": 0.5
+    },
+    {
+     "phase": "learner_lookup",
+     "share": 0,
+     "msPerTick": 0.1
+    }
+   ]
+  }
+ },
+ "negatives": {
+  "protocol": "dev spec, 3 patient-grouped folds, 310,061 hours / 8,000 patients",
+  "rows": [
+   {
+    "name": "xgb-utility (paired baseline)",
+    "auroc": 0.7503,
+    "aurocSd": 0.0098,
+    "auprc": 0.0774,
+    "utility": 0.3381,
+    "detectAtFar15": 0.497,
+    "seconds": 22,
+    "verdict": "baseline"
+   },
+   {
+    "name": "+ causal MiniRocket (336 feats)",
+    "auroc": 0.7495,
+    "aurocSd": 0.0088,
+    "auprc": 0.0728,
+    "utility": 0.3246,
+    "detectAtFar15": 0.468,
+    "seconds": 162,
+    "verdict": "not adopted"
+   }
+  ],
+  "minirocket": {
+   "delta": 0.0012,
+   "ci": [
+    -0.009,
+    0.0129
+   ],
+   "significant": false,
+   "standardBankGb": 11.6,
+   "shippedFeatures": 336,
+   "shippedGb": 0.39,
+   "checks": 17,
+   "mutationAudited": 5
+  },
+  "forestVsa": {
+   "losslessCeiling": 0.7146,
+   "donorSameFold": 0.7384
+  }
  },
  "phase7": {
   "AtoB": {

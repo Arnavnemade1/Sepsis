@@ -12,6 +12,9 @@ import {
 import { Reveal, Stagger, Item } from "@/components/motion/reveal";
 import { consoleUrl } from "@/lib/site-config";
 import { TechStack } from "@/components/technology/tech-stack";
+import { SubsystemMap } from "@/components/technology/subsystem-map";
+import { HdcPipeline } from "@/components/technology/hdc-pipeline";
+import { hdc } from "@/lib/results";
 
 export const metadata: Metadata = {
   title: "Technology",
@@ -158,6 +161,26 @@ export default function TechnologyPage() {
       <div className="relative left-1/2 mt-20 w-screen -translate-x-1/2 border-y border-line">
         <TechStack layers={layers} />
       </div>
+
+      {/* ── The inventory ─────────────────────────────────────────────── */}
+      <Section
+        className="mt-20 border-t border-line pt-20"
+        eyebrow="Subsystems"
+        title="Everything that is actually in here"
+        lede="Thirty-one subsystems across four planes. Each carries a status, because a list of module names proves nothing on its own — what matters is whether a thing runs, whether it has a number behind it, or whether it was built and then refuted by its own benchmark. The refuted ones are listed deliberately."
+      >
+        <SubsystemMap />
+      </Section>
+
+      {/* ── HDC ───────────────────────────────────────────────────────── */}
+      <Section
+        className="mt-20 border-t border-line pt-20"
+        eyebrow="Hyperdimensional computing"
+        title="10,000 dimensions, doing the job it actually earns"
+        lede="Hyperdimensional computing is the most striking piece of machinery in this system and it is not the part that makes the prediction. Presenting it as the detector would be the easy story and the false one — so here is the algebra as it runs, next to the ablation that keeps it out of the roster and the profile that shows what it costs."
+      >
+        <HdcPipeline facts={hdc} />
+      </Section>
 
       {/* ── Formal verification ───────────────────────────────────────── */}
       <Section

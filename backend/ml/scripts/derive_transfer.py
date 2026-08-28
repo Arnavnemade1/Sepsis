@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import time
 from typing import Dict, List, Optional, Tuple
@@ -33,6 +34,25 @@ from backend.ml.models.boosters import UtilityAlignedBooster
 from backend.ml.eval.utility import utility_terms, normalized_utility_fast
 
 SETS = {"A": "wearable_training_setA_limitall", "B": "wearable_training_setB_limitall"}
+
+
+def json_safe(o):
+    """Recursively replace NaN/Inf with None.
+
+    ``json.dump`` happily writes bare ``NaN``, which Python reads back and every
+    strict parser rejects — Node's ``JSON.parse`` included. artifacts/transfer.json
+    was written that way and was unreadable by the website's own sync script, which
+    is exactly the kind of artifact that looks fine until something outside Python
+    tries to use it. NaN here is meaningful (BBSE reports failure that way), so it
+    becomes ``null`` rather than being coerced to a number.
+    """
+    if isinstance(o, dict):
+        return {k: json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [json_safe(v) for v in o]
+    if isinstance(o, float) and not math.isfinite(o):
+        return None
+    return o
 
 
 def subsample(fm, limit: Optional[int], seed: int):
@@ -269,9 +289,9 @@ def main() -> None:
 
     out = [run_direction("A", "B", args), run_direction("B", "A", args)]
     with open(args.out, "w") as fh:
-        json.dump({"generated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-                   "limit_per_site": args.limit, "detector": args.detector,
-                   "directions": out}, fh, indent=2)
+        json.dump(json_safe({"generated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+                             "limit_per_site": args.limit, "detector": args.detector,
+                             "directions": out}), fh, indent=2, allow_nan=False)
     print(f"\nwrote {args.out}")
 
 

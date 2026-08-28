@@ -130,6 +130,42 @@
     /* The page must never scroll sideways. Wide things scroll inside their own
        container instead (see .scroll-x). */
     overflow-x: hidden;
+
+    /* GROUND. The research page is ~20,000px of one flat near-black, which reads as
+       an unlit void rather than a surface — the content column has structure and the
+       thing it sits on has none. Two fixed layers fix that:
+         1. a top scrim that lifts the hero off the page,
+         2. an edge vignette so the wide gutters fall away and the column reads as lit.
+       Both are ACHROMATIC. A tinted wash would put brand colour behind every reading
+       on the page, and colour here means clinical state — the one rule this design
+       does not bend. `fixed` so it is a ground the page moves over, not a pattern
+       that scrolls with it and re-announces itself every screenful. */
+    background-image:
+      linear-gradient(
+        180deg,
+        rgb(255 255 255 / 3.5%) 0,
+        rgb(255 255 255 / 0%) 640px
+      ),
+      radial-gradient(
+        140% 100% at 50% 38%,
+        rgb(255 255 255 / 1.8%) 0%,
+        rgb(0 0 0 / 0%) 52%,
+        rgb(0 0 0 / 34%) 100%
+      );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+  }
+
+  /* A hairline that separates the ground from the first band of content. Without it
+     the scrim just fades and the eye has nothing to register the transition against. */
+  .ground-rule {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-line-bright) 18%,
+      var(--color-line-bright) 82%,
+      transparent
+    );
   }
 
   /* Rule 3: numbers are the interface. A reading whose digits change width as

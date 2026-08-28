@@ -58,6 +58,10 @@ const thin = (a, keep) => {
 const rig = read("rigorous_eval");
 const sub = read("subgroup_audit");
 const scale = read("scale");
+const transfer = read("transfer");
+const transferStack = read("transfer_stack");
+const conf = read("conformal");
+const confExt = read("conformal_external");
 
 const model = (m) => ({
   auroc: r(m.auroc),
@@ -435,6 +439,119 @@ const out = {
       topPhase: Object.keys(l.phases)[0],
       topPhaseShare: r(Object.values(l.phases)[0].share_of_tick, 3),
     })),
+  },
+
+  /** Conformal abstention (docs/CONFORMAL.md). The alarm's third state: a per-hour
+   *  prediction SET, where {0,1} is an explicit refusal to decide. */
+  conformal: {
+    alpha: conf.alpha,
+    nominal: r(1 - conf.alpha, 3),
+    detector: conf.detector,
+    lockedCovPos: r(conf.coverage.locked.overall.micro_pos),
+    lockedCovNeg: r(conf.coverage.locked.overall.micro_neg),
+    lockedMacroPos: r(conf.coverage.locked.overall.macro_pos),
+    abstainRate: r(conf.coverage.locked.abstain_rate, 3),
+    miscoverageRatio: r(conf.coverage.gate.miscoverage_ratio, 2),
+    overrunLimit: conf.coverage.gate.overrun_limit,
+    /** What abstention does to the shipped alarm — bracketed BOTH ways, because
+     *  what a ward does with a refusal is a values judgement, not a modelling one. */
+    conversion: conf.coverage.conversion.policies.map((p) => ({
+      policy: p.policy, utility: r(p.utility), detection: r(p.detection, 3),
+      falseAlarm: r(p.false_alarm, 3), leadHours: r(p.lead_h, 1),
+    })),
+    /** CORRECTED. The previously published 0.929 -> 0.739 "collapse" was a two-fit
+     *  bug in derive_conformal.py --external: bands calibrated on a model fit on 60%
+     *  of setA, applied to scores from a model fit on 100% of it. Single fit: */
+    external: {
+      withinCovPos: r(confExt.within_setA.overall.micro_pos),
+      acrossCovPos: r(confExt.across_setB.overall.micro_pos),
+      delta: r(confExt.delta_micro_pos),
+      corrected: true,
+      supersedes: "0.929 -> 0.739 (two-fit artifact)",
+    },
+  },
+
+  /** Label-free deployment transfer (docs/TRANSFER.md). A decisive NEGATIVE: the
+   *  remedies a new hospital could apply without labels are harmful or inert, and
+   *  the gap they were meant to close was largely our own threshold/fit bug. */
+  transfer: {
+    limitPerSite: transfer.limit_per_site,
+    directions: transfer.directions.map((d) => ({
+      direction: d.direction,
+      domainAuc: r(d.shift.domain_auc, 3),
+      priorRatioTrue: r(d.shift.prior_ratio_true, 2),
+      priorRatioEm: r(d.shift.prior_ratio_em, 2),
+      unadapted: r(d.locked.unadapted.utility),
+      priorCorrected: r(d.locked.prior_corrected.utility),
+      rateMatched: r(d.locked.rate_matched.utility),
+      oracle: r(d.locked.oracle.utility),
+      /** The reachable gap: what re-deriving the threshold buys EVEN WITH labels. */
+      reachableGap: r(d.locked.oracle.utility - d.locked.unadapted.utility),
+      priorDelta: r(d.prior_corrected.delta),
+      priorCi: [r(d.prior_corrected.ci[0]), r(d.prior_corrected.ci[1])],
+      priorSignificant: d.prior_corrected.significant,
+    })),
+    /** Conformal coverage transfer under both detectors — plain transferred bands
+     *  land within 0.002 of bands calibrated on the target's own LABELS. */
+    coverage: [
+      ...transfer.directions.map((d) => ({
+        detector: transfer.detector, direction: d.direction,
+        plain: r(d.conformal["plain (transferred)"].cov_pos),
+        weighted: r(d.conformal.weighted.cov_pos),
+        oracle: r(d.conformal.oracle.cov_pos),
+      })),
+      ...transferStack.directions.map((d) => ({
+        detector: transferStack.detector, direction: d.direction,
+        plain: r(d.conformal["plain (transferred)"].cov_pos),
+        weighted: r(d.conformal.weighted.cov_pos),
+        oracle: r(d.conformal.oracle.cov_pos),
+      })),
+    ],
+  },
+
+  /** Hyperdimensional computing, reported as it is ACTUALLY used.
+   *  Sources: artifacts/qhdc_ablation.json (discrimination) and artifacts/scale.json
+   *  (runtime share, real CohortCluster.tick over real patients). HDC is NOT the
+   *  detector — the shipped roster is hgb+hgb2+et+lr+xgb@utility with use_hdc=False. */
+  hdc: {
+    inProductionDetector: false,
+    shippedRoster: read("detector_manifest").configs.candidate.roster,
+    ablation: Object.entries(q.ablation).map(([name, m]) => ({
+      name, auroc: r(m.auroc[0]), aurocSd: r(m.auroc[1]),
+      utility: r(m.normalized_utility[0]),
+    })),
+    /** Where the tick actually goes at the measured ceiling. */
+    runtime: (() => {
+      const lv = scale.levels[scale.levels.length - 1];
+      return {
+        beds: lv.beds_built,
+        phases: Object.entries(lv.phases).map(([k, v]) => ({
+          phase: k, share: r(v.share_of_tick, 3), msPerTick: r(v.ms_per_tick, 1),
+        })),
+      };
+    })(),
+  },
+
+  /** Architectures proposed, built, benchmarked and NOT adopted. Provenance:
+   *  backend/ml/README.md "Architectures proposed, tested, and not adopted", from
+   *  artifacts/minirocket_bench.log and artifacts/forest_vsa_bench.log (the frontier
+   *  harness writes tables to stdout, not JSON — the log IS the artifact). */
+  negatives: {
+    protocol: "dev spec, 3 patient-grouped folds, 310,061 hours / 8,000 patients",
+    rows: [
+      { name: "xgb-utility (paired baseline)", auroc: 0.7503, aurocSd: 0.0098,
+        auprc: 0.0774, utility: 0.3381, detectAtFar15: 0.497, seconds: 22,
+        verdict: "baseline" },
+      { name: "+ causal MiniRocket (336 feats)", auroc: 0.7495, aurocSd: 0.0088,
+        auprc: 0.0728, utility: 0.3246, detectAtFar15: 0.468, seconds: 162,
+        verdict: "not adopted" },
+    ],
+    minirocket: {
+      delta: 0.0012, ci: [-0.0090, 0.0129], significant: false,
+      standardBankGb: 11.6, shippedFeatures: 336, shippedGb: 0.39,
+      checks: 17, mutationAudited: 5,
+    },
+    forestVsa: { losslessCeiling: 0.7146, donorSameFold: 0.7384 },
   },
 
   /** The earlier Phase 7 protocol. Kept because README and PHASE7_REPORT quote

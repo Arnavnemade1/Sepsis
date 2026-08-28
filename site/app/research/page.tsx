@@ -16,6 +16,9 @@ import {
   subgroup,
   scale,
   scaleCeiling,
+  conformal,
+  transfer,
+  negatives,
 } from "@/lib/results";
 import { f2, f3, f4, ci, ciSigned, pct, count, signed } from "@/lib/format";
 import {
@@ -62,6 +65,8 @@ const sections: NavSection[] = [
   { id: "objective", label: "The wrong objective" },
   { id: "fairness", label: "Who it serves worse" },
   { id: "scale", label: "Does it scale" },
+  { id: "abstention", label: "When it declines to answer" },
+  { id: "corrections", label: "Three findings that were bugs" },
   { id: "negative", label: "What did not work" },
   { id: "integrity", label: "Integrity audit" },
   { id: "limits", label: "What this does not show" },
@@ -1145,6 +1150,170 @@ export default function ResearchPage() {
           </Section>
 
           {/* ── 9 · Negative results ──────────────────────────────────── */}
+          <Section
+            id="abstention"
+            eyebrow="12 · When it declines to answer"
+            title="The alarm can say it does not know"
+            lede="A detector that only emits a number has no way to say the evidence is ambiguous, so an unresolvable hour gets rounded down to LOW and disappears. This layer gives it a third state, with a coverage claim that is measured rather than asserted."
+          >
+            <Reveal className="mt-8">
+              <Panel className="p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusChip tone="low">
+                    {pct(conformal.lockedCovPos)} coverage on locked patients
+                  </StatusChip>
+                  <h3 className="text-[15px] font-medium text-ink">
+                    Conformal prediction sets at &alpha; = {conformal.alpha}
+                  </h3>
+                </div>
+                <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                  Each hour gets a set over{" "}
+                  <code className="font-mono text-[13px] text-ink">&#123;0,1&#125;</code>, where{" "}
+                  <code className="font-mono text-[13px] text-ink">&#123;0,1&#125;</code> is an
+                  explicit refusal to decide. &alpha; is not a setting that can simply be
+                  declared: on correlated ICU hours the delivered coverage does not track the
+                  requested level, so the level is chosen on one split and confirmed on a locked
+                  one. It misses {f4(1 - conformal.lockedCovPos)} against a requested{" "}
+                  {conformal.alpha} — a{" "}
+                  <span className="num text-ink">{conformal.miscoverageRatio}&times;</span>{" "}
+                  overrun, inside the {conformal.overrunLimit}&times; gate.
+                </p>
+
+                <p className="mt-4 text-[14px] leading-relaxed text-muted text-pretty">
+                  The finding is the abstention rate:{" "}
+                  <span className="num text-ink">{pct(conformal.abstainRate)}</span> of hours are
+                  ones the detector cannot separate at this confidence. That is what AUROC{" "}
+                  {f3(headline.production.auroc)} at {pct(meta.setA.prevalence)} hourly prevalence
+                  means stated per hour instead of per cohort.
+                </p>
+
+                <div className="scroll-x mt-6">
+                  <DataTable
+                    caption="What abstention does to the shipped alarm, bracketed both ways"
+                    head={["Policy", "Utility", "Detection", "False alarm", "Lead (h)"]}
+                  >
+                    {conformal.conversion.map((c) => (
+                      <Row
+                        key={c.policy}
+                        cells={[
+                          c.policy,
+                          signed(c.utility, 4),
+                          f3(c.detection),
+                          f3(c.falseAlarm),
+                          c.leadHours.toFixed(1),
+                        ]}
+                      />
+                    ))}
+                  </DataTable>
+                </div>
+                <p className="mt-4 text-[14px] leading-relaxed text-muted text-pretty">
+                  Neither reading beats the shipped policy, so this is not a better firing rule
+                  and is not claimed as one. What a ward does with a refusal is a clinical values
+                  judgement, so both bounds are published and neither is picked here.
+                </p>
+              </Panel>
+            </Reveal>
+          </Section>
+
+          <Section
+            id="corrections"
+            eyebrow="13 · Three findings that were bugs"
+            title="The same arithmetic error, three times, wearing a lab coat"
+            lede="Three separate results on this page used to be more dramatic than they are. Each read as a discovery about deployment. Each was the same mistake: a quantity read off one model's score distribution and applied to another's."
+          >
+            <Reveal className="mt-8">
+              <Panel className="p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusChip tone="med">corrected</StatusChip>
+                  <h3 className="text-[15px] font-medium text-ink">
+                    The cross-hospital &ldquo;coverage collapse&rdquo; was a two-fit bug
+                  </h3>
+                </div>
+                <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                  This page previously reported that conformal coverage collapsed from 0.929 to
+                  0.739 across hospitals, and concluded the guarantee did not travel. The external
+                  harness fitted the detector <em>twice</em> &mdash; once to score the calibration
+                  rows, again to score the target &mdash; so the bands were calibrated on one
+                  model&rsquo;s scores and applied to a different model&rsquo;s. With a single
+                  consistent fit, septic coverage goes{" "}
+                  <span className="num text-ink">{f4(conformal.external.withinCovPos)}</span>{" "}
+                  &rarr;{" "}
+                  <span className="num text-ink">{f4(conformal.external.acrossCovPos)}</span>: a{" "}
+                  {Math.abs(conformal.external.delta * 100).toFixed(1)}-point drop, not nineteen.
+                </p>
+
+                <div className="scroll-x mt-6">
+                  <DataTable
+                    caption="Transferred conformal bands versus bands calibrated on the target's own labels"
+                    head={["Detector", "Direction", "Transferred", "Weighted", "Oracle (labels)"]}
+                  >
+                    {transfer.coverage.map((c) => (
+                      <Row
+                        key={`${c.detector}-${c.direction}`}
+                        cells={[c.detector, c.direction, f4(c.plain), f4(c.weighted), f4(c.oracle)]}
+                      />
+                    ))}
+                  </DataTable>
+                </div>
+                <p className="mt-4 text-[14px] leading-relaxed text-muted text-pretty">
+                  Transferred bands land within 0.002 of oracle bands. In the last row the oracle
+                  itself only reaches {f4(transfer.coverage[3]?.oracle ?? 0.8695)} &mdash; that
+                  shortfall is the within-site finite-sample limit, not a transfer failure. There
+                  was nothing there for adaptation to recover.
+                </p>
+              </Panel>
+            </Reveal>
+
+            <Reveal className="mt-6">
+              <Panel className="p-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  <StatusChip tone="high">significantly harmful</StatusChip>
+                  <h3 className="text-[15px] font-medium text-ink">
+                    Label-free adaptation, tested and refused
+                  </h3>
+                </div>
+                <p className="mt-3 text-[14px] leading-relaxed text-muted text-pretty">
+                  Hospital prevalence differs by 1.54&times;, which looked like label shift a new
+                  site could correct without labels. A domain classifier separates the two
+                  hospitals&rsquo; covariates at AUC{" "}
+                  <span className="num text-ink">
+                    {transfer.directions.map((d) => f3(d.domainAuc)).join(" / ")}
+                  </span>{" "}
+                  &mdash; that is covariate shift, which violates the assumption the correction
+                  needs. Applying it anyway is significantly harmful in both directions.
+                </p>
+                <div className="scroll-x mt-6">
+                  <DataTable
+                    caption="Locked-half utility at a new hospital, adapted versus unadapted"
+                    head={["Direction", "Unadapted", "Prior-corrected", "Oracle", "Reachable gap", "Δ vs unadapted"]}
+                  >
+                    {transfer.directions.map((d) => (
+                      <Row
+                        key={d.direction}
+                        cells={[
+                          d.direction,
+                          signed(d.unadapted, 4),
+                          signed(d.priorCorrected, 4),
+                          signed(d.oracle, 4),
+                          signed(d.reachableGap, 4),
+                          `${signed(d.priorDelta, 4)} ${ciSigned(d.priorCi, 4)}`,
+                        ]}
+                      />
+                    ))}
+                  </DataTable>
+                </div>
+                <p className="mt-4 text-[14px] leading-relaxed text-muted text-pretty">
+                  The reachable gap is the load-bearing column: even <em>with</em> target labels,
+                  re-deriving the threshold buys{" "}
+                  {transfer.directions.map((d) => signed(d.reachableGap, 4)).join(" and ")}. The
+                  source threshold already transfers near-optimally, so the dramatic
+                  cross-hospital utility collapse reported elsewhere was largely an artifact of
+                  scoring a target hospital with a constant derived against a different fit.
+                </p>
+              </Panel>
+            </Reveal>
+          </Section>
+
           <Section
             id="negative"
             eyebrow="12 · What did not work"
