@@ -90,6 +90,31 @@ const frProdCand = fr ? fr.candidates[fr.production] : undefined;
 
 const ceiling = scaleCeiling();
 
+/** Editorial copy for each published survivor, keyed by mutation name.
+ *  Keyed rather than shared: two survivors are not the same finding, and a shared
+ *  paragraph silently attributes one suite's defect to another. Anything without an
+ *  entry falls back to the machine-generated description, which is dull but true. */
+const SURVIVOR_COPY: Record<string, React.ReactNode> = {
+  operating_point_no_margin: (
+    <>
+      does not defend its own bootstrap margin. Disabling it ships a false-alarm cap
+      that holds only on the patients used to choose it — and every check still passes,
+      because the check that looks like it defends this calls the margin function
+      directly rather than through the code path that uses it.
+    </>
+  ),
+  selfimprove_shipped_rule_drifts: (
+    <>
+      does not test the code it claims to. The suite defines its own copy of the
+      acceptance rule — docstring: <em>&ldquo;the shipped rule&rdquo;</em> — and tests
+      that, never once referencing the real improver. So the shipped rule&rsquo;s
+      effect-size floor and significance bar can be set to accept anything and all 14
+      checks still pass. That rule&rsquo;s verdict, <strong>0 of 16 candidates
+      admitted</strong>, is the headline evidence for the refusal architecture.
+    </>
+  ),
+};
+
 export default function ResearchPage() {
   return (
     <div className="mx-auto max-w-6xl px-5 pt-28 pb-24 sm:px-8">
@@ -1228,14 +1253,21 @@ export default function ResearchPage() {
                     {falsification.survivors.length} survivor
                     {falsification.survivors.length === 1 ? "" : "s"} · published, not quietly fixed
                   </p>
+                  {/* Copy is keyed to the mutation, never shared across survivors. The
+                      first version of this hardcoded one survivor's story and rendered
+                      it for every row — which, the moment a second survivor appeared,
+                      published a false statement about a suite it had never described. */}
                   {falsification.survivors.map((s) => (
                     <p key={s.name} className="mt-2 text-[13.5px] leading-relaxed text-muted text-pretty">
                       <code className="font-mono text-[12.5px] text-ink">{s.suite}</code>{" "}
-                      does not defend its own bootstrap margin. Disabling it ships a
-                      false-alarm cap that holds only on the patients used to choose it —
-                      and every check in the suite still passes, because the check that
-                      looks like it defends this calls the margin function directly
-                      rather than through the code path that uses it.
+                      {SURVIVOR_COPY[s.name] ?? (
+                        <>
+                          has an undefended claim: no named check fails when{" "}
+                          <code className="font-mono text-[12.5px] text-ink">{s.name}</code>{" "}
+                          is applied. Expected to break{" "}
+                          {s.missed.map((m) => `"${m}"`).join(", ")}.
+                        </>
+                      )}
                     </p>
                   ))}
                 </div>

@@ -65,12 +65,20 @@ class Mutation:
     must_fail: List[str]             # substrings of check names that MUST report [FAIL]
     apply: Callable                  # apply(suite_module) -> None
     note: str = ""
+    #: "deps" (default) patches imported modules; "suite" patches the suite's OWN
+    #: helpers. The distinction is load-bearing: a suite that runs its checks at
+    #: module level has already executed them by the time its own symbols exist, so a
+    #: "suite"-targeted mutation can never reach it. Reporting that as a survivor
+    #: would be a lie in the one direction this whole engine exists to prevent —
+    #: it would name a claim as undefended when the audit simply could not test it.
+    targets: str = "deps"
 
 
 MUTATIONS: List[Mutation] = []
 
 
-def mutation(family: str, suite: str, must_fail: Sequence[str], note: str = ""):
+def mutation(family: str, suite: str, must_fail: Sequence[str], note: str = "",
+             targets: str = "deps"):
     """Register a semantic mutation.
 
     ``must_fail`` names the checks that are supposed to catch it. Naming them — rather
@@ -81,7 +89,8 @@ def mutation(family: str, suite: str, must_fail: Sequence[str], note: str = ""):
     """
     def deco(fn):
         MUTATIONS.append(Mutation(family=family, suite=suite, name=fn.__name__,
-                                  must_fail=list(must_fail), apply=fn, note=note))
+                                  must_fail=list(must_fail), apply=fn, note=note,
+                                  targets=targets))
         return fn
     return deco
 
@@ -97,6 +106,7 @@ class SuiteRun:
     failed: List[str] = field(default_factory=list)
     error: Optional[str] = None
     seconds: float = 0.0
+    has_main: bool = True            # False => checks ran at import, not in main()
 
 
 #: Modules a mutation may patch. Reloaded before EVERY run so one mutation cannot
@@ -116,6 +126,46 @@ def _reset() -> None:
         m = sys.modules.get(name)
         if m is not None:
             importlib.reload(m)
+
+
+def read_results(mod, stdout: str):
+    """(ok, total, failed_names) from whichever container a suite happens to use.
+
+    Three shapes exist in this repository and they are not interchangeable:
+
+    ``results: List[bool]``
+        The ML/physio suites. Booleans only — the names have to come from stdout.
+
+    ``_results: List[Tuple[name, ok, detail]]``
+        The aegis suites. Authoritative: names come from the tuples, not from parsing.
+
+    ``_failures: List[str]``
+        ``verify_agent`` and ``verify_doctor``. Records ONLY failures, so the total is
+        recovered by counting printed verdicts.
+
+    The names must come from the container wherever one is available, because those
+    two suites print ``detail or name`` — when a check supplies a detail string, the
+    check's own name never reaches stdout at all, and matching a mutation's declared
+    target against the printed line would silently never fire.
+    """
+    lines = [ln.strip() for ln in stdout.splitlines()]
+    printed_fail = [ln[len("[FAIL]"):].strip() for ln in lines if ln.startswith("[FAIL]")]
+    printed_pass = [ln for ln in lines if ln.startswith("[PASS]")]
+
+    if hasattr(mod, "_results"):
+        r = [t for t in list(mod._results) if isinstance(t, (tuple, list)) and len(t) >= 2]
+        return (sum(1 for t in r if t[1]), len(r), [str(t[0]) for t in r if not t[1]])
+
+    if hasattr(mod, "_failures"):
+        fails = [str(x) for x in list(mod._failures)]
+        total = len(printed_pass) + len(printed_fail)
+        return (max(total - len(fails), 0), total or len(fails), fails)
+
+    if hasattr(mod, "results"):
+        r = list(mod.results)
+        return (sum(1 for x in r if x), len(r), printed_fail)
+
+    return (0, 0, printed_fail)
 
 
 def run_suite(suite: str, apply: Optional[Callable] = None) -> SuiteRun:
@@ -146,6 +196,19 @@ def run_suite(suite: str, apply: Optional[Callable] = None) -> SuiteRun:
 
     t0 = time.time()
     _reset()
+    # A fresh event loop per run. `verify_doctor` calls asyncio.get_event_loop() at
+    # module level and passes standalone, but inside the audit an EARLIER suite has
+    # already created and closed the main thread's loop, so it raises "no current event
+    # loop" — a suite failing for a reason that has nothing to do with the suite. The
+    # engine is the host process here; giving each run a clean loop is the same duty as
+    # resetting the dependency modules between runs.
+    _loop = None
+    try:
+        import asyncio
+        _loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_loop)
+    except Exception:
+        _loop = None
     spec = importlib.util.find_spec(suite)
     if spec is None or not spec.origin:
         return SuiteRun(suite, 0, 0, error="module not found")
@@ -177,21 +240,23 @@ def run_suite(suite: str, apply: Optional[Callable] = None) -> SuiteRun:
                 pass                             # module-level suites exit here
             if apply is not None:
                 apply(mod)                       # (2) re-point the suite's own refs
-            if not hasattr(mod, "results"):
-                return SuiteRun(suite, 0, 0, error="no module-level `results` list")
+            if not any(hasattr(mod, c) for c in ("results", "_results", "_failures")):
+                return SuiteRun(suite, 0, 0, error="no recognised results container")
             entry = getattr(mod, "main", None)
             if entry is not None:
-                mod.results.clear()              # main() re-runs everything itself
+                # main() re-runs everything, so clear whichever container exists first
+                # or every check would be counted twice.
+                for c in ("results", "_results", "_failures"):
+                    if hasattr(mod, c):
+                        getattr(mod, c).clear()
                 try:
                     entry()
                 except SystemExit:
                     pass
         out = buf.getvalue()
-        failed = [ln.strip()[len("[FAIL]"):].strip()
-                  for ln in out.splitlines() if ln.strip().startswith("[FAIL]")]
-        res = list(mod.results)
-        return SuiteRun(suite, sum(1 for r in res if r), len(res), failed,
-                        seconds=round(time.time() - t0, 2))
+        ok, total, failed = read_results(mod, out)
+        return SuiteRun(suite, ok, total, failed, seconds=round(time.time() - t0, 2),
+                        has_main=getattr(mod, "main", None) is not None)
     except Exception as exc:                     # a mutation may break the body
         return SuiteRun(suite, 0, 0, error=f"{type(exc).__name__}: {exc}",
                         seconds=round(time.time() - t0, 2))
@@ -200,6 +265,11 @@ def run_suite(suite: str, apply: Optional[Callable] = None) -> SuiteRun:
             sys.modules[suite] = prev
         else:
             sys.modules.pop(suite, None)
+        if _loop is not None:
+            try:
+                _loop.close()                    # one loop per run, never accumulated
+            except Exception:
+                pass
         _reset()                                 # never leave a mutation installed
 
 
@@ -220,6 +290,7 @@ class MutationResult:
     missed: List[str]                # named checks that should have failed and did not
     collateral: List[str]            # other checks that failed too (informational)
     error: Optional[str] = None
+    applicable: bool = True          # False => the audit could not test this at all
 
     def to_json(self) -> Dict[str, object]:
         return asdict(self)
@@ -245,8 +316,19 @@ def audit(suites: Optional[Sequence[str]] = None,
             state = (f"{b.ok}/{b.total}" if not b.error else f"ERROR {b.error}")
             print(f"  baseline {s.split('.')[-1]:<22} {state:>12}  [{b.seconds:.1f}s]")
 
+    # A suite with no main() ran its checks during import, so its own helpers cannot
+    # be mutated — they did not exist before the body ran and the checks were over by
+    # the time they did.
+    module_level = {s for s in by_suite
+                    if not baseline[s].error and not baseline[s].has_main}
+
     out: List[MutationResult] = []
     for m in muts:
+        if m.targets == "suite" and m.suite in module_level:
+            out.append(MutationResult(m.family, m.suite, m.name, False, [], [], [],
+                                      error="not applicable: suite runs at import time",
+                                      applicable=False))
+            continue
         b = baseline.get(m.suite)
         if b is None or b.error or b.ok != b.total:
             out.append(MutationResult(m.family, m.suite, m.name, False, [], m.must_fail, [],
@@ -268,22 +350,26 @@ def audit(suites: Optional[Sequence[str]] = None,
                                   caught, missed, collateral))
 
     killed = [r for r in out if r.killed]
-    survivors = [r for r in out if not r.killed]
+    survivors = [r for r in out if not r.killed and r.applicable]
+    skipped = [r for r in out if not r.applicable]
+    scored = [r for r in out if r.applicable]
     report = {
         "generated": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-        "n_mutations": len(out),
+        "n_mutations": len(scored),
         "n_killed": len(killed),
-        "coverage": round(len(killed) / len(out), 4) if out else 0.0,
+        "n_skipped": len(skipped),
+        "coverage": round(len(killed) / len(scored), 4) if scored else 0.0,
         "suites": {s: {"checks": baseline[s].total, "green": baseline[s].ok,
                        "error": baseline[s].error,
-                       "mutations": len([r for r in out if r.suite == s]),
+                       "mutations": len([r for r in scored if r.suite == s]),
                        "killed": len([r for r in out if r.suite == s and r.killed])}
                    for s in by_suite},
-        "families": {f: {"n": len([r for r in out if r.family == f]),
-                         "killed": len([r for r in out if r.family == f and r.killed])}
+        "families": {f: {"n": len([r for r in scored if r.family == f]),
+                         "killed": len([r for r in scored if r.family == f and r.killed])}
                      for f in sorted({m.family for m in muts})},
         # The actual deliverable: claims nobody is defending.
         "survivors": [r.to_json() for r in survivors],
+        "not_applicable": [r.to_json() for r in skipped],
         "killed_detail": [r.to_json() for r in killed],
     }
     return report

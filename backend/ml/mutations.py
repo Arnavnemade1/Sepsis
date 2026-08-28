@@ -312,3 +312,159 @@ def digest_is_random(mod):
     import uuid
     F.FitId.digest = lambda self: uuid.uuid4().hex[:12]
     mod.fitid = F
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# EXTENSION — the remaining suites that share the check contract.
+#
+# Cost matters here in a way it did not for the ML suites: verify_subgroup takes
+# ~130s per run and verify_alarm_policy ~35s, so each mutation against them costs
+# that much again. They are tagged SLOW and excluded from the default audit; the
+# fast eleven cover 392 additional checks for a handful of seconds each.
+# ═══════════════════════════════════════════════════════════════════════════ #
+COUP = "backend.physio.verify_coupling"
+SELFIMP = "backend.ml.scripts.verify_selfimprove"
+Z3S = "backend.aegis.verify_z3_safety"
+AGENT = "backend.aegis.verify_agent"
+DOCTOR = "backend.llm.verify_doctor"
+SUBGRP = "backend.ml.scripts.verify_subgroup"
+ALARM = "backend.ml.scripts.verify_alarm_policy"
+
+#: Suites whose single run costs more than the whole rest of the audit combined.
+SLOW_SUITES = {SUBGRP, ALARM}
+
+
+# --------------------------------------------------------------------------- #
+# naive-statistic — the coupling estimators, whose whole validity is a correction
+# --------------------------------------------------------------------------- #
+@mutation("naive-statistic", COUP, ["surrogate-corrected TE ~ 0 on independent signals"],
+          note="drop the surrogate null: binned TE reads 0.025 bits on pure noise, so "
+               "every pair of unrelated signals becomes a coupling finding")
+def te_without_surrogate(mod):
+    import backend.physio.coupling as C
+    orig = C.transfer_entropy
+
+    def raw(src, dst, bins=4, lag=1, n_surrogate=12, seed=0):
+        r = orig(src, dst, bins, lag, n_surrogate, seed)
+        return dict(r, te=r["te_raw"])            # uncorrected
+    C.transfer_entropy = raw
+    mod.cp = C
+
+
+@mutation("naive-statistic", COUP, ["phase sync ~ 0 on independent signals"],
+          note="skip the respiratory band-pass: Hilbert phase is only meaningful for a "
+               "narrowband signal, and unfiltered this scored 0.716 on two independent "
+               "random walks — higher than real coupled physiology")
+def phase_sync_unfiltered(mod):
+    import backend.physio.coupling as C
+    from scipy.signal import hilbert
+    import numpy as _np
+
+    def ps(a, b, n=1, m=1, fs=C.HR_GRID_HZ, band=C.RESP_BAND):
+        if len(a) < 16 or len(b) < 16:
+            return 0.0
+        k = min(len(a), len(b))
+        pa = _np.angle(hilbert(_np.asarray(a[:k], float) - _np.mean(a[:k])))
+        pb = _np.angle(hilbert(_np.asarray(b[:k], float) - _np.mean(b[:k])))
+        return float(_np.abs(_np.mean(_np.exp(1j * (n * pa - m * pb)))))
+    C.phase_sync = ps
+    mod.cp = C
+
+
+@mutation("causality", COUP, ["...while the decoupling control leaves the respiratory"],
+          note="a decoupling control that also destroys the respiratory spectrum, so a "
+               "monotone response would prove the estimator tracks amplitude, not timing")
+def decouple_destroys_spectrum(mod):
+    import backend.physio.coupling as C
+    import numpy as _np
+    C.decouple = lambda resp, alpha, seed=0: _np.asarray(resp, float) * (1.0 - alpha)
+    mod.cp = C
+
+
+# --------------------------------------------------------------------------- #
+# floor-removal — the self-improvement acceptance rule, i.e. the refusal itself
+# --------------------------------------------------------------------------- #
+@mutation("floor-removal", SELFIMP, ["a significant but trivial gain is refused (min_gain)"],
+          note="weaken the effect-size floor in the rule THE SUITE TESTS",
+          targets="suite")
+def selfimprove_local_no_min_gain(mod):
+    orig = mod.apply_rule
+    mod.apply_rule = lambda trials, alpha_c, min_gain: orig(trials, alpha_c, -1.0)
+
+
+@mutation("floor-removal", SELFIMP, ["a large but noisy gain is refused (alpha)"],
+          note="weaken the significance bar in the rule THE SUITE TESTS",
+          targets="suite")
+def selfimprove_local_no_alpha(mod):
+    orig = mod.apply_rule
+    mod.apply_rule = lambda trials, alpha_c, min_gain: orig(trials, 1.0, min_gain)
+
+
+@mutation("fit-identity", SELFIMP, ["a significant but trivial gain is refused (min_gain)"],
+          note="THE FINDING. Weaken the SHIPPED acceptance rule — RecursiveSelfImprover's "
+               "own min_gain and alpha — and nothing notices, because verify_selfimprove "
+               "never references RecursiveSelfImprover at all. It defines a local "
+               "apply_rule() whose docstring says 'the shipped rule' and tests that. The "
+               "0-of-16 refusal is the crown-jewel evidence for this project's refusal "
+               "architecture, and it is verified against a re-implementation in the test "
+               "file rather than against the code that produced it. This mutation is "
+               "EXPECTED TO SURVIVE; the survival is the result.")
+def selfimprove_shipped_rule_drifts(mod):
+    import backend.ml.selfimprove as S
+    imp = getattr(S, "RecursiveSelfImprover", None)
+    if imp is None:
+        raise RuntimeError("no RecursiveSelfImprover to weaken")
+    orig_init = imp.__init__
+
+    def loose(self, *a, **k):
+        orig_init(self, *a, **k)
+        self.min_gain = -1.0                       # accept any delta
+        self.alpha = 1.0                           # accept any p-value
+    imp.__init__ = loose
+    mod.selfimprove = S
+
+
+# --------------------------------------------------------------------------- #
+# concurrency — the Z3 safety cage. A lock that is not held is not a cage.
+# --------------------------------------------------------------------------- #
+@mutation("concurrency", Z3S, ["no public function builds Z3 terms without the lock"],
+          note="strip the guard from a public prover entry point; Z3 contexts are not "
+               "thread-safe and a corrupted one previously returned garbage rather "
+               "than raising")
+def z3_unguarded_entrypoint(mod):
+    src = getattr(mod, "_unguarded_public", None)
+    if src is None:
+        raise RuntimeError("suite does not expose _unguarded_public")
+    mod._unguarded_public = lambda path: ["verify_protocol"]   # report a real breach
+
+
+@mutation("concurrency", Z3S, ["no public function builds Z3 terms without the lock"],
+          note="report a SECOND unguarded entry point. The earlier version of this "
+               "mutation swapped ProverUnavailable for RuntimeError, which broke the "
+               "suite's own exception handling and produced an ERROR rather than a "
+               "FAIL — correctly scored as a survivor, since a crash is not evidence "
+               "that a claim is defended.")
+def z3_second_unguarded_entrypoint(mod):
+    if not hasattr(mod, "_unguarded_public"):
+        raise RuntimeError("suite does not expose _unguarded_public")
+    mod._unguarded_public = lambda path: ["safety_model", "verify_protocol"]
+
+
+# --------------------------------------------------------------------------- #
+# confinement — the agent plane's read-only boundary
+# --------------------------------------------------------------------------- #
+@mutation("label-leak", AGENT, ["gets only"],
+          note="index a POST-only route as readable. The read plane's guarantee is that "
+               "every route reachable through os_read is a GET; listing a write route "
+               "there is exactly how a read tool acquires a mutation.")
+def agent_write_route_indexed_as_read(mod):
+    import backend.aegis.server as srv
+    rw = getattr(srv, "_READ_ROUTES", None)
+    ww = getattr(srv, "_WRITE_ROUTES", None)
+    if not isinstance(rw, dict) or not ww:
+        raise RuntimeError("route indexes not available")
+    victim = next((p for p in ww if p not in rw), None)
+    if victim is None:
+        raise RuntimeError("no write-only route to smuggle in")
+    rw[victim] = ww[victim]
+    mod.srv = srv

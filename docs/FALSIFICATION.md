@@ -109,30 +109,53 @@ So the deliverable is not the percentage. It is the survivor list.
 
     make falsify
 
+Extended from 5 suites to **9**, covering **480 named checks** in the readable set.
+
 | suite | checks | mutations | killed | coverage |
 |---|---|---|---|---|
 | `verify_conformal` | 24 | 6 | 6 | 100% |
-| `verify_fitid` | 13 | 3 | 3 | 100% |
-| `verify_minirocket` | 17 | 5 | 5 | 100% |
-| `verify_operating_point` | 14 | 3 | 2 | 67% |
 | `verify_shift` | 20 | 6 | 6 | 100% |
-| **total** | | **23** | **22** | **96%** |
+| `verify_minirocket` | 17 | 5 | 5 | 100% |
+| `verify_fitid` | 13 | 3 | 3 | 100% |
+| `verify_coupling` | 12 | 3 | 3 | 100% |
+| `verify_agent` | 68 | 1 | 1 | 100% |
+| `verify_z3_safety` | 14 | 2 | 2 | 100% |
+| `verify_operating_point` | 14 | 3 | 2 | 67% |
+| `verify_selfimprove` | 14 | 1 | 0 | 0% |
+| **total** | | **30** | **28** | **93%** |
 
-### The one survivor, published rather than quietly fixed
+Two more mutations are reported **not applicable** rather than counted: a suite that
+runs its checks at import time has already executed them by the time its own helpers
+exist, so a mutation targeting those helpers can never reach it. Scoring that as a
+survivor would name a claim undefended when the audit simply could not test it — a lie
+in the exact direction this engine exists to prevent, so it is excluded from the
+denominator and listed separately.
 
-> **`verify_operating_point` does not defend its own bootstrap margin.**
-> Setting `far_margin=False` in `derive()` — which ships a false-alarm cap that holds
-> only on the patients used to choose it — passes every check in the suite. The check
-> that looks like it defends this, *"setting it on the upper bound breaches strictly
-> less often"*, calls `far_upper_bound()` **directly** rather than through `derive()`.
-> It proves the margin *mechanism* works. Nothing proves `derive()` still *uses* it.
+### The survivors, published rather than quietly fixed
 
-That is exactly the class of defect the engine was built to surface, and it was found
-on the first real run.
+**1 — `verify_operating_point` does not defend its own bootstrap margin.**
+Setting `far_margin=False` in `derive()` ships a false-alarm cap that holds only on the
+patients used to choose it, and every check in the suite still passes. The check that
+*looks* like it defends this — *"setting it on the upper bound breaches strictly less
+often"* — calls `far_upper_bound()` **directly** rather than through `derive()`. It
+proves the margin mechanism works. Nothing proves `derive()` still uses it.
+
+**2 — `verify_selfimprove` does not test the code it claims to.** This one matters
+more. The suite defines its own `apply_rule()`, whose docstring reads *"The shipped
+rule"*, and tests that. It never references `RecursiveSelfImprover` — not once. So the
+shipped acceptance rule's own `min_gain` and `alpha` can be set to accept anything at
+all and all 14 checks still pass.
+
+> That rule's verdict — **0 of 16 candidates admitted** — is the headline evidence for
+> the refusal architecture, the thing this project claims as its primary invention. It
+> has been verified against a re-implementation in the test file rather than against
+> the code that produced it.
+
+The engine was built to find exactly this, and found it on the extension run.
 
 ### The engine is subject to its own rule
 
-`make verify-falsify` — 14 checks. A crash is **not** counted as a kill (the mutation
+`make verify-falsify` — 17 checks. A crash is **not** counted as a kill (the mutation
 must be caught by a check, not by the interpreter). A mutation caught by the *wrong*
 check is a survivor, not a kill. And the audit corrected its own author twice: two
 mutations were reported as survivors when the fault was the mutation spec naming the
@@ -155,11 +178,17 @@ the existing survivor as published work to do.
 
 ## Honesty boundary
 
-- Coverage is over **23 mutations across 5 suites**, not over all 452 checks in the
-  repository. The other 58 suites are **not** audited; 7 of them share the hookable
-  contract and are the obvious next targets, and the rest track results differently.
-  A 96% figure is 96% *of what was attempted*, and pretending otherwise would be the
-  same species of lie this whole apparatus exists to catch.
+- Coverage is over **30 scored mutations across 9 suites**, spanning 480 named checks.
+  It is emphatically **not** 30 mutations covering 480 checks — most checks in those
+  suites have no mutation aimed at them. 93% is 93% *of what was attempted*, and
+  pretending otherwise would be the same species of lie this apparatus exists to catch.
+- Two suites are excluded from the default run on cost (`verify_subgroup` ~130s,
+  `verify_alarm_policy` ~35s per mutation); `--slow` includes them.
+- Three container shapes exist in the repository — `results: List[bool]`,
+  `_results: List[(name, ok, detail)]`, and `_failures: List[str]`. Names are read from
+  the container wherever one exists, because `verify_agent` and `verify_doctor` print
+  `detail or name`: when a check supplies a detail the check's own name never reaches
+  stdout, and matching on the printed line would silently never fire.
 - The engine proves a check **can** fail. It does not prove the check is *the right
   check* — only that something is defending the claim.
 - `fitid` refuses mismatches at the point of use. Artifacts written before it existed

@@ -72,7 +72,7 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `shift.py` | Label/covariate/concept shift diagnosis (label-free); see `docs/TRANSFER.md` |
 | `scripts/frontier*.py` | Run the benchmark, rebuild its table from saved out-of-fold predictions, confirm cross-hospital |
 | `scripts/verify_minirocket.py` | 17 adversarial checks on the MiniRocket transform — causality, patient isolation, memory honesty |
-| `scripts/falsify_audit.py` | Run the falsification audit; `--gate` fails only on regression |
+| `scripts/falsify_audit.py` | Run the falsification audit; `--gate` fails only on regression, `--slow` includes the expensive suites |
 | `scripts/verify_falsify.py` | The engine held to its own rule (a crash is not a kill; the wrong check is not a kill) |
 | `scripts/verify_fitid.py` | Fit fingerprints, incl. the regression test that this session's three false findings are now impossible |
 | `selfimprove.py` | **Recursive self-improvement** — a self-adaptive search that mutates its own champion, gated on locked patients it never searched |

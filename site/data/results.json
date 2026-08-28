@@ -3464,11 +3464,23 @@
   }
  },
  "falsification": {
-  "generated": "2026-08-28 02:53:46 UTC",
-  "mutations": 23,
-  "killed": 22,
-  "coverage": 0.957,
+  "generated": "2026-08-28 04:47:51 UTC",
+  "mutations": 30,
+  "killed": 28,
+  "coverage": 0.933,
   "suites": [
+   {
+    "suite": "verify_agent",
+    "checks": 68,
+    "mutations": 1,
+    "killed": 1
+   },
+   {
+    "suite": "verify_z3_safety",
+    "checks": 14,
+    "mutations": 2,
+    "killed": 2
+   },
    {
     "suite": "verify_conformal",
     "checks": 24,
@@ -3494,22 +3506,39 @@
     "killed": 2
    },
    {
+    "suite": "verify_selfimprove",
+    "checks": 14,
+    "mutations": 1,
+    "killed": 0
+   },
+   {
     "suite": "verify_shift",
     "checks": 20,
     "mutations": 6,
     "killed": 6
+   },
+   {
+    "suite": "verify_coupling",
+    "checks": 12,
+    "mutations": 3,
+    "killed": 3
    }
   ],
   "families": [
    {
     "family": "causality",
-    "n": 2,
-    "killed": 2
+    "n": 3,
+    "killed": 3
    },
    {
     "family": "class-conditioning",
     "n": 1,
     "killed": 1
+   },
+   {
+    "family": "concurrency",
+    "n": 2,
+    "killed": 2
    },
    {
     "family": "exchangeability",
@@ -3518,7 +3547,7 @@
    },
    {
     "family": "fit-identity",
-    "n": 7,
+    "n": 8,
     "killed": 6
    },
    {
@@ -3528,13 +3557,13 @@
    },
    {
     "family": "label-leak",
-    "n": 2,
-    "killed": 2
+    "n": 3,
+    "killed": 3
    },
    {
     "family": "naive-statistic",
-    "n": 5,
-    "killed": 5
+    "n": 7,
+    "killed": 7
    }
   ],
   "survivors": [
@@ -3544,6 +3573,15 @@
     "name": "operating_point_no_margin",
     "missed": [
      "setting it on the upper bound breaches strictly less"
+    ],
+    "reason": "caught nothing"
+   },
+   {
+    "family": "fit-identity",
+    "suite": "verify_selfimprove",
+    "name": "selfimprove_shipped_rule_drifts",
+    "missed": [
+     "a significant but trivial gain is refused (min_gain)"
     ],
     "reason": "caught nothing"
    }

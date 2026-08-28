@@ -227,6 +227,57 @@ def check_no_leak_between_runs():
           f"{after.ok}/{after.total} failed={after.failed}")
 
 
+def check_inapplicable_is_not_a_survivor():
+    """8. PLANTED: a mutation the audit CANNOT apply must not be called a survivor.
+
+    A module-level suite has already run its checks by the time its own helpers exist,
+    so a `targets="suite"` mutation can never reach it. Reporting that as a survivor
+    would name a claim as undefended when the audit simply could not test it — a lie in
+    the exact direction this engine exists to prevent.
+    """
+    s = write_suite("selftest_modlevel2", '''
+        def helper():
+            return dep.guarded(-1)
+        check("guarded rejects a negative", helper() is False)
+        raise SystemExit(0 if all(results) else 1)
+    ''')
+
+    def mutate(mod):
+        mod.helper = lambda: True                  # patches the SUITE's own helper
+
+    m = falsify.Mutation("selftest", s, "suitehelper", ["guarded rejects a negative"],
+                         mutate, targets="suite")
+    saved, falsify.MUTATIONS[:] = list(falsify.MUTATIONS), [m]
+    try:
+        rep = falsify.audit(verbose=False)
+    finally:
+        falsify.MUTATIONS[:] = saved
+    check("a suite-targeted mutation on an import-time suite is NOT a survivor",
+          len(rep["survivors"]) == 0 and len(rep.get("not_applicable", [])) == 1,
+          f"survivors={len(rep['survivors'])} n/a={len(rep.get('not_applicable', []))}")
+    check("...and it is excluded from the coverage denominator",
+          rep["n_mutations"] == 0, f"n_mutations={rep['n_mutations']}")
+    # Vacuity guard: the SAME mutation against a main()-style suite must be scored.
+    s2 = write_suite("selftest_mainstyle", '''
+        def helper():
+            return dep.guarded(-1)
+        def main():
+            results.clear()
+            check("guarded rejects a negative", helper() is False)
+            raise SystemExit(0 if all(results) else 1)
+    ''')
+    m2 = falsify.Mutation("selftest", s2, "suitehelper2", ["guarded rejects a negative"],
+                          mutate, targets="suite")
+    saved, falsify.MUTATIONS[:] = list(falsify.MUTATIONS), [m2]
+    try:
+        rep2 = falsify.audit(verbose=False)
+    finally:
+        falsify.MUTATIONS[:] = saved
+    check("...while the same mutation IS scored against a main()-style suite",
+          rep2["n_mutations"] == 1 and rep2["n_killed"] == 1,
+          f"scored={rep2['n_mutations']} killed={rep2['n_killed']}")
+
+
 def check_regression_gate():
     """7. The gate fires on a coverage drop and on a newly-surviving mutation."""
     prev = {"coverage": 0.95,
@@ -246,7 +297,7 @@ def main() -> None:
     for fn in (check_real_check_is_killed, check_vacuous_check_survives,
                check_crash_is_not_a_kill, check_wrong_check_is_not_a_kill,
                check_module_level_suite_is_handled, check_no_leak_between_runs,
-               check_regression_gate):
+               check_inapplicable_is_not_a_survivor, check_regression_gate):
         fn()
     ok, n = sum(results), len(results)
     print(f"\n{ok}/{n} checks passed")

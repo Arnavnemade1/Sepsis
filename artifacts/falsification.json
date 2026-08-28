@@ -1,9 +1,24 @@
 {
-  "generated": "2026-08-28 02:53:46 UTC",
-  "n_mutations": 23,
-  "n_killed": 22,
-  "coverage": 0.9565,
+  "generated": "2026-08-28 04:47:51 UTC",
+  "n_mutations": 30,
+  "n_killed": 28,
+  "n_skipped": 2,
+  "coverage": 0.9333,
   "suites": {
+    "backend.aegis.verify_agent": {
+      "checks": 68,
+      "green": 68,
+      "error": null,
+      "mutations": 1,
+      "killed": 1
+    },
+    "backend.aegis.verify_z3_safety": {
+      "checks": 14,
+      "green": 14,
+      "error": null,
+      "mutations": 2,
+      "killed": 2
+    },
     "backend.ml.scripts.verify_conformal": {
       "checks": 24,
       "green": 24,
@@ -32,29 +47,47 @@
       "mutations": 3,
       "killed": 2
     },
+    "backend.ml.scripts.verify_selfimprove": {
+      "checks": 14,
+      "green": 14,
+      "error": null,
+      "mutations": 1,
+      "killed": 0
+    },
     "backend.ml.scripts.verify_shift": {
       "checks": 20,
       "green": 20,
       "error": null,
       "mutations": 6,
       "killed": 6
+    },
+    "backend.physio.verify_coupling": {
+      "checks": 12,
+      "green": 12,
+      "error": null,
+      "mutations": 3,
+      "killed": 3
     }
   },
   "families": {
     "causality": {
-      "n": 2,
-      "killed": 2
+      "n": 3,
+      "killed": 3
     },
     "class-conditioning": {
       "n": 1,
       "killed": 1
+    },
+    "concurrency": {
+      "n": 2,
+      "killed": 2
     },
     "exchangeability": {
       "n": 4,
       "killed": 4
     },
     "fit-identity": {
-      "n": 7,
+      "n": 8,
       "killed": 6
     },
     "floor-removal": {
@@ -62,12 +95,12 @@
       "killed": 2
     },
     "label-leak": {
-      "n": 2,
-      "killed": 2
+      "n": 3,
+      "killed": 3
     },
     "naive-statistic": {
-      "n": 5,
-      "killed": 5
+      "n": 7,
+      "killed": 7
     }
   },
   "survivors": [
@@ -81,7 +114,45 @@
         "setting it on the upper bound breaches strictly less"
       ],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "fit-identity",
+      "suite": "backend.ml.scripts.verify_selfimprove",
+      "name": "selfimprove_shipped_rule_drifts",
+      "killed": false,
+      "caught_by": [],
+      "missed": [
+        "a significant but trivial gain is refused (min_gain)"
+      ],
+      "collateral": [],
+      "error": null,
+      "applicable": true
+    }
+  ],
+  "not_applicable": [
+    {
+      "family": "floor-removal",
+      "suite": "backend.ml.scripts.verify_selfimprove",
+      "name": "selfimprove_local_no_min_gain",
+      "killed": false,
+      "caught_by": [],
+      "missed": [],
+      "collateral": [],
+      "error": "not applicable: suite runs at import time",
+      "applicable": false
+    },
+    {
+      "family": "floor-removal",
+      "suite": "backend.ml.scripts.verify_selfimprove",
+      "name": "selfimprove_local_no_alpha",
+      "killed": false,
+      "caught_by": [],
+      "missed": [],
+      "collateral": [],
+      "error": "not applicable: suite runs at import time",
+      "applicable": false
     }
   ],
   "killed_detail": [
@@ -98,7 +169,8 @@
         "...and that patient's own features did change \u2014 0.0000",
         "an impulse is visible exactly (K-1)*d hours later \u2014 reach = 40h, y[40] = 0.00"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "causality",
@@ -113,7 +185,8 @@
         "hour 0 averages exactly one value \u2014 p[0]=0.6666666865348816",
         "hour 1 averages two \u2014 p[1]=0.6666666865348816"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "exchangeability",
@@ -125,7 +198,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "exchangeability",
@@ -137,7 +211,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "exchangeability",
@@ -149,7 +224,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "exchangeability",
@@ -161,7 +237,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "class-conditioning",
@@ -180,7 +257,8 @@
         "weighted conformal is closer to nominal than plain (shift +0.9) \u2014 |0.0419-0.90|=0.8581 -> |0.0419-0.90|=0.8581",
         "weighted conformal is closer to nominal than plain (shift -0.9) \u2014 |0.0000-0.90|=0.9000 -> |0.0000-0.90|=0.9000"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "naive-statistic",
@@ -194,7 +272,8 @@
       "collateral": [
         "uniform weights reproduce the unweighted bands exactly \u2014 3 cells identical"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "naive-statistic",
@@ -206,7 +285,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "naive-statistic",
@@ -218,7 +298,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "naive-statistic",
@@ -230,7 +311,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "naive-statistic",
@@ -247,7 +329,8 @@
         "prior correction moves mean calibration toward 1 under label shift \u2014 cal ratio 1.984 -> 1.984",
         "...and applying it there ACTIVELY breaks calibration (diagnose first) \u2014 cal ratio 1.014 -> 1.014"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "label-leak",
@@ -259,7 +342,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "label-leak",
@@ -276,7 +360,8 @@
         "a same-distribution pair yields a chance-level domain classifier \u2014 domain AUC 0.950",
         "...and is reported as NO covariate shift"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "floor-removal",
@@ -288,7 +373,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "floor-removal",
@@ -300,7 +386,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -312,7 +399,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -324,7 +412,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -338,7 +427,8 @@
       "collateral": [
         "a grid that cannot satisfy the in-range rule raises"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -350,7 +440,8 @@
       ],
       "missed": [],
       "collateral": [],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -365,7 +456,8 @@
         "changing spec changes the digest",
         "...and names the differing fields \u2014 n_patients"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
     },
     {
       "family": "fit-identity",
@@ -377,10 +469,95 @@
       ],
       "missed": [],
       "collateral": [
-        "a stamped artifact round-trips through JSON \u2014 f76e074fe279 -> 5fb2e3dacfb9",
+        "a stamped artifact round-trips through JSON \u2014 3fda4ba0c161 -> 24473baa469c",
         "...while a genuinely matched pair still compares cleanly"
       ],
-      "error": null
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.physio.verify_coupling",
+      "name": "te_without_surrogate",
+      "killed": true,
+      "caught_by": [
+        "surrogate-corrected TE ~ 0 on independent signals"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "naive-statistic",
+      "suite": "backend.physio.verify_coupling",
+      "name": "phase_sync_unfiltered",
+      "killed": true,
+      "caught_by": [
+        "phase sync ~ 0 on independent signals"
+      ],
+      "missed": [],
+      "collateral": [
+        "surrogate-corrected TE ~ 0 on independent signals \u2014 corrected 0.0246 (raw 0.0246, null 0.0233)"
+      ],
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "causality",
+      "suite": "backend.physio.verify_coupling",
+      "name": "decouple_destroys_spectrum",
+      "killed": true,
+      "caught_by": [
+        "...while the decoupling control leaves the respiratory"
+      ],
+      "missed": [],
+      "collateral": [
+        "surrogate-corrected TE ~ 0 on independent signals \u2014 corrected 0.0246 (raw 0.0246, null 0.0233)",
+        "phase sync ~ 0 on independent signals \u2014 0.716",
+        "phase sync falls with decoupling (significant negative rank trend) \u2014 rho -0.707 p 0.1817 | 0.142 -> 0.142 -> 0.142 -> 0.142 -> 0.077"
+      ],
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "concurrency",
+      "suite": "backend.aegis.verify_z3_safety",
+      "name": "z3_unguarded_entrypoint",
+      "killed": true,
+      "caught_by": [
+        "no public function builds Z3 terms without the lock"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "concurrency",
+      "suite": "backend.aegis.verify_z3_safety",
+      "name": "z3_second_unguarded_entrypoint",
+      "killed": true,
+      "caught_by": [
+        "no public function builds Z3 terms without the lock"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null,
+      "applicable": true
+    },
+    {
+      "family": "label-leak",
+      "suite": "backend.aegis.verify_agent",
+      "name": "agent_write_route_indexed_as_read",
+      "killed": true,
+      "caught_by": [
+        "gets only"
+      ],
+      "missed": [],
+      "collateral": [],
+      "error": null,
+      "applicable": true
     }
   ]
 }

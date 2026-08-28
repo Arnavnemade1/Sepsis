@@ -22,16 +22,24 @@ def main() -> None:
     ap.add_argument("--suite", default="", help="comma-separated suite substrings")
     ap.add_argument("--family", default="", help="comma-separated mutation families")
     ap.add_argument("--save", action="store_true")
+    ap.add_argument("--slow", action="store_true",
+                    help="include suites whose single run costs more than the rest of "
+                         "the audit combined (verify_subgroup ~130s, verify_alarm_policy ~35s)")
     ap.add_argument("--gate", action="store_true",
                     help="exit 1 if coverage fell or a killed mutation now survives")
     args = ap.parse_args()
 
+    from backend.ml.mutations import SLOW_SUITES
     suites = None
+    if not args.slow:
+        suites = sorted({m.suite for m in falsify.MUTATIONS} - SLOW_SUITES)
     if args.suite:
         want = [s.strip() for s in args.suite.split(",") if s.strip()]
         suites = [m.suite for m in falsify.MUTATIONS
                   if any(w in m.suite for w in want)]
     families = [f.strip() for f in args.family.split(",") if f.strip()] or None
+    if not args.slow:
+        print("(slow suites excluded — pass --slow to include them)\n")
 
     print("Falsification audit — proving the checks can fail\n")
     print("baseline (a suite must be green before a mutation means anything):")
@@ -44,6 +52,12 @@ def main() -> None:
     for f, d in sorted(rep["families"].items()):
         cov = f"{d['killed'] / d['n']:.0%}" if d["n"] else "—"
         print(f"  {f:<22}{d['killed']:>3}/{d['n']:<3}{cov:>7}")
+
+    na = rep.get("not_applicable", [])
+    if na:
+        print(f"\nNOT APPLICABLE — {len(na)} mutation(s) the audit could not test")
+        for r in na:
+            print(f"  [{r['family']}] {r['suite'].split('.')[-1]}::{r['name']} — {r['error']}")
 
     surv = rep["survivors"]
     print(f"\nSURVIVORS — {len(surv)} mutation(s) no named check catches")
