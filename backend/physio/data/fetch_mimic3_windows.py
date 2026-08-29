@@ -122,6 +122,11 @@ def main() -> None:
                     help="cap events and controls per patient so one long stay cannot "
                          "dominate the cohort")
     ap.add_argument("--limit", type=int, default=0, help="stop after N timepoints")
+    ap.add_argument("--dual-only", action="store_true",
+                    help="keep only patients contributing BOTH an event and a control. "
+                         "Controls drawn from patients who never decompensated would "
+                         "reintroduce between-patient contrast, which is precisely the "
+                         "thing every previous result in this project turned out to be.")
     args = ap.parse_args()
 
     with open(DISCOVERY) as fh:
@@ -145,8 +150,11 @@ def main() -> None:
     # than a pile of negatives — the first test run fetched six timepoints and every one
     # of them was a control.
     todo: List[Tuple[str, Dict, float, int]] = []
-    ordered = sorted(disc["patients"].items(),
-                     key=lambda kv: (0 if kv[1]["events"] else 1, kv[0]))
+    items = list(disc["patients"].items())
+    if args.dual_only:
+        items = [kv for kv in items if kv[1]["events"] and kv[1]["controls"]]
+        print(f"dual-only: {len(items)} patients contribute both an event and a control")
+    ordered = sorted(items, key=lambda kv: (0 if kv[1]["events"] else 1, kv[0]))
     for pid, v in ordered:
         for t in v["events"][:args.max_per_patient]:
             todo.append((pid, v, float(t), 1))

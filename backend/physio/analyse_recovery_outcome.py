@@ -131,8 +131,16 @@ def main() -> int:
     groups_map = _feature_groups(names)
     X_all = np.nan_to_num(X_all, nan=0.0, posinf=0.0, neginf=0.0)
 
+    # Restricting to patients that contribute BOTH an event and a control is the whole
+    # design. A control drawn from a patient who never decompensated lets the model
+    # answer "is this a crashing patient" instead of "is this patient about to crash" —
+    # which is exactly what every earlier result in this repository turned out to be.
+    # Both are reported, because the GAP between them is that between-patient
+    # contribution made visible, and it is the most informative number on the page.
+    dual_mask = np.isin(pid, np.array(sorted(both)))
+
     for L in sorted(set(lead.tolist())):
-        m = lead == L
+        m = (lead == L) & dual_mask
         X, y, g = X_all[m], y_all[m], pid[m]
         if len(set(g[y == 1])) < 3:
             print(f"\nlead {L:.0f} min: too few event patients ({len(set(g[y==1]))})")
@@ -163,6 +171,21 @@ def main() -> int:
             print(f"    -> does it ADD over heart rate alone?      "
                   f"dAUROC {r['delta']:+.4f} CI[{r['lo']:+.4f},{r['hi']:+.4f}] "
                   f"{'SIGNIFICANT' if r['significant'] else 'n.s.'}")
+
+        # The same model on ALL rows, including controls from patients who never had an
+        # event. If this is much higher than the within-patient number above, the extra
+        # is between-patient discrimination and not early warning.
+        ma = lead == L
+        if ma.sum() > m.sum() and "all" in scores:
+            sa = _oof(X_all[ma], y_all[ma], pid[ma])
+            oka = ~np.isnan(sa)
+            if oka.sum() > 10 and len(np.unique(y_all[ma][oka])) > 1:
+                a_all = _auroc(y_all[ma][oka], sa[oka])
+                okw = ~np.isnan(scores["all"])
+                a_w = _auroc(y[okw], scores["all"][okw])
+                print(f"    [context] all rows incl. event-free patients: AUROC {a_all:.4f} "
+                      f"vs within-patient {a_w:.4f} — the {a_all - a_w:+.4f} gap is "
+                      f"between-patient contrast, not early warning")
 
         # Permutation control: shuffle labels WITHIN each patient. Anything that
         # survives this is leakage, not physiology.
