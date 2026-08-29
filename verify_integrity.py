@@ -73,14 +73,32 @@ class Fixture:
         self.ytr, self.gtr = self.y[tr], self.groups[tr]
         self.htr, self.otr = self.hour[tr], self.onset[tr]
 
+        # The detector this audit reasons about must be the one that SHIPPED, read out
+        # of the manifest rather than written down a second time here. This used to be
+        # hard-coded to the stack's constructor defaults, and check [6] — the one that
+        # asserts the shipped threshold still beats the old hand-set guess — was
+        # therefore evaluating that threshold on a DIFFERENT model's scores. It passed
+        # only for as long as the defaults happened to equal what was deployed, and it
+        # failed the moment they diverged. That is the same undetectable detector/
+        # evidence mismatch this file exists to catch, one level up: an audit that
+        # re-declares the configuration cannot audit a change to it.
+        with open(os.path.join("artifacts", "detector_manifest.json")) as fh:
+            _promoted = json.load(fh)["configs"]["candidate"]
+        self.promoted = _promoted
+        _mk = lambda: StackedEnsembleDetector(
+            channels=list(cfg.channels), use_hdc=False,
+            objective=_promoted.get("objective", "balanced"),
+            roster=list(_promoted.get("roster") or []) or None)
+        _fit_kw = dict(hour_index=None, onset_hour=None)
+
         # honest OOF over train + a deployed fit + held-out predictions, computed once.
         self.oof = np.zeros(len(self.ytr))
         for a, b in stratified_group_folds(self.gtr, self.ytr, 3, SEED):
-            m = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False).fit(
-                self.ftr.iloc[a], self.ytr[a], groups=self.gtr[a])
+            m = _mk().fit(self.ftr.iloc[a], self.ytr[a], groups=self.gtr[a],
+                          hour_index=self.htr[a], onset_hour=self.otr[a])
             self.oof[b] = m.predict_proba(self.ftr.iloc[b])
-        self.model = StackedEnsembleDetector(channels=list(cfg.channels), use_hdc=False).fit(
-            self.ftr, self.ytr, groups=self.gtr)
+        self.model = _mk().fit(self.ftr, self.ytr, groups=self.gtr,
+                               hour_index=self.htr, onset_hour=self.otr)
         self.p_insample = self.model.predict_proba(self.ftr)          # over-sharp
         self.p_te = self.model.predict_proba(self.feats.iloc[te])
         self.yte = self.y[te]
@@ -238,11 +256,34 @@ def check_shipped_operating_point(fx: Fixture) -> None:
         f"the operating point was derived on detector '{op.detector}' but the promoted "
         f"detector is '{expect}' — every number in operating_point.json describes a model "
         f"that is not the one deployed, so the alarm threshold is unvalidated")
-    # and it must still beat the old hand-set 0.12 on THIS held-out fold
+    # THE third regression guard, and the subtlest. This comparison used to be made
+    # against ``fx`` — a stack REFITTED inside this audit on 600 patients. That is the
+    # cross-fit threshold read the rest of the project forbids in writing: promote_
+    # frontier.py records that holding a threshold fixed and varying only the fit size
+    # moves the false-alarm rate 0.085 / 0.178 / 0.209 / 0.165 across fits on 750 /
+    # 1500 / 2250 / 3000 patients — a 2.5x swing with no monotone trend to correct for.
+    # An absolute threshold evaluated on a different fit than the one it was derived on
+    # measures nothing, and this check passed for as long as it did only because the
+    # proxy happened to resemble what shipped.
+    #
+    # So it now scores the ARTIFACT ON DISK — the model actually deployed — on the
+    # holdout patients of the split it was promoted under, which are disjoint from its
+    # training set by construction.
+    import joblib
+    from backend.ml.eval.bench import _load_cached
+    art = os.path.join("artifacts", "gbm_wearable.joblib")
+    assert os.path.exists(art), f"{art} missing — nothing is deployed to audit"
+    shipped = joblib.load(art)
+    ds8 = _load_cached("wearable_limit8000")
+    s_tr, s_te = stratified_group_split(ds8.groups, ds8.y, 0.25, SEED)
+    held = pd.DataFrame(ds8.X, columns=ds8.feature_names).iloc[s_te]
+    p_held = shipped.predict_proba(held)
+    _detail(f"scoring the DEPLOYED artifact on {len(set(ds8.groups[s_te].tolist())):,} "
+            f"holdout patients it never trained on")
     u_new = metrics.normalized_utility(
-        fx.yte, (fx.p_te >= op.high).astype(int), fx.groups[fx.te], fx.hour[fx.te])
+        ds8.y[s_te], (p_held >= op.high).astype(int), ds8.groups[s_te], ds8.hour_index[s_te])
     u_old = metrics.normalized_utility(
-        fx.yte, (fx.p_te >= 0.12).astype(int), fx.groups[fx.te], fx.hour[fx.te])
+        ds8.y[s_te], (p_held >= 0.12).astype(int), ds8.groups[s_te], ds8.hour_index[s_te])
     _detail(f"held-out utility: derived {u_new:+.4f}  vs  shipped-guess 0.12 {u_old:+.4f}")
     assert u_new >= u_old, (
         f"derived point {u_new:+.4f} no longer beats the old 0.12 guess {u_old:+.4f} on "

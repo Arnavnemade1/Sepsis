@@ -92,7 +92,10 @@ class AegisCore:
         # `python -m backend.ml.scripts.derive_conformal --save`). Absent is a normal
         # state, not an error: the OS then serves exactly as it did before the layer
         # existed and reports `certainty: None` rather than inventing confidence.
-        self.conformal = conformal.load()
+        # Pass the identity of the model actually being served: the bands are cut
+        # points on one fit's score distribution and do not transfer to another.
+        self.conformal = conformal.load(
+            expect_detector=getattr(self.operating_point, "detector", None))
         self._conformal_ready: Optional[bool] = None   # decided on the first row
         self._last_feats = None                        # the row _certainty() reads
         if high_threshold is None:

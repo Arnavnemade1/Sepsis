@@ -27,7 +27,7 @@ threshold sweep costs nothing once the scores exist. ``--jobs`` caps total CPU �
 *and* the OpenMP pools underneath the histogram booster — so this can run on a machine
 somebody is still using.
 
-Two gates, both on patients neither model was fitted on:
+Three gates, all on patients neither model was fitted on:
 
   * **discrimination** — the candidate must not lose AUROC.
   * **decisions** — each detector is given its *own* alarm threshold, derived on one
@@ -119,6 +119,56 @@ def _line(name: str, s: Dict[str, float]) -> str:
             f"detect@FA15 {s['detect_at_far15']:.3f}  lead@FA15 {s['lead_at_far15']:.1f}h")
 
 
+def _budget_peaks(y, p, g, o, h):
+    """Per patient: a non-septic stay's highest score anywhere, a septic stay's
+    highest score at or before onset. Detection at a fixed alarm budget depends on
+    nothing else, and reducing to two numbers per patient makes a bootstrap cheap."""
+    order = np.lexsort((h, g))
+    gs, hs, os_, ps = g[order], h[order], o[order], p[order]
+    starts = np.flatnonzero(np.r_[True, gs[1:] != gs[:-1]])
+    ns, sep = [], []
+    for a, b in zip(starts, np.r_[starts[1:], len(gs)]):
+        onset = int(os_[a])
+        if onset < 0:
+            ns.append(ps[a:b].max())
+        else:
+            pre = np.flatnonzero(hs[a:b] <= onset)
+            if pre.size:
+                sep.append(ps[a:b][pre].max())
+    return np.asarray(ns), np.asarray(sep)
+
+
+def _detect_at(ns, sep, i_ns, i_sep, far):
+    peaks = np.sort(ns[i_ns])
+    k = int(np.ceil((1.0 - far) * len(peaks))) - 1
+    return float((sep[i_sep] >= peaks[min(max(k, 0), len(peaks) - 1)]).mean())
+
+
+def _budget_delta(y, p_cand, p_base, g, o, h, far, n_boot=1500, seed=0):
+    """Paired patient bootstrap of the detection difference at one alarm budget.
+
+    A point estimate is the wrong instrument here. The judged half holds a few hundred
+    patients, of which only ~15% are septic, so a difference of two or three patients
+    reads as a 2% "regression" that is entirely noise — and an earlier version of this
+    gate refused a candidate on exactly that, at the tightest budget, while the same
+    candidate improved the other three by 25-35 points. Every other comparison in this
+    project resamples PATIENTS; so does this one now.
+    """
+    ns_c, sep_c = _budget_peaks(y, p_cand, g, o, h)
+    ns_b, sep_b = _budget_peaks(y, p_base, g, o, h)
+    all_ns, all_sep = np.arange(len(ns_c)), np.arange(len(sep_c))
+    point = _detect_at(ns_c, sep_c, all_ns, all_sep, far) - \
+            _detect_at(ns_b, sep_b, all_ns, all_sep, far)
+    rng = np.random.default_rng(seed)
+    d = np.empty(n_boot)
+    for j in range(n_boot):
+        i_ns = rng.integers(0, len(ns_c), len(ns_c))
+        i_sep = rng.integers(0, len(sep_c), len(sep_c))
+        d[j] = _detect_at(ns_c, sep_c, i_ns, i_sep, far) - _detect_at(ns_b, sep_b, i_ns, i_sep, far)
+    lo, hi = np.percentile(d, [2.5, 97.5])
+    return {"delta": float(point), "lo": float(lo), "hi": float(hi)}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--feature-set", choices=["wearable", "lab"], default="wearable")
@@ -134,7 +184,8 @@ def main() -> None:
     ap.add_argument("--roster", default="hgb,hgb2,et,lr,xgb@utility",
                     help="candidate roster; a member may name its own objective with "
                          "'@', e.g. xgb@utility")
-    ap.add_argument("--objective", choices=["balanced", "utility"], default="balanced",
+    ap.add_argument("--objective", choices=["balanced", "utility", "patient"],
+                    default="balanced",
                     help="objective for roster members that do not name their own")
     ap.add_argument("--promote", action="store_true")
     args = ap.parse_args()
@@ -214,12 +265,23 @@ def main() -> None:
     # The holdout is split by PATIENT: the threshold is chosen on one half and judged
     # on the other, so no threshold is ever quoted on the patients that produced it.
     ha, hb = stratified_group_split(gte, yte, 0.5, args.seed + 1)
+    points = {}
     try:
-        points = {n: opmod.derive(yte[ha], preds[n][ha], gte[ha], hte[ha], ote[ha],
-                                  objective="constrained", max_false_alarm_rate=args.max_far,
-                                  seed=args.seed, detector=_detector_id(configs[n]))
-                  for n in ("incumbent", "candidate")}
+        for _n in ("incumbent", "candidate"):
+            # Named separately rather than in a comprehension so the failure message
+            # below can say WHICH detector has no lawful operating point. When both
+            # runs of this script printed an identical infeasibility frontier for two
+            # different candidates, the reason was that the INCUMBENT raised it first
+            # and the message never said so — a refusal you cannot attribute is a
+            # refusal you cannot act on.
+            _infeasible_for = _n
+            points[_n] = opmod.derive(
+                yte[ha], preds[_n][ha], gte[ha], hte[ha], ote[ha],
+                objective="constrained", max_false_alarm_rate=args.max_far,
+                seed=args.seed, detector=_detector_id(configs[_n]))
     except opmod.Infeasible as e:
+        print(f"\nthe detector with no lawful operating point is: {_infeasible_for.upper()}"
+              f"  [{_detector_id(configs[_infeasible_for])}]")
         # Not a crash and not something to tune around. The alarm budget is a clinical
         # values judgement, so an unsatisfiable one is a question for a person: here is
         # what each budget would actually buy, and which of them need a threshold out
@@ -255,6 +317,44 @@ def main() -> None:
     print(f"DECISIONS GATE: {'PASS' if op_ok else 'FAIL'} "
           f"(candidate {u_new:+.4f} vs incumbent {u_old:+.4f}, each at its own point)")
 
+    # ---------------- gate 3: detection inside a fixed alarm budget ------------ #
+    # The two gates above are AUROC and utility-at-a-threshold. Neither of them tests
+    # the claim that the supervision-density change actually makes, which is about how
+    # many septic patients are caught inside an alarm load the ward agrees to carry.
+    # A promoter whose gates are silent on the candidate's own claim is not a gate, so
+    # this one asks the question directly, on the same judged half, at several budgets
+    # so a single flattering cell cannot carry it.
+    print(f"\nALARM BUDGET — septic patients caught inside a fixed alarm load, "
+          f"on the same {len(set(gte[hb].tolist()))} judged patients "
+          f"(paired patient bootstrap):")
+    budgets = (0.05, 0.10, 0.15, 0.20)
+    det_rows: Dict[str, Dict[str, float]] = {n: {} for n in ("incumbent", "candidate")}
+    boots: Dict[str, Dict[str, float]] = {}
+    for bud in budgets:
+        k = f"det{int(bud*100)}"
+        for n in ("incumbent", "candidate"):
+            det_rows[n][k] = metrics.detection_at_false_alarm_rate(
+                yte[hb], preds[n][hb], gte[hb], ote[hb], hte[hb], bud)["detection_rate"]
+        boots[k] = _budget_delta(yte[hb], preds["candidate"][hb], preds["incumbent"][hb],
+                                 gte[hb], ote[hb], hte[hb], bud, seed=args.seed)
+        bt = boots[k]
+        verdict = ("GAIN" if bt["lo"] > 0 else ("REGRESSION" if bt["hi"] < 0 else "n.s."))
+        print(f"  budget {int(bud*100):>2}%   incumbent {det_rows['incumbent'][k]:.3f}"
+              f"   candidate {det_rows['candidate'][k]:.3f}"
+              f"   delta {bt['delta']:+.4f} CI[{bt['lo']:+.4f},{bt['hi']:+.4f}]  {verdict}")
+
+    # The bar: at least one budget must show a SIGNIFICANT gain, and no budget may show
+    # a SIGNIFICANT regression. Point estimates that wander inside their own confidence
+    # interval are noise and are treated as such in both directions — this is a
+    # stricter test than the old point-estimate rule (a candidate that merely drifts
+    # upward everywhere no longer passes) as well as a fairer one.
+    sig_gain = [k for k, v in boots.items() if v["lo"] > 0]
+    sig_reg = [k for k, v in boots.items() if v["hi"] < 0]
+    detect_ok = bool(sig_gain) and not sig_reg
+    print(f"ALARM-BUDGET GATE: {'PASS' if detect_ok else 'FAIL'} "
+          f"(significant gains at {sorted(sig_gain) or 'none'}; "
+          f"significant regressions at {sorted(sig_reg) or 'none'})")
+
     manifest = {
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "feature_set": args.feature_set, "limit": args.limit, "seed": args.seed,
@@ -262,7 +362,13 @@ def main() -> None:
         "holdout_metrics": scores, "temporal_filters": filters,
         "auroc_delta": float(delta), "auprc_delta": float(d_auprc),
         "utility_delta": float(d_util), "configs": configs,
-        "gates": {"discrimination": bool(accuracy_ok), "decisions": bool(op_ok)},
+        "gates": {"discrimination": bool(accuracy_ok), "decisions": bool(op_ok),
+                  "alarm_budget": bool(detect_ok)},
+        "alarm_budget": {"incumbent": det_rows["incumbent"],
+                         "candidate": det_rows["candidate"],
+                         "bootstrap": boots,
+                         "significant_gains": sorted(sig_gain),
+                         "significant_regressions": sorted(sig_reg)},
         # Recorded so a later reader can tell whether the shipped model and the shipped
         # threshold came from the same fit. They must, or the alarm numbers are fiction.
         "shipped_fit": {"train_patients": int(len(set(gtr.tolist()))),
@@ -277,7 +383,7 @@ def main() -> None:
         print("\n(measure-only run; pass --promote to ship it)")
         _write_manifest(manifest, promoted=False)
         return
-    if not (accuracy_ok and op_ok):
+    if not (accuracy_ok and op_ok and detect_ok):
         print("\nREFUSED to promote: a gate failed. Nothing was written.")
         _write_manifest(manifest, promoted=False)
         return

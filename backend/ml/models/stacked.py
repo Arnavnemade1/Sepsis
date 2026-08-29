@@ -30,7 +30,10 @@ weaker alone. Stacking pays for disagreement, not for strength, so the objective
 most useful applied selectively rather than uniformly.
 
 **Objective.** By default every learner here is fitted to the challenge label with
-inverse-prevalence class weights. Setting ``objective="utility"`` fits the target the
+inverse-prevalence class weights. Setting ``objective="patient"`` fits the patient-level
+label — positive for every hour of a septic stay — which is the shipped production
+target: see ``docs/SUPERVISION_DENSITY.md`` for why a denser label raises detection at a
+fixed alarm budget while leaving AUROC flat. Setting ``objective="utility"`` fits the target the
 official scoring function implies instead (:mod:`backend.ml.eval.utility`): the hours
 in the ``[-12h, -6h)`` pre-onset credit ramp become positives — the label calls them
 negatives, yet alarming there is worth up to a full utility point — and every row is
@@ -227,7 +230,20 @@ class StackedEnsembleDetector:
         if objective == "balanced":
             return np.asarray(y).astype(int), None
         if hour_index is None or onset_hour is None:
-            raise ValueError('objective="utility" needs hour_index and onset_hour at fit time')
+            raise ValueError(f'objective="{objective}" needs hour_index and onset_hour '
+                             'at fit time')
+        if objective == "patient":
+            # Every hour of a septic stay counts as positive. The challenge label marks
+            # 2.1% of hours positive though 12.8% of PATIENTS become septic, and the
+            # measured consequence of that gap is in docs/SUPERVISION_DENSITY.md:
+            # denser supervision raises detection at a fixed alarm budget at every
+            # budget tested, by trading within-stay ordering for between-patient
+            # discrimination. Returning ``None`` for the weight is deliberate — every
+            # base learner then applies its own "balanced" class weighting, which is
+            # how this target was measured.
+            from backend.ml.models.supervision import supervision_target
+            z = supervision_target(y, hour_index, onset_hour, float("inf"))
+            return z.astype(int), None
         z, w = utility_target(y, groups, hour_index, onset_hour)
         # A zero-stake row would drop out of the fit entirely; a floor keeps it
         # present without letting it steer anything.

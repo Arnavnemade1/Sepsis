@@ -51,6 +51,24 @@ def _stack(ds, tr, te):
     return m.predict_proba(feats.iloc[te])
 
 
+@candidate("stack-patient")
+def _stack_patient(ds, tr, te):
+    """The SHIPPED production detector: the stacked roster fitted on the patient label.
+
+    Registered so the evidence that has to be re-derived after a promotion — the
+    conformal bands, the subgroup audit — can be produced from the same configuration
+    that is actually serving, rather than from a roster written down a second time.
+    """
+    from backend.ml.models.stacked import StackedEnsembleDetector
+    feats = pd.DataFrame(ds.X, columns=ds.feature_names)
+    m = StackedEnsembleDetector(channels=list(config.WEARABLE_CHANNELS), use_hdc=False,
+                                objective="patient",
+                                roster=["hgb", "hgb2", "et", "lr", "xgb@utility"])
+    m.fit(feats.iloc[tr], ds.y[tr], groups=ds.groups[tr],
+          hour_index=ds.hour_index[tr], onset_hour=ds.onset_hour[tr])
+    return m.predict_proba(feats.iloc[te])
+
+
 # --------------------------------------------------------------------------- #
 # Booster × objective ablation
 # --------------------------------------------------------------------------- #

@@ -1,0 +1,173 @@
+{
+  "created": "2026-08-28T21:52:56",
+  "feature_set": "wearable",
+  "limit": 8000,
+  "seed": 42,
+  "n_rows": 310061,
+  "n_patients": 8000,
+  "holdout_metrics": {
+    "incumbent": {
+      "auroc": 0.7622488843405567,
+      "auprc": 0.07205229998079882,
+      "ece": 0.0028063707425180244,
+      "brier": 0.01851223769608386,
+      "utility": 0.3332733625365039,
+      "utility_best": 0.3449989570296204,
+      "detect_at_far15": 0.4768211920529801,
+      "lead_at_far15": 29.0,
+      "detection_at_spec90": 0.5562913907284768,
+      "false_alarm_at_spec90": 0.2822450080949811,
+      "median_lead_at_spec90": 30.5
+    },
+    "candidate": {
+      "auroc": 0.7673396084701563,
+      "auprc": 0.0734256156680643,
+      "ece": 0.0009907542432942686,
+      "brier": 0.01787886363554152,
+      "utility": 0.3425818731748022,
+      "utility_best": 0.3425818731748018,
+      "detect_at_far15": 0.7284768211920529,
+      "lead_at_far15": 26.0,
+      "detection_at_spec90": 0.7284768211920529,
+      "false_alarm_at_spec90": 0.452779276848354,
+      "median_lead_at_spec90": 26.0
+    }
+  },
+  "temporal_filters": {
+    "ema": {
+      "auroc": 0.7703598203620934,
+      "auprc": 0.09011917411667734,
+      "ece": 0.0017877346511110746,
+      "brier": 0.017926466383282345,
+      "utility": 0.32890331664580735,
+      "utility_best": 0.3446182728410513,
+      "detect_at_far15": 0.543046357615894,
+      "lead_at_far15": 32.0,
+      "detection_at_spec90": 0.5562913907284768,
+      "false_alarm_at_spec90": 0.25310307609282245,
+      "median_lead_at_spec90": 34.0
+    },
+    "blend": {
+      "auroc": 0.7756780505358545,
+      "auprc": 0.0922165972979917,
+      "ece": 0.0014082289862192266,
+      "brier": 0.01788781037326783,
+      "utility": 0.33348977889027964,
+      "utility_best": 0.3498748435544431,
+      "detect_at_far15": 0.5496688741721855,
+      "lead_at_far15": 34.0,
+      "detection_at_spec90": 0.5629139072847682,
+      "false_alarm_at_spec90": 0.2558014031300594,
+      "median_lead_at_spec90": 34.0
+    },
+    "cummax": {
+      "auroc": 0.744248050290502,
+      "auprc": 0.06902757623224857,
+      "ece": 0.0116965875205036,
+      "brier": 0.018035638294381554,
+      "utility": 0.13360450563204096,
+      "utility_best": 0.33850125156445554,
+      "detect_at_far15": 0.7284768211920529,
+      "lead_at_far15": 26.0,
+      "detection_at_spec90": 0.7284768211920529,
+      "false_alarm_at_spec90": 0.452779276848354,
+      "median_lead_at_spec90": 26.0
+    },
+    "hazard": {
+      "auroc": 0.6616333995858763,
+      "auprc": 0.0268265688987984,
+      "ece": 0.04572170349688545,
+      "brier": 0.027781526994324936,
+      "utility": -0.10539476428871204,
+      "utility_best": 0.03772945348352119,
+      "detect_at_far15": 0.3443708609271523,
+      "lead_at_far15": 34.0,
+      "detection_at_spec90": 1.0,
+      "false_alarm_at_spec90": 1.0,
+      "median_lead_at_spec90": 23.0
+    }
+  },
+  "auroc_delta": 0.005090724129599544,
+  "auprc_delta": 0.0013733156872654806,
+  "utility_delta": 0.009308510638298295,
+  "configs": {
+    "incumbent": {
+      "objective": "balanced",
+      "roster": [
+        "hgb",
+        "hgb2",
+        "et",
+        "lr"
+      ]
+    },
+    "candidate": {
+      "objective": "patient",
+      "roster": [
+        "hgb",
+        "hgb2",
+        "et",
+        "lr",
+        "xgb@utility"
+      ]
+    }
+  },
+  "gates": {
+    "discrimination": true,
+    "decisions": true,
+    "alarm_budget": true
+  },
+  "alarm_budget": {
+    "incumbent": {
+      "det5": 0.36,
+      "det10": 0.36,
+      "det15": 0.4266666666666667,
+      "det20": 0.4533333333333333
+    },
+    "candidate": {
+      "det5": 0.3333333333333333,
+      "det10": 0.7066666666666667,
+      "det15": 0.7066666666666667,
+      "det20": 0.7066666666666667
+    },
+    "bootstrap": {
+      "det5": {
+        "delta": -0.026666666666666672,
+        "lo": -0.07999999999999996,
+        "hi": 0.5333333333333333
+      },
+      "det10": {
+        "delta": 0.3466666666666667,
+        "lo": 0.24000000000000005,
+        "hi": 0.4603333333333315
+      },
+      "det15": {
+        "delta": 0.27999999999999997,
+        "lo": 0.18666666666666665,
+        "hi": 0.38666666666666666
+      },
+      "det20": {
+        "delta": 0.25333333333333335,
+        "lo": 0.1333333333333333,
+        "hi": 0.36000000000000004
+      }
+    },
+    "significant_gains": [
+      "det10",
+      "det15",
+      "det20"
+    ],
+    "significant_regressions": []
+  },
+  "shipped_fit": {
+    "train_patients": 5996,
+    "threshold_derived_on_same_fit": true
+  },
+  "operating_point": {
+    "high": 0.03,
+    "medium": 0.015,
+    "incumbent_high": 0.06,
+    "gated_utility": 0.26773616663160105,
+    "incumbent_utility": 0.23336839890595387
+  },
+  "promoted": false
+}

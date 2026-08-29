@@ -249,8 +249,8 @@ the TCN, the SSM, critical slowing down, quantum HDC and now coordination all fa
 for the same reason, and the frontier pass's utility-target win was most likely also a
 relabelling effect rather than a timing one.
 
-**Ship:** train on the patient label; keep evaluating, calibrating and thresholding
-against the challenge label. One line, no new parameter, no new dependency.
+**Shipped** (see "What shipped" below): the production detector is now
+`patient:hgb+hgb2+et+lr+xgb@utility`.
 
 **Do not claim:** an AUROC improvement, or that this detects sepsis earlier. Median
 lead time is essentially unchanged, and a long lead time from a timing-blind detector
@@ -265,6 +265,64 @@ is not evidence of early warning.
   [+0.0035, +0.0276]) while *costing* detection-at-budget. Two forms, two different
   metrics; neither dominates, and it needs a locked-gate adjudication rather than
   another sweep.
+
+## What shipped
+
+`StackedEnsembleDetector` gained `objective="patient"`, and the production artifact was
+re-promoted through `promote_frontier.py` with the same roster it already had:
+
+| | incumbent | shipped |
+|---|---|---|
+| detector | `balanced:hgb+hgb2+et+lr` | `patient:hgb+hgb2+et+lr+xgb@utility` |
+| held-out AUROC | 0.7622 | **0.7673** (+0.0051) |
+| held-out utility | +0.3333 | **+0.3426** |
+| ECE | 0.0028 | **0.0010** |
+| detect@FA15 | 0.477 | **0.728** |
+| operating point | HIGH 0.0525 | HIGH 0.0300 / MEDIUM 0.0150 |
+
+All three promotion gates passed on 1,004 judged patients that neither model was fitted
+on. Detection inside a fixed alarm load, paired patient bootstrap:
+
+| budget | incumbent | shipped | delta |
+|---|---|---|---|
+| 5% | 0.360 | 0.333 | −0.027 CI [−0.080, +0.533] — n.s. |
+| 10% | 0.360 | **0.707** | +0.347 CI [+0.240, +0.460] |
+| 15% | 0.427 | **0.707** | +0.280 CI [+0.187, +0.387] |
+| 20% | 0.453 | **0.707** | +0.253 CI [+0.133, +0.360] |
+
+### Three defects the promotion exposed
+
+Shipping this found more than it changed, because a new detector is the first thing
+that had ever made these three assumptions false.
+
+1. **The alarm-budget gate did not exist.** The promoter had two gates — AUROC and
+   utility-at-a-threshold — and neither asks the question a supervision-density change
+   actually makes. A promoter whose gates are silent on a candidate's own claim cannot
+   refuse it for the right reason. The new third gate bootstraps over *patients*: its
+   first, point-estimate version refused this candidate on a −0.027 blip at the 5%
+   budget whose confidence interval turned out to be [−0.080, **+0.533**].
+
+2. **The conformal layer was silently cross-fit.** `conformal.json` is a set of cut
+   points on one detector's score distribution, and nothing checked which. Promoting
+   moved the shipped p95 from 0.0532 to 0.0479 while leaving bands on disk calibrated
+   against the previous model, and `AegisCore` would have applied them without a word.
+   `conformal.load()` now takes the identity of the model being served and refuses a
+   mismatch — the layer reports absent, a state the caller already handles.
+
+3. **The integrity audit was auditing a proxy.** `verify_integrity.py` built its own
+   `StackedEnsembleDetector` from constructor defaults on 600 patients and evaluated
+   the shipped threshold against *that*. It is the cross-fit threshold read the rest of
+   this project forbids in writing — `promote_frontier.py` records the false-alarm rate
+   swinging 0.085 / 0.178 / 0.209 / 0.165 across fits of 750 / 1500 / 2250 / 3000
+   patients — and it passed for years only because the defaults happened to equal what
+   was deployed. On the proxy it reported the shipped threshold at utility −0.88; on
+   the artifact actually on disk, scored on 2,004 patients it never trained on, the
+   same threshold measures **+0.3178** against +0.1290 for the old hand-set guess. The
+   fixture now reads the promoted configuration, and the check scores the deployed
+   artifact.
+
+`verify_full_system.py` and `verify_integrity.py` (9/9) both pass against the new
+detector.
 
 ## Reproducing
 

@@ -538,19 +538,38 @@ def save(bands: ConformalBands, path: str = DEFAULT_PATH) -> None:
         json.dump(bands.to_json(), fh, indent=2)
 
 
-def load(path: str = DEFAULT_PATH) -> Optional[ConformalBands]:
+def load(path: str = DEFAULT_PATH,
+         expect_detector: Optional[str] = None) -> Optional[ConformalBands]:
     """The calibrated bands, or ``None`` when they have not been derived.
 
     ``None`` rather than an exception or an invented default, matching
     ``operating_point.load()``: a machine without the artifact must serve exactly as
     it did before this module existed and say the layer is absent, not fail closed
     on a file nobody generated.
+
+    ``expect_detector`` is the identity of the model that is actually about to be
+    served. These bands are cut points on a *particular* detector's score
+    distribution, so reading them against a different fit is the same error as
+    reading an alarm threshold across fits — and it is a quieter one, because the
+    bands still parse and still produce plausible-looking prediction sets. That is
+    not hypothetical: promoting the patient-supervision detector moved the shipped
+    score distribution (p95 0.0532 -> 0.0479) while leaving a conformal artifact on
+    disk that had been calibrated against the previous model. Mismatched bands are
+    refused here rather than silently applied; the layer reports absent, which is a
+    state the caller already handles.
     """
     try:
         with open(path) as fh:
-            return ConformalBands.from_json(json.load(fh))
+            bands = ConformalBands.from_json(json.load(fh))
     except (OSError, TypeError, ValueError, KeyError):
         return None
+    if expect_detector and bands.detector not in (expect_detector, "unknown"):
+        print(f"[conformal] REFUSED: bands were calibrated on '{bands.detector}' but "
+              f"the served detector is '{expect_detector}'. Abstention layer is OFF "
+              f"until it is re-derived (make conformal). Bands do not transfer "
+              f"between fits.")
+        return None
+    return bands
 
 
 def summary_table(bands: ConformalBands) -> str:

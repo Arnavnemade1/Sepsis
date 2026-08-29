@@ -244,7 +244,7 @@ verify-conformal:
 # locked one. Reports only; add --save to write artifacts/conformal.json.
 conformal:
 	$(PY) -m backend.ml.scripts.derive_conformal \
-		--oof artifacts/subgroup_oof_dev_stack+xgb@utility.npz:stack+xgb@utility \
+		--oof artifacts/subgroup_oof_dev_stack-patient.npz:stack-patient \
 		--auto-alpha --sweep 0.03,0.04,0.05,0.06,0.08,0.10
 
 # Exchangeability is what the guarantee trades on, and a different hospital is the

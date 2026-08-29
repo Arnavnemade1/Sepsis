@@ -1,5 +1,5 @@
 {
-  "created": "2026-08-24T22:14:49",
+  "created": "2026-08-28T21:56:46",
   "feature_set": "wearable",
   "limit": 8000,
   "seed": 42,
@@ -9,9 +9,9 @@
     "incumbent": {
       "auroc": 0.7622488843405567,
       "auprc": 0.07205229998079882,
-      "ece": 0.0028063707425180534,
-      "brier": 0.018512237696083882,
-      "utility": 0.33327336253650375,
+      "ece": 0.0028063707425180114,
+      "brier": 0.01851223769608385,
+      "utility": 0.333273362536504,
       "utility_best": 0.3449989570296204,
       "detect_at_far15": 0.4768211920529801,
       "lead_at_far15": 29.0,
@@ -20,76 +20,76 @@
       "median_lead_at_spec90": 30.5
     },
     "candidate": {
-      "auroc": 0.7692096940907343,
-      "auprc": 0.07514101378144877,
-      "ece": 0.002300255306001182,
-      "brier": 0.01792405709117814,
-      "utility": 0.33727576136837695,
-      "utility_best": 0.35011211931581143,
-      "detect_at_far15": 0.41721854304635764,
-      "lead_at_far15": 29.0,
-      "detection_at_spec90": 0.5827814569536424,
-      "false_alarm_at_spec90": 0.2908796546141392,
-      "median_lead_at_spec90": 30.0
+      "auroc": 0.7673396084701563,
+      "auprc": 0.0734256156680643,
+      "ece": 0.0009907542433391402,
+      "brier": 0.01787886363554256,
+      "utility": 0.3425818731748013,
+      "utility_best": 0.3425818731748018,
+      "detect_at_far15": 0.7284768211920529,
+      "lead_at_far15": 26.0,
+      "detection_at_spec90": 0.7284768211920529,
+      "false_alarm_at_spec90": 0.452779276848354,
+      "median_lead_at_spec90": 26.0
     }
   },
   "temporal_filters": {
     "ema": {
-      "auroc": 0.761255484763562,
-      "auprc": 0.07997200637046588,
-      "ece": 0.0008741732831987724,
-      "brier": 0.017978203729979457,
-      "utility": 0.29960106382978685,
-      "utility_best": 0.31776439299123904,
-      "detect_at_far15": 0.41721854304635764,
-      "lead_at_far15": 34.0,
-      "detection_at_spec90": 0.40397350993377484,
-      "false_alarm_at_spec90": 0.1397733405288721,
-      "median_lead_at_spec90": 31.0
+      "auroc": 0.7703598203620934,
+      "auprc": 0.09011917411667734,
+      "ece": 0.001787734651125965,
+      "brier": 0.017926466383283116,
+      "utility": 0.32890331664580713,
+      "utility_best": 0.3446182728410513,
+      "detect_at_far15": 0.543046357615894,
+      "lead_at_far15": 32.0,
+      "detection_at_spec90": 0.5562913907284768,
+      "false_alarm_at_spec90": 0.25310307609282245,
+      "median_lead_at_spec90": 34.0
     },
     "blend": {
-      "auroc": 0.7707000062429783,
-      "auprc": 0.08385873337497993,
-      "ece": 0.0013155086815400795,
-      "brier": 0.017925649300259857,
-      "utility": 0.32034313725490215,
-      "utility_best": 0.34462088026700044,
-      "detect_at_far15": 0.4105960264900662,
-      "lead_at_far15": 31.5,
-      "detection_at_spec90": 0.4768211920529801,
-      "false_alarm_at_spec90": 0.20561252023745277,
-      "median_lead_at_spec90": 33.5
+      "auroc": 0.7756780505358545,
+      "auprc": 0.0922165972979917,
+      "ece": 0.001408228986254474,
+      "brier": 0.017887810373268843,
+      "utility": 0.33348977889027887,
+      "utility_best": 0.3498748435544431,
+      "detect_at_far15": 0.5496688741721855,
+      "lead_at_far15": 34.0,
+      "detection_at_spec90": 0.5629139072847682,
+      "false_alarm_at_spec90": 0.2558014031300594,
+      "median_lead_at_spec90": 34.0
     },
     "cummax": {
-      "auroc": 0.7504573851231864,
-      "auprc": 0.0630469396446931,
-      "ece": 0.013798921811937594,
-      "brier": 0.018373819304187,
-      "utility": 0.29659209428452216,
-      "utility_best": 0.32297663746349603,
-      "detect_at_far15": 0.41721854304635764,
-      "lead_at_far15": 29.0,
-      "detection_at_spec90": 0.41721854304635764,
-      "false_alarm_at_spec90": 0.15056664867781974,
-      "median_lead_at_spec90": 29.0
+      "auroc": 0.744248050290502,
+      "auprc": 0.06902757623224857,
+      "ece": 0.011696587520506518,
+      "brier": 0.0180356382943809,
+      "utility": 0.13360450563204052,
+      "utility_best": 0.33850125156445554,
+      "detect_at_far15": 0.7284768211920529,
+      "lead_at_far15": 26.0,
+      "detection_at_spec90": 0.7284768211920529,
+      "false_alarm_at_spec90": 0.452779276848354,
+      "median_lead_at_spec90": 26.0
     },
     "hazard": {
-      "auroc": 0.6683182989316365,
-      "auprc": 0.027738320931310533,
-      "ece": 0.03970619217590427,
-      "brier": 0.0260179559806142,
-      "utility": -0.047262202753445885,
-      "utility_best": 0.04852680433875676,
-      "detect_at_far15": 0.23178807947019867,
-      "lead_at_far15": 38.0,
+      "auroc": 0.6616333995858763,
+      "auprc": 0.0268265688987984,
+      "ece": 0.04572170349692692,
+      "brier": 0.02778152699433036,
+      "utility": -0.10539476428871129,
+      "utility_best": 0.03772945348352119,
+      "detect_at_far15": 0.3443708609271523,
+      "lead_at_far15": 34.0,
       "detection_at_spec90": 1.0,
       "false_alarm_at_spec90": 1.0,
       "median_lead_at_spec90": 23.0
     }
   },
-  "auroc_delta": 0.0069608097501775434,
-  "auprc_delta": 0.003088713800649956,
-  "utility_delta": 0.0040023988318731996,
+  "auroc_delta": 0.005090724129599544,
+  "auprc_delta": 0.0013733156872654806,
+  "utility_delta": 0.009308510638297296,
   "configs": {
     "incumbent": {
       "objective": "balanced",
@@ -101,7 +101,7 @@
       ]
     },
     "candidate": {
-      "objective": "balanced",
+      "objective": "patient",
       "roster": [
         "hgb",
         "hgb2",
@@ -113,18 +113,61 @@
   },
   "gates": {
     "discrimination": true,
-    "decisions": true
+    "decisions": true,
+    "alarm_budget": true
+  },
+  "alarm_budget": {
+    "incumbent": {
+      "det5": 0.36,
+      "det10": 0.36,
+      "det15": 0.4266666666666667,
+      "det20": 0.4533333333333333
+    },
+    "candidate": {
+      "det5": 0.3333333333333333,
+      "det10": 0.7066666666666667,
+      "det15": 0.7066666666666667,
+      "det20": 0.7066666666666667
+    },
+    "bootstrap": {
+      "det5": {
+        "delta": -0.026666666666666672,
+        "lo": -0.07999999999999996,
+        "hi": 0.5333333333333333
+      },
+      "det10": {
+        "delta": 0.3466666666666667,
+        "lo": 0.24000000000000005,
+        "hi": 0.4603333333333315
+      },
+      "det15": {
+        "delta": 0.27999999999999997,
+        "lo": 0.18666666666666665,
+        "hi": 0.38666666666666666
+      },
+      "det20": {
+        "delta": 0.25333333333333335,
+        "lo": 0.1333333333333333,
+        "hi": 0.36000000000000004
+      }
+    },
+    "significant_gains": [
+      "det10",
+      "det15",
+      "det20"
+    ],
+    "significant_regressions": []
   },
   "shipped_fit": {
     "train_patients": 5996,
     "threshold_derived_on_same_fit": true
   },
   "operating_point": {
-    "high": 0.0525,
-    "medium": 0.0262,
+    "high": 0.03,
+    "medium": 0.015,
     "incumbent_high": 0.06,
-    "gated_utility": 0.2602356406480118,
-    "incumbent_utility": 0.23336839890595415
+    "gated_utility": 0.2677361666316011,
+    "incumbent_utility": 0.2333683989059543
   },
   "promoted": true
 }
