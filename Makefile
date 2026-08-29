@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -16,6 +16,7 @@ help:
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
 	@echo "  make verify-coordination Coordination plane: matched-pair alignment surrogate"
+	@echo "  make verify-recovery   Autonomic recovery: known-tau, amplitude invariance, causality"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -74,6 +75,13 @@ verify-supervision:
 # them is what alignment is worth. Measured: nothing.
 verify-coordination:
 	PYTHONPATH=. $(PY) -m backend.ml.scripts.verify_coordination
+
+# The new detection algorithm: recovery SPEED of the autonomic control loop rather than
+# response SIZE, which is what beta-blockade and sedation destroy. 14 checks, and two of
+# them assert limitations rather than capabilities: the measured ECG-vs-PPG concordance
+# is poor, and the pipeline must refuse a pulse source while that is true.
+verify-recovery:
+	PYTHONPATH=. $(PY) -m backend.physio.verify_recovery
 
 verify-scenarios:
 	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py
