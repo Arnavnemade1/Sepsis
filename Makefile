@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -19,6 +19,8 @@ help:
 	@echo "  make verify-recovery   Autonomic recovery: known-tau, amplitude invariance, causality"
 	@echo "  make verify-mimic3     Open-access outcome pipeline: plants 5 arterial-line artifacts"
 	@echo "  make mimic3-cohort     Stream the open MIMIC-III decompensation cohort (hours, resumable)"
+	@echo "  make mimic3-windows    Fetch ECG windows for the discovered outcomes (resumable)"
+	@echo "  make recovery-outcome  Does recovery slowing precede circulatory decompensation?"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -96,6 +98,18 @@ verify-mimic3:
 
 mimic3-cohort:
 	PYTHONPATH=. $(PY) -m backend.physio.data.build_mimic3_cohort --target-events 200
+
+# Phase 2: fetch the ECG only for the minutes each discovered outcome points at, and
+# reduce to features. Resumable; the monitor's own HR channel gates beat detection,
+# because a missed beat is indistinguishable from an enormous physiologic perturbation.
+mimic3-windows:
+	PYTHONPATH=. $(PY) -m backend.physio.data.fetch_mimic3_windows --max-per-patient 3
+
+# The experiment: does autonomic recovery slowing precede circulatory decompensation,
+# and does it add anything over heart rate and classic HRV? Refuses to report a number
+# on a cohort too small to defend one.
+recovery-outcome:
+	PYTHONPATH=. $(PY) -m backend.physio.analyse_recovery_outcome
 
 verify-scenarios:
 	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py
