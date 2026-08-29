@@ -192,6 +192,80 @@ def find_decompensation_events(t_s: np.ndarray, map_mmhg: np.ndarray) -> List[fl
 
 
 # --------------------------------------------------------------------------- #
+# Rhythm validity — is there an autonomic control loop here to measure at all?
+# --------------------------------------------------------------------------- #
+#
+# ``recovery.py`` measures how fast the autonomic loop returns the heart rate to its
+# operating point. Three rhythms make that quantity meaningless rather than merely
+# noisy, and all three are common in an ICU:
+#
+#   * **paced** — the pacemaker sets the rate, so tau describes a device. The first
+#     eight event patients examined included one at 100% ventricular pacing.
+#   * **atrial fibrillation** — RR intervals are irregularly irregular by definition,
+#     which reads as a continuous storm of perturbations with no recovery.
+#   * **frequent ectopy** — every ectopic beat is a large RR deviation followed by a
+#     compensatory pause, i.e. a perturbation and a recovery that are electrical
+#     accidents rather than autonomic responses.
+#
+# The monitor already classifies all three, in channels that ship with the numerics
+# record, produced by validated hardware and costing nothing to read. Where those
+# channels are absent a conservative fallback reads the RR series directly.
+
+#: Numerics channels naming a rhythm that invalidates a recovery measurement, with the
+#: percentage of beats above which the window is dropped.
+RHYTHM_LIMITS: Dict[str, float] = {
+    "PACED BEAT PERCENT": 5.0,
+    "VENT PACED PERCENT": 5.0,
+    "ATRIAL PACED PERCENT": 5.0,
+    "IRREGULAR HR PERCENT": 30.0,
+    "BIGEMINY PERCENT": 10.0,
+    "TRIGEMINY PERCENT": 10.0,
+}
+
+#: Fallback when the monitor's rhythm channels are missing. In sinus rhythm the share of
+#: successive intervals differing by more than 50 ms sits well below this; in atrial
+#: fibrillation it is near the ceiling. Deliberately loose — this is a guard against a
+#: rhythm that makes the measurement meaningless, not an arrhythmia classifier.
+FALLBACK_PNN50_MAX = 0.60
+
+
+def rhythm_ok_from_numerics(folder: str, pid: str, t0_s: float, t1_s: float
+                            ) -> Tuple[Optional[bool], str]:
+    """Ask the monitor whether this stretch is a rhythm worth measuring.
+
+    Returns ``(None, reason)`` when the monitor does not carry the channels, so the
+    caller can fall back rather than silently accepting.
+    """
+    import wfdb
+    try:
+        rec = wfdb.rdrecord(f"{pid}n", pn_dir=_pn_dir(folder))
+    except Exception:
+        return None, "numerics unavailable"
+    names = [n.strip().upper() for n in (rec.sig_name or [])]
+    present = [k for k in RHYTHM_LIMITS if k in names]
+    if not present:
+        return None, "no rhythm channels"
+    a, b = int(t0_s * float(rec.fs)), int(t1_s * float(rec.fs))
+    for k in present:
+        col = rec.p_signal[max(a, 0):max(b, 1), names.index(k)]
+        col = col[np.isfinite(col)]
+        if col.size and float(np.median(col)) > RHYTHM_LIMITS[k]:
+            return False, f"{k.lower()} {float(np.median(col)):.0f}%"
+    return True, "ok"
+
+
+def rhythm_ok_from_rr(rr_ms: np.ndarray) -> Tuple[bool, str]:
+    """Fallback rhythm check from the intervals themselves."""
+    nn = hrv.clean_nn(np.asarray(rr_ms, dtype=np.float64))
+    if len(nn) < 30:
+        return False, "too few intervals"
+    p = float(np.mean(np.abs(np.diff(nn)) > 50.0))
+    if p > FALLBACK_PNN50_MAX:
+        return False, f"pnn50 {p:.0%} — irregularly irregular"
+    return True, "ok"
+
+
+# --------------------------------------------------------------------------- #
 # Numerics-first discovery: find the outcome across the WHOLE stay, cheaply
 # --------------------------------------------------------------------------- #
 #

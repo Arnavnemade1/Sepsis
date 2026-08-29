@@ -159,7 +159,7 @@ def main() -> None:
 
     hr_cache: Dict[str, Optional[Tuple[np.ndarray, float]]] = {}
     t0 = time.time()
-    n_new = n_qc = 0
+    n_new = n_qc = n_rhythm = 0
     for i, (pid, v, T, label) in enumerate(todo):
         key = f"{pid}:{T:.0f}:{label}"
         if done.get(key):
@@ -184,6 +184,18 @@ def main() -> None:
                 print(f"  [{i+1}/{len(todo)}] {pid} t={T/3600:.1f}h QC REJECT "
                       f"ecg {ehr:.0f} vs monitor {mhr:.0f} bpm", flush=True)
                 continue
+
+        # Is there an autonomic control loop here at all? A paced, fibrillating or
+        # heavily ectopic rhythm makes a recovery time constant meaningless rather than
+        # merely noisy, and the monitor already classifies all three.
+        rok, why = M.rhythm_ok_from_numerics(folder, pid, start, T)
+        if rok is None:
+            rok, why = M.rhythm_ok_from_rr(rr)
+        if not rok:
+            n_rhythm += 1
+            print(f"  [{i+1}/{len(todo)}] {pid} t={T/3600:.1f}h RHYTHM REJECT ({why})",
+                  flush=True)
+            continue
 
         added = 0
         for lead in LEADS_MIN:
@@ -212,7 +224,7 @@ def main() -> None:
         json.dump(done, fh)
     lab = np.array([m[2] for m in meta]) if meta else np.array([])
     print(f"\nDONE {len(rows)} feature rows from {n_new} timepoints "
-          f"({n_qc} rejected by HR QC)")
+          f"({n_qc} rejected by HR QC, {n_rhythm} by rhythm)")
     if lab.size:
         print(f"  event rows {int((lab == 1).sum())}, control rows {int((lab == 0).sum())}, "
               f"{len(set(m[0] for m in meta))} patients -> {WINDOWS}")
