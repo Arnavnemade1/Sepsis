@@ -94,6 +94,48 @@ REGISTRY["hgb-balanced-noes"] = _booster_p(
 
 
 # --------------------------------------------------------------------------- #
+# Supervision density — how much of a septic stay is labelled positive
+# --------------------------------------------------------------------------- #
+def _supervision(kind: str, width: float):
+    def run(ds, tr, te):
+        from backend.ml.models.supervision import SupervisionBooster
+        m = SupervisionBooster(kind=kind, width_hours=width, feature_names=ds.feature_names)
+        m.fit(ds.X[tr], ds.y[tr], groups=ds.groups[tr],
+              hour_index=ds.hour_index[tr], onset_hour=ds.onset_hour[tr])
+        return m.predict_proba(ds.X[te])
+    return run
+
+
+def _sham(kind: str, width: float, seed: int):
+    """The control that decided the mechanism, registered so it is run alongside the
+    thing it controls rather than living in a scratch file. Same number of extra
+    positive hours, scattered at random instead of placed before onset."""
+    def run(ds, tr, te):
+        from sklearn.ensemble import HistGradientBoostingClassifier
+        from backend.ml.models.supervision import sham_target
+        from backend.ml.models.boosters import DEFAULTS
+        z = sham_target(ds.y, ds.hour_index, ds.onset_hour, width, seed=seed)
+        m = HistGradientBoostingClassifier(random_state=42, class_weight="balanced",
+                                           **DEFAULTS[kind])
+        m.fit(ds.X[tr], z[tr])
+        return m.predict_proba(ds.X[te])[:, 1]
+    return run
+
+
+# W=0 is the challenge label and exists as the paired baseline for the sweep: it must
+# reproduce the incumbent objective exactly, which is what makes the rest a controlled
+# comparison rather than a race against a differently-tuned model. ``winALL`` is the
+# patient label and is the recommended target; the intermediate widths are kept so the
+# sweep is reproducible, not because the window was found to matter (it was not).
+for _k in ("hgb", "lgbm", "xgb"):
+    for _w in (0, 12, 24, 48, 96):
+        REGISTRY[f"{_k}-win{_w}"] = _supervision(_k, float(_w))
+    REGISTRY[f"{_k}-winALL"] = _supervision(_k, float("inf"))
+for _s in (1, 2):
+    REGISTRY[f"hgb-sham96s{_s}"] = _sham("hgb", 96.0, _s)
+
+
+# --------------------------------------------------------------------------- #
 # Tabular foundation model — in-context learning instead of fitting
 # --------------------------------------------------------------------------- #
 def _tabpfn(n_train: int = 10000, n_estimators: int = 4):

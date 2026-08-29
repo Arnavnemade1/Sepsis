@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -14,6 +14,8 @@ help:
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-supervision Supervision density: the window-is-inert control"
+	@echo "  make verify-coordination Coordination plane: matched-pair alignment surrogate"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -58,6 +60,20 @@ verify:
 
 verify-frontier:
 	$(PY) verify_frontier.py
+
+# Denser supervision of septic stays raises detection at every alarm budget. The
+# load-bearing check asserts a NULL: that the TEMPORAL PLACEMENT of the extra positive
+# hours does not matter. An earlier version of the module claimed it did, and this
+# control is what falsified it — so it stays pointed the same way.
+verify-supervision:
+	PYTHONPATH=. $(PY) -m backend.ml.scripts.verify_supervision
+
+# Cross-channel coordination (Buchman's organ-uncoupling hypothesis) at hourly
+# resolution. Matched-pair surrogate: independent per-channel delays destroy alignment,
+# a common delay adds the same staleness with alignment intact, and the gap between
+# them is what alignment is worth. Measured: nothing.
+verify-coordination:
+	PYTHONPATH=. $(PY) -m backend.ml.scripts.verify_coordination
 
 verify-scenarios:
 	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py
