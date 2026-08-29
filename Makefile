@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -17,6 +17,8 @@ help:
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
 	@echo "  make verify-coordination Coordination plane: matched-pair alignment surrogate"
 	@echo "  make verify-recovery   Autonomic recovery: known-tau, amplitude invariance, causality"
+	@echo "  make verify-mimic3     Open-access outcome pipeline: plants 5 arterial-line artifacts"
+	@echo "  make mimic3-cohort     Stream the open MIMIC-III decompensation cohort (hours, resumable)"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -82,6 +84,18 @@ verify-coordination:
 # is poor, and the pipeline must refuse a pulse source while that is true.
 verify-recovery:
 	PYTHONPATH=. $(PY) -m backend.physio.verify_recovery
+
+# The workaround for not having credentialed data. MIMIC-III Waveform is OPEN ACCESS
+# (ODbL): ~30k ICU patients with ECG and an arterial line, but no clinical chart — so the
+# outcome is derived from the arterial line while the predictor reads only the ECG, which
+# makes the label non-circular. This suite plants five arterial-line artifacts
+# (disconnection, zeroing, flush, damping, flatline) and requires each to be rejected AND
+# to produce no event, because otherwise a detector here learns to predict line handling.
+verify-mimic3:
+	PYTHONPATH=. $(PY) -m backend.physio.data.verify_mimic3_open
+
+mimic3-cohort:
+	PYTHONPATH=. $(PY) -m backend.physio.data.build_mimic3_cohort --target-events 200
 
 verify-scenarios:
 	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py
