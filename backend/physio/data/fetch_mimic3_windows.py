@@ -31,7 +31,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import time
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -62,12 +64,37 @@ FETCH_MIN = 75.0
 #: aligned windows, so it removes detection failures without trimming real physiology.
 HR_QC_TOLERANCE = 0.10
 
+#: Hard ceiling on one timepoint. Belt and braces over the socket timeout in
+#: ``mimic3_open``: a socket deadline covers a stalled read, not every way a library can
+#: wedge, and the failure this guards against already happened once — a run alive for
+#: four and a half hours with no progress for the last four. A timepoint that blows this
+#: is marked done and skipped, so the next run does not retry it forever.
+TIMEPOINT_TIMEOUT_S = 180
+
+
+class _Timeout(Exception):
+    pass
+
+
+@contextmanager
+def _deadline(seconds: int):
+    """Abort whatever is running after ``seconds``. Single-threaded loop, so SIGALRM is
+    the simplest thing that actually interrupts a blocked C-level read."""
+    def _fire(signum, frame):
+        raise _Timeout(f"exceeded {seconds}s")
+    old = signal.signal(signal.SIGALRM, _fire)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
 
 def monitor_hr(folder: str, pid: str) -> Optional[Tuple[np.ndarray, float]]:
     import wfdb
-    try:
-        rec = wfdb.rdrecord(f"{pid}n", pn_dir=M._pn_dir(folder))
-    except Exception:
+    rec = M._retry(lambda: wfdb.rdrecord(f"{pid}n", pn_dir=M._pn_dir(folder)))
+    if rec is None:
         return None
     names = [n.strip().upper() for n in (rec.sig_name or [])]
     if "HR" not in names:
@@ -167,7 +194,7 @@ def main() -> None:
 
     hr_cache: Dict[str, Optional[Tuple[np.ndarray, float]]] = {}
     t0 = time.time()
-    n_new = n_qc = n_rhythm = 0
+    n_new = n_qc = n_rhythm = n_timeout = 0
     for i, (pid, v, T, label) in enumerate(todo):
         key = f"{pid}:{T:.0f}:{label}"
         if done.get(key):
@@ -176,14 +203,27 @@ def main() -> None:
             break
         folder = v["folder"]
         start = max(T - FETCH_MIN * 60.0, 0.0)
-        rr = M.fetch_rr_window(folder, start, FETCH_MIN * 60.0)
         done[key] = True
+        try:
+            with _deadline(TIMEPOINT_TIMEOUT_S):
+                rr = M.fetch_rr_window(folder, start, FETCH_MIN * 60.0)
+        except _Timeout as exc:
+            n_timeout += 1
+            print(f"  [{i+1}/{len(todo)}] {pid} t={T/3600:.1f}h TIMEOUT ({exc}) — "
+                  f"skipped and marked done", flush=True)
+            with open(PROGRESS, "w") as fh:
+                json.dump(done, fh)
+            continue
         if rr is None or len(rr) < 300:
             continue
         rr_t = start + np.cumsum(rr) / 1000.0
 
         if pid not in hr_cache:
-            hr_cache[pid] = monitor_hr(folder, pid)
+            try:
+                with _deadline(TIMEPOINT_TIMEOUT_S):
+                    hr_cache[pid] = monitor_hr(folder, pid)
+            except _Timeout:
+                hr_cache[pid] = None
         track = hr_cache[pid]
         if track is not None:
             ok, ehr, mhr = _hr_qc(rr, track[0], track[1], start, T)
@@ -196,7 +236,11 @@ def main() -> None:
         # Is there an autonomic control loop here at all? A paced, fibrillating or
         # heavily ectopic rhythm makes a recovery time constant meaningless rather than
         # merely noisy, and the monitor already classifies all three.
-        rok, why = M.rhythm_ok_from_numerics(folder, pid, start, T)
+        try:
+            with _deadline(TIMEPOINT_TIMEOUT_S):
+                rok, why = M.rhythm_ok_from_numerics(folder, pid, start, T)
+        except _Timeout:
+            rok, why = None, "rhythm lookup timed out"
         if rok is None:
             rok, why = M.rhythm_ok_from_rr(rr)
         if not rok:
@@ -232,7 +276,7 @@ def main() -> None:
         json.dump(done, fh)
     lab = np.array([m[2] for m in meta]) if meta else np.array([])
     print(f"\nDONE {len(rows)} feature rows from {n_new} timepoints "
-          f"({n_qc} rejected by HR QC, {n_rhythm} by rhythm)")
+          f"({n_qc} rejected by HR QC, {n_rhythm} by rhythm, {n_timeout} timed out)")
     if lab.size:
         print(f"  event rows {int((lab == 1).sum())}, control rows {int((lab == 0).sum())}, "
               f"{len(set(m[0] for m in meta))} patients -> {WINDOWS}")

@@ -50,8 +50,10 @@ and ``verify_mimic3_open.py`` plants each artifact in turn and requires it to be
 from __future__ import annotations
 
 import os
+import socket
+import time
 from dataclasses import dataclass, field
-from typing import Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -59,6 +61,38 @@ from backend.physio import hrv
 
 DB = "mimic3wdb"
 FS_EXPECTED = 125.0
+
+#: Every network read in this module goes through ``wfdb``, which inherits Python's
+#: default socket behaviour: block forever. That is not a theoretical risk — a retrieval
+#: run sat alive for four and a half hours having last made progress after forty-three
+#: of two hundred and nine timepoints, parked inside one stalled HTTP read. A single
+#: unlucky request should cost a row, never the job.
+NET_TIMEOUT_S = 30.0
+socket.setdefaulttimeout(NET_TIMEOUT_S)
+
+#: Courtesy pause between requests. PhysioNet is a free public resource and this pipeline
+#: makes thousands of reads; throttling is a plausible cause of the stall above, and
+#: pacing is the right behaviour regardless of whether it was.
+REQUEST_PAUSE_S = 0.3
+
+
+def _retry(fn: Callable, attempts: int = 2, backoff: float = 2.0):
+    """Run a network read, give up rather than hang, and return ``None`` on failure.
+
+    Deliberately few attempts. The caller can afford to lose a timepoint — the cohort is
+    a sample and one skipped window costs a row — but it cannot afford to spend minutes
+    retrying one that is never going to answer.
+    """
+    for i in range(attempts):
+        try:
+            out = fn()
+            time.sleep(REQUEST_PAUSE_S)
+            return out
+        except Exception:
+            if i + 1 >= attempts:
+                return None
+            time.sleep(backoff * (i + 1))
+    return None
 
 #: Channel names that carry a usable ECG lead / an arterial pressure line, upper-cased.
 ECG_NAMES = ("II", "I", "III", "V", "MCL1", "AVR", "AVF", "AVL")
@@ -237,9 +271,8 @@ def rhythm_ok_from_numerics(folder: str, pid: str, t0_s: float, t1_s: float
     caller can fall back rather than silently accepting.
     """
     import wfdb
-    try:
-        rec = wfdb.rdrecord(f"{pid}n", pn_dir=_pn_dir(folder))
-    except Exception:
+    rec = _retry(lambda: wfdb.rdrecord(f"{pid}n", pn_dir=_pn_dir(folder)))
+    if rec is None:
         return None, "numerics unavailable"
     names = [n.strip().upper() for n in (rec.sig_name or [])]
     present = [k for k in RHYTHM_LIMITS if k in names]
@@ -291,9 +324,8 @@ def numerics_map_series(folder: str) -> Optional[Tuple[np.ndarray, np.ndarray]]:
     """
     import wfdb
     pid = folder.strip("/").split("/")[-1]
-    try:
-        rec = wfdb.rdrecord(f"{pid}n", pn_dir=_pn_dir(folder))
-    except Exception:
+    rec = _retry(lambda: wfdb.rdrecord(f"{pid}n", pn_dir=_pn_dir(folder)))
+    if rec is None:
         return None
     names = [n.strip().upper() for n in (rec.sig_name or [])]
     if "ABP MEAN" not in names:
@@ -374,15 +406,17 @@ def fetch_rr_window(folder: str, start_s: float, dur_s: float
     """
     import wfdb
     pid = folder.strip("/").split("/")[-1]
-    try:
-        hdr = wfdb.rdheader(pid, pn_dir=_pn_dir(folder), rd_segments=False)
-        fs = float(hdr.fs)
-        a = int(max(start_s, 0.0) * fs)
-        b = int(min(a + dur_s * fs, hdr.sig_len))
-        if b - a < fs * 60:
-            return None
-        rec = wfdb.rdrecord(pid, pn_dir=_pn_dir(folder), sampfrom=a, sampto=b, m2s=True)
-    except Exception:
+    hdr = _retry(lambda: wfdb.rdheader(pid, pn_dir=_pn_dir(folder), rd_segments=False))
+    if hdr is None:
+        return None
+    fs = float(hdr.fs)
+    a = int(max(start_s, 0.0) * fs)
+    b = int(min(a + dur_s * fs, hdr.sig_len))
+    if b - a < fs * 60:
+        return None
+    rec = _retry(lambda: wfdb.rdrecord(pid, pn_dir=_pn_dir(folder),
+                                       sampfrom=a, sampto=b, m2s=True))
+    if rec is None:
         return None
     names = [n.upper() for n in (rec.sig_name or [])]
     ch = next((names.index(n) for n in NUM_ECG_LEAD_PREF if n in names), None)
@@ -451,7 +485,7 @@ def _pn_dir(folder: str) -> str:
 
 def list_patient_folders(limit: Optional[int] = None) -> List[str]:
     import wfdb
-    recs = wfdb.get_record_list(DB)
+    recs = _retry(lambda: wfdb.get_record_list(DB), attempts=3) or []
     return [r.strip("/") for r in (recs[:limit] if limit else recs)]
 
 
@@ -472,9 +506,8 @@ def load_patient(folder: str, max_minutes: float = 120.0,
     """
     import wfdb
     pid = folder.strip("/").split("/")[-1]
-    try:
-        hdr = wfdb.rdheader(pid, pn_dir=_pn_dir(folder), rd_segments=False)
-    except Exception:
+    hdr = _retry(lambda: wfdb.rdheader(pid, pn_dir=_pn_dir(folder), rd_segments=False))
+    if hdr is None:
         return None
     segs = [s for s in (getattr(hdr, "seg_name", []) or [])
             if s and s not in ("~",) and not s.endswith("_layout")]
@@ -483,9 +516,8 @@ def load_patient(folder: str, max_minutes: float = 120.0,
 
     best = None
     for s in segs:
-        try:
-            sh = wfdb.rdheader(s, pn_dir=_pn_dir(folder))
-        except Exception:
+        sh = _retry(lambda s=s: wfdb.rdheader(s, pn_dir=_pn_dir(folder)))
+        if sh is None:
             continue
         pick = _pick_channels(sh.sig_name or [])
         if not pick or not sh.fs:
@@ -500,10 +532,9 @@ def load_patient(folder: str, max_minutes: float = 120.0,
 
     seg, dur_min, sh, (ecg_name, abp_name) = best
     n = int(min(sh.sig_len, sh.fs * max_minutes * 60.0))
-    try:
-        rec = wfdb.rdrecord(seg, pn_dir=_pn_dir(folder), sampfrom=0, sampto=n,
-                            channel_names=[ecg_name, abp_name])
-    except Exception:
+    rec = _retry(lambda: wfdb.rdrecord(seg, pn_dir=_pn_dir(folder), sampfrom=0, sampto=n,
+                                       channel_names=[ecg_name, abp_name]))
+    if rec is None:
         return None
     x = rec.p_signal
     if x is None or x.shape[1] < 2:
