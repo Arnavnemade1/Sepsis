@@ -24,6 +24,7 @@ from backend.ml import config
 from backend.ml.data.features import FeatureConfig
 from backend.ml.operating_point import load as load_operating_point
 from backend.ml import conformal
+from backend.aegis.alert_episodes import AlertEpisodeController
 from backend.aegis.streaming_features import StreamingFeatureBuilder
 
 
@@ -53,6 +54,9 @@ class AegisAssessment:
     #: orthogonal to severity, and _escalate() plus the clinical DSL both treat the
     #: bands as an ordered triple. None when the layer has not been derived.
     certainty: Optional[Dict[str, Any]] = None
+    #: Advisory notification episode; never changes model probability, risk tier,
+    #: or protocol.  It makes repeat-alarm burden observable and studyable.
+    alert_episode: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -98,6 +102,11 @@ class AegisCore:
             expect_detector=getattr(self.operating_point, "detector", None))
         self._conformal_ready: Optional[bool] = None   # decided on the first row
         self._last_feats = None                        # the row _certainty() reads
+        # Notification semantics are deliberately separate from risk semantics.
+        # This controller only annotates assessments; it does not route pages or
+        # suppress any clinical rule.  A held-out episode-burden study is required
+        # before an external notification integration may consume `notify`.
+        self.alert_episodes = AlertEpisodeController()
         if high_threshold is None:
             high_threshold = self.operating_point.high if self.operating_point else 0.12
         if medium_threshold is None:
@@ -207,6 +216,8 @@ class AegisCore:
             ml_prob,
             "qsofa>=2" if qsofa >= 2 else
             "shock_signal" if detection.get("shock_signal") else None)
+        assessment.alert_episode = self.alert_episodes.update(
+            risk, ts, assessment.certainty).to_dict()
 
         # 4) Body-state model (organ systems / regions / channels) for the
         #    anatomical visualization layer — built every tick, cheap.

@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-alert-episodes verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -12,6 +12,7 @@ help:
 	@echo "  make setup        Create/update the local Python environment"
 	@echo "  make verify       Run the full end-to-end verification suite"
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
+	@echo "  make verify-alert-episodes  Alert lifecycle, escalation and stale-event checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
@@ -128,6 +129,13 @@ frontier-report:
 
 verify-core:
 	$(PY) verify_system.py
+
+# Alert episodes are independent of the detector: an elevated interval opens one
+# advisory notification, escalation is never cooldown-suppressed, and out-of-order
+# telemetry cannot re-open an old episode.  This verifies those safety semantics;
+# it does not claim the timing parameters are clinically validated.
+verify-alert-episodes:
+	$(PY) -m backend.aegis.verify_alert_episodes
 
 # Verifies the CLAIMS, not the code: plants a known pathology (shuffled labels,
 # in-sample predictions, zero-mean noise deltas, identical predictors, an out-of-range
