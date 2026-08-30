@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -113,6 +113,12 @@ mimic3-windows:
 # on a cohort too small to defend one.
 recovery-outcome:
 	PYTHONPATH=. $(PY) -m backend.physio.analyse_recovery_outcome
+
+# The fair test at this cohort size: univariate AUROC (no fitting, cannot overfit) plus
+# a regularised leave-one-patient-out logistic regression. The boosted version above
+# returned sub-chance AUROCs, which is what overfitting looks like, not an effect.
+recovery-univariate:
+	PYTHONPATH=. $(PY) -m backend.physio.analyse_recovery_univariate
 
 verify-scenarios:
 	PYTHONPATH=. $(PY) backend/aegis/verify_scenarios.py

@@ -116,6 +116,61 @@ chest patch, not the camera.** `assert_source_cleared` refuses a pulse source ra
 emitting numbers that look reasonable. The camera path keeps everything else it does
 (perfusion, thermal, distress, rPPG heart and respiratory rate); it cannot carry this.
 
+## THE RESULT: it does not work on this cohort
+
+The open-access workaround ran end to end, and the answer is negative.
+
+**Cohort.** 831 patient folders scanned from the open MIMIC-III Waveform Database →
+193 patients → 12,856 patient-hours → 142 circulatory decompensation events. Retrieval
+over the 44 patients contributing both an event and a control produced **423 feature
+rows from 29 dual-label patients** (~51 event and ~70 control rows per lead time), after
+15 timepoints were rejected by the beat-detection QC and 30 by the rhythm gate.
+
+**Univariate, model-free — the fair test at this sample size:**
+
+| lead | features with CI excluding 0.5 | expected by chance |
+|---|---|---|
+| 15 min | **0 / 28** | ~1.4 |
+| 30 min | **0 / 28** | ~1.4 |
+| 60 min | 2 / 28 | ~1.4 |
+
+The two at 60 minutes are HRV `lf` (0.396) and `total_power` (0.413) — both *below* 0.5,
+and across 84 tests that is exactly the chance rate.
+
+**Regularised logistic regression, leave-one-patient-out:**
+
+| lead | recovery | HRV magnitude | both |
+|---|---|---|---|
+| 15 min | 0.487 [0.376, 0.600] | 0.554 [0.454, 0.654] | 0.536 |
+| 30 min | 0.596 [0.494, 0.692] | 0.354 [0.236, 0.472] | 0.482 |
+| 60 min | 0.520 [0.429, 0.616] | 0.374 [0.258, 0.490] | 0.439 |
+
+Every interval contains 0.5. **Neither the recovery time constants nor the HeRO-style
+HRV magnitude features predict circulatory decompensation 15–60 minutes ahead here.**
+
+A methodological note that matters. The first pass used a gradient-boosted model and
+returned AUROCs *below* chance (0.376 at 15 min). Consistent sub-chance performance under
+grouped CV is the signature of overfitting — 28 features on ~121 rows across 29 patients
+— not of an inverted effect. The model-free numbers above sit much closer to 0.5, which
+is what a true null looks like, so the corrected test still says null and the first pass
+was measuring its own variance.
+
+**What this does and does not establish.**
+
+* It does *not* prove absence. Intervals are roughly ±0.10, so a real effect around
+  AUROC 0.57 could hide inside them. This is 29 patients.
+* But the point estimates are not encouraging in the way an underpowered miss usually
+  is: most sit *below* 0.5 rather than clustering hopefully above it.
+* The HeRO feature family — which has a randomised trial behind it in neonates — fails
+  here too. That is important context: this is not a verdict on the new features
+  specifically, it is a verdict on beat-interval features against this outcome in this
+  population.
+* **The outcome may be the problem.** ICU hypotension is frequently iatrogenic — a
+  propofol bolus, fluid removal on dialysis, a position change, bleeding. Autonomic
+  reserve is one contributor among many, and sepsis-driven decompensation is a subset of
+  what was labelled. A proxy chosen because it was reachable is not the same as the
+  proxy one would choose.
+
 ## What is needed next, and what it is blocked on
 
 The detection claim needs beat-to-beat waveforms **with sepsis labels on the same
