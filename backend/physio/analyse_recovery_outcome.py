@@ -104,7 +104,10 @@ def _paired_bootstrap(y, sa, sb, groups, n_boot=2000, seed=0) -> Dict[str, float
             "lo": float(lo), "hi": float(hi), "significant": bool(lo > 0)}
 
 
-def main() -> int:
+def main(windows_path: str = None) -> int:
+    global WINDOWS
+    if windows_path:
+        WINDOWS = windows_path
     if not os.path.exists(WINDOWS):
         print(f"{WINDOWS} not found — run build_mimic3_cohort then fetch_mimic3_windows")
         return 1
@@ -204,4 +207,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--windows", default=None,
+                    help="cohort npz; defaults to the MIMIC-III arm. The VitalDB arm "
+                         "lives at artifacts/vitaldb/windows_<definition>.npz")
+    sys.exit(main(ap.parse_args().windows))
