@@ -52,6 +52,10 @@ from typing import Callable, Dict, List, Optional, Sequence, Tuple
 import numpy as np
 
 from backend.physio import hrv
+from backend.physio.data import netguard
+
+# The layer that was missing when this module hung at 1541 of 1914 cases.
+netguard.install_timeouts()
 
 #: Track names. ECG is the predictor channel; ART_MBP is the outcome channel, from a
 #: separate transducer, which keeps the label non-circular exactly as in mimic3_open.
@@ -83,21 +87,7 @@ CE_RISE_FRACTION = 0.15
 CE_LOOKBACK_MIN = 10.0
 
 
-def _retry(fn: Callable, attempts: int = 2, backoff: float = 2.0):
-    """Same contract as the MIMIC adapter: give up rather than hang.
-
-    A stalled HTTP read once parked that pipeline for four and a half hours. The lesson
-    generalises to any network-backed dataset, so it is applied here from the start
-    rather than after the second incident.
-    """
-    for i in range(attempts):
-        try:
-            return fn()
-        except Exception:
-            if i + 1 >= attempts:
-                return None
-            time.sleep(backoff * (i + 1))
-    return None
+_retry = netguard.retry
 
 
 # --------------------------------------------------------------------------- #

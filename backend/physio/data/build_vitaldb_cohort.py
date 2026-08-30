@@ -30,7 +30,7 @@ from typing import Dict, List
 
 import numpy as np
 
-from backend.physio.data import vitaldb_open as V
+from backend.physio.data import netguard, vitaldb_open as V
 
 OUT_DIR = os.path.join("artifacts", "vitaldb")
 DISCOVERY = os.path.join(OUT_DIR, "discovery.json")
@@ -69,7 +69,15 @@ def main() -> None:
     for k, cid in enumerate(ids):
         if str(cid) in state["cases"]:
             continue
-        o = V.discover(int(cid))
+        try:
+            with netguard.deadline(120):
+                o = V.discover(int(cid))
+        except netguard.Timeout:
+            print(f"  case {cid}: TIMEOUT — skipped and marked done", flush=True)
+            state["cases"][str(cid)] = {"hours": 0.0, "skip": True, "timeout": True}
+            with open(DISCOVERY, "w") as fh:
+                json.dump(state, fh)
+            continue
         if o is None:
             state["cases"][str(cid)] = {"hours": 0.0, "skip": True}
         else:

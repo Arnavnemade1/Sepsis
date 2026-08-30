@@ -39,7 +39,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from backend.physio import hrv, recovery
-from backend.physio.data import vitaldb_open as V
+from backend.physio.data import netguard, vitaldb_open as V
 
 OUT_DIR = os.path.join("artifacts", "vitaldb")
 DISCOVERY = os.path.join(OUT_DIR, "discovery.json")
@@ -131,8 +131,15 @@ def main() -> None:
                + [(float(t), 0) for t in v["controls"][:args.max_per_case]])
         span_lo = min(t for t, _ in pts) - (max(LEADS_MIN) + WINDOW_MIN) * 60.0
         span_hi = max(t for t, _ in pts)
-        got = V.fetch_rr(int(cid), max(span_lo, 0.0), span_hi)
         done[cid] = True
+        try:
+            with netguard.deadline(240):
+                got = V.fetch_rr(int(cid), max(span_lo, 0.0), span_hi)
+        except netguard.Timeout:
+            print(f"  [{ci+1}/{len(cases)}] case {cid}: TIMEOUT — skipped", flush=True)
+            with open(progress, "w") as fh:
+                json.dump(done, fh)
+            continue
         if got is None:
             continue
         rr, rr_t = got
