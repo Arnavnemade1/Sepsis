@@ -219,13 +219,13 @@ only shifts work from one component to another, it is refused.
 
 ## First implementation slice
 
-1. Add `backend/aegis/evidence_router.py` with typed action, eligibility and
-   decision contracts; use the deterministic `WAIT`-first policy only.
-2. Surface the decision in the versioned snapshot and UI as **"evidence request
-   — advisory"**, never as clinical advice.
-3. Add `backend/ml/eval/evidence_replay.py`, which can calculate action
-   availability, request burden, wall-time cost, and first-alert preservation on
-   patient series.
+1. ✅ `backend/aegis/evidence_router.py` now provides typed action, eligibility and
+   decision contracts using the deterministic `WAIT`-first policy only.
+2. ✅ The versioned snapshot and UI expose **"evidence request — advisory"**;
+   it is never a clinical instruction.
+3. ✅ `backend/ml/eval/evidence_replay.py` reports patient-level request burden,
+   compute/request units, and pre-onset request timing. It explicitly makes no
+   causal or accuracy claim.
 4. Add adversarial tests for future-window leakage, unavailable-source routing,
    duplicate per-episode requests, hard-rule suppression, and cross-fit routing
    artifacts.

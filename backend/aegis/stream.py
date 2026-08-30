@@ -20,7 +20,7 @@ from backend.aegis.core import AegisAssessment
 from backend.aegis.os import AegisOS
 from backend.aegis.causal_ingest import CausalGraphIngestor
 
-SNAPSHOT_SCHEMA_VERSION = "1.4"   # + auto BFT specialist consensus on HIGH risk
+SNAPSHOT_SCHEMA_VERSION = "1.5"   # + advisory AERIS evidence-request contract
 
 
 class SignalHistory:
@@ -112,11 +112,13 @@ class AegisSession:
         camera_vitals: Optional[Dict[str, Any]] = None,
         signal_quality: float = 1.0,
         timestamp: Optional[float] = None,
+        evidence_capabilities: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, Any]:
         ts = timestamp if timestamp is not None else time.time()
         a = self.os.assess(
             telemetry, source=source, whatif="auto", timestamp=ts,
             signal_quality=signal_quality, camera_vitals=camera_vitals,
+            evidence_capabilities=evidence_capabilities,
         )
         self.latest = a
         self.source = source
@@ -155,6 +157,8 @@ class AegisSession:
             },
             "vitals": self.core.twin.latest_vitals,
             "detection": a.detection if a else {},
+            # AERIS asks only for evidence, never a diagnosis or treatment.
+            "evidence_request": a.evidence_request if a else None,
             "triggered_rules": a.triggered_rules if a else [],
             "body_state": a.body_state if a else None,
             "reasoning": a.reasoning if a else None,

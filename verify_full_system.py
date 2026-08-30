@@ -125,8 +125,11 @@ def test_aegis_orchestration() -> None:
     assert b.risk_level == "HIGH", f"septic shock should be HIGH, got {b.risk_level}"
     assert b.protocol and b.protocol["applied"], "a safe protocol should be synthesized + applied"
     assert b.protocol["protocol"]["antibiotic_code"] != 1, "must not prescribe penicillin to allergic patient"
+    assert b.evidence_request and b.evidence_request["action"] == "ESCALATE_FOR_REVIEW", \
+        "AERIS must not delay a hard clinical escalation for extra evidence"
     _ok(f"healthy=LOW, shock=HIGH, Z3-verified protocol applied "
-        f"(antibiotic={b.protocol['protocol']['antibiotic_code']}, allergy respected)")
+        f"(antibiotic={b.protocol['protocol']['antibiotic_code']}, allergy respected; "
+        f"AERIS={b.evidence_request['action']})")
 
 
 def test_hrv_features_real() -> None:

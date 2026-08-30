@@ -194,6 +194,20 @@ function renderRisk(d) {
   $("#rs-sq").textContent = pct(d.risk?.signal_quality);
   $("#twin-risk").textContent = lvl === "LOW" ? "monitoring" : lvl.toLowerCase() + " risk";
   renderCertainty(d.risk?.certainty);
+  renderEvidenceRequest(d.evidence_request);
+}
+
+/* AERIS may request one bounded source of evidence. It is deliberately rendered
+   as an advisory evidence request, never as a diagnosis or treatment instruction. */
+function renderEvidenceRequest(req) {
+  const el = $("#evidence-request"); if (!el) return;
+  if (!req || !req.request || req.action === "WAIT") { el.classList.add("hidden"); return; }
+  el.classList.remove("hidden");
+  const channel = req.channel ? ` · ${String(req.channel).toUpperCase()}` : "";
+  const label = req.action === "ESCALATE_FOR_REVIEW" ? "REVIEW ESCALATION" : `EVIDENCE REQUEST${channel}`;
+  el.textContent = label + " · advisory";
+  el.classList.toggle("review", req.action === "ESCALATE_FOR_REVIEW");
+  el.title = req.reason || "AERIS advisory evidence request";
 }
 
 /* Conformal abstention. The band above says how bad; this says whether the detector

@@ -458,6 +458,9 @@ class TelemetryIn(BaseModel):
     source: str = "wearable"
     camera_vitals: Optional[Dict[str, Any]] = None
     signal_quality: float = 1.0
+    # Explicit source contract for AERIS. Omitted means no additional source is
+    # assumed available; the advisory router returns WAIT rather than inventing one.
+    evidence_capabilities: Optional[Dict[str, bool]] = None
 
 
 async def _broadcast(snapshot: Dict[str, Any]) -> None:
@@ -1351,7 +1354,8 @@ async def ingest(payload: TelemetryIn) -> Dict[str, Any]:
     global _last_real_ingest
     snap = session.tick(payload.telemetry, source=payload.source,
                         camera_vitals=payload.camera_vitals,
-                        signal_quality=payload.signal_quality)
+                        signal_quality=payload.signal_quality,
+                        evidence_capabilities=payload.evidence_capabilities)
     _last_real_ingest = time.time()
     session.os.register_source(payload.source)
     _apply_treatment_from(snap)

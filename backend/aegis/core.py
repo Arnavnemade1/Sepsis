@@ -25,6 +25,7 @@ from backend.ml.data.features import FeatureConfig
 from backend.ml.operating_point import load as load_operating_point
 from backend.ml import conformal
 from backend.aegis.alert_episodes import AlertEpisodeController
+from backend.aegis.evidence_router import EvidenceRouter
 from backend.aegis.streaming_features import StreamingFeatureBuilder
 
 
@@ -57,6 +58,9 @@ class AegisAssessment:
     #: Advisory notification episode; never changes model probability, risk tier,
     #: or protocol.  It makes repeat-alarm burden observable and studyable.
     alert_episode: Optional[Dict[str, Any]] = None
+    #: AERIS's advisory evidence request. It may ask for one available, bounded
+    #: signal; it never changes risk, certainty, treatment, or notification state.
+    evidence_request: Optional[Dict[str, Any]] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {k: v for k, v in self.__dict__.items()}
@@ -107,6 +111,7 @@ class AegisCore:
         # suppress any clinical rule.  A held-out episode-burden study is required
         # before an external notification integration may consume `notify`.
         self.alert_episodes = AlertEpisodeController()
+        self.evidence_router = EvidenceRouter()
         if high_threshold is None:
             high_threshold = self.operating_point.high if self.operating_point else 0.12
         if medium_threshold is None:
@@ -163,6 +168,7 @@ class AegisCore:
         signal_quality: float = 1.0,
         explain: Optional[bool] = None,
         camera_vitals: Optional[Dict[str, Any]] = None,
+        evidence_capabilities: Optional[Dict[str, bool]] = None,
     ) -> AegisAssessment:
         ts = timestamp if timestamp is not None else time.time()
 
@@ -218,6 +224,16 @@ class AegisCore:
             "shock_signal" if detection.get("shock_signal") else None)
         assessment.alert_episode = self.alert_episodes.update(
             risk, ts, assessment.certainty).to_dict()
+        assessment.evidence_request = self.evidence_router.decide(
+            timestamp=ts,
+            risk_level=risk,
+            certainty=assessment.certainty,
+            alert_episode=assessment.alert_episode,
+            feature_row=self._last_feats,
+            capabilities=evidence_capabilities,
+            trajectory_deviation=float(twin_state["features"].get("instability_score", 0.0)),
+            hard_override=(qsofa >= 2 or bool(detection.get("shock_signal"))),
+        ).to_dict()
 
         # 4) Body-state model (organ systems / regions / channels) for the
         #    anatomical visualization layer — built every tick, cheap.

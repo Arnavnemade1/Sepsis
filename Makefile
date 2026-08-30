@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-alert-episodes verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -13,6 +13,8 @@ help:
 	@echo "  make verify       Run the full end-to-end verification suite"
 	@echo "  make verify-core  Run the fast legacy core/HDC/rules checks"
 	@echo "  make verify-alert-episodes  Alert lifecycle, escalation and stale-event checks"
+	@echo "  make verify-evidence-router AERIS source, budget, override and stale-event checks"
+	@echo "  make verify-evidence-replay AERIS patient-level replay metric checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
@@ -136,6 +138,14 @@ verify-core:
 # it does not claim the timing parameters are clinically validated.
 verify-alert-episodes:
 	$(PY) -m backend.aegis.verify_alert_episodes
+
+# AERIS only requests an explicitly available source, bounds ordinary requests to
+# one per episode, and cannot delay a hard clinical escalation.
+verify-evidence-router:
+	$(PY) -m backend.aegis.verify_evidence_router
+
+verify-evidence-replay:
+	$(PY) -m backend.ml.scripts.verify_evidence_replay
 
 # Verifies the CLAIMS, not the code: plants a known pathology (shuffled labels,
 # in-sample predictions, zero-mean noise deltas, identical predictors, an out-of-range
