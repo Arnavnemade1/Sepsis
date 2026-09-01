@@ -190,19 +190,41 @@ def main(windows_path: str = None) -> int:
                       f"vs within-patient {a_w:.4f} — the {a_all - a_w:+.4f} gap is "
                       f"between-patient contrast, not early warning")
 
-        # Permutation control: shuffle labels WITHIN each patient. Anything that
-        # survives this is leakage, not physiology.
-        rng = np.random.default_rng(1)
-        y_perm = y.copy()
-        for p in set(g.tolist()):
-            k = g == p
-            y_perm[k] = rng.permutation(y[k])
-        s = _oof(X, y_perm, g)
-        ok = ~np.isnan(s)
-        if ok.sum() > 10 and len(np.unique(y_perm[ok])) > 1:
-            a = _auroc(y_perm[ok], s[ok])
-            print(f"    [control] labels permuted within patient: AUROC {a:.4f} "
-                  f"{'(collapses, as it must)' if abs(a - 0.5) < 0.12 else '<-- LEAK'}")
+        # Permutation control: shuffle labels WITHIN each patient, MANY times, and read
+        # the null DISTRIBUTION rather than one draw.
+        #
+        # The first version drew once and flagged a leak whenever the result fell more
+        # than 0.12 from chance in EITHER direction. That is wrong twice over. A leak is
+        # one-sided — permuted labels predicting BETTER than chance — so a low value is
+        # noise, not evidence of leakage; this control duly cried leak at 0.3692 when
+        # nothing was wrong. And a fixed 0.12 band is a guess at the noise when the noise
+        # is measurable. Repeating the permutation gives the real null, and its WIDTH is
+        # itself the most useful number here: it says how much apparent signal this
+        # cohort size manufactures for free, and therefore how seriously to take any
+        # "n.s." verdict above.
+        n_perm = 20
+        null = []
+        for r in range(n_perm):
+            rng = np.random.default_rng(1000 + r)
+            y_perm = y.copy()
+            for pt in np.unique(g):
+                k = np.flatnonzero(g == pt)
+                y_perm[k] = rng.permutation(y[k])
+            sp = _oof(X[:, groups_map["all"]], y_perm, g, seed=r)
+            okp = ~np.isnan(sp)
+            if okp.sum() > 10 and len(np.unique(y_perm[okp])) > 1:
+                null.append(_auroc(y_perm[okp], sp[okp]))
+        null = np.array(null)
+        if null.size:
+            lo, hi = np.percentile(null, [2.5, 97.5])
+            leaks = float(np.mean(null > 0.5))
+            print(f"    [control] {null.size} within-patient label permutations: "
+                  f"null AUROC {null.mean():.4f} [{lo:.4f}, {hi:.4f}]")
+            print(f"              null half-width +-{(hi-lo)/2:.4f} — any effect smaller "
+                  f"than this is indistinguishable from noise at this cohort size")
+            if null.mean() > 0.55:
+                print(f"              <-- LEAK: permuted labels still predict "
+                      f"({leaks:.0%} of draws above chance)")
     return 0
 
 
