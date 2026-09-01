@@ -271,7 +271,7 @@ class DeepSequenceDetector:
     """Trains a causal sequence net and serves calibrated per-hour probabilities."""
 
     arch: str = "tcn"
-    objective: str = "utility"          # "utility" | "balanced"
+    objective: str = "utility"          # "utility" | "balanced" | "patient"
     d_model: int = 128
     n_layers: int = 4
     dropout: float = 0.1
@@ -300,6 +300,18 @@ class DeepSequenceDetector:
             y = np.asarray(y).astype(int)
             pos, neg = max(int((y == 1).sum()), 1), max(int((y == 0).sum()), 1)
             return y.astype(np.float32), np.where(y == 1, neg / pos, 1.0).astype(np.float32)
+        if self.objective == "patient":
+            # Every hour of a septic stay is positive. The measured reason
+            # (docs/SUPERVISION_DENSITY.md) is that denser supervision raises detection
+            # at a fixed alarm budget at every budget tested; it is the objective the
+            # shipped detector now uses, and a sequence model reading the whole prefix is
+            # the architecture that should exploit it best — it can attribute a
+            # patient-level label across the stay itself rather than being told the
+            # attribution by a hand-set window.
+            from backend.ml.models.supervision import supervision_target
+            z = supervision_target(y, hour_index, onset_hour, float("inf")).astype(int)
+            pos, neg = max(int((z == 1).sum()), 1), max(int((z == 0).sum()), 1)
+            return z.astype(np.float32), np.where(z == 1, neg / pos, 1.0).astype(np.float32)
         z, w = utility_target(y, groups, hour_index, onset_hour)
         return z.astype(np.float32), np.maximum(w, 1e-4).astype(np.float32)
 

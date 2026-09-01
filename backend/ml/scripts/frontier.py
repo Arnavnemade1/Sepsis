@@ -347,8 +347,14 @@ def _seq(arch: str, objective: str = "utility", **kw):
     return run
 
 
+# The patient objective on a sequence architecture — the combination the frontier
+# report never tried. The TCN is the one candidate that beat everything on false-alarm
+# rate (0.299 vs the stack's 0.333 and the single GBM's 0.498), and the report concluded
+# that advantage "is learned in the representation, not recoverable by post-processing".
+# It was never added to the stack, and never trained on the patient label that later
+# shipped.
 for _arch in ("tcn", "ssm", "xfmr"):
-    for _obj in ("balanced", "utility"):
+    for _obj in ("balanced", "utility", "patient"):
         REGISTRY[f"{_arch}-{_obj}"] = _seq(_arch, _obj)
 
 
