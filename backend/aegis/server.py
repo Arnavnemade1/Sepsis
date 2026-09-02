@@ -611,12 +611,26 @@ def clinical_decision(bed: Optional[str] = None) -> Dict[str, Any]:
     from backend.aegis import disposition as _disp
     snap = patient_snapshot(bed) if bed else snapshot()
     risk = (snap or {}).get("risk") or {}
+    cert = risk.get("certainty") or {}
+    # A hard override is qSOFA >= 2 or a shock signal — core.py's own definition, and
+    # it stamps ``certainty.override`` when one fires. It is NOT "any triggered rule":
+    # ``triggered_rules`` carries descriptive SIRS criteria such as
+    # "SIRS: Tachycardia (98.0 bpm)", and reading the first of those as an escalation
+    # made almost every mildly abnormal patient ALARM and turned the whole abstention
+    # path into dead code. Derived here rather than re-declared, with a fallback for
+    # payloads that predate the stamp.
+    override = cert.get("override")
+    if not override:
+        det_blk = (snap or {}).get("detection") or {}
+        if int(risk.get("qsofa_score") or 0) >= 2:
+            override = "qSOFA>=2"
+        elif det_blk.get("shock_signal"):
+            override = "shock signal"
     d = _disp.decide(
         risk_level=str(risk.get("level") or "LOW"),
         ml_probability=risk.get("ml_probability"),
         certainty=risk.get("certainty"),
-        override=(snap.get("triggered_rules") or [None])[0]
-                 if (snap.get("triggered_rules")) else None,
+        override=override,
     )
     out = d.as_dict()
     out["bed"] = bed

@@ -48,6 +48,19 @@ def main() -> int:
           d.abstained is False,
           "an abstention badge on a decision the model did not make would misdescribe it")
 
+    print("\n1b. a SIRS CRITERION is not a hard override (regression)")
+    # Found live: the REST route passed the first entry of `triggered_rules` as the
+    # override, and that list carries descriptive SIRS criteria like
+    # "SIRS: Tachycardia (98.0 bpm)". Every mildly abnormal patient therefore ALARMed
+    # and REVIEW became unreachable. core.py's definition is qSOFA >= 2 or shock.
+    d = D.decide("MEDIUM", 0.0241, certainty=UNCERTAIN, override=None)
+    check("uncertain + only SIRS criteria present -> REVIEW, not ALARM",
+          d.action == D.REVIEW,
+          f"action={d.action} (a SIRS criterion must never reach `override`)")
+    d = D.decide("MEDIUM", 0.0241, certainty=UNCERTAIN, override="qSOFA>=2")
+    check("uncertain + a REAL hard override -> ALARM", d.action == D.ALARM,
+          f"action={d.action}")
+
     print("\n2. uncertainty ADDS demand where the model alone would have decided")
     low_conf = D.decide("MEDIUM", 0.04, certainty=NOT_SEPTIC)
     low_unc = D.decide("MEDIUM", 0.04, certainty=UNCERTAIN)
