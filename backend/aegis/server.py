@@ -598,6 +598,34 @@ def health_system() -> Dict[str, Any]:
     return out
 
 
+@app.get("/aegis/audit")
+def model_audit() -> Dict[str, Any]:
+    """What the shipped detector's performance is actually made of.
+
+    Serves ``artifacts/model_audit.json`` rather than measuring live, for two reasons.
+    The suspicion-echo probe fits two models, which does not belong in a request handler.
+    And a number a judge reads should be the number that was committed and can be
+    reproduced from the repository, not one a warm cache happened to produce.
+
+    Regenerate with ``python -m backend.ml.scripts.run_audit``.
+    """
+    import json as _json
+    import os as _os
+    from backend.ml import config as _cfg
+    path = _os.path.join(_cfg.ARTIFACTS_DIR, "model_audit.json")
+    try:
+        with open(path) as fh:
+            payload = _json.load(fh)
+    except (OSError, ValueError):
+        # Absent is a normal state, not an error: a machine without the artefact should
+        # say the audit has not been run rather than invent one.
+        return {"available": False,
+                "reason": "artifacts/model_audit.json not present — run "
+                          "python -m backend.ml.scripts.run_audit"}
+    payload["available"] = True
+    return payload
+
+
 @app.get("/aegis/health/prover")
 def health_prover() -> Dict[str, Any]:
     """Full detail on the shared Z3 context, including the recent failure log.

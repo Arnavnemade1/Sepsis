@@ -324,3 +324,7 @@ rigorous:
 
 clean-cache:
 	rm -rf artifacts/feature_cache
+
+audit:
+	$(PY) -m backend.ml.scripts.run_audit --spec dev --folds 3
+	$(PY) -m backend.ml.scripts.build_report

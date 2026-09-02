@@ -15,6 +15,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 SRC = os.path.join(ROOT, "artifacts", "rigorous_eval.json")
+AUDIT_SRC = os.path.join(ROOT, "artifacts", "model_audit.json")
 OUT = os.path.join(ROOT, "webui", "validation.html")
 
 TEMPLATE = r"""<!doctype html><html lang="en"><head>
@@ -227,6 +228,60 @@ function draw(){
   'reports observed lead beside the random-score null at matched detection.';
  app.appendChild(retr);
 
+ // ---- MODEL AUDIT -------------------------------------------------------------
+ // What this detector's performance is actually MADE of. Pointed at our own model
+ // first: an instrument for finding soft numbers in other people's work has no
+ // standing until it has been used on ours.
+ var AUD=/*__AUDIT__*/null;
+ if(AUD&&AUD.detector){
+  var au=document.createElement('div');
+  au.className='protocol';
+  au.style.borderLeft='3px solid #2c7a7b';
+  function arow(k,v,note){return '<tr><td style="padding:4px 14px 4px 0">'+k+
+    '</td><td class="mono" style="padding:4px 14px 4px 0;text-align:right"><b>'+v+
+    '</b></td><td style="padding:4px 0;opacity:.72">'+(note||'')+'</td></tr>';}
+  function af3(x){return (x===null||x===undefined||isNaN(x))?'\u2014':Number(x).toFixed(3);}
+  function af1(x){return (x===null||x===undefined||isNaN(x))?'\u2014':Number(x).toFixed(1);}
+  au.innerHTML='<b>Model audit \u2014 what this number is made of.</b> '+
+   'A pooled AUROC averages over every positive/negative hour pair and silently mixes '+
+   'two different questions. Applied here to <span class="mono">'+AUD.detector+
+   '</span> on '+(AUD.n_patients||0).toLocaleString()+' patients.'+
+   '<table style="margin:10px 0 6px;border-collapse:collapse;font-size:13px">'+
+   arow('pooled AUROC',af3(AUD.pooled_auroc),'what is normally reported')+
+   arow('BETWEEN \u2014 is this a septic patient?',af3(AUD.between_auroc),
+       'patient selection \u2014 triage')+
+   arow('WITHIN \u2014 is this the hour?',af3(AUD.within_auroc_strict),
+       'per-stay, each admission its own control \u2014 the early-warning question')+
+   arow('\u2003 same, pooled',af3(AUD.within_auroc_pooled),
+       'disagrees by construction (Simpson\u2019s paradox); the stratified row above is honest')+
+   arow('lead time observed',af1(AUD.lead_observed_h)+' h',
+       'at detection '+af3(AUD.lead_detection_rate))+
+   arow('lead time, RANDOM null',af1(AUD.lead_null_h)+' h',
+       'a shuffled score at the SAME detection rate')+
+   arow('excess over null',(AUD.lead_excess_h>0?'+':'')+af1(AUD.lead_excess_h)+' h',
+       AUD.lead_excess_h>0?'':'no early-warning excess')+
+   arow('suspicion echo',(AUD.suspicion_drop>0?'+':'')+af3(AUD.suspicion_drop)+' AUROC',
+       'lost when the care team\u2019s ordering behaviour is deleted')+
+   '</table>'+
+   '<div style="margin-top:8px"><b>Verdict.</b> '+(AUD.verdict||'')+'</div>'+
+   '<div style="margin-top:8px;opacity:.72"><b>The suspicion-echo row is the one to read '+
+   'against the literature.</b> The published critique of the Epic Sepsis Model \u2014 '+
+   'deployed across hundreds of hospitals, later found to miss about two thirds of cases '+
+   '\u2014 was that because antibiotics are ordered once a clinician already suspects '+
+   'sepsis, the model partly detected <i>the clinician\u2019s own suspicion</i>. That was '+
+   'argued qualitatively. Here it is measured, and this detector loses only '+
+   af3(AUD.suspicion_drop)+' AUROC when those features go, so it is not running on that '+
+   'echo. The probe is an UPPER BOUND, not an attribution: the deleted features carry '+
+   'real information too (a recently measured channel is also fresher data).</div>'+
+   '<div style="margin-top:8px;opacity:.72">A low within-patient score is not '+
+   'automatically a flaw \u2014 a model may be honestly aimed at triage. It is a flaw '+
+   'only when the system is sold as early warning. No clock-amplification measure is '+
+   'reported: that claim was attacked and failed. Reproduce: '+
+   '<span class="mono">python -m backend.ml.scripts.run_audit</span> \u00b7 live at '+
+   '<span class="mono">/aegis/audit</span>.</div>';
+  app.appendChild(au);
+ }
+
  // Forest plot
  var h2a=document.createElement('h2');h2a.innerHTML='<span class="n">1</span>Generalization — AUROC with 95% CI';app.appendChild(h2a);
  var l1=document.createElement('div');l1.className='lede';
@@ -342,11 +397,21 @@ matchMedia('(prefers-color-scheme:dark)').addEventListener('change',draw);
 </script></body></html>"""
 
 
+def _audit_blob() -> str:
+    """The model audit, embedded so the page stands alone on a static host."""
+    try:
+        with open(AUDIT_SRC) as fh:
+            return json.dumps(json.load(fh))
+    except (OSError, ValueError):
+        return "null"
+
+
 def main() -> None:
     with open(SRC) as fh:
         data = json.load(fh)
     html = TEMPLATE.replace("__DATA__", json.dumps(data))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
+    html = html.replace("/*__AUDIT__*/null", _audit_blob())
     with open(OUT, "w") as fh:
         fh.write(html)
     print(f"wrote {OUT} ({len(html)//1024} KB)")

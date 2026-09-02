@@ -1,0 +1,32 @@
+{
+  "detector": "stack-patient (cached OOF)",
+  "n_rows": 310061,
+  "n_patients": 8000,
+  "n_septic_patients": 679,
+  "prevalence": 0.02094749097758183,
+  "pooled_auroc": 0.7605163888275996,
+  "between_auroc": 0.7964363102877057,
+  "within_auroc_pooled": 0.46680913743527014,
+  "within_auroc_strict": 0.6526295272681353,
+  "n_within_stays": 607,
+  "lead_observed_h": 34.0,
+  "lead_null_h": 36.5,
+  "lead_null_lo": 32.3,
+  "lead_null_hi": 40.2,
+  "lead_excess_h": -2.5,
+  "lead_detection_rate": 0.6539027982326951,
+  "suspicion_auroc_full": 0.75884629616798,
+  "suspicion_auroc_stripped": 0.7518354608735563,
+  "suspicion_drop": 0.007010835294423701,
+  "suspicion_n_features": 15,
+  "caveats": [
+    "Suspicion echo is an UPPER BOUND, not an attribution: the deleted features encode clinician ordering behaviour and genuine information (a recently measured channel is also fresher data), so the drop bounds the suspicion component from above.",
+    "A low within-patient score is not automatically a flaw \u2014 a model may be honestly aimed at triage. It is a flaw only when the system is sold as early warning.",
+    "No clock-amplification measure is reported. That claim was attacked and failed: the headline was definitionally true, and only ~11% of the pairs pooled AUROC averages over are within-patient.",
+    "Pooled within-patient AUROC and the strictly per-stay version disagree by construction (Simpson's paradox). The stratified one is the honest answer."
+  ],
+  "generated": "2026-09-01T21:04:47",
+  "spec": "dev",
+  "threshold": 0.03,
+  "verdict": "selects patients at 0.796 and times the event at 0.653; lead time is -2.5h against its random null (no early-warning excess); loses 0.007 AUROC when measurement-pattern features are removed"
+}
