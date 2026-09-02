@@ -7,7 +7,7 @@ export const site = {
   /** Used in <title> templates and the OG card. */
   tagline: "Continuous sepsis detection you can verify.",
   description:
-    "AegisOS turns ordinary sensors into a real-time digital twin that predicts sepsis early, explains its reasoning, and synthesizes formally-verified treatment protocols. Validated across hospitals on PhysioNet CinC-2019.",
+    "AegisOS turns ordinary sensors into a real-time digital twin that detects sepsis, explains its reasoning, and synthesizes formally-verified treatment protocols. Validated across hospitals on PhysioNet CinC-2019, with the claims we could not defend retracted in public.",
   /** Research codename, used once on /about. */
   codename: "HyperSepsisTwin-Ω",
   repo: "https://github.com/arnavnemade/Sepsis",

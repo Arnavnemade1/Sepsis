@@ -269,19 +269,20 @@ export function Explainer({ auroc, ece, leadHours, threshold }: ExplainerProps) 
                 />
               }
             />
+            {/* Was "median lead time". Retracted 2026-08-30 — it does not beat a
+                random-score null at matched detection (docs/LEAD_TIME_NULL.md). */}
             <Readout
-              label="median lead time"
+              label="calibration error"
               node={
                 <CountUp
                   frame={frame}
                   from={0}
-                  to={leadHours}
+                  to={ece}
                   start={SCENE.calibrate.from + 55}
                   end={SCENE.calibrate.from + 105}
-                  decimals={1}
+                  decimals={4}
                   size={26}
                   color={text.ink}
-                  suffix=" h"
                 />
               }
             />
@@ -406,11 +407,14 @@ export function Explainer({ auroc, ece, leadHours, threshold }: ExplainerProps) 
             </div>
 
             <div style={{ display: "flex", gap: 40, marginTop: 34 }}>
+              {/* Retracted 2026-08-30: this used to read "alarm raised 37.8 h before
+                  onset". Lead time does not beat a random-score null at matched
+                  detection rate, so it is not a claim we can make. */}
               <Readout
                 label="alarm raised"
                 node={
                   <Mono size={26} color={stateInk.med} style={{ fontWeight: 500 }}>
-                    {leadHours.toFixed(1)} h
+                    before onset
                   </Mono>
                 }
               />

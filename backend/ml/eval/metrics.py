@@ -155,6 +155,143 @@ def early_warning(
     }
 
 
+def _pre_onset_segments(y, groups, onset_hour, hour_index):
+    """Per septic patient, the hours at or before onset, flattened with boundaries.
+
+    Computed once. The null below evaluates hundreds of candidate thresholds and a naive
+    implementation re-walked all 8,000 patients for each one, which turned a diagnostic
+    into a ten-minute job.
+    """
+    groups = np.asarray(groups)
+    order = np.lexsort((np.asarray(hour_index), groups))
+    g = groups[order]
+    hs = np.asarray(hour_index)[order]
+    os_ = np.asarray(onset_hour)[order]
+    starts = np.flatnonzero(np.r_[True, g[1:] != g[:-1]])
+    bounds = np.r_[starts, len(g)]
+    hours, onsets, lens = [], [], []
+    for lo, hi in zip(bounds[:-1], bounds[1:]):
+        onset = int(os_[lo])
+        if onset < 0:
+            continue
+        h_pre = hs[lo:hi][hs[lo:hi] <= onset]
+        if h_pre.size:
+            hours.append(h_pre.astype(float))
+            onsets.append(float(onset))
+            lens.append(h_pre.size)
+    if not hours:
+        return np.array([]), np.array([]), np.array([], dtype=int)
+    return (np.concatenate(hours), np.asarray(onsets, dtype=float),
+            np.asarray(lens, dtype=int))
+
+
+def _null_lead_at_detection(flat_hours, onsets, lens, target_det, rng):
+    """One draw: random scores, threshold tuned to ``target_det``, median lead returned.
+
+    Fully vectorised over patients. Segment boundaries let the first crossing be found
+    with one ``np.maximum.accumulate`` pass instead of a Python loop per patient.
+    """
+    n_pt = len(lens)
+    if n_pt == 0:
+        return float("nan")
+    ends = np.cumsum(lens)
+    begins = ends - lens
+    scores = rng.random(flat_hours.size)
+
+    lo, hi, best = 0.0, 1.0, None
+    for _ in range(24):
+        thr = 0.5 * (lo + hi)
+        fired = scores >= thr
+        # index of the first True inside each segment, or -1 when the segment never fires
+        idx = np.full(n_pt, -1, dtype=np.int64)
+        any_fire = np.zeros(n_pt, dtype=bool)
+        for k in range(n_pt):          # cheap: n_pt is ~600, the inner work is numpy
+            seg = fired[begins[k]:ends[k]]
+            if seg.any():
+                idx[k] = begins[k] + int(np.argmax(seg))
+                any_fire[k] = True
+        det = float(any_fire.mean())
+        if det >= target_det:
+            best = (idx.copy(), any_fire.copy())
+            lo = thr                    # afford to be stricter
+        else:
+            hi = thr
+    if best is None:
+        return float("nan")
+    idx, any_fire = best
+    leads = onsets[any_fire] - flat_hours[idx[any_fire]]
+    return float(np.median(leads)) if leads.size else float("nan")
+
+
+def lead_time_vs_null(
+    y: np.ndarray,
+    p: np.ndarray,
+    groups: np.ndarray,
+    onset_hour: np.ndarray,
+    hour_index: np.ndarray,
+    threshold: float,
+    n_draws: int = 25,
+    seed: int = 0,
+) -> Dict[str, float]:
+    """Median lead time, and the median lead a RANDOM score achieves at the same
+    detection rate. The difference is the only part that evidences early warning.
+
+    WHY A BARE LEAD TIME MUST NOT BE REPORTED
+    -----------------------------------------
+    ``early_warning`` above returns ``median_lead_time_hours`` as
+    ``onset - first_alarm_hour``. That number was measured against this null and found to
+    carry no information about skill (``docs/LEAD_TIME_NULL.md``). At matched detection a
+    pure random score produced 35.2 / 39.0 / 38.0 / 39.0 hours against the shipped
+    detector's 40.0 / 40.0 / 38.5 / 38.5, and random *beat* the real model at 70%
+    detection. A detector alarms at the FIRST crossing of its threshold, which for any low
+    threshold lands near the start of a stay, so a long lead is manufactured by stay
+    geometry and alarm rate rather than earned.
+
+    Every lead time this project published before that audit — 26, 29, 34, 37, 39, 40h —
+    sits inside this null. This function exists so no future one is quoted bare.
+
+    THE MATCHING IS ON DETECTION RATE, NOT ALARM RATE
+    -------------------------------------------------
+    This is the part that is easy to get wrong, and getting it wrong reverses the
+    conclusion. A detector firing on more stays reaches further back on average for
+    reasons unrelated to skill, so the null is held at the SAME detection rate as the
+    observed detector. The first version of this analysis matched on alarm rate, compared
+    511 fired stays against 367, and would have reported a win.
+
+    ``excess_lead_hours`` is the reportable quantity. It can be negative, and on this
+    project's own detector it has been.
+    """
+    obs = early_warning(y, p, groups, onset_hour, hour_index, threshold)
+    observed = float(obs["median_lead_time_hours"])
+    target_det = float(obs["detection_rate"])
+    blank = {"observed_lead_hours": observed, "null_lead_hours": float("nan"),
+             "null_lo": float("nan"), "null_hi": float("nan"),
+             "excess_lead_hours": float("nan"), "detection_rate": target_det,
+             "n_draws": 0}
+    if not np.isfinite(target_det) or target_det <= 0:
+        return blank
+
+    flat_hours, onsets, lens = _pre_onset_segments(y, groups, onset_hour, hour_index)
+    if lens.size == 0:
+        return blank
+    rng = np.random.default_rng(seed)
+    nulls = [_null_lead_at_detection(flat_hours, onsets, lens, target_det, rng)
+             for _ in range(n_draws)]
+    arr = np.asarray([x for x in nulls if np.isfinite(x)], dtype=float)
+    if arr.size == 0:
+        return blank
+    lo, hi = np.percentile(arr, [2.5, 97.5])
+    med = float(np.median(arr))
+    return {
+        "observed_lead_hours": observed,
+        "null_lead_hours": med,
+        "null_lo": float(lo), "null_hi": float(hi),
+        "excess_lead_hours": float(observed - med),
+        "detection_rate": target_det,
+        "n_draws": int(arr.size),
+    }
+
+
 def detection_at_false_alarm_rate(
     y: np.ndarray,
     p: np.ndarray,

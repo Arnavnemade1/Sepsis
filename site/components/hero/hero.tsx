@@ -48,7 +48,7 @@ export function Hero() {
           transition={{ duration: 0.5, delay: 0.06, ease: [0.2, 0.7, 0.2, 1] }}
           className="mt-6 max-w-[17ch] font-display text-[clamp(2.75rem,7.5vw,5.25rem)] font-semibold leading-[0.97] tracking-[-0.04em] text-ink text-balance"
         >
-          Sepsis shows itself hours before anyone is watching.
+          Sepsis hides in plain sight. We measure how well anything can see it.
         </motion.h1>
 
         <motion.p

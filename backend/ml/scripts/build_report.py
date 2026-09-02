@@ -190,16 +190,42 @@ function draw(){
  var meanAuroc=(st[0].auroc+st[1].auroc)/2;
  var ciLo=Math.min(st[0].auroc_ci[0],st[1].auroc_ci[0]),ciHi=Math.max(st[0].auroc_ci[1],st[1].auroc_ci[1]);
  var meanEce=(st[0].ece+st[1].ece)/2;
- var lead=Math.max(st[0].early_warning.median_lead_time_hours||0,st[1].early_warning.median_lead_time_hours||0);
+ // Lead time is deliberately NOT headlined. It was audited on 2026-08-30 and found to
+ // carry no early-warning information: at MATCHED DETECTION RATE a pure random score
+ // reproduces this detector's median lead, and beats it at 70% detection. See
+ // docs/LEAD_TIME_NULL.md. The old tile took Math.max over the two directions, i.e. it
+ // published the more flattering of two numbers that were both inside the null.
+ var lead=(( st[0].early_warning.median_lead_time_hours||0)+(st[1].early_warning.median_lead_time_hours||0))/2;
  var util=(st[0].normalized_utility+st[1].normalized_utility)/2;
  var tiles=document.createElement('div');tiles.className='tiles';
  function tile(k,v,ci){return '<div class="tile"><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="ci">'+(ci||'')+'</div></div>';}
  tiles.innerHTML=
   tile('Cross-hospital AUROC',f3(meanAuroc),'95% CI '+f3(ciLo)+'–'+f3(ciHi))+
   tile('Calibration error',f3(meanEce),'ECE · lower is better')+
-  tile('Median lead time',lead.toFixed(1)+' h','before labelled onset')+
+  tile('Median lead time','RETRACTED','not evidence of early warning — see below')+
   tile('CinC-2019 utility',f2(util),'official normalized score');
  app.appendChild(tiles);
+
+ // The retraction, stated where the number used to be rather than in a footnote.
+ var retr=document.createElement('div');
+ retr.className='protocol';
+ retr.style.borderLeft='3px solid #c0392b';
+ retr.innerHTML='<b>Why lead time is retracted.</b> This page used to headline a median '+
+  'lead time of '+lead.toFixed(1)+' h. On 2026-08-30 we tested that number against the '+
+  'right null and it did not survive. A detector alarms at the <i>first</i> crossing of '+
+  'its threshold, which for any low threshold lands near the start of a stay, so a long '+
+  'lead is manufactured by how long patients happen to lie in the ICU and by how often '+
+  'the alarm fires \u2014 not by skill. Measured at <b>matched detection rate</b> on the '+
+  'development cohort, a <b>pure random score</b> produced 35.2 / 39.0 / 38.0 / 39.0 h '+
+  'against this detector\u2019s 40.0 / 40.0 / 38.5 / 38.5 h, and random <b>beat</b> it at '+
+  '70% detection. At the shipped operating point our excess over the null is '+
+  '<b>\u22122.0 h</b>. Every lead time this project published before that audit '+
+  '(26/29/34/37/39/40 h) sits inside the same null. The number above is kept only so the '+
+  'retraction is auditable; it is not a claim. Reproduce: '+
+  '<span class="mono">python -m backend.ml.scripts.attack_clock_claim</span>. '+
+  'The corrected metric is <span class="mono">metrics.lead_time_vs_null()</span>, which '+
+  'reports observed lead beside the random-score null at matched detection.';
+ app.appendChild(retr);
 
  // Forest plot
  var h2a=document.createElement('h2');h2a.innerHTML='<span class="n">1</span>Generalization — AUROC with 95% CI';app.appendChild(h2a);

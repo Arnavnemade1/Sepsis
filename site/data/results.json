@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-08-28",
+ "syncedAt": "2026-09-02",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -2555,18 +2555,18 @@
   "claim": "Post-hoc calibration is what makes the probability mean what it says — and it survives the move to a different hospital."
  },
  "operatingPoint": {
-  "high": 0.0525,
-  "medium": 0.0262,
+  "high": 0.03,
+  "medium": 0.015,
   "objective": "constrained",
   "maxFalseAlarmRate": 0.2,
   "oof": {
-   "utility": 0.3397,
-   "detectionRate": 0.4342,
-   "falseAlarmRate": 0.1504,
-   "medianLeadHours": 34
+   "utility": 0.3671,
+   "detectionRate": 0.4079,
+   "falseAlarmRate": 0.0617,
+   "medianLeadHours": 40
   },
-  "probP95": 0.05321,
-  "probP99": 0.16688,
+  "probP95": 0.0479,
+  "probP99": 0.15702,
   "nPatients": 1000,
   "heldOut": {
    "derivedThreshold": 0.0725,
@@ -2954,7 +2954,7 @@
   }
  },
  "subgroup": {
-  "threshold": 0.0525,
+  "threshold": 0.03,
   "thresholdPolicy": "global; never re-tuned per subgroup",
   "patients": 8000,
   "familySize": 16,
@@ -2966,19 +2966,19 @@
     "kind": "all",
     "patients": 8000,
     "septic": 679,
-    "auroc": 0.7709,
+    "auroc": 0.7605,
     "aurocCi": [
-     0.7531,
-     0.7884
+     0.7416,
+     0.7796
     ],
-    "calibration": 1.0717,
-    "detection": 0.5803,
-    "falseAlarm": 0.2444,
+    "calibration": 1.0578,
+    "detection": 0.6539,
+    "falseAlarm": 0.2743,
     "falseAlarmCi": [
-     0.2348,
-     0.2543
+     0.2655,
+     0.2842
     ],
-    "leadHours": 33.5,
+    "leadHours": 34,
     "underpowered": false
    },
    {
@@ -2986,19 +2986,19 @@
     "kind": "sex",
     "patients": 3377,
     "septic": 270,
-    "auroc": 0.7761,
+    "auroc": 0.759,
     "aurocCi": [
-     0.749,
-     0.7987
+     0.7309,
+     0.7872
     ],
-    "calibration": 1.0615,
-    "detection": 0.5889,
-    "falseAlarm": 0.216,
+    "calibration": 1.103,
+    "detection": 0.6444,
+    "falseAlarm": 0.253,
     "falseAlarmCi": [
-     0.1995,
-     0.2305
+     0.2348,
+     0.2659
     ],
-    "leadHours": 37,
+    "leadHours": 38,
     "underpowered": false
    },
    {
@@ -3006,17 +3006,17 @@
     "kind": "sex",
     "patients": 4623,
     "septic": 409,
-    "auroc": 0.7659,
+    "auroc": 0.7606,
     "aurocCi": [
-     0.7449,
-     0.788
+     0.7409,
+     0.7831
     ],
-    "calibration": 1.0785,
-    "detection": 0.5746,
-    "falseAlarm": 0.2653,
+    "calibration": 1.0278,
+    "detection": 0.6601,
+    "falseAlarm": 0.29,
     "falseAlarmCi": [
-     0.2522,
-     0.2785
+     0.2767,
+     0.303
     ],
     "leadHours": 32,
     "underpowered": false
@@ -3026,19 +3026,19 @@
     "kind": "age",
     "patients": 1165,
     "septic": 100,
-    "auroc": 0.7915,
+    "auroc": 0.8035,
     "aurocCi": [
-     0.7527,
-     0.8289
+     0.7645,
+     0.8358
     ],
-    "calibration": 0.9943,
-    "detection": 0.62,
-    "falseAlarm": 0.216,
+    "calibration": 1.0154,
+    "detection": 0.73,
+    "falseAlarm": 0.2441,
     "falseAlarmCi": [
-     0.1901,
-     0.2377
+     0.22,
+     0.2688
     ],
-    "leadHours": 37,
+    "leadHours": 35,
     "underpowered": false
    },
    {
@@ -3046,19 +3046,19 @@
     "kind": "age",
     "patients": 2837,
     "septic": 214,
-    "auroc": 0.7724,
+    "auroc": 0.7667,
     "aurocCi": [
-     0.7417,
-     0.8005
+     0.7343,
+     0.7969
     ],
-    "calibration": 1.0805,
-    "detection": 0.5841,
-    "falseAlarm": 0.2257,
+    "calibration": 1.0575,
+    "detection": 0.6449,
+    "falseAlarm": 0.2482,
     "falseAlarmCi": [
-     0.2079,
-     0.2414
+     0.23,
+     0.2657
     ],
-    "leadHours": 36,
+    "leadHours": 35.5,
     "underpowered": false
    },
    {
@@ -3066,19 +3066,19 @@
     "kind": "age",
     "patients": 2815,
     "septic": 267,
-    "auroc": 0.7666,
+    "auroc": 0.7433,
     "aurocCi": [
-     0.7409,
-     0.7915
+     0.7149,
+     0.7713
     ],
-    "calibration": 1.0741,
-    "detection": 0.5805,
-    "falseAlarm": 0.2606,
+    "calibration": 1.0858,
+    "detection": 0.6367,
+    "falseAlarm": 0.3108,
     "falseAlarmCi": [
-     0.2434,
-     0.276
+     0.2954,
+     0.3277
     ],
-    "leadHours": 32,
+    "leadHours": 36.5,
     "underpowered": false
    },
    {
@@ -3086,19 +3086,19 @@
     "kind": "age",
     "patients": 1183,
     "septic": 98,
-    "auroc": 0.7513,
+    "auroc": 0.7391,
     "aurocCi": [
-     0.7063,
-     0.7957
+     0.6903,
+     0.7903
     ],
-    "calibration": 1.1252,
-    "detection": 0.5306,
-    "falseAlarm": 0.2793,
+    "calibration": 1.026,
+    "detection": 0.6429,
+    "falseAlarm": 0.2811,
     "falseAlarmCi": [
-     0.2529,
-     0.3068
+     0.2559,
+     0.305
     ],
-    "leadHours": 32,
+    "leadHours": 23,
     "underpowered": false
    },
    {
@@ -3106,19 +3106,19 @@
     "kind": "age×sex",
     "patients": 583,
     "septic": 53,
-    "auroc": 0.7187,
+    "auroc": 0.7124,
     "aurocCi": [
-     0.6526,
-     0.7815
+     0.643,
+     0.7784
     ],
-    "calibration": 1.1322,
-    "detection": 0.434,
-    "falseAlarm": 0.3377,
+    "calibration": 0.9545,
+    "detection": 0.5472,
+    "falseAlarm": 0.3208,
     "falseAlarmCi": [
-     0.3006,
-     0.3805
+     0.2847,
+     0.361
     ],
-    "leadHours": 27,
+    "leadHours": 18,
     "underpowered": false
    }
   ],
@@ -3127,20 +3127,10 @@
     "metric": "false_alarm_rate",
     "a": "female",
     "b": "male",
-    "delta": -0.0493,
+    "delta": -0.037,
     "ci": [
-     -0.0706,
-     -0.0302
-    ]
-   },
-   {
-    "metric": "false_alarm_rate",
-    "a": "age 80+",
-    "b": "age <45",
-    "delta": 0.0633,
-    "ci": [
-     0.03,
-     0.1003
+     -0.059,
+     -0.0192
     ]
    }
   ],
@@ -3149,20 +3139,20 @@
     "metric": "auroc",
     "a": "age 80+ · male",
     "b": "everyone else",
-    "delta": -0.0561,
+    "delta": -0.0519,
     "ci": [
-     -0.1328,
-     0.005
+     -0.1251,
+     0.0161
     ]
    },
    {
     "metric": "false_alarm_rate",
     "a": "age 80+ · male",
     "b": "everyone else",
-    "delta": 0.1007,
+    "delta": 0.0501,
     "ci": [
-     0.0623,
-     0.144
+     0.015,
+     0.0896
     ]
    }
   ]
@@ -3234,35 +3224,35 @@
   ]
  },
  "conformal": {
-  "alpha": 0.06,
-  "nominal": 0.94,
-  "detector": "balanced:hgb+hgb2+et+lr+xgb@utility",
-  "lockedCovPos": 0.935,
-  "lockedCovNeg": 0.9631,
-  "lockedMacroPos": 0.9363,
-  "abstainRate": 0.723,
-  "miscoverageRatio": 1.08,
+  "alpha": 0.08,
+  "nominal": 0.92,
+  "detector": "patient:hgb+hgb2+et+lr+xgb@utility",
+  "lockedCovPos": 0.9025,
+  "lockedCovNeg": 0.936,
+  "lockedMacroPos": 0.9044,
+  "abstainRate": 0.638,
+  "miscoverageRatio": 1.22,
   "overrunLimit": 1.5,
   "conversion": [
    {
     "policy": "shipped (p >= thr)",
-    "utility": 0.3704,
-    "detection": 0.581,
-    "falseAlarm": 0.231,
-    "leadHours": 27
+    "utility": 0.4179,
+    "detection": 0.688,
+    "falseAlarm": 0.265,
+    "leadHours": 37
    },
    {
     "policy": "UNCERTAIN silenced",
-    "utility": 0.2587,
-    "detection": 0.419,
-    "falseAlarm": 0.099,
-    "leadHours": 30
+    "utility": 0.3968,
+    "detection": 0.537,
+    "falseAlarm": 0.141,
+    "leadHours": 37
    },
    {
     "policy": "UNCERTAIN escalated",
-    "utility": -0.1455,
-    "detection": 0.975,
-    "falseAlarm": 0.949,
+    "utility": -0.0923,
+    "detection": 0.963,
+    "falseAlarm": 0.943,
     "leadHours": 27.5
    }
   ],

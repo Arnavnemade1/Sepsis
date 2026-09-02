@@ -86,11 +86,9 @@ export function OutcomeWaffle() {
           />
         </div>
         <p className="mt-5 text-[13px] leading-relaxed text-dim text-pretty">
-          Median warning for the ones it caught:{" "}
-          <span className="num text-ink">
-            {headline.production.medianLeadHours.toFixed(1)} hours
-          </span>{" "}
-          before Sepsis-3 onset.
+          We do not quote a lead time here. Median lead time was measured against a
+          random-score null at matched detection rate and did not beat it, so it reflects
+          how long patients lie in the ICU rather than how early the model warns.
         </p>
       </div>
 

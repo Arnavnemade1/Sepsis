@@ -66,10 +66,14 @@ export default function Home() {
 
           <Stagger className="mt-14 grid gap-3 sm:grid-cols-4">
             <Item>
+              {/* Lead time used to headline here. It was audited on 2026-08-30 against a
+                  random-score null at matched detection rate and did not survive — see
+                  docs/LEAD_TIME_NULL.md. Detection rate is the honest headline: it is a
+                  patient-level count, not a function of stay geometry. */}
               <MetricTile
-                value={<Counter to={headline.production.medianLeadHours} decimals={1} suffix=" h" />}
-                label="Median lead time"
-                detail="before Sepsis-3 onset, measured across hospitals"
+                value={<Counter to={headline.production.detectionRate * 100} decimals={0} suffix="%" />}
+                label="Septic patients caught"
+                detail="alarmed before Sepsis-3 onset, across hospitals"
                 tone="accent"
               />
             </Item>

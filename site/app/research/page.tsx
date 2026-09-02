@@ -296,10 +296,13 @@ export default function ResearchPage() {
                 />
               </Item>
               <Item>
+                {/* Retracted 2026-08-30: median lead time does not beat a random-score
+                    null at matched detection rate (docs/LEAD_TIME_NULL.md). Replaced with
+                    calibration error, which is a genuine property of the model. */}
                 <MetricTile
-                  value={<Counter to={headline.production.medianLeadHours} decimals={1} suffix=" h" />}
-                  label="Median lead time"
-                  detail="before Sepsis-3 onset, among detected patients"
+                  value={<Counter to={headline.production.ece} decimals={4} />}
+                  label="Calibration error"
+                  detail="ECE across hospitals \u00b7 lower is better"
                 />
               </Item>
               <Item>
@@ -954,7 +957,7 @@ export default function ResearchPage() {
                     <th className="px-4 py-3 text-right font-medium">Calibration</th>
                     <th className="px-4 py-3 text-right font-medium">Detection</th>
                     <th className="px-4 py-3 text-right font-medium">False alarms</th>
-                    <th className="px-4 py-3 text-right font-medium">Lead</th>
+                    <th className="px-4 py-3 text-right font-medium" title="Uncorrected. Median lead time does not beat a random-score null at matched detection rate — see docs/LEAD_TIME_NULL.md. Shown only because the point of this table is that subgroup GAPS are flat.">Lead*</th>
                   </tr>
                 </thead>
                 <tbody className="tabular-nums">
@@ -1247,6 +1250,13 @@ export default function ResearchPage() {
                     ))}
                   </DataTable>
                 </div>
+                <p className="mt-3 text-[12px] leading-relaxed text-dim">
+                  *Lead time is <b>uncorrected</b>. Measured against a random-score null at
+                  matched detection rate it shows no excess, so it reflects how long
+                  patients lie in the ICU rather than how early the model warns. It is kept
+                  in these tables only because the point being made is that the subgroup
+                  <i> gaps</i> are flat, which does not depend on the level.
+                </p>
 
                 <div className="mt-6 rounded-md border border-med/30 bg-med/5 p-4">
                   <p className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-med-ink">
@@ -1323,8 +1333,8 @@ export default function ResearchPage() {
 
                 <div className="scroll-x mt-6">
                   <DataTable
-                    caption="What abstention does to the shipped alarm, bracketed both ways"
-                    head={["Policy", "Utility", "Detection", "False alarm", "Lead (h)"]}
+                    caption="What abstention does to the shipped alarm, bracketed both ways. *Lead time is uncorrected \u2014 it does not beat a random-score null at matched detection rate, so it is shown for completeness, not as a claim."
+                    head={["Policy", "Utility", "Detection", "False alarm", "Lead (h)*"]}
                   >
                     {conformal.conversion.map((c) => (
                       <Row
