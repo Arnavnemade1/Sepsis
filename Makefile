@@ -327,6 +327,9 @@ rigorous:
 clean-cache:
 	rm -rf artifacts/feature_cache
 
+verify-timeline:
+	PYTHONPATH=. $(PY) -m backend.aegis.verify_risk_timeline
+
 verify-disposition:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_disposition
 

@@ -598,6 +598,31 @@ def health_system() -> Dict[str, Any]:
     return out
 
 
+@app.get("/aegis/timeline")
+def risk_timeline(bed: Optional[str] = None, horizon: int = 8) -> Dict[str, Any]:
+    """The risk timeline, drawn from the model that actually decides.
+
+    Replaces the fused-risk chart, which plotted a fusion score against a hardcoded
+    0.70 while the shipped detector alarms at 0.03 on its calibrated probability.
+    Every element here resolves to a shipped artifact and ``provenance`` names which.
+    """
+    from backend.aegis import risk_timeline as _rt
+    snap = patient_snapshot(bed) if bed else snapshot()
+    hist = (snap or {}).get("history") or {}
+    probs = list(hist.get("probability") or [])
+    if not probs:
+        cur = ((snap or {}).get("risk") or {}).get("ml_probability")
+        probs = [float(cur)] if cur is not None else []
+    onset = None
+    det = (snap or {}).get("detection") or {}
+    if det.get("labelled_onset_hour") is not None:
+        onset = float(det["labelled_onset_hour"])
+    tl = _rt.build(probs, horizon=horizon, onset_hour=onset)
+    out = tl.as_dict()
+    out["bed"] = bed
+    return out
+
+
 @app.get("/aegis/decision")
 def clinical_decision(bed: Optional[str] = None) -> Dict[str, Any]:
     """What the system DOES with this patient's score, and why.
