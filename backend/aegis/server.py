@@ -598,6 +598,45 @@ def health_system() -> Dict[str, Any]:
     return out
 
 
+@app.get("/aegis/lab")
+def lab_state() -> Dict[str, Any]:
+    """The Lab: agents propose, a locked gate adjudicates, refusals are the record.
+
+    Read-only. Binding a real adjudicator fits models on held-out patients and takes
+    minutes, so it is a job (`make lab-run`), not a request handler — a cheap gate is
+    one somebody runs a thousand times until something passes.
+    """
+    from backend.aegis import lab as _lab
+    from backend.ml import config as _cfg
+    import os as _os, json as _json
+    path = _os.path.join(_cfg.ARTIFACTS_DIR, "lab_ledger.json")
+    ledger = None
+    if _os.path.exists(path):
+        try:
+            with open(path) as fh:
+                ledger = _json.load(fh)
+        except Exception:
+            ledger = None
+    return {
+        "proposers": [{"name": p.name, "prior": p.prior} for p in _lab.default_proposers()],
+        "roles": {
+            "Proposer": "generates a change from a stated prior; never judges it",
+            "Critic": "argues against it from this project's recorded nulls; cannot veto",
+            "SafetyOfficer": "absolute veto over anything that weakens a safety property",
+            "Gate": "held-out patients, paired bootstrap; the only thing that can accept",
+        },
+        "min_effect": _lab.MIN_EFFECT,
+        "claim_types": {
+            "HELD_OUT": "measured on patients no agent could see or fit on",
+            "MECHANISM": "PBPK twin only — a simulator result, never an efficacy claim",
+            "REFUSED": "did not clear the gate, or was vetoed",
+        },
+        "ledger": ledger,
+        "note": "A low acceptance rate is the expected outcome. selfimprove.py accepted "
+                "0 of 16 under this same protocol; the gate refusing is the gate working.",
+    }
+
+
 @app.get("/aegis/timeline")
 def risk_timeline(bed: Optional[str] = None, horizon: int = 8) -> Dict[str, Any]:
     """The risk timeline, drawn from the model that actually decides.

@@ -327,6 +327,9 @@ rigorous:
 clean-cache:
 	rm -rf artifacts/feature_cache
 
+verify-lab:
+	PYTHONPATH=. $(PY) -m backend.aegis.verify_lab
+
 verify-timeline:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_risk_timeline
 
