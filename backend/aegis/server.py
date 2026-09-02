@@ -598,6 +598,33 @@ def health_system() -> Dict[str, Any]:
     return out
 
 
+@app.get("/aegis/decision")
+def clinical_decision(bed: Optional[str] = None) -> Dict[str, Any]:
+    """What the system DOES with this patient's score, and why.
+
+    The decision layer is where the remaining clinical value is: the same detector read
+    three ways produces false-alarm rates of 14%, 27% and 94%, a wider spread than any
+    modelling change this project has found. Returns one auditable disposition — the
+    action, who it routes to, the ordered reasons, the measured cost of the policy, and
+    the limits that qualify it.
+    """
+    from backend.aegis import disposition as _disp
+    snap = patient_snapshot(bed) if bed else snapshot()
+    risk = (snap or {}).get("risk") or {}
+    d = _disp.decide(
+        risk_level=str(risk.get("level") or "LOW"),
+        ml_probability=risk.get("ml_probability"),
+        certainty=risk.get("certainty"),
+        override=(snap.get("triggered_rules") or [None])[0]
+                 if (snap.get("triggered_rules")) else None,
+    )
+    out = d.as_dict()
+    out["bed"] = bed
+    out["risk_level"] = risk.get("level")
+    out["ml_probability"] = risk.get("ml_probability")
+    return out
+
+
 @app.get("/aegis/audit")
 def model_audit() -> Dict[str, Any]:
     """What the shipped detector's performance is actually made of.

@@ -17,6 +17,8 @@ help:
 	@echo "  make verify-evidence-replay AERIS patient-level replay metric checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
 	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-disposition Clinical decision layer: abstention may never downgrade"
+	@echo "  make audit             Model audit: what the detector's AUROC is made of"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
 	@echo "  make verify-coordination Coordination plane: matched-pair alignment surrogate"
 	@echo "  make verify-recovery   Autonomic recovery: known-tau, amplitude invariance, causality"
@@ -324,6 +326,9 @@ rigorous:
 
 clean-cache:
 	rm -rf artifacts/feature_cache
+
+verify-disposition:
+	PYTHONPATH=. $(PY) -m backend.aegis.verify_disposition
 
 audit:
 	$(PY) -m backend.ml.scripts.run_audit --spec dev --folds 3
