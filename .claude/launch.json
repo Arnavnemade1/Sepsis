@@ -4,8 +4,28 @@
     {
       "name": "webui-static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8123", "--directory", "webui"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8123",
+        "--directory",
+        "webui"
+      ],
       "port": 8123
+    },
+    {
+      "name": "aegis-backend",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "backend.aegis.server:app",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8099"
+      ],
+      "port": 8099
     }
   ]
 }

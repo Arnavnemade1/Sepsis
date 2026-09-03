@@ -1,0 +1,209 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AegisOS — The Lab</title>
+<style>
+:root{
+  --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
+  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;
+  --s1soft:rgba(42,120,214,.12); --s2soft:rgba(27,175,122,.14);
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
+  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
+  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;
+  --s1soft:rgba(57,135,229,.16); --s2soft:rgba(31,189,134,.16);
+}}
+:root[data-theme=dark]{
+  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
+  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
+  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;}
+:root[data-theme=light]{
+  --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
+  --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
+  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
+  line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 22px 80px}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
+h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:17px;font-weight:700;margin:38px 0 8px;letter-spacing:-.01em}
+.sub{color:var(--ink2);font-size:15px;max-width:74ch}
+.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--s2);border:1px solid var(--line);
+  border-radius:20px;padding:3px 11px;margin-bottom:14px}
+.protocol{margin:16px 0 6px;padding:12px 15px;border-left:3px solid var(--s1);
+  background:var(--card);border-radius:0 10px 10px 0;font-size:13.5px;color:var(--ink2)}
+.protocol b{color:var(--ink)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
+.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.tile .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
+.tile .v{font-size:25px;font-weight:750;margin-top:3px;letter-spacing:-.02em}
+.tile .ci{font-size:12px;color:var(--ink2);margin-top:2px}
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:12px 0}
+.role{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
+.role .n{font-weight:700;font-size:14px}
+.role .d{font-size:12.5px;color:var(--ink2);margin-top:3px}
+.role.gate{border-color:var(--s1);background:var(--s1soft)}
+.v-card{background:var(--card);border:1px solid var(--line);border-radius:12px;
+  padding:14px 16px;margin:10px 0;border-left-width:4px}
+.v-card.finding{border-left-color:var(--good)}
+.v-card.candidate{border-left-color:var(--warn)}
+.v-card.refused{border-left-color:var(--ref)}
+.v-card.mechanism{border-left-color:var(--s1)}
+.v-card.vetoed{border-left-color:var(--bad)}
+.v-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
+.v-title{font-weight:650;font-size:14.5px}
+.badge{font-size:10.5px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;
+  padding:2px 9px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
+.badge.finding{color:var(--good);border-color:var(--good)}
+.badge.candidate{color:var(--warn);border-color:var(--warn)}
+.badge.refused{color:var(--muted)}
+.badge.mechanism{color:var(--s1);border-color:var(--s1)}
+.badge.vetoed{color:var(--bad);border-color:var(--bad)}
+.agent{font-size:12px;color:var(--muted)}
+.nums{font-size:13px;margin-top:7px}
+.nums .lbl{color:var(--muted)}
+.reason{font-size:12.5px;color:var(--ink2);margin-top:6px;padding-left:10px;
+  border-left:2px solid var(--line2)}
+.warn{color:var(--warn)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line2)}
+th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.num{text-align:right;font-family:ui-monospace,"SF Mono",Menlo,monospace}
+.pos{color:var(--good)} .neg{color:var(--bad)}
+.empty{padding:30px;text-align:center;color:var(--muted);background:var(--card);
+  border:1px dashed var(--line);border-radius:12px}
+.foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
+  font-size:12.5px;color:var(--muted)}
+</style></head><body>
+<div class="wrap" id="app"><div class="empty">loading…</div></div>
+<script>
+var API = (window.AEGIS_API || "");
+function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+function f(x,n){return (x==null||isNaN(x))?"—":Number(x).toFixed(n==null?4:n);}
+function sgn(x,n){if(x==null||isNaN(x))return "—";var v=Number(x);
+  return (v>=0?"+":"")+v.toFixed(n==null?4:n);}
+
+function tile(k,v,ci){return '<div class="tile"><div class="k">'+esc(k)+'</div><div class="v">'+
+  esc(v)+'</div><div class="ci">'+esc(ci||"")+'</div></div>';}
+
+function render(d){
+  var L = d.ledger || {}, S = L.summary || {}, B = S.budget || d.min_effect_budget || {};
+  var vs = L.verdicts || [];
+  var h = [];
+  h.push('<div class="tag">AegisOS · research</div>');
+  h.push('<h1>The Lab</h1>');
+  h.push('<div class="sub">Agents propose changes to detection, decision policy and '+
+    'treatment. A <b>locked gate</b> adjudicates them on patients no agent can see or '+
+    'fit on. Agents run the research; they never judge it — which is the only reason '+
+    'anything here means something.</div>');
+
+  h.push('<div class="protocol"><b>What a refusal means.</b> Mostly refusals is the '+
+    'expected outcome. The self-improvement loop accepted <b>0 of 16</b> under this same '+
+    'protocol and this project has falsified eleven method families. A lab that reports '+
+    'a string of wins is evidence its gate is broken, not that its agents are clever.</div>');
+
+  // headline tiles
+  h.push('<div class="tiles">'+
+    tile('Proposals', S.n_proposals!=null?S.n_proposals:'—','submitted this campaign')+
+    tile('Cleared the gate', S.n_accepted!=null?S.n_accepted:'—','held-out patients')+
+    tile('Replicated findings', S.n_findings!=null?S.n_findings:'—','survived a disjoint split')+
+    tile('Vetoed', S.n_vetoed!=null?S.n_vetoed:'—','safety officer, absolute')+
+    tile('Mechanism only', S.n_mechanism_only!=null?S.n_mechanism_only:'—','PBPK twin, no efficacy')+
+  '</div>');
+
+  // error budget
+  if(B && B.total!=null){
+    var pct = Math.min(100,Math.round(100*(B.spent||0)/B.total));
+    h.push('<h2>Error budget</h2>');
+    h.push('<div class="protocol">Every gate test spends alpha on a geometric schedule '+
+      '(alpha<sub>k</sub> = total·2<sup>−k</sup>), so the bar <b>tightens</b> as tests are '+
+      'taken and a proposal spammer cannot buy a pass with volume. '+
+      '<b>'+f(B.spent,5)+'</b> of <b>'+f(B.total,3)+'</b> spent over <b>'+(B.n_tests||0)+
+      '</b> tests; the next test must clear <b>alpha='+f(B.next_alpha,5)+'</b>'+
+      (B.exhausted?' — <span class="warn">budget exhausted, the Lab will refuse to test further</span>':'')+
+      '.</div>');
+  }
+
+  // roles
+  if(d.roles){
+    h.push('<h2>Who can do what</h2><div class="roles">');
+    Object.keys(d.roles).forEach(function(k){
+      h.push('<div class="role'+(k==="Gate"?' gate':'')+'"><div class="n">'+esc(k)+
+        '</div><div class="d">'+esc(d.roles[k])+'</div></div>');
+    });
+    h.push('</div>');
+  }
+
+  // agent scoreboard
+  var ag = S.agents || [];
+  if(ag.length){
+    h.push('<h2>The proposers, measured</h2>');
+    h.push('<div class="protocol">Every proposal registers its predicted effect '+
+      '<b>before</b> the gate runs, so the agents are scored too. A positive signed '+
+      'error is overclaiming.</div>');
+    h.push('<table><tr><th>agent</th><th>proposals</th><th>accepted</th>'+
+      '<th>signed error</th><th>direction hit rate</th></tr>');
+    ag.forEach(function(a){
+      var se=a.mean_signed_error, cls=(se==null||isNaN(se))?"":(se>0?"neg":"pos");
+      h.push('<tr><td>'+esc(a.agent)+'</td><td class="num">'+a.n_proposals+
+        '</td><td class="num">'+a.n_accepted+'</td><td class="num '+cls+'">'+sgn(se,5)+
+        '</td><td class="num">'+((a.hit_rate==null||isNaN(a.hit_rate))?"—":f(a.hit_rate,2))+'</td></tr>');
+    });
+    h.push('</table>');
+  }
+
+  // the ledger
+  h.push('<h2>The ledger — every proposal, including the refused ones</h2>');
+  if(!vs.length){
+    h.push('<div class="empty">No campaign has been run yet. '+
+      '<span class="mono">make lab-run</span></div>');
+  } else {
+    vs.slice().reverse().forEach(function(v){
+      var st = v.vetoed_by ? "vetoed" : (v.status||"refused");
+      var p = v.proposal||{};
+      h.push('<div class="v-card '+st+'">');
+      h.push('<div class="v-head"><div><div class="v-title">'+esc(p.title)+'</div>'+
+        '<div class="agent">'+esc(p.agent)+' · '+esc(p.kind)+'</div></div>'+
+        '<span class="badge '+st+'">'+esc(st)+'</span></div>');
+      var n=[];
+      n.push('<span class="lbl">predicted</span> '+sgn(p.predicted_delta));
+      if(v.observed_delta!=null && !isNaN(v.observed_delta)){
+        n.push('<span class="lbl">observed</span> '+sgn(v.observed_delta)+
+               ' CI['+sgn(v.ci_lo)+', '+sgn(v.ci_hi)+']');
+      }
+      if(v.alpha_spent!=null) n.push('<span class="lbl">tested at α</span> '+f(v.alpha_spent,5));
+      if(v.replicated===true) n.push('<span class="pos">replicated '+sgn(v.replication_delta)+'</span>');
+      if(v.replicated===false) n.push('<span class="neg">did not replicate '+sgn(v.replication_delta)+'</span>');
+      h.push('<div class="nums">'+n.join(' &nbsp;·&nbsp; ')+'</div>');
+      if(v.critic_warning) h.push('<div class="reason warn"><b>Critic:</b> '+esc(v.critic_warning)+'</div>');
+      if(v.refusal_reason) h.push('<div class="reason">'+esc(v.refusal_reason)+'</div>');
+      var m=v.mechanism;
+      if(m && m.ran){
+        var dd=m.delta||{},bb=m.baseline||{},vv=m.variant||{};
+        h.push('<div class="reason"><b>PBPK twin.</b> '+esc(bb.regimen||'')+' → '+
+          esc(vv.regimen||'')+'<br/>fT&gt;MIC '+f(bb.pct_ft_above_mic,1)+' → '+
+          f(vv.pct_ft_above_mic,1)+' ('+sgn(dd.pct_ft_above_mic,2)+'), peak '+
+          sgn(dd.peak_venous,1)+', AUC '+sgn(dd.auc_venous,1)+
+          '<br/><i>'+esc(m.forbidden||'')+'</i></div>');
+      }
+      h.push('</div>');
+    });
+  }
+
+  h.push('<div class="foot">Reproduce: <span class="mono">make lab-run</span> '+
+    '(policy + treatment) or <span class="mono">make lab-run-full</span> (also binds the '+
+    'expensive held-out model gate). Audit: <span class="mono">make verify-lab</span>. '+
+    'Ledger generated '+esc(L.generated||'—')+'.</div>');
+  document.getElementById('app').innerHTML = h.join('');
+}
+
+fetch(API + "/aegis/lab").then(function(r){return r.json();}).then(render).catch(function(e){
+  document.getElementById('app').innerHTML =
+    '<div class="empty">could not reach <span class="mono">/aegis/lab</span> — '+esc(e)+'</div>';
+});
+</script></body></html>

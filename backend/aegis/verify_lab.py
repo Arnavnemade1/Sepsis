@@ -283,6 +283,65 @@ def main() -> int:
         check("...and shrinks its next prediction by that bias",
               "recalibrated" in nxt.rationale, f"predicted {nxt.predicted_delta:+.5f}")
 
+    print("\n13. the policy adjudicator's own controls (real data, real bugs)")
+    try:
+        from backend.aegis.lab_runner import policy_adjudicator
+        adj = policy_adjudicator()
+        band = adj(_prop(kind=L.POLICY, title="band",
+                         change={"policy": "uncertain_to_review",
+                                 "max_false_alarm_rate": 0.15}))
+        ema = adj(_prop(kind=L.POLICY, title="ema",
+                        change={"policy": "ema", "halflife": 6}))
+    except Exception as exc:
+        check("policy adjudicator runs", False, str(exc)[:90]); band = ema = None
+
+    if band and ema:
+        # BUG 1: the point estimate sat OUTSIDE its own CI, because the CI was shifted
+        # by max(null,0) while the estimate used the full null.
+        for nm, r in (("band", band), ("ema", ema)):
+            check(f"{nm}: the point estimate lies inside its own CI",
+                  r["ci_lo"] <= r["delta"] <= r["ci_hi"],
+                  f"{r['delta']:+.4f} in [{r['ci_lo']:+.4f},{r['ci_hi']:+.4f}]")
+        # BUG 2: the suppression null was applied to a SMOOTHING filter, comparing it
+        # against near-total suppression and fabricating a +0.0714 significant excess.
+        check("a smoothing filter gets NO suppression null",
+              ema["n_hours_suppressed"] == 0 and ema["suppression_null_delta"] == 0.0,
+              f"control: {ema['control'][:60]}")
+        check("...and is therefore not credited with a fabricated excess",
+              not ema["significant"] and abs(ema["delta"] - ema["raw_delta"]) < 1e-12,
+              f"excess {ema['delta']:+.4f} == raw {ema['raw_delta']:+.4f}")
+        # BUG 3: fixing bug 2 with a min()-based test switched the control OFF for the
+        # band as well, so the one finding that needed a control briefly had none.
+        check("a suppression policy IS recognised and DOES get its control",
+              band["n_hours_suppressed"] > 0
+              and band["suppression_null_delta"] != 0.0,
+              f"{band['n_hours_suppressed']:,} hours suppressed, "
+              f"null {band['suppression_null_delta']:+.4f}")
+        check("...and the credited effect is the EXCESS over that null, not the raw delta",
+              abs(band["delta"] - (band["raw_delta"] - band["suppression_null_delta"])) < 1e-9,
+              f"raw {band['raw_delta']:+.4f} - null {band['suppression_null_delta']:+.4f} "
+              f"= {band['delta']:+.4f}")
+        check("the uncounted cost of a review queue is stated, not hidden",
+              "attention" in (band.get("uncounted_cost") or ""))
+        # BUG 4: the null was subtracted as if KNOWN. Its sampling error was discarded,
+        # producing +0.0197 with CI [+0.0197, +0.0197] — a zero-width bootstrap
+        # interval, which cannot occur for a statistic that varies.
+        tight = adj(_prop(kind=L.POLICY, title="band tight",
+                          change={"policy": "uncertain_to_review",
+                                  "max_false_alarm_rate": 0.10}))
+        for nm, r in (("band", band), ("band@0.10", tight)):
+            check(f"{nm}: the interval is not degenerate",
+                  (r["ci_hi"] - r["ci_lo"]) > 1e-6,
+                  f"width {r['ci_hi'] - r['ci_lo']:.5f}")
+        check("the null's own standard error is carried into the interval",
+              tight.get("null_standard_error", 0) > 0,
+              f"nullSE {tight.get('null_standard_error')}")
+        check("a degenerate interval could never be called significant",
+              not L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.02,
+                                               "ci_hi": 0.02, "significant": False}
+                        ).submit(_prop(title="degenerate")).accepted,
+              "significance requires a real interval, not a point")
+
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")
     for s_, nm, dt in _res:
