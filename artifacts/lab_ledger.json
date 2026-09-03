@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-02T23:09:08",
+  "generated": "2026-09-03T04:05:05",
   "budget": {
     "total": 0.05,
     "spent": 0.046875,
@@ -8,12 +8,12 @@
     "exhausted": true
   },
   "summary": {
-    "n_proposals": 7,
-    "n_accepted": 2,
+    "n_proposals": 8,
+    "n_accepted": 1,
     "n_vetoed": 0,
     "n_mechanism_only": 1,
-    "n_candidates": 0,
-    "n_findings": 2,
+    "n_candidates": 1,
+    "n_findings": 0,
     "budget": {
       "total": 0.05,
       "spent": 0.046875,
@@ -21,25 +21,25 @@
       "next_alpha": 0.001563,
       "exhausted": true
     },
-    "acceptance_rate": 0.2857142857142857,
+    "acceptance_rate": 0.125,
     "agents": [
       {
         "agent": "Decider",
-        "n_proposals": 4,
-        "n_accepted": 2,
+        "n_proposals": 1,
+        "n_accepted": 0,
         "n_vetoed": 0,
-        "mean_signed_error": -0.016809672312223807,
-        "mean_abs_error": 0.021491557437407945,
-        "hit_rate": 0.5
+        "mean_signed_error": 0.009363770250368273,
+        "mean_abs_error": 0.009363770250368273,
+        "hit_rate": 0.0
       },
       {
         "agent": "Objectivist",
         "n_proposals": 1,
         "n_accepted": 0,
         "n_vetoed": 0,
-        "mean_signed_error": null,
-        "mean_abs_error": null,
-        "hit_rate": null
+        "mean_signed_error": 0.004158641775131585,
+        "mean_abs_error": 0.004158641775131585,
+        "hit_rate": 0.0
       },
       {
         "agent": "Pharmacologist",
@@ -52,12 +52,12 @@
       },
       {
         "agent": "Tuner",
-        "n_proposals": 1,
-        "n_accepted": 0,
+        "n_proposals": 5,
+        "n_accepted": 1,
         "n_vetoed": 0,
-        "mean_signed_error": null,
-        "mean_abs_error": null,
-        "hit_rate": null
+        "mean_signed_error": 0.0032703191470071433,
+        "mean_abs_error": 0.0039963724497553655,
+        "hit_rate": 0.5
       }
     ],
     "note": "A low acceptance rate is the expected outcome. This project has falsified eleven method families; the gate refusing is the gate working."
@@ -76,27 +76,29 @@
         "rationale": "hyperparameter inside the shipped search space (5-20, int-scaled)",
         "predicted_delta": 0.003,
         "predicted_direction": "improve",
-        "submitted": 1788408122.6340759
+        "submitted": 1788412453.483666
       },
-      "accepted": false,
-      "claim_type": "REFUSED",
-      "observed_delta": null,
-      "ci_lo": null,
-      "ci_hi": null,
-      "significant": false,
-      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "accepted": true,
+      "claim_type": "HELD_OUT",
+      "observed_delta": 0.0037260533027482223,
+      "ci_lo": 0.0006696460457940063,
+      "ci_hi": 0.007372246497418943,
+      "significant": true,
+      "refusal_reason": null,
       "vetoed_by": null,
       "critic_warning": null,
-      "prediction_error": null,
+      "prediction_error": -0.0007260533027482223,
       "efficacy_claim": null,
-      "alpha_spent": null,
-      "replicated": null,
-      "replication_delta": null,
-      "status": "refused",
+      "alpha_spent": 0.025,
+      "replicated": false,
+      "replication_delta": -0.004074556573228416,
+      "status": "candidate",
       "mechanism": null,
       "limits": [
         "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
-        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "tested at alpha=0.02500 under a family-wise budget of 0.05 (test 1 of the session)",
+        "did NOT replicate on an independent split (delta -0.0041); stays a candidate"
       ]
     },
     {
@@ -117,27 +119,28 @@
         "rationale": "stacking is paid for disagreement, not strength; the supervision target is the only lever this project has measured a win from",
         "predicted_delta": 0.004,
         "predicted_direction": "improve",
-        "submitted": 1788408122.63414
+        "submitted": 1788412990.052612
       },
       "accepted": false,
       "claim_type": "REFUSED",
-      "observed_delta": null,
-      "ci_lo": null,
-      "ci_hi": null,
+      "observed_delta": -0.00015864177513158495,
+      "ci_lo": -0.0037181890312235175,
+      "ci_hi": 0.003393079658586359,
       "significant": false,
-      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "refusal_reason": "effect -0.0002 is below the minimum +0.0020; beating the champion on the mean alone is not enough",
       "vetoed_by": null,
       "critic_warning": null,
-      "prediction_error": null,
+      "prediction_error": 0.004158641775131585,
       "efficacy_claim": null,
-      "alpha_spent": null,
+      "alpha_spent": 0.0125,
       "replicated": null,
       "replication_delta": null,
       "status": "refused",
       "mechanism": null,
       "limits": [
         "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
-        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "tested at alpha=0.01250 under a family-wise budget of 0.05 (test 2 of the session)"
       ]
     },
     {
@@ -152,7 +155,7 @@
         "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited",
         "predicted_delta": 0.002,
         "predicted_direction": "improve",
-        "submitted": 1788408122.634183
+        "submitted": 1788414258.359255
       },
       "accepted": false,
       "claim_type": "REFUSED",
@@ -165,7 +168,7 @@
       "critic_warning": "prior failure on record \u2014 Four alarm-policy families were searched; none beat a plain threshold.",
       "prediction_error": 0.009363770250368273,
       "efficacy_claim": null,
-      "alpha_spent": 0.025,
+      "alpha_spent": 0.00625,
       "replicated": null,
       "replication_delta": null,
       "status": "refused",
@@ -173,7 +176,7 @@
       "limits": [
         "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
         "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
-        "tested at alpha=0.02500 under a family-wise budget of 0.05 (test 1 of the session)"
+        "tested at alpha=0.00625 under a family-wise budget of 0.05 (test 3 of the session)"
       ]
     },
     {
@@ -190,7 +193,7 @@
         "rationale": "beta-lactam killing is time-dependent: the same dose over a longer infusion trades peak concentration for time above MIC",
         "predicted_delta": 0.0,
         "predicted_direction": "no_effect",
-        "submitted": 1788408190.7542589
+        "submitted": 1788414352.525347
       },
       "accepted": false,
       "claim_type": "MECHANISM",
@@ -246,30 +249,31 @@
     },
     {
       "proposal": {
-        "agent": "Decider",
-        "kind": "policy",
-        "title": "silence the UNCERTAIN band at the shipped operating point's budget",
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb.learning_rate = 0.1942",
         "change": {
-          "policy": "uncertain_to_review",
-          "max_false_alarm_rate": 0.2
+          "learner": "hgb",
+          "key": "learning_rate",
+          "value": 0.19422765105740705
         },
-        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited [recalibrated: this agent has overclaimed by +0.0094 on average]",
-        "predicted_delta": -0.00736,
-        "predicted_direction": "no_effect",
-        "submitted": 1788408190.820454
+        "rationale": "hyperparameter inside the shipped search space (0.01-0.3, log-scaled) [recalibrated: this agent has overclaimed by -0.0007 on average]",
+        "predicted_delta": 0.00373,
+        "predicted_direction": "improve",
+        "submitted": 1788414352.580099
       },
       "accepted": false,
       "claim_type": "REFUSED",
-      "observed_delta": 0.011192930780559607,
-      "ci_lo": -0.01017435099951336,
-      "ci_hi": 0.03192703444615341,
+      "observed_delta": -0.003536691596762509,
+      "ci_lo": -0.0068958939349846125,
+      "ci_hi": -0.00013701715810939005,
       "significant": false,
-      "refusal_reason": "effect +0.0112 is not significant (CI [-0.0102, +0.0319] includes zero after correction)",
+      "refusal_reason": "effect -0.0035 is below the minimum +0.0020; beating the champion on the mean alone is not enough",
       "vetoed_by": null,
       "critic_warning": null,
-      "prediction_error": -0.018552930780559605,
+      "prediction_error": 0.007266691596762509,
       "efficacy_claim": null,
-      "alpha_spent": 0.0125,
+      "alpha_spent": 0.003125,
       "replicated": null,
       "replication_delta": null,
       "status": "refused",
@@ -277,79 +281,115 @@
       "limits": [
         "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
         "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
-        "tested at alpha=0.01250 under a family-wise budget of 0.05 (test 2 of the session)"
-      ]
-    },
-    {
-      "proposal": {
-        "agent": "Decider",
-        "kind": "policy",
-        "title": "silence the UNCERTAIN band at a tighter alarm budget",
-        "change": {
-          "policy": "uncertain_to_review",
-          "max_false_alarm_rate": 0.1
-        },
-        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited [recalibrated: this agent has overclaimed by -0.0046 on average]",
-        "predicted_delta": 0.00659,
-        "predicted_direction": "improve",
-        "submitted": 1788408269.806314
-      },
-      "accepted": true,
-      "claim_type": "HELD_OUT",
-      "observed_delta": 0.019734904270986713,
-      "ci_lo": 0.015514368589990724,
-      "ci_hi": 0.023955439951982703,
-      "significant": true,
-      "refusal_reason": null,
-      "vetoed_by": null,
-      "critic_warning": null,
-      "prediction_error": -0.013144904270986713,
-      "efficacy_claim": null,
-      "alpha_spent": 0.00625,
-      "replicated": true,
-      "replication_delta": 0.01458026509572899,
-      "status": "finding",
-      "mechanism": null,
-      "limits": [
-        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
-        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
-        "tested at alpha=0.00625 under a family-wise budget of 0.05 (test 3 of the session)"
-      ]
-    },
-    {
-      "proposal": {
-        "agent": "Decider",
-        "kind": "policy",
-        "title": "silence the conformal UNCERTAIN band (proxy for routing it to review)",
-        "change": {
-          "policy": "uncertain_to_review",
-          "max_false_alarm_rate": 0.15
-        },
-        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited [recalibrated: this agent has overclaimed by -0.0074 on average]",
-        "predicted_delta": 0.00944,
-        "predicted_direction": "improve",
-        "submitted": 1788408405.457612
-      },
-      "accepted": true,
-      "claim_type": "HELD_OUT",
-      "observed_delta": 0.054344624447717184,
-      "ci_lo": 0.03567397121740072,
-      "ci_hi": 0.08813857398913463,
-      "significant": true,
-      "refusal_reason": null,
-      "vetoed_by": null,
-      "critic_warning": null,
-      "prediction_error": -0.04490462444771719,
-      "efficacy_claim": null,
-      "alpha_spent": 0.003125,
-      "replicated": true,
-      "replication_delta": 0.05228276877761408,
-      "status": "finding",
-      "mechanism": null,
-      "limits": [
-        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
-        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
         "tested at alpha=0.00313 under a family-wise budget of 0.05 (test 4 of the session)"
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb.max_iter = 269",
+        "change": {
+          "learner": "hgb",
+          "key": "max_iter",
+          "value": 269
+        },
+        "rationale": "hyperparameter inside the shipped search space (100-600, int-scaled) [recalibrated: this agent has overclaimed by +0.0033 on average]",
+        "predicted_delta": -0.00027,
+        "predicted_direction": "no_effect",
+        "submitted": 1788426305.8679008
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "family-wise error budget exhausted after 4 tests; the next bar (0.00156) is finer than the bootstrap can resolve. Refusing to test.",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb2.max_iter = 172",
+        "change": {
+          "learner": "hgb2",
+          "key": "max_iter",
+          "value": 172
+        },
+        "rationale": "hyperparameter inside the shipped search space (100-500, int-scaled) [recalibrated: this agent has overclaimed by +0.0033 on average]",
+        "predicted_delta": -0.00027,
+        "predicted_direction": "no_effect",
+        "submitted": 1788426305.8681521
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "family-wise error budget exhausted after 4 tests; the next bar (0.00156) is finer than the bootstrap can resolve. Refusing to test.",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb.max_leaf_nodes = 94",
+        "change": {
+          "learner": "hgb",
+          "key": "max_leaf_nodes",
+          "value": 94
+        },
+        "rationale": "hyperparameter inside the shipped search space (15-127, int-scaled) [recalibrated: this agent has overclaimed by +0.0033 on average]",
+        "predicted_delta": -0.00027,
+        "predicted_direction": "no_effect",
+        "submitted": 1788426305.8683689
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "family-wise error budget exhausted after 4 tests; the next bar (0.00156) is finer than the bootstrap can resolve. Refusing to test.",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
       ]
     }
   ]
