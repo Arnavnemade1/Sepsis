@@ -37,27 +37,27 @@
         "n_proposals": 1,
         "n_accepted": 0,
         "n_vetoed": 0,
-        "mean_signed_error": NaN,
-        "mean_abs_error": NaN,
-        "hit_rate": NaN
+        "mean_signed_error": null,
+        "mean_abs_error": null,
+        "hit_rate": null
       },
       {
         "agent": "Pharmacologist",
         "n_proposals": 1,
         "n_accepted": 0,
         "n_vetoed": 0,
-        "mean_signed_error": NaN,
-        "mean_abs_error": NaN,
-        "hit_rate": NaN
+        "mean_signed_error": null,
+        "mean_abs_error": null,
+        "hit_rate": null
       },
       {
         "agent": "Tuner",
         "n_proposals": 1,
         "n_accepted": 0,
         "n_vetoed": 0,
-        "mean_signed_error": NaN,
-        "mean_abs_error": NaN,
-        "hit_rate": NaN
+        "mean_signed_error": null,
+        "mean_abs_error": null,
+        "hit_rate": null
       }
     ],
     "note": "A low acceptance rate is the expected outcome. This project has falsified eleven method families; the gate refusing is the gate working."

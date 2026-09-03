@@ -342,6 +342,36 @@ def main() -> int:
                         ).submit(_prop(title="degenerate")).accepted,
               "significance requires a real interval, not a point")
 
+    print("\n14. the ledger must be parseable by a BROWSER, not just by Python")
+    # NaN is meaningful in memory (an untested agent has no measurable bias, which is
+    # not a bias of zero) and is NOT valid JSON. json.dump writes a bare NaN token,
+    # every browser's JSON.parse rejects the whole document, and the Lab page died with
+    # "the string did not match the expected pattern" because three agents were untested.
+    import json as _json, math as _math, tempfile as _tf, os as _os
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.03,
+                                       "significant": True})
+    lab.submit(_prop(agent="Tested", title="t"))
+    lab.submit(_prop(agent="Untested", kind=L.TREATMENT, title="u",
+                     change={"mechanism_only": True}))
+    scores = {a.agent: a.mean_signed_error for a in lab.score_agents()}
+    check("NaN is PRESERVED in memory — untested is not the same as zero",
+          _math.isnan(scores["Untested"]),
+          "an agent with no tested proposal has no measurable bias")
+    fd, tmp = _tf.mkstemp(suffix=".json"); _os.close(fd)
+    lab.save(tmp)
+    raw = open(tmp).read()
+    check("...and becomes null at the serialisation boundary",
+          "NaN" not in raw and "Infinity" not in raw,
+          f"{raw.count('NaN')} NaN tokens in the written ledger")
+    try:
+        _json.loads(raw, parse_constant=lambda c: (_ for _ in ()).throw(
+            ValueError(f"non-finite constant {c!r} is not valid JSON")))
+        ok_strict = True; why = "strict parse (no NaN/Infinity constants) succeeds"
+    except ValueError as exc:
+        ok_strict = False; why = str(exc)
+    check("the ledger survives a STRICT parse, as a browser would do it", ok_strict, why)
+    _os.unlink(tmp)
+
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")
     for s_, nm, dt in _res:

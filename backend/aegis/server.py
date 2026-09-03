@@ -615,6 +615,10 @@ def lab_state() -> Dict[str, Any]:
         try:
             with open(path) as fh:
                 ledger = _json.load(fh)
+            # Sanitise on the way OUT too. An older ledger on disk may predate the
+            # json_safe fix, and FastAPI's encoder would happily re-emit its NaN tokens
+            # to a browser that cannot parse them.
+            ledger = _lab.Lab.json_safe(ledger)
         except Exception:
             ledger = None
     return {

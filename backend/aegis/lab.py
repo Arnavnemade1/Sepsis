@@ -517,6 +517,31 @@ class Lab:
             ))
         return out
 
+    @staticmethod
+    def json_safe(obj: Any) -> Any:
+        """Replace non-finite floats with null, recursively.
+
+        NaN is meaningful INSIDE the Lab — an agent with no tested proposal has no
+        measurable bias, and that is different from a bias of zero. It is not meaningful
+        in JSON: ``json.dump`` writes a bare ``NaN`` token, which is valid Python and
+        invalid JSON, so every browser's ``JSON.parse`` rejects the whole document. The
+        Lab page died with "the string did not match the expected pattern" because three
+        agents had never been tested and carried NaN scores.
+
+        So NaN survives in memory and becomes ``null`` at the boundary, which is what
+        JSON has for "no value" and what the UI already renders as an em dash.
+        """
+        if isinstance(obj, dict):
+            return {k: Lab.json_safe(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [Lab.json_safe(v) for v in obj]
+        if isinstance(obj, float):
+            return obj if np.isfinite(obj) else None
+        if isinstance(obj, (np.floating, np.integer)):
+            f = float(obj)
+            return f if np.isfinite(f) else None
+        return obj
+
     def save(self, path: Optional[str] = None) -> str:
         """Persist the ledger. /aegis/lab reads this; v1 served a file nothing wrote."""
         import os
@@ -528,7 +553,10 @@ class Lab:
                    "summary": self.summary(),
                    "verdicts": [v.as_dict() for v in self.ledger]}
         with open(path, "w") as fh:
-            json.dump(payload, fh, indent=2, default=str)
+            # allow_nan=False makes a NaN that slipped past json_safe an ERROR rather
+            # than a silently unparseable file. A serialiser that cannot fail is how the
+            # bad ledger reached the browser in the first place.
+            json.dump(Lab.json_safe(payload), fh, indent=2, default=str, allow_nan=False)
         return path
 
     def summary(self) -> Dict[str, Any]:
