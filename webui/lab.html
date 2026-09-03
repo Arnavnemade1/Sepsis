@@ -78,10 +78,19 @@ td.num{text-align:right;font-family:ui-monospace,"SF Mono",Menlo,monospace}
   border:1px dashed var(--line);border-radius:12px}
 .foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
   font-size:12.5px;color:var(--muted)}
-</style></head><body>
+</style>
+<!-- The project's backend-resolution convention. Every other page loads this; this one
+     did not, and used an invented `window.AEGIS_API` that exists nowhere. Served from
+     Cloudflare Pages that made /aegis/lab a 404 HTML page, and JSON.parse on HTML fails
+     with "the string did not match the expected pattern". The ?v= stamp is mandatory
+     here — the static hosts cache aggressively. -->
+<script src="config.js?v=9"></script>
+</head><body>
 <div class="wrap" id="app"><div class="empty">loading…</div></div>
 <script>
-var API = (window.AEGIS_API || "");
+// Resolve through the shared helper (localStorage override -> AEGIS_BACKEND ->
+// same origin), falling back to same-origin if config.js somehow did not load.
+var API = (window.AEGIS && window.AEGIS.base) ? window.AEGIS.base() : "";
 function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
 function f(x,n){return (x==null||isNaN(x))?"—":Number(x).toFixed(n==null?4:n);}
@@ -202,8 +211,22 @@ function render(d){
   document.getElementById('app').innerHTML = h.join('');
 }
 
-fetch(API + "/aegis/lab").then(function(r){return r.json();}).then(render).catch(function(e){
+// Diagnose the failure instead of surfacing a raw SyntaxError. A 404 HTML page and a
+// backend that is genuinely down are different problems with different fixes, and
+// "SyntaxError: the string did not match the expected pattern" tells a reader neither.
+fetch(API + "/aegis/lab").then(function(r){
+  var ct = r.headers.get("content-type") || "";
+  if(!r.ok) throw new Error("the backend answered "+r.status+" "+r.statusText+
+    " for "+API+"/aegis/lab");
+  if(ct.indexOf("json") < 0) throw new Error(
+    "the response was "+(ct||"an unknown type")+", not JSON — "+API+
+    " is probably serving the static site without the API behind it");
+  return r.json();
+}).then(render).catch(function(e){
   document.getElementById('app').innerHTML =
-    '<div class="empty">could not reach <span class="mono">/aegis/lab</span> — '+esc(e)+'</div>';
+    '<div class="empty"><b>The Lab could not load.</b><br/>'+esc(e.message||e)+
+    '<br/><br/>API base: <span class="mono">'+esc(API||"(same origin)")+'</span>'+
+    '<br/>Start the backend with <span class="mono">uvicorn backend.aegis.server:app</span>'+
+    ', or set <span class="mono">localStorage.aegis_backend</span> to its URL.</div>';
 });
 </script></body></html>
