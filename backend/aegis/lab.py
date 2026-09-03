@@ -75,6 +75,66 @@ TREATMENT = "treatment"      # runs on the PBPK twin -> MECHANISM only, never ef
 MIN_EFFECT = 0.002
 
 
+#: Family-wise error budget for a Lab session. Every gate test spends alpha; when the
+#: budget is exhausted the Lab refuses to test rather than quietly accepting a looser bar.
+#:
+#: v1 of this module DOCUMENTED a Bonferroni correction and never applied one. An agent
+#: could submit twenty proposals and the twentieth would face the same threshold as the
+#: first, so a false pass was roughly twenty times more likely than the stated 5%. The
+#: docstring advertised a protection the code did not have, which is the exact failure
+#: this project's audits exist to catch — so the budget is now an object with state, and
+#: verify_lab.py proves it tightens as tests are spent.
+FAMILY_ALPHA = 0.05
+
+#: A proposal that clears the gate is a CANDIDATE. It becomes a FINDING only after an
+#: independent replication on a disjoint split, because one significant result at
+#: alpha=0.05 is what one-in-twenty noise looks like.
+REPLICATION_REQUIRED = True
+
+
+@dataclass
+class AlphaBudget:
+    """Holm-style sequential error control across a session's gate tests.
+
+    Holm rather than plain Bonferroni: dividing the whole budget by a guessed final test
+    count is either wasteful (if fewer tests run) or invalid (if more do). Holm spends
+    the budget as tests are actually taken, which is what an open-ended agent loop needs.
+    """
+    total: float = FAMILY_ALPHA
+    spent: float = 0.0
+    n_tests: int = 0
+
+    def next_alpha(self) -> float:
+        """The threshold the NEXT test must clear.
+
+        A GEOMETRIC spending schedule, alpha_k = total * 2^-k, whose infinite sum is
+        exactly ``total``. That is what an open-ended agent loop needs: a Holm-style
+        division by the number of tests requires knowing that number in advance, and a
+        first draft of this class did ``remaining / (n_tests + 1)`` — which handed the
+        entire budget to test one and then refused every later test as exhausted.
+        Geometric spending tightens smoothly and never runs out.
+        """
+        return self.total * (0.5 ** (self.n_tests + 1))
+
+    def spend(self, alpha: float) -> None:
+        self.spent += alpha
+        self.n_tests += 1
+
+    def exhausted(self) -> bool:
+        """True when the next test's bar is tighter than is meaningful to measure.
+
+        With 400 bootstrap resamples the finest resolvable quantile is ~1/400, so a
+        nominal alpha below that is a bar the instrument cannot actually apply. Refusing
+        is the honest response; pretending to test at alpha=1e-9 is not.
+        """
+        return self.next_alpha() < 2.5e-3
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {"total": self.total, "spent": round(self.spent, 6),
+                "n_tests": self.n_tests, "next_alpha": round(self.next_alpha(), 6),
+                "exhausted": self.exhausted()}
+
+
 @dataclass
 class Proposal:
     """One change an agent wants to try, with its prediction registered up front."""
@@ -106,6 +166,11 @@ class Verdict:
     critic_warning: Optional[str] = None
     prediction_error: Optional[float] = None
     efficacy_claim: None = None           # structurally always None; see the firewall
+    alpha_spent: Optional[float] = None   # the bar THIS test had to clear
+    replicated: Optional[bool] = None     # None = not yet attempted
+    replication_delta: Optional[float] = None
+    status: str = "refused"               # refused | candidate | finding | mechanism
+    mechanism: Optional[Dict[str, Any]] = None   # treatment sandbox observations
     limits: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -202,15 +267,113 @@ class SafetyOfficer:
 
 
 # --------------------------------------------------------------------------- #
+# The treatment sandbox — it RUNS, and its output is typed MECHANISM
+# --------------------------------------------------------------------------- #
+class TreatmentSandbox:
+    """Executes a treatment proposal on the PBPK twin and reports what happened.
+
+    The firewall is on the CLAIM, not on the computation. v1 refused treatment proposals
+    outright, which meant the sandbox agents were promised did not exist — they could ask
+    "does a prolonged infusion change exposure?" and get only a refusal. The model now
+    runs; what it may never produce is an efficacy claim.
+
+    That distinction is the whole point. ``project_protocol`` will happily tell you a
+    four-hour infusion raises time-above-MIC, and that is a real, mechanistic,
+    literature-grounded property of the pharmacokinetics. It is not evidence that any
+    patient does better, and this project has already tuned a detector against its own
+    generator once and watched it score near chance on real people.
+    """
+
+    def run(self, p: Proposal) -> Dict[str, Any]:
+        ch = p.change or {}
+        try:
+            from backend.aegis.pharmacokinetics import PatientState
+            from backend.aegis.adverse import project_order
+        except Exception as exc:                       # pragma: no cover
+            return {"ran": False, "reason": f"PBPK unavailable: {exc}"}
+
+        patient = PatientState(
+            weight_kg=float(ch.get("weight_kg", 78.0)),
+            egfr=float(ch.get("egfr", 90.0)),
+            map_mmhg=float(ch.get("map_mmhg", 70.0)),
+            vd_expansion=float(ch.get("vd_expansion", 1.0)),
+        )
+        baseline = {"antibiotic_code": int(ch.get("antibiotic_code", 1) or 1),
+                    "fluid_rate": float(ch.get("fluid_rate", 30.0)),
+                    "vasopressor_dose": float(ch.get("vasopressor_dose", 0.0))}
+        variant = dict(baseline)
+        variant.update({k: v for k, v in ch.items()
+                        if k in ("infusion_min", "fluid_rate", "vasopressor_dose",
+                                 "antibiotic_code")})
+        try:
+            a = project_order(baseline, patient, n_samples=4000)
+            b = project_order(variant, patient, n_samples=4000)
+        except Exception as exc:
+            return {"ran": False, "reason": f"projection failed: {exc}"}
+
+        def _summarise(out: Dict[str, Any]) -> Dict[str, Any]:
+            """Pull the quantities the PBPK model actually exposes.
+
+            A first draft guessed at ``auc`` / ``cmax`` / ``time_above_mic_h`` and got
+            None for every field — the sandbox ran, reported nothing, and looked like it
+            was working. The real arm carries a ``metrics`` block; ``pct_ft_above_mic``
+            is the pharmacodynamic target that matters for a time-dependent antibiotic,
+            and ``mass_balance_error`` is the model's own correctness check.
+            """
+            arms = (out.get("pk") or {}).get("arms") or []
+            arm = next((x for x in arms if x.get("drug_class") == "antibiotic"), None)
+            if arm is None:
+                arm = next((x for x in arms if x.get("drug")), {})
+            m = arm.get("metrics") or {}
+            organ_auc = m.get("organ_auc") or {}
+            peak = arm.get("peak") or {}
+            return {"drug": arm.get("drug"),
+                    "regimen": arm.get("regimen"),
+                    "pct_ft_above_mic": m.get("pct_ft_above_mic"),
+                    "mic_mg_l": m.get("mic_mg_l"),
+                    "auc_venous": (round(float(organ_auc["venous"]), 2)
+                                   if organ_auc.get("venous") is not None else None),
+                    "peak_venous": (round(float(peak["venous"]), 2)
+                                    if peak.get("venous") is not None else None),
+                    "mass_balance_error": m.get("mass_balance_error"),
+                    "n_adverse_modelled": len(out.get("events") or [])}
+
+        sa, sb = _summarise(a), _summarise(b)
+        deltas = {k: (None if sa.get(k) is None or sb.get(k) is None
+                      or isinstance(sa.get(k), str)
+                      else round(float(sb[k]) - float(sa[k]), 4))
+                  for k in ("pct_ft_above_mic", "auc_venous", "peak_venous")}
+        return {
+            "ran": True,
+            "baseline": sa, "variant": sb, "delta": deltas,
+            "claim_type": "MECHANISM",
+            "interpretation": "exposure and adverse-event projections from the PBPK twin",
+            "forbidden": "no efficacy, mortality or benefit claim may be derived from "
+                         "this. It describes the simulator, not a patient.",
+        }
+
+
+# --------------------------------------------------------------------------- #
 # The sandbox
 # --------------------------------------------------------------------------- #
 class Lab:
     """Runs proposals through review, veto and a locked gate, and keeps the ledger."""
 
-    def __init__(self, adjudicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None):
+    def __init__(self,
+                 adjudicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
+                 policy_adjudicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
+                 replicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
+                 alpha: float = FAMILY_ALPHA):
         self.critic = Critic()
         self.safety = SafetyOfficer()
+        # v1 routed DETECTION and POLICY to the same callable, but the held-out
+        # adjudicator only knows how to fit stacks — a policy proposal was silently
+        # judged as if it were a model change. Each kind now has its own judge.
         self.adjudicator = adjudicator
+        self.policy_adjudicator = policy_adjudicator
+        self.replicator = replicator
+        self.budget = AlphaBudget(total=alpha)
+        self.treatment = TreatmentSandbox()
         self.ledger: List[Verdict] = []
 
     # -- the pipeline ------------------------------------------------------- #
@@ -233,9 +396,13 @@ class Lab:
         warning = self.critic.review(p)
 
         if p.kind == TREATMENT:
-            # Mechanism only. The firewall is structural: no efficacy field is ever set,
-            # and the claim type says what kind of statement this is.
+            # Mechanism only, but it RUNS. v1 refused treatment proposals outright, which
+            # meant the sandbox the agents were promised did not exist. The PBPK twin and
+            # the adverse-event engine are executed and their observations returned — the
+            # firewall is on the CLAIM, not on the computation.
+            obs = self.treatment.run(p)
             v = Verdict(proposal=p, accepted=False, claim_type="MECHANISM",
+                        status="mechanism", mechanism=obs,
                         critic_warning=warning,
                         refusal_reason="treatment effects are evaluated on the PBPK twin; "
                                        "a simulator result is a mechanism observation and "
@@ -247,7 +414,28 @@ class Lab:
             self.ledger.append(v)
             return v
 
-        if self.adjudicator is None:
+        judge = (self.policy_adjudicator if p.kind == POLICY else self.adjudicator)
+        if p.kind == POLICY and judge is None:
+            v = Verdict(proposal=p, accepted=False, claim_type="REFUSED",
+                        critic_warning=warning,
+                        refusal_reason="no POLICY adjudicator bound — a decision-layer "
+                                       "change must not be judged by the model gate",
+                        limits=limits)
+            self.ledger.append(v)
+            return v
+
+        if self.budget.exhausted():
+            v = Verdict(proposal=p, accepted=False, claim_type="REFUSED",
+                        critic_warning=warning,
+                        refusal_reason=(f"family-wise error budget exhausted after "
+                                        f"{self.budget.n_tests} tests; the next bar "
+                                        f"({self.budget.next_alpha():.5f}) is finer than "
+                                        f"the bootstrap can resolve. Refusing to test."),
+                        limits=limits)
+            self.ledger.append(v)
+            return v
+
+        if judge is None:
             v = Verdict(proposal=p, accepted=False, claim_type="REFUSED",
                         critic_warning=warning,
                         refusal_reason="no adjudicator bound — the Lab will not report a "
@@ -256,7 +444,9 @@ class Lab:
             self.ledger.append(v)
             return v
 
-        out = self.adjudicator(p)
+        alpha_k = self.budget.next_alpha()
+        self.budget.spend(alpha_k)
+        out = judge(p)
         delta = float(out.get("delta", float("nan")))
         lo, hi = out.get("ci_lo"), out.get("ci_hi")
         sig = bool(out.get("significant", False))
@@ -275,9 +465,32 @@ class Lab:
                     claim_type="HELD_OUT" if accepted else "REFUSED",
                     observed_delta=delta, ci_lo=lo, ci_hi=hi, significant=sig,
                     refusal_reason=reason, critic_warning=warning,
+                    alpha_spent=alpha_k,
                     prediction_error=(p.predicted_delta - delta
                                       if np.isfinite(delta) else None),
-                    limits=limits)
+                    status="candidate" if accepted else "refused",
+                    limits=limits + [
+                        f"tested at alpha={alpha_k:.5f} under a family-wise budget of "
+                        f"{self.budget.total} (test {self.budget.n_tests} of the session)"])
+
+        # A single significant result at alpha=0.05 is what one-in-twenty noise looks
+        # like. A candidate becomes a FINDING only if it survives an independent split.
+        if accepted and REPLICATION_REQUIRED:
+            if self.replicator is None:
+                v.replicated = None
+                v.limits.append("NOT replicated — no replicator bound, so this remains a "
+                                "candidate and must not be reported as a finding")
+            else:
+                rep = self.replicator(p)
+                rd = float(rep.get("delta", float("nan")))
+                v.replication_delta = rd
+                v.replicated = bool(np.isfinite(rd) and rd >= MIN_EFFECT
+                                    and rep.get("significant", False))
+                v.status = "finding" if v.replicated else "candidate"
+                if not v.replicated:
+                    v.limits.append(
+                        f"did NOT replicate on an independent split "
+                        f"(delta {rd:+.4f}); stays a candidate")
         self.ledger.append(v)
         return v
 
@@ -304,6 +517,20 @@ class Lab:
             ))
         return out
 
+    def save(self, path: Optional[str] = None) -> str:
+        """Persist the ledger. /aegis/lab reads this; v1 served a file nothing wrote."""
+        import os
+        from backend.ml import config as _cfg
+        path = path or os.path.join(_cfg.ARTIFACTS_DIR, "lab_ledger.json")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        payload = {"generated": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                   "budget": self.budget.as_dict(),
+                   "summary": self.summary(),
+                   "verdicts": [v.as_dict() for v in self.ledger]}
+        with open(path, "w") as fh:
+            json.dump(payload, fh, indent=2, default=str)
+        return path
+
     def summary(self) -> Dict[str, Any]:
         n = len(self.ledger)
         return {
@@ -311,6 +538,9 @@ class Lab:
             "n_accepted": sum(1 for v in self.ledger if v.accepted),
             "n_vetoed": sum(1 for v in self.ledger if v.vetoed_by),
             "n_mechanism_only": sum(1 for v in self.ledger if v.claim_type == "MECHANISM"),
+            "n_candidates": sum(1 for v in self.ledger if v.status == "candidate"),
+            "n_findings": sum(1 for v in self.ledger if v.status == "finding"),
+            "budget": self.budget.as_dict(),
             "acceptance_rate": (sum(1 for v in self.ledger if v.accepted) / n) if n else 0.0,
             "agents": [a.as_dict() for a in self.score_agents()],
             "note": "A low acceptance rate is the expected outcome. This project has "
@@ -429,3 +659,61 @@ def held_out_adjudicator(spec: str = "dev", n_folds: int = 2,
                 "n_gate_patients": int(len(set(gg.tolist())))}
 
     return adjudicate
+
+
+# --------------------------------------------------------------------------- #
+# Adaptive proposers — agents that read the ledger instead of repeating themselves
+# --------------------------------------------------------------------------- #
+class AdaptiveProposer:
+    """A proposer that learns from what the gate has already refused.
+
+    v1's proposers emitted an identical proposal every call regardless of context, so a
+    "cooperating" plane would have re-submitted the same refused change forever and the
+    alpha budget would have been spent on repeats. An adaptive proposer does two things a
+    static one cannot:
+
+    * **Avoids repetition.** A change already refused is not proposed again; the gate is
+      expensive and the error budget is finite, so re-testing a dead proposal spends both
+      for nothing.
+    * **Recalibrates its own predictions.** Its registered prediction is shrunk toward the
+      effects it has actually observed. An agent whose signed error is +0.005 has been
+      overclaiming by that much and should say so next time — which is the difference
+      between an agent that learns and one that is merely confident.
+    """
+
+    def __init__(self, name: str, prior: str,
+                 generator: Callable[[Dict[str, Any]], Proposal]):
+        self.name = name
+        self.prior = prior
+        self._generator = generator
+
+    def observed_bias(self, ledger: Sequence[Verdict]) -> float:
+        errs = [v.prediction_error for v in ledger
+                if v.proposal.agent == self.name and v.prediction_error is not None]
+        return float(np.mean(errs)) if errs else 0.0
+
+    def tried(self, ledger: Sequence[Verdict]) -> set:
+        return {json.dumps(v.proposal.change, sort_keys=True, default=str)
+                for v in ledger if v.proposal.agent == self.name}
+
+    def propose(self, ctx: Dict[str, Any], ledger: Sequence[Verdict],
+                max_attempts: int = 8) -> Optional[Proposal]:
+        seen = self.tried(ledger)
+        bias = self.observed_bias(ledger)
+        for k in range(max_attempts):
+            p = self._generator({**ctx, "seed": int(ctx.get("seed", 0)) + k})
+            key = json.dumps(p.change, sort_keys=True, default=str)
+            if key in seen:
+                continue
+            # Shrink the prediction by the bias this agent has actually shown.
+            p.predicted_delta = round(float(p.predicted_delta) - bias, 5)
+            if p.predicted_delta <= 0:
+                p.predicted_direction = "no_effect"
+            p.rationale += (f" [recalibrated: this agent has overclaimed by "
+                            f"{bias:+.4f} on average]") if abs(bias) > 1e-9 else ""
+            return p
+        return None
+
+
+def adaptive_proposers() -> List[AdaptiveProposer]:
+    return [AdaptiveProposer(p.name, p.prior, p.generate) for p in default_proposers()]

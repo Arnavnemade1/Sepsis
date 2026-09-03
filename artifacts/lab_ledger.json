@@ -1,0 +1,152 @@
+{
+  "generated": "2026-09-02T19:35:12",
+  "budget": {
+    "total": 0.05,
+    "spent": 0.025,
+    "n_tests": 1,
+    "next_alpha": 0.0125,
+    "exhausted": false
+  },
+  "summary": {
+    "n_proposals": 2,
+    "n_accepted": 1,
+    "n_vetoed": 0,
+    "n_mechanism_only": 1,
+    "n_candidates": 0,
+    "n_findings": 1,
+    "budget": {
+      "total": 0.05,
+      "spent": 0.025,
+      "n_tests": 1,
+      "next_alpha": 0.0125,
+      "exhausted": false
+    },
+    "acceptance_rate": 0.5,
+    "agents": [
+      {
+        "agent": "Objectivist",
+        "n_proposals": 1,
+        "n_accepted": 1,
+        "n_vetoed": 0,
+        "mean_signed_error": 0.0,
+        "mean_abs_error": 0.0,
+        "hit_rate": 1.0
+      },
+      {
+        "agent": "Pharm",
+        "n_proposals": 1,
+        "n_accepted": 0,
+        "n_vetoed": 0,
+        "mean_signed_error": NaN,
+        "mean_abs_error": NaN,
+        "hit_rate": NaN
+      }
+    ],
+    "note": "A low acceptance rate is the expected outcome. This project has falsified eleven method families; the gate refusing is the gate working."
+  },
+  "verdicts": [
+    {
+      "proposal": {
+        "agent": "Objectivist",
+        "kind": "detection",
+        "title": "demo finding",
+        "change": {
+          "objective": "patient"
+        },
+        "rationale": "r",
+        "predicted_delta": 0.02,
+        "predicted_direction": "improve",
+        "submitted": 1788395711.918037
+      },
+      "accepted": true,
+      "claim_type": "HELD_OUT",
+      "observed_delta": 0.02,
+      "ci_lo": 0.005,
+      "ci_hi": 0.03,
+      "significant": true,
+      "refusal_reason": null,
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": 0.0,
+      "efficacy_claim": null,
+      "alpha_spent": 0.025,
+      "replicated": true,
+      "replication_delta": 0.018,
+      "status": "finding",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "tested at alpha=0.02500 under a family-wise budget of 0.05 (test 1 of the session)"
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Pharm",
+        "kind": "treatment",
+        "title": "4h extended infusion",
+        "change": {
+          "mechanism_only": true,
+          "antibiotic_code": 1,
+          "infusion_min": 240,
+          "egfr": 45
+        },
+        "rationale": "T>MIC",
+        "predicted_delta": 0.0,
+        "predicted_direction": "no_effect",
+        "submitted": 1788395711.9181209
+      },
+      "accepted": false,
+      "claim_type": "MECHANISM",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "treatment effects are evaluated on the PBPK twin; a simulator result is a mechanism observation and cannot become an efficacy claim",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "mechanism",
+      "mechanism": {
+        "ran": true,
+        "baseline": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h (30-min infusion) \u00b7 piperacillin 4 g",
+          "pct_ft_above_mic": 94.2,
+          "mic_mg_l": 16.0,
+          "auc_venous": 977.28,
+          "peak_venous": 227.89,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "variant": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h \u2014 4 h extended infusion",
+          "pct_ft_above_mic": 95.9,
+          "mic_mg_l": 16.0,
+          "auc_venous": 910.7,
+          "peak_venous": 112.89,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "delta": {
+          "pct_ft_above_mic": 1.7,
+          "auc_venous": -66.58,
+          "peak_venous": -115.0
+        },
+        "claim_type": "MECHANISM",
+        "interpretation": "exposure and adverse-event projections from the PBPK twin",
+        "forbidden": "no efficacy, mortality or benefit claim may be derived from this. It describes the simulator, not a patient."
+      },
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "This project already tuned a detector against its own generator once and it scored near chance on real patients. Simulator results are never evidence of clinical benefit."
+      ]
+    }
+  ]
+}

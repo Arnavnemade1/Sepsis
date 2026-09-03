@@ -116,21 +116,35 @@ def main() -> int:
           v.critic_warning is not None and "overclaiming" in v.critic_warning)
 
     print("\n6. proposers are measured, not trusted")
-    lab = L.Lab(adjudicator=lambda p: {"delta": 0.001, "ci_lo": -0.001, "ci_hi": 0.003,
-                                       "significant": False})
-    for i in range(4):
-        lab.submit(_prop(agent="Optimist", predicted_delta=0.05,
-                         predicted_direction="improve", title=f"change {i}"))
-    for i in range(4):
-        lab.submit(_prop(agent="Realist", predicted_delta=0.001,
-                         predicted_direction="improve", title=f"tweak {i}"))
-    scores = {s.agent: s for s in lab.score_agents()}
+    # One Lab per agent here. A single shared Lab starves the second agent: the family
+    # -wise budget is SHARED, so the first agent's tests tighten the bar for everyone and
+    # the later proposals came back "budget exhausted" with no observed delta at all —
+    # which is correct behaviour for error control and wrong for measuring two agents.
+    _adj = lambda p: {"delta": 0.001, "ci_lo": -0.001, "ci_hi": 0.003,
+                      "significant": False}
+    lab_o, lab_r = L.Lab(adjudicator=_adj), L.Lab(adjudicator=_adj)
+    for i in range(3):
+        lab_o.submit(_prop(agent="Optimist", predicted_delta=0.05,
+                           predicted_direction="improve", title=f"change {i}"))
+        lab_r.submit(_prop(agent="Realist", predicted_delta=0.001,
+                           predicted_direction="improve", title=f"tweak {i}"))
+    scores = {**{s.agent: s for s in lab_o.score_agents()},
+              **{s.agent: s for s in lab_r.score_agents()}}
+    lab = lab_o
     check("an overconfident agent shows a large positive signed error",
           scores["Optimist"].mean_signed_error > scores["Realist"].mean_signed_error,
           f"Optimist {scores['Optimist'].mean_signed_error:+.4f} vs "
           f"Realist {scores['Realist'].mean_signed_error:+.4f} (>0 = overclaiming)")
     check("both are recorded with proposal counts",
-          scores["Optimist"].n_proposals == 4 and scores["Realist"].n_proposals == 4)
+          scores["Optimist"].n_proposals == 3 and scores["Realist"].n_proposals == 3)
+    # The sharing is a deliberate property, so it is asserted rather than worked around.
+    shared = L.Lab(adjudicator=_adj)
+    for i in range(6):
+        shared.submit(_prop(agent="A" if i % 2 else "B", title=f"s{i}"))
+    starved = [v for v in shared.ledger if "budget exhausted" in (v.refusal_reason or "")]
+    check("the error budget is SHARED across agents — one agent can spend another's",
+          len(starved) > 0,
+          f"{len(starved)} of 6 refused; family-wise control is per-session, not per-agent")
     s = lab.summary()
     check("the summary states that refusal is the expected outcome",
           "gate working" in s["note"], f"acceptance rate {s['acceptance_rate']:.0%}")
@@ -146,6 +160,120 @@ def main() -> int:
               and isinstance(m.predicted_delta, float) for m in made))
     check("...and they do not all propose the same kind of change",
           len({m.kind for m in made}) > 1, str(sorted({m.kind for m in made})))
+
+    print("\n8. the alpha budget is REAL, not just documented")
+    # v1's docstring claimed a Bonferroni correction and submit() never applied one:
+    # twenty proposals each faced the same bar, so a false pass was ~20x more likely
+    # than the stated 5%. The budget is now an object with state.
+    b = L.AlphaBudget()
+    bars = []
+    for _ in range(4):
+        a = b.next_alpha(); bars.append(a); b.spend(a)
+    check("the bar TIGHTENS with each test spent",
+          all(bars[i] > bars[i + 1] for i in range(len(bars) - 1)),
+          " -> ".join(f"{x:.5f}" for x in bars))
+    check("...and the schedule converges within the family budget",
+          b.spent <= L.FAMILY_ALPHA + 1e-9, f"spent {b.spent:.5f} of {L.FAMILY_ALPHA}")
+    b2 = L.AlphaBudget()
+    check("a fresh budget is NOT exhausted on test one",
+          not b2.exhausted(), "an earlier draft spent the whole budget immediately")
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.03,
+                                       "significant": True})
+    for i in range(12):
+        lab.submit(_prop(title=f"repeat {i}"))
+    exhausted = [v for v in lab.ledger if "budget exhausted" in (v.refusal_reason or "")]
+    check("a proposal spammer eventually hits the budget and is REFUSED",
+          len(exhausted) > 0,
+          f"{len(exhausted)} of 12 refused once the bar outran the bootstrap")
+    check("...and every accepted verdict records the alpha it had to clear",
+          all(v.alpha_spent is not None for v in lab.ledger if v.accepted))
+
+    print("\n9. POLICY proposals are not judged by the MODEL gate")
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.9, "ci_lo": 0.8, "ci_hi": 1.0,
+                                       "significant": True})
+    v = lab.submit(_prop(kind=L.POLICY, title="route uncertain to review"))
+    check("a policy change with no policy adjudicator is refused, not mis-judged",
+          not v.accepted and "POLICY adjudicator" in (v.refusal_reason or ""),
+          v.refusal_reason)
+    lab2 = L.Lab(adjudicator=lambda p: {"delta": -0.9, "ci_lo": -1.0, "ci_hi": -0.8,
+                                        "significant": False},
+                 policy_adjudicator=lambda p: {"delta": 0.03, "ci_lo": 0.01,
+                                               "ci_hi": 0.05, "significant": True})
+    v = lab2.submit(_prop(kind=L.POLICY, title="route uncertain to review"))
+    check("with its own judge bound, a policy proposal is judged by THAT one",
+          v.accepted, "the model gate was returning -0.9 and did not decide this")
+
+    print("\n10. the treatment sandbox RUNS and still cannot make a claim")
+    lab = L.Lab()
+    v = lab.submit(_prop(kind=L.TREATMENT, title="4h extended infusion",
+                         change={"mechanism_only": True, "antibiotic_code": 1,
+                                 "infusion_min": 240, "egfr": 45}))
+    m = v.mechanism or {}
+    check("the PBPK twin actually executed", bool(m.get("ran")), str(m.get("reason", "ran")))
+    if m.get("ran"):
+        base, var = m.get("baseline") or {}, m.get("variant") or {}
+        check("real pharmacodynamic metrics come back, not None",
+              base.get("pct_ft_above_mic") is not None
+              and var.get("pct_ft_above_mic") is not None,
+              f"fT>MIC {base.get('pct_ft_above_mic')} -> {var.get('pct_ft_above_mic')}")
+        # `x or 1` is wrong here: mass_balance_error of 0.0 is FALSY, so the fallback
+        # fired and the check could never pass on a correct model. Explicit None test.
+        mbe_b, mbe_v = base.get("mass_balance_error"), var.get("mass_balance_error")
+        check("the model's own mass-balance check passes on both arms",
+              mbe_b is not None and mbe_v is not None
+              and abs(float(mbe_b)) < 1e-6 and abs(float(mbe_v)) < 1e-6,
+              f"baseline {mbe_b}, variant {mbe_v}")
+        d = m.get("delta") or {}
+        check("extended infusion raises T>MIC and lowers peak (textbook direction)",
+              (d.get("pct_ft_above_mic") or 0) > 0 and (d.get("peak_venous") or 0) < 0,
+              f"dT>MIC {d.get('pct_ft_above_mic')}, dpeak {d.get('peak_venous')}")
+    check("...and it is STILL typed MECHANISM with no efficacy claim",
+          v.claim_type == "MECHANISM" and v.efficacy_claim is None and not v.accepted)
+
+    print("\n11. a candidate is not a finding until it REPLICATES")
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.03,
+                                       "significant": True})
+    v = lab.submit(_prop(title="unreplicated win"))
+    check("with no replicator bound it stays a CANDIDATE",
+          v.status == "candidate" and v.replicated is None,
+          f"status={v.status}")
+    check("...and says so in the limits",
+          any("must not be reported as a finding" in x for x in v.limits))
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.03,
+                                       "significant": True},
+                replicator=lambda p: {"delta": 0.001, "significant": False})
+    v = lab.submit(_prop(title="fails to replicate"))
+    check("a candidate that does not replicate stays a candidate",
+          v.status == "candidate" and v.replicated is False,
+          f"replication delta {v.replication_delta:+.4f}")
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.03,
+                                       "significant": True},
+                replicator=lambda p: {"delta": 0.018, "significant": True})
+    v = lab.submit(_prop(title="replicates"))
+    check("only a replicated candidate becomes a FINDING", v.status == "finding")
+
+    print("\n12. adaptive proposers do not repeat themselves or their overclaims")
+    ap = L.adaptive_proposers()[0]
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.0, "ci_lo": -0.01, "ci_hi": 0.01,
+                                       "significant": False})
+    first = ap.propose({"seed": 0}, lab.ledger)
+    check("an adaptive proposer produces a proposal", first is not None)
+    for _ in range(3):
+        q = ap.propose({"seed": 0}, lab.ledger)
+        if q is None:
+            break
+        lab.submit(q)
+    keys = [__import__("json").dumps(v.proposal.change, sort_keys=True, default=str)
+            for v in lab.ledger]
+    check("it never re-submits a change it already tried",
+          len(keys) == len(set(keys)), f"{len(keys)} proposals, {len(set(keys))} distinct")
+    bias = ap.observed_bias(lab.ledger)
+    check("it measures its own bias from the ledger", bias > 0,
+          f"observed overclaim {bias:+.4f}")
+    nxt = ap.propose({"seed": 99}, lab.ledger)
+    if nxt is not None:
+        check("...and shrinks its next prediction by that bias",
+              "recalibrated" in nxt.rationale, f"predicted {nxt.predicted_delta:+.5f}")
 
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")
