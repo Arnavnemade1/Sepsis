@@ -152,9 +152,17 @@ def main() -> int:
     print("\n7. the default proposers hold DIFFERENT priors")
     props = L.default_proposers()
     priors = {p.prior for p in props}
-    check("three proposers with three distinct priors", len(props) == 3 and len(priors) == 3,
-          "; ".join(sorted(priors)))
+    # Asserted as "every proposer holds a DISTINCT prior", not as a fixed count. The
+    # previous version hardcoded three and broke the moment a fourth (Pharmacologist)
+    # was added — a test that fails when the system grows correctly is a maintenance
+    # tax, not a check.
+    check("every proposer holds a distinct prior",
+          len(props) >= 3 and len(priors) == len(props),
+          f"{len(props)} proposers: " + "; ".join(sorted(priors)))
     made = [p.generate({"seed": 1}) for p in props]
+    check("...and every proposal kind the Lab defines has a proposer for it",
+          {L.DETECTION, L.POLICY, L.TREATMENT} <= {m.kind for m in made},
+          str(sorted({m.kind for m in made})))
     check("each produces a well-formed proposal with a registered prediction",
           all(m.predicted_direction in ("improve", "no_effect", "worsen")
               and isinstance(m.predicted_delta, float) for m in made))
