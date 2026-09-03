@@ -1,40 +1,58 @@
 {
-  "generated": "2026-09-02T19:35:12",
+  "generated": "2026-09-02T19:50:48",
   "budget": {
     "total": 0.05,
-    "spent": 0.025,
-    "n_tests": 1,
-    "next_alpha": 0.0125,
+    "spent": 0.04375,
+    "n_tests": 3,
+    "next_alpha": 0.003125,
     "exhausted": false
   },
   "summary": {
-    "n_proposals": 2,
+    "n_proposals": 12,
     "n_accepted": 1,
     "n_vetoed": 0,
-    "n_mechanism_only": 1,
+    "n_mechanism_only": 3,
     "n_candidates": 0,
     "n_findings": 1,
     "budget": {
       "total": 0.05,
-      "spent": 0.025,
-      "n_tests": 1,
-      "next_alpha": 0.0125,
+      "spent": 0.04375,
+      "n_tests": 3,
+      "next_alpha": 0.003125,
       "exhausted": false
     },
-    "acceptance_rate": 0.5,
+    "acceptance_rate": 0.08333333333333333,
     "agents": [
       {
-        "agent": "Objectivist",
-        "n_proposals": 1,
+        "agent": "Decider",
+        "n_proposals": 3,
         "n_accepted": 1,
         "n_vetoed": 0,
-        "mean_signed_error": 0.0,
-        "mean_abs_error": 0.0,
+        "mean_signed_error": -0.018978708885616053,
+        "mean_abs_error": 0.05913675503190965,
         "hit_rate": 1.0
       },
       {
-        "agent": "Pharm",
-        "n_proposals": 1,
+        "agent": "Objectivist",
+        "n_proposals": 3,
+        "n_accepted": 0,
+        "n_vetoed": 0,
+        "mean_signed_error": NaN,
+        "mean_abs_error": NaN,
+        "hit_rate": NaN
+      },
+      {
+        "agent": "Pharmacologist",
+        "n_proposals": 3,
+        "n_accepted": 0,
+        "n_vetoed": 0,
+        "mean_signed_error": NaN,
+        "mean_abs_error": NaN,
+        "hit_rate": NaN
+      },
+      {
+        "agent": "Tuner",
+        "n_proposals": 3,
         "n_accepted": 0,
         "n_vetoed": 0,
         "mean_signed_error": NaN,
@@ -47,32 +65,110 @@
   "verdicts": [
     {
       "proposal": {
-        "agent": "Objectivist",
+        "agent": "Tuner",
         "kind": "detection",
-        "title": "demo finding",
+        "title": "set et.max_depth = 18",
         "change": {
-          "objective": "patient"
+          "learner": "et",
+          "key": "max_depth",
+          "value": 18
         },
-        "rationale": "r",
-        "predicted_delta": 0.02,
+        "rationale": "hyperparameter inside the shipped search space (5-20, int-scaled)",
+        "predicted_delta": 0.003,
         "predicted_direction": "improve",
-        "submitted": 1788395711.918037
+        "submitted": 1788396404.403806
       },
-      "accepted": true,
-      "claim_type": "HELD_OUT",
-      "observed_delta": 0.02,
-      "ci_lo": 0.005,
-      "ci_hi": 0.03,
-      "significant": true,
-      "refusal_reason": null,
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
       "vetoed_by": null,
       "critic_warning": null,
-      "prediction_error": 0.0,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Objectivist",
+        "kind": "detection",
+        "title": "roster hgb@utility+hgb2+et+lr+xgb@utility",
+        "change": {
+          "roster": [
+            "hgb@utility",
+            "hgb2",
+            "et",
+            "lr",
+            "xgb@utility"
+          ],
+          "objective": "patient"
+        },
+        "rationale": "stacking is paid for disagreement, not strength; the supervision target is the only lever this project has measured a win from",
+        "predicted_delta": 0.004,
+        "predicted_direction": "improve",
+        "submitted": 1788396404.403918
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Decider",
+        "kind": "policy",
+        "title": "smooth the score causally before thresholding",
+        "change": {
+          "policy": "ema",
+          "halflife": 6
+        },
+        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited",
+        "predicted_delta": 0.002,
+        "predicted_direction": "improve",
+        "submitted": 1788396404.403958
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": 0.07142857142857137,
+      "ci_lo": -0.02059614657905238,
+      "ci_hi": 0.023903330290465468,
+      "significant": false,
+      "refusal_reason": "effect +0.0714 is not significant (CI [-0.0206, +0.0239] includes zero after correction)",
+      "vetoed_by": null,
+      "critic_warning": "prior failure on record \u2014 Four alarm-policy families were searched; none beat a plain threshold.",
+      "prediction_error": -0.06942857142857137,
       "efficacy_claim": null,
       "alpha_spent": 0.025,
-      "replicated": true,
-      "replication_delta": 0.018,
-      "status": "finding",
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
       "mechanism": null,
       "limits": [
         "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
@@ -82,19 +178,19 @@
     },
     {
       "proposal": {
-        "agent": "Pharm",
+        "agent": "Pharmacologist",
         "kind": "treatment",
-        "title": "4h extended infusion",
+        "title": "3h extended infusion at eGFR 90",
         "change": {
           "mechanism_only": true,
           "antibiotic_code": 1,
-          "infusion_min": 240,
-          "egfr": 45
+          "infusion_min": 180,
+          "egfr": 90.0
         },
-        "rationale": "T>MIC",
+        "rationale": "beta-lactam killing is time-dependent: the same dose over a longer infusion trades peak concentration for time above MIC",
         "predicted_delta": 0.0,
         "predicted_direction": "no_effect",
-        "submitted": 1788395711.9181209
+        "submitted": 1788396467.2545779
       },
       "accepted": false,
       "claim_type": "MECHANISM",
@@ -116,10 +212,190 @@
         "baseline": {
           "drug": "piperacillin-tazobactam",
           "regimen": "4.5 g IV q6h (30-min infusion) \u00b7 piperacillin 4 g",
-          "pct_ft_above_mic": 94.2,
+          "pct_ft_above_mic": 57.0,
           "mic_mg_l": 16.0,
-          "auc_venous": 977.28,
-          "peak_venous": 227.89,
+          "auc_venous": 611.41,
+          "peak_venous": 198.35,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "variant": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h \u2014 3 h extended infusion",
+          "pct_ft_above_mic": 77.7,
+          "mic_mg_l": 16.0,
+          "auc_venous": 600.44,
+          "peak_venous": 91.29,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "delta": {
+          "pct_ft_above_mic": 20.7,
+          "auc_venous": -10.97,
+          "peak_venous": -107.06
+        },
+        "claim_type": "MECHANISM",
+        "interpretation": "exposure and adverse-event projections from the PBPK twin",
+        "forbidden": "no efficacy, mortality or benefit claim may be derived from this. It describes the simulator, not a patient."
+      },
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "This project already tuned a detector against its own generator once and it scored near chance on real patients. Simulator results are never evidence of clinical benefit."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb.learning_rate = 0.1942",
+        "change": {
+          "learner": "hgb",
+          "key": "learning_rate",
+          "value": 0.19422765105740705
+        },
+        "rationale": "hyperparameter inside the shipped search space (0.01-0.3, log-scaled)",
+        "predicted_delta": 0.003,
+        "predicted_direction": "improve",
+        "submitted": 1788396467.3048089
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Objectivist",
+        "kind": "detection",
+        "title": "roster hgb+hgb2+et+xgb@utility",
+        "change": {
+          "roster": [
+            "hgb",
+            "hgb2",
+            "et",
+            "xgb@utility"
+          ],
+          "objective": "patient"
+        },
+        "rationale": "stacking is paid for disagreement, not strength; the supervision target is the only lever this project has measured a win from",
+        "predicted_delta": 0.004,
+        "predicted_direction": "improve",
+        "submitted": 1788396467.304872
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Decider",
+        "kind": "policy",
+        "title": "silence the UNCERTAIN band at the shipped operating point's budget",
+        "change": {
+          "policy": "uncertain_to_review",
+          "max_false_alarm_rate": 0.2
+        },
+        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited [recalibrated: this agent has overclaimed by -0.0694 on average]",
+        "predicted_delta": 0.07143,
+        "predicted_direction": "improve",
+        "submitted": 1788396467.3049212
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": 0.011192930780559607,
+      "ci_lo": -0.04187029151654109,
+      "ci_hi": 0.0,
+      "significant": false,
+      "refusal_reason": "effect +0.0112 is not significant (CI [-0.0419, +0.0000] includes zero after correction)",
+      "vetoed_by": null,
+      "critic_warning": "predicted delta +0.071 is larger than any gain this project has ever measured; treat as overclaiming",
+      "prediction_error": 0.06023706921944039,
+      "efficacy_claim": null,
+      "alpha_spent": 0.0125,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "tested at alpha=0.01250 under a family-wise budget of 0.05 (test 2 of the session)"
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Pharmacologist",
+        "kind": "treatment",
+        "title": "4h extended infusion at eGFR 30",
+        "change": {
+          "mechanism_only": true,
+          "antibiotic_code": 1,
+          "infusion_min": 240,
+          "egfr": 30.0
+        },
+        "rationale": "beta-lactam killing is time-dependent: the same dose over a longer infusion trades peak concentration for time above MIC",
+        "predicted_delta": 0.0,
+        "predicted_direction": "no_effect",
+        "submitted": 1788396528.63762
+      },
+      "accepted": false,
+      "claim_type": "MECHANISM",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "treatment effects are evaluated on the PBPK twin; a simulator result is a mechanism observation and cannot become an efficacy claim",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "mechanism",
+      "mechanism": {
+        "ran": true,
+        "baseline": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h (30-min infusion) \u00b7 piperacillin 4 g",
+          "pct_ft_above_mic": 99.2,
+          "mic_mg_l": 16.0,
+          "auc_venous": 1204.43,
+          "peak_venous": 246.07,
           "mass_balance_error": 0.0,
           "n_adverse_modelled": 6
         },
@@ -128,15 +404,197 @@
           "regimen": "4.5 g IV q6h \u2014 4 h extended infusion",
           "pct_ft_above_mic": 95.9,
           "mic_mg_l": 16.0,
-          "auc_venous": 910.7,
-          "peak_venous": 112.89,
+          "auc_venous": 1101.16,
+          "peak_venous": 137.4,
           "mass_balance_error": 0.0,
           "n_adverse_modelled": 6
         },
         "delta": {
-          "pct_ft_above_mic": 1.7,
-          "auc_venous": -66.58,
-          "peak_venous": -115.0
+          "pct_ft_above_mic": -3.3,
+          "auc_venous": -103.27,
+          "peak_venous": -108.67
+        },
+        "claim_type": "MECHANISM",
+        "interpretation": "exposure and adverse-event projections from the PBPK twin",
+        "forbidden": "no efficacy, mortality or benefit claim may be derived from this. It describes the simulator, not a patient."
+      },
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "This project already tuned a detector against its own generator once and it scored near chance on real patients. Simulator results are never evidence of clinical benefit."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Tuner",
+        "kind": "detection",
+        "title": "set hgb2.max_iter = 477",
+        "change": {
+          "learner": "hgb2",
+          "key": "max_iter",
+          "value": 477
+        },
+        "rationale": "hyperparameter inside the shipped search space (100-500, int-scaled)",
+        "predicted_delta": 0.003,
+        "predicted_direction": "improve",
+        "submitted": 1788396528.6545029
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Objectivist",
+        "kind": "detection",
+        "title": "roster hgb+hgb2+et+lr+xgb@utility+lr@utility",
+        "change": {
+          "roster": [
+            "hgb",
+            "hgb2",
+            "et",
+            "lr",
+            "xgb@utility",
+            "lr@utility"
+          ],
+          "objective": "patient"
+        },
+        "rationale": "stacking is paid for disagreement, not strength; the supervision target is the only lever this project has measured a win from",
+        "predicted_delta": 0.004,
+        "predicted_direction": "improve",
+        "submitted": 1788396528.6545439
+      },
+      "accepted": false,
+      "claim_type": "REFUSED",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "no adjudicator bound \u2014 the Lab will not report a result it did not measure",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "refused",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass."
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Decider",
+        "kind": "policy",
+        "title": "silence the conformal UNCERTAIN band (proxy for routing it to review)",
+        "change": {
+          "policy": "uncertain_to_review",
+          "max_false_alarm_rate": 0.15
+        },
+        "rationale": "the same detector read three ways spans false-alarm rates of 14%, 27% and 94%; the decision layer is not data-limited [recalibrated: this agent has overclaimed by -0.0046 on average]",
+        "predicted_delta": 0.0066,
+        "predicted_direction": "improve",
+        "submitted": 1788396528.654612
+      },
+      "accepted": true,
+      "claim_type": "HELD_OUT",
+      "observed_delta": 0.054344624447717184,
+      "ci_lo": 0.006801953286958132,
+      "ci_hi": 0.05839498072664637,
+      "significant": true,
+      "refusal_reason": null,
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": -0.04774462444771718,
+      "efficacy_claim": null,
+      "alpha_spent": 0.00625,
+      "replicated": true,
+      "replication_delta": 0.05228276877761408,
+      "status": "finding",
+      "mechanism": null,
+      "limits": [
+        "Clearing this gate makes a proposal a CANDIDATE, not a shipped change. Promotion still runs promote_frontier.py with its three gates and its own operating-point derivation.",
+        "The gate set is held out and scored once. A proposal cannot be resubmitted against it to fish for a pass.",
+        "tested at alpha=0.00625 under a family-wise budget of 0.05 (test 3 of the session)"
+      ]
+    },
+    {
+      "proposal": {
+        "agent": "Pharmacologist",
+        "kind": "treatment",
+        "title": "3h extended infusion at eGFR 30",
+        "change": {
+          "mechanism_only": true,
+          "antibiotic_code": 1,
+          "infusion_min": 180,
+          "egfr": 30.0
+        },
+        "rationale": "beta-lactam killing is time-dependent: the same dose over a longer infusion trades peak concentration for time above MIC",
+        "predicted_delta": 0.0,
+        "predicted_direction": "no_effect",
+        "submitted": 1788396648.6659641
+      },
+      "accepted": false,
+      "claim_type": "MECHANISM",
+      "observed_delta": null,
+      "ci_lo": null,
+      "ci_hi": null,
+      "significant": false,
+      "refusal_reason": "treatment effects are evaluated on the PBPK twin; a simulator result is a mechanism observation and cannot become an efficacy claim",
+      "vetoed_by": null,
+      "critic_warning": null,
+      "prediction_error": null,
+      "efficacy_claim": null,
+      "alpha_spent": null,
+      "replicated": null,
+      "replication_delta": null,
+      "status": "mechanism",
+      "mechanism": {
+        "ran": true,
+        "baseline": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h (30-min infusion) \u00b7 piperacillin 4 g",
+          "pct_ft_above_mic": 99.2,
+          "mic_mg_l": 16.0,
+          "auc_venous": 1204.43,
+          "peak_venous": 246.07,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "variant": {
+          "drug": "piperacillin-tazobactam",
+          "regimen": "4.5 g IV q6h \u2014 3 h extended infusion",
+          "pct_ft_above_mic": 97.5,
+          "mic_mg_l": 16.0,
+          "auc_venous": 1139.37,
+          "peak_venous": 157.17,
+          "mass_balance_error": 0.0,
+          "n_adverse_modelled": 6
+        },
+        "delta": {
+          "pct_ft_above_mic": -1.7,
+          "auc_venous": -65.06,
+          "peak_venous": -88.9
         },
         "claim_type": "MECHANISM",
         "interpretation": "exposure and adverse-event projections from the PBPK twin",

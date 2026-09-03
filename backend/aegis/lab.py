@@ -553,43 +553,96 @@ class Lab:
 # Default proposers — distinct priors, so the plane explores
 # --------------------------------------------------------------------------- #
 def default_proposers() -> List[Proposer]:
+    """Three priors, and generators that actually EXPLORE.
+
+    v1's generators returned an identical proposal on every call, so an adaptive
+    proposer — which refuses to repeat itself — would exhaust its whole space after one
+    attempt and a campaign would stall in round one. Each generator now samples from a
+    real space, seeded by the caller, so successive rounds ask different questions.
+    """
     from backend.ml import selfimprove as si
 
     def _knob(ctx: Dict[str, Any]) -> Proposal:
-        """Tune a hyperparameter of the shipped stack."""
+        """Tune one hyperparameter of the shipped stack, sampled from SEARCH_SPACE."""
         rng = np.random.default_rng(int(ctx.get("seed", 0)))
         k = si.SEARCH_SPACE[int(rng.integers(0, len(si.SEARCH_SPACE)))]
+        if k.kind == "int":
+            val: Any = int(rng.integers(int(k.lo), int(k.hi) + 1))
+        elif k.kind == "log":
+            val = float(np.exp(rng.uniform(np.log(k.lo), np.log(k.hi))))
+        else:
+            val = float(rng.uniform(k.lo, k.hi))
         return Proposal(
             agent="Tuner", kind=DETECTION,
-            title=f"tune {k.learner}.{k.key}",
-            change={"learner": k.learner, "key": k.key, "kind": k.kind},
-            rationale=f"hyperparameter within the shipped search space ({k.lo}-{k.hi})",
+            title=f"set {k.learner}.{k.key} = {val if k.kind=='int' else round(float(val),4)}",
+            change={"learner": k.learner, "key": k.key, "value": val},
+            rationale=f"hyperparameter inside the shipped search space "
+                      f"({k.lo}-{k.hi}, {k.kind}-scaled)",
             predicted_delta=0.003, predicted_direction="improve")
 
+    _ROSTERS = [
+        ["hgb", "hgb2", "et", "lr", "xgb@utility", "hgb@patient"],
+        ["hgb@utility", "hgb2", "et", "lr", "xgb@utility"],
+        ["hgb", "hgb2", "et", "lr", "xgb@utility", "lr@utility"],
+        ["hgb", "hgb2", "et", "xgb@utility"],
+    ]
+
     def _objective(ctx: Dict[str, Any]) -> Proposal:
-        """Change what the model is trained to predict, not how."""
+        """Change WHAT a member is trained to predict — the only lever with a win."""
+        rng = np.random.default_rng(int(ctx.get("seed", 0)) + 101)
+        roster = _ROSTERS[int(rng.integers(0, len(_ROSTERS)))]
         return Proposal(
             agent="Objectivist", kind=DETECTION,
-            title="re-aim a stack member's training objective",
-            change={"member": "hgb", "objective": "patient"},
-            rationale="the only lever with a measured win in this project was the "
-                      "supervision target, not the model class",
+            title=f"roster {'+'.join(roster)}",
+            change={"roster": roster, "objective": "patient"},
+            rationale="stacking is paid for disagreement, not strength; the supervision "
+                      "target is the only lever this project has measured a win from",
             predicted_delta=0.004, predicted_direction="improve")
+
+    _POLICIES = [
+        # Named for what the metric MEASURES (silencing), not for the clinical policy
+        # it is a proxy for (routing to review). The detection metric charges nothing
+        # for a review queue, so calling this "route to review" would claim a free
+        # middle option that the disposition layer's own limits say does not exist.
+        ({"policy": "uncertain_to_review", "max_false_alarm_rate": 0.15},
+         "silence the conformal UNCERTAIN band (proxy for routing it to review)"),
+        ({"policy": "uncertain_to_review", "max_false_alarm_rate": 0.10},
+         "silence the UNCERTAIN band at a tighter alarm budget"),
+        ({"policy": "ema", "halflife": 6},
+         "smooth the score causally before thresholding"),
+        ({"policy": "uncertain_to_review", "max_false_alarm_rate": 0.20},
+         "silence the UNCERTAIN band at the shipped operating point's budget"),
+    ]
 
     def _policy(ctx: Dict[str, Any]) -> Proposal:
         """Change the decision layer rather than the score."""
+        rng = np.random.default_rng(int(ctx.get("seed", 0)) + 211)
+        ch, why = _POLICIES[int(rng.integers(0, len(_POLICIES)))]
         return Proposal(
-            agent="Decider", kind=POLICY,
-            title="route the conformal UNCERTAIN band to review",
-            change={"policy": "uncertain_to_review", "max_false_alarm_rate": 0.15},
+            agent="Decider", kind=POLICY, title=why, change=dict(ch),
             rationale="the same detector read three ways spans false-alarm rates of "
                       "14%, 27% and 94%; the decision layer is not data-limited",
             predicted_delta=0.002, predicted_direction="improve")
+
+    def _pharm(ctx: Dict[str, Any]) -> Proposal:
+        """Ask a mechanistic pharmacology question on the PBPK twin."""
+        rng = np.random.default_rng(int(ctx.get("seed", 0)) + 313)
+        inf = int(rng.choice([120, 180, 240]))
+        egfr = float(rng.choice([30.0, 45.0, 90.0]))
+        return Proposal(
+            agent="Pharmacologist", kind=TREATMENT,
+            title=f"{inf//60}h extended infusion at eGFR {egfr:.0f}",
+            change={"mechanism_only": True, "antibiotic_code": 1,
+                    "infusion_min": inf, "egfr": egfr},
+            rationale="beta-lactam killing is time-dependent: the same dose over a "
+                      "longer infusion trades peak concentration for time above MIC",
+            predicted_delta=0.0, predicted_direction="no_effect")
 
     return [
         Proposer("Tuner", "gains hide in hyperparameters", _knob),
         Proposer("Objectivist", "gains hide in the supervision target", _objective),
         Proposer("Decider", "gains hide in the decision layer, not the score", _policy),
+        Proposer("Pharmacologist", "mechanism questions belong on the twin", _pharm),
     ]
 
 

@@ -327,6 +327,12 @@ rigorous:
 clean-cache:
 	rm -rf artifacts/feature_cache
 
+lab-run:
+	PYTHONPATH=. $(PY) -m backend.aegis.lab_runner --rounds 3
+
+lab-run-full:
+	PYTHONPATH=. $(PY) -m backend.aegis.lab_runner --rounds 3 --with-detection
+
 verify-lab:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_lab
 
