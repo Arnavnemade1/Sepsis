@@ -336,6 +336,9 @@ lab-run-full:
 verify-lab:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_lab
 
+lab-registry:
+	PYTHONPATH=. $(PY) -m backend.aegis.lab_registry --report
+
 verify-timeline:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_risk_timeline
 

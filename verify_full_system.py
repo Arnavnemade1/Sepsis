@@ -560,6 +560,74 @@ def test_shift_diagnosis() -> None:
     _ok("prior correction preserves rank order (moves the decision, not the score)")
 
 
+def test_lab_protocol() -> None:
+    """The Lab's gate, checked here because `make verify` is what gets run.
+
+    The Lab has its own 90-check adversarial suite (`make verify-lab`) and it was not
+    reachable from the top-level verify at all — a shipped subsystem whose protocol
+    nobody re-checked on the way to a release. These are the load-bearing few: an agent
+    cannot make the gate say yes, a replication cannot be the same test twice, and a
+    refusal reports what it could have detected.
+    """
+    print("[24] Lab protocol — proposers cannot judge, replication cannot be a re-run")
+    from backend.aegis import lab as L
+    from backend.aegis import lab_registry as LR
+    import tempfile, os as _o
+
+    def _p(**kw):
+        base = dict(agent="V", kind=L.DETECTION, title="t", change={"k": 1},
+                    rationale="r", predicted_delta=0.003, predicted_direction="improve")
+        base.update(kw)
+        return L.Proposal(**base)
+
+    # An adjudicator that would accept anything. Nothing below may reach an acceptance
+    # it should not, and this is what makes each refusal load-bearing rather than lucky.
+    yes = lambda p, alpha=0.05: {"delta": 0.9, "ci_lo": 0.8, "ci_hi": 1.0,
+                                 "significant": True, "arm": "gate",
+                                 "patient_ids_hash": "aaaaaaaaaaaa"}
+    lab = L.Lab(adjudicator=yes)
+    assert not lab.submit(_p(title="bypass gate for speed")).accepted, \
+        "a safety veto must beat an adjudicator that says yes"
+    assert lab.submit(_p(kind=L.TREATMENT, change={"mechanism_only": True})
+                      ).efficacy_claim is None, "simulator results cannot carry efficacy"
+
+    # Replication on the same pool is the defect the policy arm actually had.
+    same = L.Lab(adjudicator=yes, replicator=lambda p: {
+        "delta": 0.9, "significant": True, "arm": "replication",
+        "patient_ids_hash": "aaaaaaaaaaaa"})
+    v = same.submit(_p(title="same-pool replication"))
+    assert v.status == "candidate" and v.replicated is False, \
+        "an identical pool fingerprint must not promote a candidate to a finding"
+
+    # A refusal must say what it could have seen.
+    weak = L.Lab(adjudicator=lambda p, alpha=0.05: {
+        "delta": 0.0005, "ci_lo": -0.03, "ci_hi": 0.03, "significant": False})
+    v = weak.submit(_p(title="underpowered"))
+    assert v.mde is not None and v.mde > 0.02 and "NOT testable" in (v.power_note or ""), \
+        "a refusal must report its minimum detectable effect"
+
+    # The partition the whole finding concept rests on.
+    part = _o.path.join("artifacts", "lab_partition.json")
+    if _o.path.exists(part):
+        import json as _j
+        with open(part) as fh:
+            pt = _j.load(fh)
+        ix = pt.get("intersections") or {}
+        assert pt.get("disjoint") and sum(ix.values()) == 0, \
+            f"gate and replication pools must be disjoint, got {ix}"
+
+    # The record must be tamper-evident.
+    fd, rp = tempfile.mkstemp(suffix=".json"); _o.close(fd); _o.unlink(rp)
+    reg = LR.LabRegistry.load(rp)
+    reg.record_campaign(weak.ledger, weak.budget, label="v")
+    assert reg.verify_chain()[0], "a fresh chain must verify"
+    reg.entries[0].accepted = True
+    assert not reg.verify_chain()[0], \
+        "editing a recorded verdict must break the hash chain"
+    _ok("veto beats the gate; same-pool replication rejected; refusals report an MDE; "
+        "the record is hash-chained")
+
+
 def test_fit_identity() -> None:
     print("[23] Fit identity — a cross-fit read is refused at the point of use")
     from backend.ml.fitid import fingerprint, require_same, FitMismatch, stamp, read
@@ -590,7 +658,7 @@ def main() -> int:
              test_aegis_os, test_reasoning_plane, test_camera_detection,
              test_rppg_robustness, test_signal_levers, test_signs_and_posture, test_llm_fallback, test_treatment_projection,
              test_z3_concurrency, test_conformal_abstention, test_shift_diagnosis,
-             test_fit_identity]
+             test_fit_identity, test_lab_protocol]
     failed = 0
     for t in tests:
         try:

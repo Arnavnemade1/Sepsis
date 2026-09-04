@@ -598,6 +598,18 @@ def health_system() -> Dict[str, Any]:
     return out
 
 
+def _read_json(path: str):
+    """Read a small artifact, or None. A missing artifact is a state, not an error."""
+    import json as _j, os as _o
+    if not _o.path.exists(path):
+        return None
+    try:
+        with open(path) as fh:
+            return _j.load(fh)
+    except Exception:
+        return None
+
+
 @app.get("/aegis/lab")
 def lab_state() -> Dict[str, Any]:
     """The Lab: agents propose, a locked gate adjudicates, refusals are the record.
@@ -621,14 +633,40 @@ def lab_state() -> Dict[str, Any]:
             ledger = _lab.Lab.json_safe(ledger)
         except Exception:
             ledger = None
+    # The PROGRAMME, not just the last campaign. A ledger that is overwritten every run
+    # cannot show whether a finding came from one campaign or from the tenth attempt, and
+    # that is the number a reader most needs. The registry carries every campaign ever
+    # run, hash-chained, and reports cumulative alpha as the expected false-finding count.
+    programme, campaigns, chain = None, [], None
+    try:
+        from backend.aegis.lab_registry import LabRegistry as _Reg
+        reg = _Reg.load()
+        programme = reg.programme()
+        campaigns = reg.campaigns[-12:]
+        ok, bad = reg.verify_chain()
+        chain = {"ok": ok, "broken_at": bad, "n_entries": len(reg.entries),
+                 "note": ("every recorded verdict re-hashes to its stored value"
+                          if ok else
+                          f"BROKEN at seq {bad} — a verdict has been edited or removed "
+                          f"since it was recorded")}
+    except Exception:
+        pass
+
     return {
         "proposers": [{"name": p.name, "prior": p.prior} for p in _lab.default_proposers()],
         "roles": {
             "Proposer": "generates a change from a stated prior; never judges it",
-            "Critic": "argues against it from this project's recorded nulls; cannot veto",
+            "Critic": "argues against it from this project's recorded nulls and the "
+                      "Lab's own refusals; cannot veto",
             "SafetyOfficer": "absolute veto over anything that weakens a safety property",
             "Gate": "held-out patients, paired bootstrap; the only thing that can accept",
+            "Replication": "a SECOND pool, disjoint from the gate by construction; the "
+                           "only thing that can turn a candidate into a finding",
         },
+        "programme": programme,
+        "campaigns": campaigns,
+        "chain": chain,
+        "partition": _read_json(_os.path.join(_cfg.ARTIFACTS_DIR, "lab_partition.json")),
         "min_effect": _lab.MIN_EFFECT,
         "claim_types": {
             "HELD_OUT": "measured on patients no agent could see or fit on",

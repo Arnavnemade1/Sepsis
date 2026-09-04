@@ -1,83 +1,166 @@
 <!doctype html><html lang="en"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>AegisOS — The Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
+/* ============================================================
+   The Lab — research console.
+   One identity with the clinical shell (see os.css / tactical.css): colour is
+   SIGNAL, structure is hairlines, numbers are the interface. This page shipped
+   as a light card layout with its own blue/green palette, which made the Lab
+   look like a different product from the OS it belongs to.
+   ============================================================ */
 :root{
-  --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
-  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;
-  --s1soft:rgba(42,120,214,.12); --s2soft:rgba(27,175,122,.14);
+  --bg:#0a0b0c; --s1:#111214; --s2:#16181b; --s3:#1d1f23;
+  --hair:rgba(255,255,255,.09); --hair-soft:rgba(255,255,255,.05);
+  --hair-hot:rgba(255,255,255,.18);
+  --ink:#f2f3f5; --muted:#a0a4ac; --dim:#6d7178; --faint:#4b4f56;
+  --ok:rgb(64,184,128); --watch:rgb(226,163,60); --crit:rgb(229,84,76);
+  --ok-ink:#7fdcae; --watch-ink:#f0c46a; --crit-ink:#ff9d97;
+  --accent:rgb(122,162,247); --accent-rgb:122,162,247;
+  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:5px;
 }
-@media (prefers-color-scheme:dark){:root{
-  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
-  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
-  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;
-  --s1soft:rgba(57,135,229,.16); --s2soft:rgba(31,189,134,.16);
-}}
-:root[data-theme=dark]{
-  --bg:#111110; --surface:#1a1a19; --card:#1f1f1d; --line:#33332f; --line2:#2a2a27;
-  --ink:#f4f3ee; --ink2:#c3c2b7; --muted:#8f8e84;
-  --s1:#3987e5; --s2:#1fbd86; --ref:#55554e; --good:#41c98a; --warn:#e0b64b; --bad:#e66767;}
-:root[data-theme=light]{
-  --bg:#f7f7f4; --surface:#fcfcfb; --card:#ffffff; --line:#e6e5df; --line2:#efeee9;
-  --ink:#0b0b0b; --ink2:#52514e; --muted:#8a897f;
-  --s1:#2a78d6; --s2:#1baf7a; --ref:#b9b8b0; --good:#1a7f4b; --warn:#b8860b; --bad:#c0392b;}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,system-ui,sans-serif;
-  line-height:1.55;-webkit-font-smoothing:antialiased}
-.wrap{max-width:1080px;margin:0 auto;padding:40px 22px 80px}
-.mono{font-family:ui-monospace,"SF Mono",Menlo,monospace}
-h1{font-size:30px;font-weight:800;letter-spacing:-.02em;margin:0 0 6px}
-h2{font-size:17px;font-weight:700;margin:38px 0 8px;letter-spacing:-.01em}
-.sub{color:var(--ink2);font-size:15px;max-width:74ch}
-.tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.08em;
-  text-transform:uppercase;color:var(--s2);border:1px solid var(--line);
-  border-radius:20px;padding:3px 11px;margin-bottom:14px}
-.protocol{margin:16px 0 6px;padding:12px 15px;border-left:3px solid var(--s1);
-  background:var(--card);border-radius:0 10px 10px 0;font-size:13.5px;color:var(--ink2)}
-.protocol b{color:var(--ink)}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:18px 0}
-.tile{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
-.tile .k{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)}
-.tile .v{font-size:25px;font-weight:750;margin-top:3px;letter-spacing:-.02em}
-.tile .ci{font-size:12px;color:var(--ink2);margin-top:2px}
-.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin:12px 0}
-.role{background:var(--card);border:1px solid var(--line);border-radius:11px;padding:12px 14px}
-.role .n{font-weight:700;font-size:14px}
-.role .d{font-size:12.5px;color:var(--ink2);margin-top:3px}
-.role.gate{border-color:var(--s1);background:var(--s1soft)}
-.v-card{background:var(--card);border:1px solid var(--line);border-radius:12px;
-  padding:14px 16px;margin:10px 0;border-left-width:4px}
-.v-card.finding{border-left-color:var(--good)}
-.v-card.candidate{border-left-color:var(--warn)}
-.v-card.refused{border-left-color:var(--ref)}
-.v-card.mechanism{border-left-color:var(--s1)}
-.v-card.vetoed{border-left-color:var(--bad)}
-.v-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap}
-.v-title{font-weight:650;font-size:14.5px}
-.badge{font-size:10.5px;font-weight:750;letter-spacing:.07em;text-transform:uppercase;
-  padding:2px 9px;border-radius:20px;border:1px solid var(--line);white-space:nowrap}
-.badge.finding{color:var(--good);border-color:var(--good)}
-.badge.candidate{color:var(--warn);border-color:var(--warn)}
-.badge.refused{color:var(--muted)}
-.badge.mechanism{color:var(--s1);border-color:var(--s1)}
-.badge.vetoed{color:var(--bad);border-color:var(--bad)}
-.agent{font-size:12px;color:var(--muted)}
-.nums{font-size:13px;margin-top:7px}
-.nums .lbl{color:var(--muted)}
-.reason{font-size:12.5px;color:var(--ink2);margin-top:6px;padding-left:10px;
-  border-left:2px solid var(--line2)}
-.warn{color:var(--warn)}
-table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
-th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line2)}
-th{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
-td.num{text-align:right;font-family:ui-monospace,"SF Mono",Menlo,monospace}
-.pos{color:var(--good)} .neg{color:var(--bad)}
-.empty{padding:30px;text-align:center;color:var(--muted);background:var(--card);
-  border:1px dashed var(--line);border-radius:12px}
-.foot{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
-  font-size:12.5px;color:var(--muted)}
+html,body{background:var(--bg)}
+body{margin:0;color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:34px 22px 90px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+a{color:var(--accent)}
+
+/* --- masthead --- */
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--dim);margin-bottom:10px}
+h1{font-size:31px;font-weight:700;letter-spacing:-.022em;margin:0 0 8px}
+.lede{color:var(--muted);font-size:15px;max-width:76ch;margin:0}
+.lede b{color:var(--ink);font-weight:600}
+h2{font-size:12px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
+  color:var(--dim);margin:40px 0 12px;font-family:var(--mono);
+  padding-bottom:8px;border-bottom:1px solid var(--hair)}
+h2 .h2note{float:right;text-transform:none;letter-spacing:0;font-family:var(--sans);
+  color:var(--faint);font-weight:400;font-size:11.5px}
+
+/* --- the headline verdict --- */
+.headline{margin:22px 0 6px;padding:18px 20px;background:var(--s1);
+  border:1px solid var(--hair);border-left:2px solid var(--accent);border-radius:var(--r)}
+.headline .big{font-size:20px;font-weight:600;letter-spacing:-.015em;line-height:1.4}
+.headline .big em{font-style:normal;font-family:var(--mono);color:var(--accent)}
+.headline .why{color:var(--muted);font-size:13px;margin-top:8px;max-width:86ch}
+
+.note{margin:12px 0;padding:11px 14px;background:var(--s1);border:1px solid var(--hair-soft);
+  border-left:2px solid var(--hair-hot);border-radius:var(--r);font-size:13px;color:var(--muted)}
+.note b{color:var(--ink);font-weight:600}
+.note.alarm{border-left-color:var(--crit)}
+.note.good{border-left-color:var(--ok)}
+
+/* --- stat grid --- */
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:1px;
+  background:var(--hair);border:1px solid var(--hair);border-radius:var(--r);
+  overflow:hidden;margin:16px 0}
+.tile{background:var(--s1);padding:13px 15px}
+.tile .k{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--dim)}
+.tile .v{font-family:var(--mono);font-size:24px;font-weight:500;margin-top:4px;
+  letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.tile .ci{font-size:11.5px;color:var(--faint);margin-top:3px;line-height:1.35}
+.tile.hot .v{color:var(--accent)}
+.tile.good .v{color:var(--ok-ink)} .tile.bad .v{color:var(--crit-ink)}
+
+/* --- budget meter --- */
+.meter{height:4px;background:var(--s3);border-radius:2px;overflow:hidden;margin:10px 0 6px}
+.meter i{display:block;height:100%;background:var(--accent)}
+
+/* --- partition strip: the disjointness, drawn --- */
+.pools{display:flex;gap:1px;background:var(--hair);border:1px solid var(--hair);
+  border-radius:var(--r);overflow:hidden;margin:12px 0}
+.pool{background:var(--s1);padding:11px 14px;flex:1 1 0;min-width:0}
+.pool .pk{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim)}
+.pool .pv{font-family:var(--mono);font-size:17px;margin-top:3px}
+.pool .pd{font-size:11.5px;color:var(--faint);margin-top:2px}
+.pool.gate{border-top:2px solid var(--accent)}
+.pool.rep{border-top:2px solid var(--ok)}
+.pool.search{border-top:2px solid var(--faint)}
+
+/* --- roles --- */
+.roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(232px,1fr));gap:1px;
+  background:var(--hair);border:1px solid var(--hair);border-radius:var(--r);overflow:hidden}
+.role{background:var(--s1);padding:12px 14px}
+.role .n{font-family:var(--mono);font-size:12px;font-weight:500;letter-spacing:.04em}
+.role .d{font-size:12.5px;color:var(--muted);margin-top:4px}
+.role.judge .n{color:var(--accent)}
+.role.judge{background:var(--s2)}
+
+/* --- tables --- */
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:8px 11px;border-bottom:1px solid var(--hair-soft)}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--dim);font-weight:500;border-bottom:1px solid var(--hair)}
+td.num,th.num{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--s1)}
+.pos{color:var(--ok-ink)} .neg{color:var(--crit-ink)} .nil{color:var(--faint)}
+tr.retracted td{color:var(--faint)}
+tr.retracted td:first-child::after{content:" retracted";font-family:var(--mono);
+  font-size:9.5px;letter-spacing:.08em;color:var(--watch-ink);text-transform:uppercase}
+
+/* --- filters --- */
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.filters button{font-family:var(--mono);font-size:11px;letter-spacing:.05em;
+  background:var(--s1);color:var(--muted);border:1px solid var(--hair);border-radius:var(--r);
+  padding:5px 11px;cursor:pointer;transition:background .12s,color .12s,border-color .12s}
+.filters button:hover{border-color:var(--hair-hot);color:var(--ink)}
+.filters button[aria-pressed=true]{background:var(--s3);color:var(--ink);
+  border-color:var(--hair-hot)}
+.filters .count{color:var(--faint);margin-left:5px}
+
+/* --- verdict cards --- */
+.v-card{background:var(--s1);border:1px solid var(--hair);border-left:2px solid var(--faint);
+  border-radius:var(--r);padding:13px 16px;margin:9px 0}
+.v-card.finding{border-left-color:var(--ok)}
+.v-card.candidate{border-left-color:var(--watch)}
+.v-card.mechanism{border-left-color:var(--accent)}
+.v-card.vetoed{border-left-color:var(--crit)}
+.v-card.duplicate{border-left-color:var(--hair-hot);opacity:.82}
+.v-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.v-title{font-weight:600;font-size:14.5px;letter-spacing:-.008em}
+.v-sub{font-family:var(--mono);font-size:11px;color:var(--dim);margin-top:3px;letter-spacing:.03em}
+.badge{font-family:var(--mono);font-size:9.5px;font-weight:600;letter-spacing:.11em;
+  text-transform:uppercase;padding:3px 9px;border-radius:20px;border:1px solid var(--hair);
+  white-space:nowrap;color:var(--dim)}
+.badge.finding{color:var(--ok-ink);border-color:rgba(64,184,128,.45)}
+.badge.candidate{color:var(--watch-ink);border-color:rgba(226,163,60,.45)}
+.badge.mechanism{color:var(--accent);border-color:rgba(var(--accent-rgb),.45)}
+.badge.vetoed{color:var(--crit-ink);border-color:rgba(229,84,76,.5)}
+.nums{font-family:var(--mono);font-size:12.5px;margin-top:9px;display:flex;flex-wrap:wrap;
+  gap:4px 18px;font-variant-numeric:tabular-nums}
+.nums .lbl{color:var(--dim);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+  margin-right:5px}
+.reason{font-size:12.5px;color:var(--muted);margin-top:9px;padding-left:11px;
+  border-left:1px solid var(--hair)}
+.reason b{color:var(--ink);font-weight:600}
+.reason.crit{border-left-color:var(--watch)}
+.reason.power{border-left-color:var(--accent);color:var(--muted)}
+details.limits{margin-top:9px}
+details.limits summary{font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--dim);cursor:pointer;list-style:none}
+details.limits summary::-webkit-details-marker{display:none}
+details.limits summary::before{content:"▸ ";color:var(--faint)}
+details.limits[open] summary::before{content:"▾ "}
+details.limits ul{margin:8px 0 0;padding-left:17px;font-size:12.5px;color:var(--muted)}
+details.limits li{margin-bottom:5px}
+
+.empty{padding:34px;text-align:center;color:var(--dim);background:var(--s1);
+  border:1px dashed var(--hair);border-radius:var(--r);font-size:13px}
+.foot{margin-top:44px;padding-top:16px;border-top:1px solid var(--hair);
+  font-size:12.5px;color:var(--faint);line-height:1.75}
+.foot .mono{color:var(--muted)}
+kbd{font-family:var(--mono);font-size:11.5px;background:var(--s3);border:1px solid var(--hair);
+  border-radius:3px;padding:1px 6px;color:var(--muted)}
+@media (max-width:640px){ .pools{flex-direction:column} h1{font-size:25px} }
 </style>
 <!-- The project's backend-resolution convention. Every other page loads this; this one
      did not, and used an invented `window.AEGIS_API` that exists nowhere. Served from
@@ -86,129 +169,327 @@ td.num{text-align:right;font-family:ui-monospace,"SF Mono",Menlo,monospace}
      here — the static hosts cache aggressively. -->
 <script src="config.js?v=9"></script>
 </head><body>
-<div class="wrap" id="app"><div class="empty">loading…</div></div>
+<div class="wrap" id="app"><div class="empty">loading the record…</div></div>
 <script>
 // Resolve through the shared helper (localStorage override -> AEGIS_BACKEND ->
 // same origin), falling back to same-origin if config.js somehow did not load.
 var API = (window.AEGIS && window.AEGIS.base) ? window.AEGIS.base() : "";
-function esc(s){return String(s==null?"":s).replace(/[&<>]/g,function(c){
-  return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];});}
+var DATA = null, FILTER = "all";
+
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
 function f(x,n){return (x==null||isNaN(x))?"—":Number(x).toFixed(n==null?4:n);}
 function sgn(x,n){if(x==null||isNaN(x))return "—";var v=Number(x);
   return (v>=0?"+":"")+v.toFixed(n==null?4:n);}
+function cls(x){return (x==null||isNaN(x))?"nil":(Number(x)>0?"pos":(Number(x)<0?"neg":"nil"));}
+function tile(k,v,ci,kind){return '<div class="tile'+(kind?' '+kind:'')+'"><div class="k">'+
+  esc(k)+'</div><div class="v">'+esc(v)+'</div><div class="ci">'+(ci||"")+'</div></div>';}
 
-function tile(k,v,ci){return '<div class="tile"><div class="k">'+esc(k)+'</div><div class="v">'+
-  esc(v)+'</div><div class="ci">'+esc(ci||"")+'</div></div>';}
+// The status a verdict is FILED under. A veto outranks everything; a duplicate is not a
+// refusal by the gate and must not be counted as one.
+function statusOf(v){
+  if(v.vetoed_by) return "vetoed";
+  if(v.duplicate_of) return "duplicate";
+  return v.status || "refused";
+}
 
 function render(d){
-  var L = d.ledger || {}, S = L.summary || {}, B = S.budget || d.min_effect_budget || {};
+  DATA = d;
+  var L = d.ledger || {}, S = L.summary || {}, B = S.budget || {};
+  var P = d.programme || null, POW = S.power || null;
   var vs = L.verdicts || [];
   var h = [];
-  h.push('<div class="tag">AegisOS · research</div>');
+
+  h.push('<div class="eyebrow">AegisOS · research plane</div>');
   h.push('<h1>The Lab</h1>');
-  h.push('<div class="sub">Agents propose changes to detection, decision policy and '+
-    'treatment. A <b>locked gate</b> adjudicates them on patients no agent can see or '+
-    'fit on. Agents run the research; they never judge it — which is the only reason '+
-    'anything here means something.</div>');
+  h.push('<p class="lede">Agents propose changes to detection, decision policy and '+
+    'treatment. A <b>locked gate</b> scores them on patients no agent can see or fit on, '+
+    'and a <b>second, disjoint pool</b> decides whether the result survives. Agents run '+
+    'the research; they never judge it — which is the only reason anything here means '+
+    'something.</p>');
 
-  h.push('<div class="protocol"><b>What a refusal means.</b> Mostly refusals is the '+
-    'expected outcome. The self-improvement loop accepted <b>0 of 16</b> under this same '+
-    'protocol and this project has falsified eleven method families. A lab that reports '+
-    'a string of wins is evidence its gate is broken, not that its agents are clever.</div>');
+  // ---- the headline: findings against the programme's own false-positive budget ----
+  if(P){
+    var exp = P.expected_false_findings, nf = P.n_findings;
+    var verdictWord = nf === 0
+      ? 'No finding has survived replication.'
+      : nf + ' finding' + (nf>1?'s have':' has') + ' survived replication.';
+    // "1 campaign and 0 tests" reads as a contradiction. It is not — it is what the
+    // record says when every campaign so far ran under a protocol that has since been
+    // retracted — but a headline that needs a footnote to parse is a bad headline.
+    var scope = P.n_tested === 0
+      ? ' <b>No test has yet run under protocol ' + esc(P.protocol) + '</b>' +
+        (P.n_tested_all_protocols ? ', though ' + P.n_tested_all_protocols +
+          ' ran under earlier ones.' : '.')
+      : ' Across <em>'+P.n_campaigns+'</em> campaign'+(P.n_campaigns===1?'':'s')+
+        ' and <em>'+P.n_tested+'</em> tests, this programme has spent <em>'+
+        f(exp,4)+'</em> of α.';
+    h.push('<div class="headline"><div class="big">'+esc(verdictWord)+scope+'</div>'+
+      '<div class="why">That number <b>is</b> the expected number of false findings for '+
+      'the whole programme — it is what you should compare the finding count against. '+
+      'A lab reporting a string of wins against a budget like this is evidence its gate '+
+      'is broken, not that its agents are clever. '+
+      '<span class="mono">'+esc(P.n_hypotheses)+'</span> distinct hypotheses have been '+
+      'asked; a hypothesis gets one test, so the count cannot be shopped.</div></div>');
 
-  // headline tiles
-  h.push('<div class="tiles">'+
-    tile('Proposals', S.n_proposals!=null?S.n_proposals:'—','submitted this campaign')+
-    tile('Cleared the gate', S.n_accepted!=null?S.n_accepted:'—','held-out patients')+
-    tile('Replicated findings', S.n_findings!=null?S.n_findings:'—','survived a disjoint split')+
-    tile('Vetoed', S.n_vetoed!=null?S.n_vetoed:'—','safety officer, absolute')+
-    tile('Mechanism only', S.n_mechanism_only!=null?S.n_mechanism_only:'—','PBPK twin, no efficacy')+
-  '</div>');
+    if(P.retraction_note){
+      h.push('<div class="note alarm"><b>Retracted under protocol '+esc(P.protocol)+
+        '.</b> '+esc(P.retraction_note)+'</div>');
+    }
+    if(d.chain){
+      h.push('<div class="note '+(d.chain.ok?'good':'alarm')+'"><b>Record integrity — '+
+        (d.chain.ok?'intact':'BROKEN')+'.</b> '+esc(d.chain.n_entries)+
+        ' verdicts are hash-chained (sha256 over the entry and its predecessor). '+
+        esc(d.chain.note)+'</div>');
+    }
 
-  // error budget
-  if(B && B.total!=null){
-    var pct = Math.min(100,Math.round(100*(B.spent||0)/B.total));
-    h.push('<h2>Error budget</h2>');
-    h.push('<div class="protocol">Every gate test spends alpha on a geometric schedule '+
-      '(alpha<sub>k</sub> = total·2<sup>−k</sup>), so the bar <b>tightens</b> as tests are '+
-      'taken and a proposal spammer cannot buy a pass with volume. '+
-      '<b>'+f(B.spent,5)+'</b> of <b>'+f(B.total,3)+'</b> spent over <b>'+(B.n_tests||0)+
-      '</b> tests; the next test must clear <b>alpha='+f(B.next_alpha,5)+'</b>'+
-      (B.exhausted?' — <span class="warn">budget exhausted, the Lab will refuse to test further</span>':'')+
-      '.</div>');
+    h.push('<div class="tiles">'+
+      tile('Campaigns', P.n_campaigns, 'on the permanent record')+
+      tile('Hypotheses', P.n_hypotheses, 'each tested at most once', 'hot')+
+      tile('Tests', P.n_tested, 'under the current protocol')+
+      tile('Expected false', f(P.expected_false_findings,4), 'cumulative α spent')+
+      tile('Findings', P.n_findings, 'replicated on a disjoint pool',
+           P.n_findings ? 'good' : '')+
+      tile('Vetoed', P.n_vetoed, 'safety officer, absolute',
+           P.n_vetoed ? 'bad' : '')+
+    '</div>');
   }
 
-  // roles
+  // ---- the partition: the claim the whole thing rests on ----
+  var PT = d.partition;
+  h.push('<h2>The partition<span class="h2note">'+
+    (PT ? 'measured '+esc((PT.measured||'').replace('T',' '))+' on spec '+esc(PT.spec)
+        : 'one split, three pools, no shared patient')+'</span></h2>');
+  h.push('<p class="lede" style="font-size:13.5px">A finding is a result that held up on '+
+    '<b>patients the first test never saw</b>. That is only true if the two pools are '+
+    'actually disjoint — and until this was fixed they were not. The gate drew its '+
+    'patients at one seed and the replicator drew its own at another, which on this '+
+    'cohort shared <b>503 of 2 001 patients, 25.1%</b> of the replication set. The policy '+
+    'arm was worse: it did not split at all, so its "replication" re-scored the same '+
+    '8 000 patients and returned a bit-identical <span class="mono">+0.025037</span>. '+
+    'A candidate replicated with probability ~1.</p>');
+
+  if(PT && PT.pools){
+    // Served from the split the campaign actually ran, not typed into this page. A pool
+    // size asserted in markup goes stale the moment the partition changes, and this is
+    // the one number a reader should not have to take on trust.
+    var order = ["search","gate","replication"], klass = {search:"search",gate:"gate",replication:"rep"};
+    h.push('<div class="pools">');
+    order.forEach(function(k){
+      var pl = PT.pools[k]; if(!pl) return;
+      h.push('<div class="pool '+klass[k]+'"><div class="pk">'+esc(k)+'</div>'+
+        '<div class="pv">'+Number(pl.n_patients).toLocaleString('en-US').replace(/,/g,' ')+
+        '</div><div class="pd">'+esc(pl.role||'')+
+        (pl.septic_rate!=null?'<br/><span class="mono" style="color:var(--dim)">septic '+
+          (100*pl.septic_rate).toFixed(2)+'%'+
+          (pl.fingerprint?' · '+esc(pl.fingerprint):'')+'</span>':'')+'</div></div>');
+    });
+    h.push('</div>');
+    var ix = PT.intersections || {};
+    var tot = (ix.gate_replication||0)+(ix.search_gate||0)+(ix.search_replication||0);
+    h.push('<div class="note '+(PT.disjoint?'good':'alarm')+'"><b>Pairwise intersection: '+
+      esc(tot)+'.</b> gate∩replication '+esc(ix.gate_replication)+
+      ' · search∩gate '+esc(ix.search_gate)+' · search∩replication '+
+      esc(ix.search_replication)+' over '+
+      Number(PT.n_patients_total||0).toLocaleString('en-US').replace(/,/g,' ')+
+      ' patients. The pools come from one patient-grouped, outcome-stratified k-fold '+
+      'partition, so disjointness is a property of the construction rather than of a '+
+      'lucky seed. Every verdict carries a fingerprint of the patients that scored it, '+
+      'and a replication whose fingerprint matches its gate is rejected outright.</div>');
+  } else {
+    h.push('<div class="note">The partition has not been measured yet — it is written by '+
+      'a campaign run (<span class="mono">make lab-run</span>). Until then this page will '+
+      'not assert pool sizes it cannot show you.</div>');
+  }
+
+  // ---- power ----
+  if(POW && POW.median_mde != null){
+    h.push('<h2>What this campaign could have seen<span class="h2note">refusals are '+
+      'measurements, not shrugs</span></h2>');
+    h.push('<div class="tiles">'+
+      tile('Median MDE', sgn(POW.median_mde,4), 'the campaign was blind below this', 'hot')+
+      tile('Worst MDE', sgn(POW.worst_mde,4), 'the least sensitive test run')+
+      tile('Tests', POW.n_tested, 'charged α this campaign')+
+      tile('Uncorrected', POW.n_alpha_uncorrected,
+           'α charged but not applicable', POW.n_alpha_uncorrected ? 'bad' : 'good')+
+    '</div>');
+    h.push('<div class="note">'+esc(POW.note)+'</div>');
+  }
+
+  // ---- error budget ----
+  if(B && B.total!=null){
+    var pct = Math.max(0,Math.min(100,Math.round(100*(B.spent||0)/B.total)));
+    h.push('<h2>Error budget, this campaign<span class="h2note">geometric: α<sub>k</sub> '+
+      '= total · 2<sup>−k</sup></span></h2>');
+    h.push('<div class="meter"><i style="width:'+pct+'%"></i></div>');
+    h.push('<div class="note">The bar <b>tightens</b> as tests are taken, so volume '+
+      'cannot buy a pass. <span class="mono">'+f(B.spent,5)+'</span> of <span class="mono">'+
+      f(B.total,3)+'</span> spent over <b>'+(B.n_tests||0)+'</b> tests; the next must clear '+
+      '<span class="mono">α='+f(B.next_alpha,5)+'</span>'+
+      (B.exhausted?' — <b style="color:var(--watch-ink)">exhausted; the Lab will refuse '+
+        'to test further</b>':'')+'. Each campaign gets its own 0.05 because it asks a '+
+      'self-contained set of questions and is reported whole, refusals included; what '+
+      'stops that from being shopped is that a hypothesis is never asked twice.</div>');
+  }
+
+  // ---- campaign history ----
+  var camps = d.campaigns || [];
+  if(camps.length){
+    h.push('<h2>Every campaign that has run<span class="h2note">including the ones that '+
+      'found nothing</span></h2>');
+    h.push('<table><thead><tr><th>campaign</th><th>when</th><th class="num">proposals</th>'+
+      '<th class="num">cleared gate</th><th class="num">findings</th>'+
+      '<th class="num">α spent</th><th>protocol</th></tr></thead><tbody>');
+    camps.slice().reverse().forEach(function(c){
+      h.push('<tr'+(c.retracted?' class="retracted"':'')+'><td class="mono">'+esc(c.id)+
+        '</td><td class="mono" style="color:var(--dim)">'+esc((c.at||"").replace("T"," "))+
+        '</td><td class="num">'+esc(c.n_proposals)+'</td><td class="num">'+
+        esc(c.n_accepted)+'</td><td class="num '+(c.n_findings?'pos':'nil')+'">'+
+        esc(c.n_findings)+'</td><td class="num">'+f(c.alpha_spent,5)+'</td>'+
+        '<td class="mono" style="color:var(--dim)">'+esc(c.protocol||"—")+'</td></tr>');
+    });
+    h.push('</tbody></table>');
+  }
+
+  // ---- who can do what ----
   if(d.roles){
-    h.push('<h2>Who can do what</h2><div class="roles">');
+    h.push('<h2>Who can do what<span class="h2note">the separation is the whole design</span></h2>');
+    h.push('<div class="roles">');
     Object.keys(d.roles).forEach(function(k){
-      h.push('<div class="role'+(k==="Gate"?' gate':'')+'"><div class="n">'+esc(k)+
+      var judge = (k==="Gate"||k==="Replication");
+      h.push('<div class="role'+(judge?' judge':'')+'"><div class="n">'+esc(k)+
         '</div><div class="d">'+esc(d.roles[k])+'</div></div>');
     });
     h.push('</div>');
   }
 
-  // agent scoreboard
+  // ---- agents ----
   var ag = S.agents || [];
   if(ag.length){
-    h.push('<h2>The proposers, measured</h2>');
-    h.push('<div class="protocol">Every proposal registers its predicted effect '+
-      '<b>before</b> the gate runs, so the agents are scored too. A positive signed '+
-      'error is overclaiming.</div>');
-    h.push('<table><tr><th>agent</th><th>proposals</th><th>accepted</th>'+
-      '<th>signed error</th><th>direction hit rate</th></tr>');
+    h.push('<h2>The proposers, measured<span class="h2note">a sandbox that cannot tell a '+
+      'good proposer from a confident one is not worth having</span></h2>');
+    h.push('<table><thead><tr><th>agent</th><th class="num">proposals</th>'+
+      '<th class="num">cleared gate</th><th class="num">signed error</th>'+
+      '<th class="num">direction hit rate</th></tr></thead><tbody>');
     ag.forEach(function(a){
-      var se=a.mean_signed_error, cls=(se==null||isNaN(se))?"":(se>0?"neg":"pos");
-      h.push('<tr><td>'+esc(a.agent)+'</td><td class="num">'+a.n_proposals+
-        '</td><td class="num">'+a.n_accepted+'</td><td class="num '+cls+'">'+sgn(se,5)+
-        '</td><td class="num">'+((a.hit_rate==null||isNaN(a.hit_rate))?"—":f(a.hit_rate,2))+'</td></tr>');
+      var se=a.mean_signed_error;
+      h.push('<tr><td class="mono">'+esc(a.agent)+'</td><td class="num">'+a.n_proposals+
+        '</td><td class="num">'+a.n_accepted+'</td><td class="num '+
+        ((se==null||isNaN(se))?"nil":(se>0?"neg":"pos"))+'">'+sgn(se,5)+
+        '</td><td class="num">'+((a.hit_rate==null||isNaN(a.hit_rate))?
+          '<span class="nil">—</span>':f(a.hit_rate,2))+'</td></tr>');
     });
-    h.push('</table>');
+    h.push('</tbody></table>');
+    h.push('<div class="note">Every proposal registers its predicted effect <b>before</b> '+
+      'the gate runs, so the agents are scored too. A <b>positive</b> signed error is '+
+      'overclaiming. An em dash means the agent has no adjudicated proposal yet — which '+
+      'is different from a bias of zero, and is why the ledger carries nulls rather than '+
+      'zeroes.</div>');
   }
 
-  // the ledger
-  h.push('<h2>The ledger — every proposal, including the refused ones</h2>');
+  // ---- the ledger ----
+  h.push('<h2>The ledger<span class="h2note">every proposal, including the refused ones</span></h2>');
   if(!vs.length){
-    h.push('<div class="empty">No campaign has been run yet. '+
-      '<span class="mono">make lab-run</span></div>');
+    h.push('<div class="empty">No campaign has been run yet — <kbd>make lab-run</kbd></div>');
   } else {
-    vs.slice().reverse().forEach(function(v){
-      var st = v.vetoed_by ? "vetoed" : (v.status||"refused");
-      var p = v.proposal||{};
-      h.push('<div class="v-card '+st+'">');
-      h.push('<div class="v-head"><div><div class="v-title">'+esc(p.title)+'</div>'+
-        '<div class="agent">'+esc(p.agent)+' · '+esc(p.kind)+'</div></div>'+
-        '<span class="badge '+st+'">'+esc(st)+'</span></div>');
-      var n=[];
-      n.push('<span class="lbl">predicted</span> '+sgn(p.predicted_delta));
-      if(v.observed_delta!=null && !isNaN(v.observed_delta)){
-        n.push('<span class="lbl">observed</span> '+sgn(v.observed_delta)+
-               ' CI['+sgn(v.ci_lo)+', '+sgn(v.ci_hi)+']');
-      }
-      if(v.alpha_spent!=null) n.push('<span class="lbl">tested at α</span> '+f(v.alpha_spent,5));
-      if(v.replicated===true) n.push('<span class="pos">replicated '+sgn(v.replication_delta)+'</span>');
-      if(v.replicated===false) n.push('<span class="neg">did not replicate '+sgn(v.replication_delta)+'</span>');
-      h.push('<div class="nums">'+n.join(' &nbsp;·&nbsp; ')+'</div>');
-      if(v.critic_warning) h.push('<div class="reason warn"><b>Critic:</b> '+esc(v.critic_warning)+'</div>');
-      if(v.refusal_reason) h.push('<div class="reason">'+esc(v.refusal_reason)+'</div>');
-      var m=v.mechanism;
-      if(m && m.ran){
-        var dd=m.delta||{},bb=m.baseline||{},vv=m.variant||{};
-        h.push('<div class="reason"><b>PBPK twin.</b> '+esc(bb.regimen||'')+' → '+
-          esc(vv.regimen||'')+'<br/>fT&gt;MIC '+f(bb.pct_ft_above_mic,1)+' → '+
-          f(vv.pct_ft_above_mic,1)+' ('+sgn(dd.pct_ft_above_mic,2)+'), peak '+
-          sgn(dd.peak_venous,1)+', AUC '+sgn(dd.auc_venous,1)+
-          '<br/><i>'+esc(m.forbidden||'')+'</i></div>');
-      }
-      h.push('</div>');
+    var counts = {all: vs.length};
+    vs.forEach(function(v){ var s=statusOf(v); counts[s]=(counts[s]||0)+1; });
+    h.push('<div class="filters" id="filters">');
+    [["all","all"],["finding","findings"],["candidate","candidates"],
+     ["refused","refused"],["mechanism","mechanism"],["vetoed","vetoed"],
+     ["duplicate","already asked"]].forEach(function(pair){
+      var k=pair[0], n=counts[k]||0;
+      if(k!=="all" && !n) return;
+      h.push('<button data-f="'+k+'" aria-pressed="'+(FILTER===k)+'">'+esc(pair[1])+
+        '<span class="count">'+n+'</span></button>');
     });
+    h.push('</div><div id="ledger">'+ledgerHTML(vs)+'</div>');
   }
 
-  h.push('<div class="foot">Reproduce: <span class="mono">make lab-run</span> '+
-    '(policy + treatment) or <span class="mono">make lab-run-full</span> (also binds the '+
-    'expensive held-out model gate). Audit: <span class="mono">make verify-lab</span>. '+
-    'Ledger generated '+esc(L.generated||'—')+'.</div>');
+  h.push('<div class="foot">'+
+    'Reproduce — <span class="mono">make lab-run</span> (policy + treatment, minutes) or '+
+    '<span class="mono">make lab-run-full</span> (also binds the held-out model gate). '+
+    'Audit the protocol — <span class="mono">make verify-lab</span>. '+
+    'Read the permanent record — <span class="mono">make lab-registry</span>.<br/>'+
+    'Ledger generated '+esc((L.generated||"—").replace("T"," "))+
+    (P?' · programme protocol '+esc(P.protocol):'')+'.</div>');
+
   document.getElementById('app').innerHTML = h.join('');
+  wireFilters();
+}
+
+function ledgerHTML(vs){
+  var out = [];
+  var shown = vs.slice().reverse().filter(function(v){
+    return FILTER==="all" || statusOf(v)===FILTER; });
+  if(!shown.length) return '<div class="empty">Nothing in this category.</div>';
+  shown.forEach(function(v){
+    var st = statusOf(v), p = v.proposal||{};
+    out.push('<div class="v-card '+st+'">');
+    var sub = [p.agent, p.kind];
+    if(v.arm) sub.push('scored on the '+v.arm+' pool');
+    if(v.patient_ids_hash) sub.push('pool '+v.patient_ids_hash);
+    out.push('<div class="v-head"><div><div class="v-title">'+esc(p.title)+'</div>'+
+      '<div class="v-sub">'+esc(sub.join('  ·  '))+'</div></div>'+
+      '<span class="badge '+st+'">'+esc(st==="duplicate"?"already asked":st)+'</span></div>');
+
+    var n=[];
+    n.push('<span><span class="lbl">predicted</span>'+sgn(p.predicted_delta)+'</span>');
+    if(v.observed_delta!=null && !isNaN(v.observed_delta)){
+      n.push('<span><span class="lbl">observed</span><span class="'+cls(v.observed_delta)+
+             '">'+sgn(v.observed_delta)+'</span> CI['+sgn(v.ci_lo)+', '+sgn(v.ci_hi)+']</span>');
+    }
+    if(v.mde!=null) n.push('<span><span class="lbl">resolvable</span>'+sgn(v.mde)+'</span>');
+    if(v.alpha_spent!=null){
+      n.push('<span><span class="lbl">α</span>'+f(v.alpha_spent,5)+
+             (v.alpha_applied===false?' <span class="neg">(charged, not applied)</span>':'')+
+             '</span>');
+    }
+    if(v.replicated===true)
+      n.push('<span class="pos"><span class="lbl">replicated</span>'+
+             sgn(v.replication_delta)+(v.replication_pool_hash?
+             ' on pool '+esc(v.replication_pool_hash):'')+'</span>');
+    if(v.replicated===false)
+      n.push('<span class="neg"><span class="lbl">did not replicate</span>'+
+             sgn(v.replication_delta)+'</span>');
+    out.push('<div class="nums">'+n.join('')+'</div>');
+
+    if(v.critic_warning)
+      out.push('<div class="reason crit"><b>Critic —</b> '+esc(v.critic_warning)+'</div>');
+    if(v.refusal_reason) out.push('<div class="reason">'+esc(v.refusal_reason)+'</div>');
+    if(v.power_note)
+      out.push('<div class="reason power"><b>Power —</b> '+esc(v.power_note)+'</div>');
+
+    var m=v.mechanism;
+    if(m && m.ran){
+      var dd=m.delta||{},bb=m.baseline||{},vv=m.variant||{};
+      out.push('<div class="reason"><b>PBPK twin —</b> '+esc(bb.regimen||'')+' → '+
+        esc(vv.regimen||'')+'<br/><span class="mono">fT&gt;MIC '+f(bb.pct_ft_above_mic,1)+
+        ' → '+f(vv.pct_ft_above_mic,1)+' ('+sgn(dd.pct_ft_above_mic,2)+') · peak '+
+        sgn(dd.peak_venous,1)+' · AUC '+sgn(dd.auc_venous,1)+'</span><br/><i>'+
+        esc(m.forbidden||'')+'</i></div>');
+    }
+    if(v.limits && v.limits.length){
+      out.push('<details class="limits"><summary>limits ('+v.limits.length+')</summary><ul>'+
+        v.limits.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul></details>');
+    }
+    out.push('</div>');
+  });
+  return out.join('');
+}
+
+function wireFilters(){
+  var bar = document.getElementById('filters');
+  if(!bar) return;
+  bar.addEventListener('click', function(ev){
+    var b = ev.target.closest('button[data-f]');
+    if(!b) return;
+    FILTER = b.getAttribute('data-f');
+    Array.prototype.forEach.call(bar.querySelectorAll('button'), function(x){
+      x.setAttribute('aria-pressed', String(x.getAttribute('data-f')===FILTER)); });
+    document.getElementById('ledger').innerHTML =
+      ledgerHTML((DATA.ledger||{}).verdicts||[]);
+  });
 }
 
 // Diagnose the failure instead of surfacing a raw SyntaxError. A 404 HTML page and a

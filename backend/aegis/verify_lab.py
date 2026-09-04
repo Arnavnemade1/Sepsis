@@ -13,6 +13,7 @@ is not a gate.
 """
 from __future__ import annotations
 
+import inspect as _inspect
 import sys
 from typing import Any, Dict, List, Tuple
 
@@ -371,6 +372,259 @@ def main() -> int:
         ok_strict = False; why = str(exc)
     check("the ledger survives a STRICT parse, as a browser would do it", ok_strict, why)
     _os.unlink(tmp)
+
+    print("\n15. the replication arm scores patients the gate never saw")
+    # THE BUG: the gate drew held-out patients at seed=42 and the replicator drew its own
+    # at seed=977. Two independent 25% draws from one cohort share about a quarter of
+    # their patients — measured at 503 of 2001, 25.1% of the replication set. A finding
+    # was being confirmed partly on its own gate set.
+    try:
+        from backend.ml.eval.bench import Benchmark as _B
+        _ds = _B.load("dev", n_folds=2).ds
+        _srch, _gate, _rep = L.three_way_split(_ds.groups, _ds.y, 42)
+        S = set(_ds.groups[_srch].tolist())
+        G = set(_ds.groups[_gate].tolist())
+        R = set(_ds.groups[_rep].tolist())
+        check("gate and replication pools share NO patient",
+              len(G & R) == 0, f"|gate|={len(G)} |rep|={len(R)} shared={len(G & R)}")
+        check("neither held-out pool leaks into the search pool",
+              len(S & G) == 0 and len(S & R) == 0,
+              f"search∩gate={len(S & G)}, search∩rep={len(S & R)}")
+        check("the three pools partition the cohort exactly",
+              len(S) + len(G) + len(R) == len(S | G | R) == len(set(_ds.groups.tolist())),
+              f"{len(S)}+{len(G)}+{len(R)} = {len(S | G | R)} patients")
+        # Stratification must survive the partition or the arms are not comparable.
+        rates = [float(_ds.y[i].mean()) for i in (_srch, _gate, _rep)]
+        check("outcome prevalence is preserved across the partition",
+              max(rates) - min(rates) < 0.01,
+              f"septic rate search {rates[0]:.4f} / gate {rates[1]:.4f} / rep {rates[2]:.4f}")
+
+        # The old seeding scheme, kept as a live demonstration that the check can fail.
+        from backend.ml.eval.splits import stratified_group_split as _sgs
+        _, g42 = _sgs(_ds.groups, _ds.y, 0.25, 42)
+        _, g977 = _sgs(_ds.groups, _ds.y, 0.25, 977)
+        A, Bb = set(_ds.groups[g42].tolist()), set(_ds.groups[g977].tolist())
+        check("...and the re-seeding scheme it replaces DOES overlap (the check can fail)",
+              len(A & Bb) > 0,
+              f"seed 42 vs 977 share {len(A & Bb)} patients "
+              f"({100 * len(A & Bb) / len(Bb):.1f}% of the replication set)")
+    except Exception as exc:                                    # pragma: no cover
+        check("the partition is disjoint", False, f"cohort unavailable: {exc}")
+
+    print("\n16. a replication on the SAME patients cannot promote a candidate")
+    # The policy arm had exactly this defect: policy_adjudicator did not split at all, so
+    # the "replication" re-scored the same 8000 patients. Raw delta came back
+    # bit-identical at +0.025037. A candidate replicated with probability ~1.
+    _same = {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.035, "significant": True,
+             "arm": "gate", "patient_ids_hash": "deadbeefcafe"}
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: dict(_same),
+                replicator=lambda p: dict(_same))          # identical pool fingerprint
+    v = lab.submit(_prop(title="replicated on its own gate set"))
+    check("an identical pool fingerprint is REJECTED as a replication",
+          v.replicated is False and v.status == "candidate",
+          f"status={v.status}, replicated={v.replicated}")
+    check("...and the ledger says why, naming the fingerprint",
+          any("REPLICATION REJECTED" in x and "deadbeefcafe" in x for x in v.limits))
+    _diff = dict(_same, arm="replication", patient_ids_hash="0123456789ab")
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: dict(_same),
+                replicator=lambda p: dict(_diff))
+    v = lab.submit(_prop(title="replicated on a disjoint pool"))
+    check("a DIFFERENT pool fingerprint does promote to a finding",
+          v.replicated is True and v.status == "finding",
+          f"gate {v.patient_ids_hash} -> replication {v.replication_pool_hash}")
+
+    print("\n17. the alpha the Lab charges is the alpha the test applies")
+    # For the third time in this module's history a correction was documented and not
+    # applied: AlphaBudget spent a geometric bar, printed "tested at alpha=0.00625", and
+    # then called an adjudicator that took bootstrap_delta_ci's 95% default.
+    seen = {}
+    def _alpha_judge(p, alpha=0.05):
+        seen["alpha"] = alpha
+        return {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.035, "significant": True}
+    lab = L.Lab(adjudicator=_alpha_judge)
+    v = lab.submit(_prop(title="alpha reaches the judge"))
+    check("the charged alpha is passed to an adjudicator that accepts one",
+          seen.get("alpha") == v.alpha_spent and v.alpha_applied,
+          f"charged {v.alpha_spent:.5f}, judge received {seen.get('alpha')}")
+    lab = L.Lab(adjudicator=lambda p: {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.035,
+                                       "significant": True})
+    v = lab.submit(_prop(title="judge cannot take an alpha"))
+    check("a judge that cannot take an alpha is FLAGGED, not silently trusted",
+          v.alpha_applied is False and any("CHARGED" in x for x in v.limits),
+          "the limits say the correction is accounted for, not applied")
+    import backend.aegis.lab_runner as _LR
+    _srcs = [_inspect.getsource(L.held_out_adjudicator),
+             _inspect.getsource(_LR.policy_adjudicator)]
+    check("both real adjudicators define adjudicate(p, alpha=...)",
+          all("def adjudicate(p" in s_ and "alpha: float = 0.05" in s_ for s_ in _srcs),
+          "held_out_adjudicator and policy_adjudicator")
+
+    print("\n18. every test reports what it could have detected")
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.0005, "ci_lo": -0.03,
+                                                   "ci_hi": 0.03, "significant": False})
+    v = lab.submit(_prop(title="a wide, underpowered test"))
+    check("a refusal carries a minimum detectable effect",
+          v.mde is not None and v.mde > 0.02, f"MDE {v.mde:+.4f} from a ±0.03 interval")
+    check("...and says what it ruled out and what it could not see",
+          v.power_note is not None and "NOT testable" in v.power_note,
+          (v.power_note or "")[:88])
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.004, "ci_lo": 0.0035,
+                                                   "ci_hi": 0.0045, "significant": True})
+    v = lab.submit(_prop(title="a tight, well-powered test"))
+    check("a tight interval yields an MDE at the MIN_EFFECT floor, not below it",
+          v.mde == L.MIN_EFFECT,
+          f"half-width {(0.0045 - 0.0035) / 2:.5f} < MIN_EFFECT {L.MIN_EFFECT}, so the "
+          f"floor binds — a test cannot claim to resolve less than the gate accepts")
+    check("the campaign reports the effect size it was blind below",
+          lab.power_summary()["median_mde"] is not None,
+          f"median MDE {lab.power_summary()['median_mde']}")
+
+    print("\n19. the Lab remembers across campaigns")
+    from backend.aegis import lab_registry as LR
+    fd2, rpath = _tf.mkstemp(suffix=".json"); _os.close(fd2); _os.unlink(rpath)
+    reg = LR.LabRegistry.load(rpath)
+    lab1 = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.0001, "ci_lo": -0.01,
+                                                    "ci_hi": 0.01, "significant": False},
+                 registry=reg)
+    v1 = lab1.submit(_prop(title="tune et.max_depth", change={"learner": "et",
+                                                              "key": "max_depth",
+                                                              "value": 18}))
+    reg.record_campaign(lab1.ledger, lab1.budget, label="c1")
+    check("a campaign is chained into the registry",
+          len(reg.entries) == 1 and reg.entries[0].campaign == "c1",
+          f"{len(reg.entries)} entry, hash {reg.entries[0].hash[:12]}")
+
+    # The same hypothesis, a new campaign, possibly a different wording.
+    lab2 = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.9, "ci_lo": 0.8,
+                                                    "ci_hi": 1.0, "significant": True},
+                 registry=reg)
+    before = lab2.budget.n_tests
+    v2 = lab2.submit(_prop(title="COMPLETELY different wording, same change",
+                           change={"learner": "et", "key": "max_depth", "value": 18}))
+    check("a hypothesis already tested is refused on the RECORD, not re-tested",
+          not v2.accepted and v2.duplicate_of == "c1",
+          (v2.refusal_reason or "")[:80])
+    check("...even though the adjudicator would have returned delta=+0.9",
+          not v2.accepted, "dedup runs before the gate")
+    check("...and the repeat costs no alpha",
+          lab2.budget.n_tests == before, f"n_tests still {lab2.budget.n_tests}")
+    v3 = lab2.submit(_prop(title="a genuinely new change",
+                           change={"learner": "et", "key": "max_depth", "value": 19}))
+    check("a NEW hypothesis is still tested (dedup is not a blanket refusal)",
+          v3.accepted and lab2.budget.n_tests == before + 1,
+          f"delta {v3.observed_delta:+.4f}, alpha {v3.alpha_spent:.5f}")
+
+    print("\n20. the registry is tamper-evident")
+    ok, bad = reg.verify_chain()
+    check("an untouched chain verifies", ok and bad is None, f"{len(reg.entries)} entries")
+    reg.record_campaign(lab2.ledger, lab2.budget, label="c2")
+    ok, bad = reg.verify_chain()
+    check("...and still verifies after a second campaign", ok, f"{len(reg.entries)} entries")
+    # Edit a recorded refusal into an acceptance, exactly as someone rewriting history
+    # would. The hash must catch it.
+    victim = reg.entries[0]
+    victim.status, victim.accepted, victim.observed_delta = "finding", True, 0.05
+    ok, bad = reg.verify_chain()
+    check("editing a recorded verdict BREAKS the chain and names the entry",
+          not ok and bad == 0,
+          f"seq {bad} no longer hashes to its recorded value")
+    victim.status, victim.accepted, victim.observed_delta = "refused", False, 0.0001
+    ok, _ = reg.verify_chain()
+    check("...and restoring the original value repairs it (the check is exact)", ok)
+    dropped = reg.entries.pop(1)
+    ok, bad = reg.verify_chain()
+    check("deleting an entry breaks the chain too — a refusal cannot be quietly removed",
+          not ok, f"first break at seq {bad}")
+    reg.entries.insert(1, dropped)
+
+    print("\n21. the programme is disclosed, not shopped")
+    prog = reg.programme()
+    check("cumulative alpha over every test IS the expected false-finding count",
+          abs(prog["expected_false_findings"]
+              - sum(e.alpha_spent or 0.0 for e in reg.entries)) < 1e-9,
+          f"{prog['expected_false_findings']:.5f} of alpha over {prog['n_tested']} tests")
+    check("the finding count is reported against it",
+          "expected by chance" in prog["findings_vs_expected_false"],
+          prog["findings_vs_expected_false"])
+    check("hypotheses are counted separately from proposals",
+          prog["n_hypotheses"] <= prog["n_proposals"],
+          f"{prog['n_hypotheses']} distinct hypotheses over {prog['n_proposals']} proposals")
+    reg.path = rpath
+    reg.save()
+    strict = _json.loads(open(rpath).read(),
+                         parse_constant=lambda c: (_ for _ in ()).throw(
+                             ValueError(f"non-finite constant {c!r}")))
+    check("the registry survives a STRICT browser parse",
+          strict["programme"]["n_campaigns"] == 2,
+          f"{len(strict['entries'])} entries, {strict['programme']['n_campaigns']} campaigns")
+    _os.unlink(rpath)
+
+    print("\n22. the Critic argues from the Lab's OWN refusals, not just published ones")
+    # Two refusals on one lever, worded differently on purpose: the Critic's first
+    # version recovered the lever by parsing the title, so "tune et.max_depth" and
+    # "set et.max_depth = 18" looked like different levers. It reads the change now.
+    lab3 = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.0001, "ci_lo": -0.01,
+                                                    "ci_hi": 0.01, "significant": False})
+    lab3.submit(_prop(title="set et.max_depth = 20",
+                      change={"learner": "et", "key": "max_depth", "value": 20}))
+    reg.record_campaign(lab3.ledger, lab3.budget, label="c3")
+    c = L.Critic(registry=reg)
+    w = c.review(_prop(title="a title that mentions no lever at all",
+                       change={"learner": "et", "key": "max_depth", "value": 22}))
+    check("a lever this Lab has already exhausted carries a warning",
+          w is not None and "same lever" in w, (w or "")[:96])
+    check("...and it is still only a warning — the Critic cannot veto",
+          L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.02, "ci_lo": 0.005,
+                                                   "ci_hi": 0.03, "significant": True},
+                registry=None).submit(
+              _prop(title="set et.max_depth = 22")).accepted)
+
+    print("\n23. a pre-declared test count is a pre-registration, not a knob")
+    # Geometric spending handed half the budget to test one; a measured campaign got 4
+    # tests out of 8 proposals and refused the rest for want of budget. A campaign knows
+    # its ceiling, so it can pre-register the count and spend flat — but ONLY if the
+    # count cannot be revised once results are in.
+    b = L.AlphaBudget(total=0.05)
+    b.plan(8)
+    check("a pre-declared count spends the budget flat",
+          abs(b.next_alpha() - 0.05 / 8) < 1e-12 and b.schedule().startswith("flat"),
+          f"alpha={b.next_alpha():.5f} for every one of {b.planned_tests} tests")
+    firsts = []
+    for _ in range(8):
+        firsts.append(b.next_alpha()); b.spend(b.next_alpha())
+    check("...and every planned test faces the SAME bar",
+          max(firsts) - min(firsts) < 1e-12, f"{len(set(round(x, 9) for x in firsts))} distinct bar(s)")
+    check("the family-wise budget is spent exactly, never exceeded",
+          abs(b.spent - 0.05) < 1e-12, f"spent {b.spent:.6f} of {b.total}")
+    check("the plan is used up and the budget then refuses",
+          b.exhausted(), f"{b.n_tests} of {b.planned_tests} tests run")
+
+    b2 = L.AlphaBudget(total=0.05)
+    b2.spend(b2.next_alpha())
+    try:
+        b2.plan(20); revised = True; why = "a plan was accepted AFTER a test"
+    except ValueError as exc:
+        revised = False; why = str(exc)[:74]
+    check("a count declared AFTER a test is refused — this is the load-bearing property",
+          not revised, why)
+    b3 = L.AlphaBudget(total=0.05); b3.plan(4)
+    try:
+        b3.plan(40); twice = True
+    except ValueError:
+        twice = False
+    check("...and a declared count cannot be revised upward later", not twice,
+          "widening the plan mid-session would widen the bar for every remaining test")
+
+    geo = L.AlphaBudget(total=0.05)
+    n_geo = 0
+    while not geo.exhausted() and n_geo < 50:
+        geo.spend(geo.next_alpha()); n_geo += 1
+    check("the open-ended geometric schedule still works when no count is declared",
+          geo.schedule() == "geometric" and n_geo == 4,
+          f"{n_geo} tests before the bar falls under the {L.AlphaBudget.RESOLUTION_FLOOR} "
+          f"resolution floor — which is exactly why a campaign pre-registers instead")
+    check("pre-registering doubles the tests a campaign can honestly run",
+          8 > n_geo, f"8 planned vs {n_geo} geometric, at the same family-wise 0.05")
 
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")

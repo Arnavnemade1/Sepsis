@@ -103,17 +103,57 @@ class AlphaBudget:
     total: float = FAMILY_ALPHA
     spent: float = 0.0
     n_tests: int = 0
+    #: Tests this session declared it would run, BEFORE running any. None = open-ended.
+    planned_tests: Optional[int] = None
+
+    #: With 400 bootstrap resamples the finest resolvable quantile is ~1/400. A nominal
+    #: alpha below that is a bar the instrument cannot actually apply, and pretending to
+    #: test at alpha=1e-9 would be a claim about arithmetic, not about patients.
+    RESOLUTION_FLOOR: float = 2.5e-3
+
+    def plan(self, n: int) -> "AlphaBudget":
+        """Pre-declare how many tests this session will run. Once, before test one.
+
+        WHY THIS EXISTS
+        ---------------
+        Geometric spending is what an *open-ended* loop needs, and it is badly wasteful
+        when the count is actually known. It hands half the whole budget to test one, and
+        by test four the bar is 0.00156 — under the bootstrap's resolution. A real
+        campaign measured it: 8 proposals, 4 tested, and 4 refused for "budget exhausted"
+        without ever being adjudicated.
+
+        A campaign knows its ceiling — ``rounds x proposers`` — so it can pre-register the
+        count and spend a flat ``total / n``. That is plain Bonferroni, it is uniformly
+        more powerful than geometric spending for a known count, and it is valid *only*
+        because the count is fixed in advance and cannot be revised.
+
+        Which is the property this method actually protects. Raising the planned count
+        after seeing a result is how a family-wise budget becomes a knob for widening the
+        bar, so a plan may be declared once and only before any alpha has been spent.
+        """
+        if self.n_tests > 0 or self.spent > 0:
+            raise ValueError(
+                "the test count must be declared BEFORE any test is run. Revising it "
+                "after seeing a result is how a family-wise budget becomes a knob.")
+        if self.planned_tests is not None:
+            raise ValueError("the test count is already declared and cannot be revised")
+        if int(n) < 1:
+            raise ValueError("a session must plan at least one test")
+        self.planned_tests = int(n)
+        return self
 
     def next_alpha(self) -> float:
         """The threshold the NEXT test must clear.
 
-        A GEOMETRIC spending schedule, alpha_k = total * 2^-k, whose infinite sum is
-        exactly ``total``. That is what an open-ended agent loop needs: a Holm-style
-        division by the number of tests requires knowing that number in advance, and a
-        first draft of this class did ``remaining / (n_tests + 1)`` — which handed the
-        entire budget to test one and then refused every later test as exhausted.
-        Geometric spending tightens smoothly and never runs out.
+        With a pre-declared count: a flat ``total / n``, so every planned test faces the
+        same bar and the budget is spent evenly rather than front-loaded.
+
+        Without one: a GEOMETRIC schedule, alpha_k = total * 2^-k, whose infinite sum is
+        exactly ``total``. A first draft used ``remaining / (n_tests + 1)``, which handed
+        the entire budget to test one and refused every later test as exhausted.
         """
+        if self.planned_tests:
+            return self.total / float(self.planned_tests)
         return self.total * (0.5 ** (self.n_tests + 1))
 
     def spend(self, alpha: float) -> None:
@@ -121,17 +161,23 @@ class AlphaBudget:
         self.n_tests += 1
 
     def exhausted(self) -> bool:
-        """True when the next test's bar is tighter than is meaningful to measure.
+        """True when there is no honest test left to run.
 
-        With 400 bootstrap resamples the finest resolvable quantile is ~1/400, so a
-        nominal alpha below that is a bar the instrument cannot actually apply. Refusing
-        is the honest response; pretending to test at alpha=1e-9 is not.
+        Two ways to get there: the declared plan is used up, or the next bar is finer
+        than the bootstrap can resolve. Refusing is the honest response to both.
         """
-        return self.next_alpha() < 2.5e-3
+        if self.planned_tests is not None and self.n_tests >= self.planned_tests:
+            return True
+        return self.next_alpha() < self.RESOLUTION_FLOOR
+
+    def schedule(self) -> str:
+        return ("flat (pre-declared count)" if self.planned_tests else "geometric")
 
     def as_dict(self) -> Dict[str, Any]:
         return {"total": self.total, "spent": round(self.spent, 6),
-                "n_tests": self.n_tests, "next_alpha": round(self.next_alpha(), 6),
+                "n_tests": self.n_tests, "planned_tests": self.planned_tests,
+                "schedule": self.schedule(),
+                "next_alpha": round(self.next_alpha(), 6),
                 "exhausted": self.exhausted()}
 
 
@@ -171,6 +217,19 @@ class Verdict:
     replication_delta: Optional[float] = None
     status: str = "refused"               # refused | candidate | finding | mechanism
     mechanism: Optional[Dict[str, Any]] = None   # treatment sandbox observations
+    #: The smallest true effect this test could have called significant. A refusal
+    #: without it is a shrug; with it, a refusal is a measurement — it says which
+    #: effects were ruled out and which were simply too small to see.
+    mde: Optional[float] = None
+    power_note: Optional[str] = None
+    #: Whether the adjudicator actually APPLIED the alpha it was charged, or merely had
+    #: it recorded. See Lab._call_judge — this was silently False for every test.
+    alpha_applied: bool = False
+    arm: Optional[str] = None             # which held-out pool scored it
+    patient_ids_hash: Optional[str] = None
+    replication_arm: Optional[str] = None
+    replication_pool_hash: Optional[str] = None
+    duplicate_of: Optional[str] = None    # a past campaign already tested this
     limits: List[str] = field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
@@ -230,15 +289,63 @@ class Critic:
 
     name = "Critic"
 
+    def __init__(self, registry: Optional[Any] = None):
+        #: The Critic shipped arguing only from the project's PUBLISHED nulls, which are
+        #: the minority of nulls this project owns. Most of them were produced by the Lab
+        #: itself and were forgotten the moment a campaign ended, so an agent could
+        #: rediscover a dead end the Lab had killed last week and nothing would say so.
+        self.registry = registry
+
     def review(self, p: Proposal) -> Optional[str]:
         hay = f"{p.title} {p.rationale} {json.dumps(p.change, default=str)}".lower()
         for needle, null in self.KNOWN_NULLS:
             if needle in hay:
                 return f"prior failure on record — {null}"
+        near = self._near_miss(p)
+        if near:
+            return near
         if p.predicted_delta > 0.05:
             return (f"predicted delta {p.predicted_delta:+.3f} is larger than any gain "
                     f"this project has ever measured; treat as overclaiming")
         return None
+
+    def _near_miss(self, p: Proposal) -> Optional[str]:
+        """Has this Lab already refused something of the same shape?
+
+        Not an exact-change match — that is the registry's dedup and it refuses outright.
+        This is the softer signal: the same LEVER has been tried and produced nothing, so
+        the record should say how many times before the gate spends alpha on it again.
+        """
+        if self.registry is None:
+            return None
+        lever = _lever_of(p.change)
+        if lever is None:
+            return None
+        prior = [n for n in self.registry.recorded_nulls(limit=200)
+                 if _lever_of(n.get("change")) == lever]
+        if len(prior) < 2:
+            return None
+        best = max((n["delta"] for n in prior if n.get("delta") is not None),
+                   default=None)
+        return (f"this Lab has already refused {len(prior)} change(s) to the same lever "
+                f"({lever})"
+                + (f"; the best of them measured {best:+.4f}" if best is not None else "")
+                + ". Not a veto — but the prior on this lever is poor.")
+
+
+def _lever_of(change: Dict[str, Any]) -> Optional[str]:
+    """The knob a change turns, coarser than the change itself."""
+    ch = change or {}
+    if ch.get("learner") and ch.get("key"):
+        return f"{ch['learner']}.{ch['key']}"
+    if ch.get("roster"):
+        return "stack roster"
+    if ch.get("policy"):
+        return f"policy:{ch['policy']}"
+    return None
+
+
+
 
 
 class SafetyOfficer:
@@ -353,6 +460,79 @@ class TreatmentSandbox:
         }
 
 
+def _fmt(x: Optional[float]) -> str:
+    """Signed 4dp, or an em dash. A refusal message must not print 'None'."""
+    try:
+        f = float(x)
+        return f"{f:+.4f}" if np.isfinite(f) else "—"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _call_judge(judge: Callable, p: "Proposal", alpha: float) -> Tuple[Dict[str, Any], bool]:
+    """Call an adjudicator, passing the test's alpha when it can accept one.
+
+    THE BUG THIS EXISTS TO CLOSE
+    ----------------------------
+    ``AlphaBudget`` computed a geometric bar, spent it, recorded it in the verdict, and
+    printed "tested at alpha=0.00625" in the limits. The adjudicator was then called with
+    no alpha at all and computed a fixed 95% interval — ``bootstrap_delta_ci`` takes an
+    ``alpha`` argument defaulting to 0.05 and the Lab never passed one. So the correction
+    the Lab advertised was, for the third time in this module's history, documented and
+    not applied.
+
+    ``alpha_applied`` travels with the verdict so the distinction is visible rather than
+    assumed: a judge that cannot take an alpha reports False, and the limits say the test
+    ran at the adjudicator's own default.
+    """
+    import inspect
+    try:
+        sig = inspect.signature(judge)
+        if "alpha" in sig.parameters:
+            return judge(p, alpha=alpha), True
+    except (TypeError, ValueError):
+        pass
+    return judge(p), False
+
+
+def minimum_detectable_effect(ci_lo: Optional[float], ci_hi: Optional[float]) -> Optional[float]:
+    """The smallest true effect this test could have called significant.
+
+    The gate accepts on ``ci_lo > 0``, so an effect must exceed the half-width of its own
+    interval before that interval can clear zero — and it must also clear ``MIN_EFFECT``.
+    The MDE is therefore the larger of the two, and it needs no extra computation: it
+    falls straight out of the interval the adjudicator already returned.
+
+    This is what makes a refusal informative. "Refused" alone does not distinguish *this
+    change does nothing* from *this test could not have seen it*, and eight refusals with
+    no power statement are not a scientific result.
+    """
+    if ci_lo is None or ci_hi is None:
+        return None
+    try:
+        lo, hi = float(ci_lo), float(ci_hi)
+    except (TypeError, ValueError):
+        return None
+    if not (np.isfinite(lo) and np.isfinite(hi)) or hi < lo:
+        return None
+    return float(max(MIN_EFFECT, (hi - lo) / 2.0))
+
+
+def _power_note(delta: Optional[float], mde: Optional[float], accepted: bool) -> Optional[str]:
+    """State plainly what the test ruled out, and what it could not have seen."""
+    if mde is None or delta is None or not np.isfinite(delta):
+        return None
+    if accepted:
+        return (f"this test could resolve effects down to {mde:+.4f}; the observed "
+                f"{delta:+.4f} cleared it")
+    if delta >= mde:
+        return (f"observed {delta:+.4f} exceeds the resolvable {mde:+.4f} but the "
+                f"interval still covers zero — an unstable effect, not a small one")
+    return (f"rules out true effects at or above {mde:+.4f}. Effects smaller than that "
+            f"were NOT testable here — this refusal is not evidence that the change "
+            f"does nothing, only that it does nothing that large")
+
+
 # --------------------------------------------------------------------------- #
 # The sandbox
 # --------------------------------------------------------------------------- #
@@ -363,8 +543,13 @@ class Lab:
                  adjudicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
                  policy_adjudicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
                  replicator: Optional[Callable[[Proposal], Dict[str, Any]]] = None,
-                 alpha: float = FAMILY_ALPHA):
-        self.critic = Critic()
+                 alpha: float = FAMILY_ALPHA,
+                 registry: Optional[Any] = None):
+        #: The Lab's memory across campaigns. Without it the Lab forgets every result
+        #: the moment a campaign ends, which makes both re-testing a dead hypothesis and
+        #: campaign-shopping free. See lab_registry.LabRegistry.
+        self.registry = registry
+        self.critic = Critic(registry=registry)
         self.safety = SafetyOfficer()
         # v1 routed DETECTION and POLICY to the same callable, but the held-out
         # adjudicator only knows how to fit stacks — a policy proposal was silently
@@ -444,14 +629,37 @@ class Lab:
             self.ledger.append(v)
             return v
 
+        # A hypothesis is tested ONCE, ever. Re-testing a change a past campaign already
+        # put through the gate spends alpha and gate time for a result already on the
+        # record, and re-asking the same question until it passes is exactly how a search
+        # loop manufactures a false discovery. This refusal costs no alpha.
+        if self.registry is not None:
+            prior = self.registry.seen(p.change)
+            if prior is not None:
+                v = Verdict(proposal=p, accepted=False, claim_type="REFUSED",
+                            critic_warning=warning, duplicate_of=prior.campaign,
+                            observed_delta=prior.observed_delta,
+                            ci_lo=prior.ci_lo, ci_hi=prior.ci_hi, mde=prior.mde,
+                            refusal_reason=(
+                                f"already tested in campaign {prior.campaign} "
+                                f"({prior.status}, observed "
+                                f"{_fmt(prior.observed_delta)}). A hypothesis gets one "
+                                f"test; asking again until it passes is the failure "
+                                f"this protocol exists to prevent."),
+                            limits=limits + ["no alpha was spent — this was not a new "
+                                             "test, it was a repeat of an old one"])
+                self.ledger.append(v)
+                return v
+
         alpha_k = self.budget.next_alpha()
         self.budget.spend(alpha_k)
-        out = judge(p)
+        out, alpha_applied = _call_judge(judge, p, alpha_k)
         delta = float(out.get("delta", float("nan")))
         lo, hi = out.get("ci_lo"), out.get("ci_hi")
         sig = bool(out.get("significant", False))
         big_enough = np.isfinite(delta) and delta >= MIN_EFFECT
         accepted = bool(sig and big_enough)
+        mde = minimum_detectable_effect(lo, hi)
         reason = None
         if not accepted:
             if not big_enough:
@@ -461,17 +669,25 @@ class Lab:
                 reason = (f"effect {delta:+.4f} is not significant "
                           f"(CI [{lo:+.4f}, {hi:+.4f}] includes zero after correction)")
 
+        alpha_limit = (
+            f"tested at alpha={alpha_k:.5f} under a family-wise budget of "
+            f"{self.budget.total} (test {self.budget.n_tests} of the session)"
+            if alpha_applied else
+            f"alpha={alpha_k:.5f} was CHARGED to the budget but this adjudicator does "
+            f"not accept an alpha, so the interval is at its own default. The correction "
+            f"is accounted for, not applied — do not read this test as corrected.")
+
         v = Verdict(proposal=p, accepted=accepted,
                     claim_type="HELD_OUT" if accepted else "REFUSED",
                     observed_delta=delta, ci_lo=lo, ci_hi=hi, significant=sig,
                     refusal_reason=reason, critic_warning=warning,
-                    alpha_spent=alpha_k,
+                    alpha_spent=alpha_k, alpha_applied=alpha_applied,
+                    mde=mde, power_note=_power_note(delta, mde, accepted),
+                    arm=out.get("arm"), patient_ids_hash=out.get("patient_ids_hash"),
                     prediction_error=(p.predicted_delta - delta
                                       if np.isfinite(delta) else None),
                     status="candidate" if accepted else "refused",
-                    limits=limits + [
-                        f"tested at alpha={alpha_k:.5f} under a family-wise budget of "
-                        f"{self.budget.total} (test {self.budget.n_tests} of the session)"])
+                    limits=limits + [alpha_limit])
 
         # A single significant result at alpha=0.05 is what one-in-twenty noise looks
         # like. A candidate becomes a FINDING only if it survives an independent split.
@@ -484,13 +700,35 @@ class Lab:
                 rep = self.replicator(p)
                 rd = float(rep.get("delta", float("nan")))
                 v.replication_delta = rd
+                v.replication_arm = rep.get("arm")
+                v.replication_pool_hash = rep.get("patient_ids_hash")
                 v.replicated = bool(np.isfinite(rd) and rd >= MIN_EFFECT
                                     and rep.get("significant", False))
-                v.status = "finding" if v.replicated else "candidate"
-                if not v.replicated:
+                # A replication scored on the SAME patients is not a replication. The
+                # policy arm was exactly that — the same 8000 patients twice, raw delta
+                # bit-identical at +0.025037 — so a candidate replicated with probability
+                # ~1. The pool fingerprints are compared rather than trusted.
+                same_pool = (v.patient_ids_hash is not None
+                             and v.patient_ids_hash == v.replication_pool_hash)
+                if same_pool:
+                    v.replicated = False
+                    v.status = "candidate"
                     v.limits.append(
-                        f"did NOT replicate on an independent split "
-                        f"(delta {rd:+.4f}); stays a candidate")
+                        "REPLICATION REJECTED — the replication arm scored the same "
+                        "patients as the gate (identical pool fingerprint "
+                        f"{v.patient_ids_hash}). That is the same test twice, not a "
+                        "confirmation, and it cannot promote a candidate to a finding.")
+                else:
+                    v.status = "finding" if v.replicated else "candidate"
+                    if not v.replicated:
+                        v.limits.append(
+                            f"did NOT replicate on a disjoint patient pool "
+                            f"(delta {rd:+.4f}); stays a candidate")
+                    else:
+                        v.limits.append(
+                            f"replicated on a disjoint pool (gate {v.patient_ids_hash} "
+                            f"-> replication {v.replication_pool_hash}), which shares no "
+                            f"patient with the gate by construction")
         self.ledger.append(v)
         return v
 
@@ -516,6 +754,29 @@ class Lab:
                 hit_rate=float(np.mean(hits)) if hits else float("nan"),
             ))
         return out
+
+    def power_summary(self) -> Dict[str, Any]:
+        """What this campaign could and could not have seen.
+
+        A campaign that reports eight refusals and no power statement has not said
+        whether the changes do nothing or whether the instrument could not resolve them.
+        The median MDE answers that in one number: it is the effect size below which
+        this campaign was blind.
+        """
+        mdes = [v.mde for v in self.ledger if v.mde is not None]
+        tested = [v for v in self.ledger if v.alpha_spent is not None]
+        n_uncorrected = sum(1 for v in tested if not v.alpha_applied)
+        return {
+            "n_tested": len(tested),
+            "median_mde": (round(float(np.median(mdes)), 5) if mdes else None),
+            "worst_mde": (round(float(np.max(mdes)), 5) if mdes else None),
+            "n_alpha_uncorrected": n_uncorrected,
+            "note": ("The campaign was blind to true effects below the median MDE. A "
+                     "refusal is evidence against effects LARGER than a test's MDE and "
+                     "says nothing about effects smaller than it."
+                     + (f" {n_uncorrected} test(s) were charged alpha that their "
+                        f"adjudicator could not apply." if n_uncorrected else "")),
+        }
 
     @staticmethod
     def json_safe(obj: Any) -> Any:
@@ -569,8 +830,11 @@ class Lab:
             "n_candidates": sum(1 for v in self.ledger if v.status == "candidate"),
             "n_findings": sum(1 for v in self.ledger if v.status == "finding"),
             "budget": self.budget.as_dict(),
+            "n_duplicates": sum(1 for v in self.ledger if v.duplicate_of),
             "acceptance_rate": (sum(1 for v in self.ledger if v.accepted) / n) if n else 0.0,
             "agents": [a.as_dict() for a in self.score_agents()],
+            "power": self.power_summary(),
+            "programme": (self.registry.programme() if self.registry is not None else None),
             "note": "A low acceptance rate is the expected outcome. This project has "
                     "falsified eleven method families; the gate refusing is the gate "
                     "working.",
@@ -675,55 +939,113 @@ def default_proposers() -> List[Proposer]:
 
 
 # --------------------------------------------------------------------------- #
+# The partition — search / gate / replication, disjoint by construction
+# --------------------------------------------------------------------------- #
+def three_way_split(groups: np.ndarray, y: np.ndarray, seed: int = 42):
+    """Partition patients ONCE into search, gate and replication pools.
+
+    THE BUG THIS REPLACES
+    ---------------------
+    The gate drew its held-out patients with ``stratified_group_split(..., seed=42)`` and
+    the replicator drew *its* patients with the same call at ``seed=977``. Two independent
+    draws from the same cohort are not disjoint — they are two random 25% samples, and on
+    this cohort they shared **503 of 2001 patients, 25.1% of the replication set**. So a
+    quarter of the "patients the first answer never saw" had already seen it, and a
+    finding was being confirmed partly on its own gate set.
+
+    A k-fold partition cannot make that mistake. ``StratifiedGroupKFold`` test sets are
+    disjoint by definition, so taking fold 0 as the gate and fold 1 as the replication
+    set makes the disjointness a property of the construction rather than of a lucky
+    seed. ``verify_lab.py`` asserts the intersection is empty.
+
+    Patient-grouped and outcome-stratified throughout: an hour of a patient must never
+    appear on both sides of any of these boundaries.
+    """
+    from backend.ml.eval.splits import stratified_group_folds
+    folds = [te for _, te in stratified_group_folds(groups, y, n_splits=4, seed=seed)]
+    gate_idx, rep_idx = folds[0], folds[1]
+    search_idx = np.concatenate([folds[2], folds[3]])
+    return np.sort(search_idx), np.sort(gate_idx), np.sort(rep_idx)
+
+
+# --------------------------------------------------------------------------- #
 # The real adjudicator — held-out patients, paired bootstrap, no second chances
 # --------------------------------------------------------------------------- #
 def held_out_adjudicator(spec: str = "dev", n_folds: int = 2,
-                         gate_fraction: float = 0.25, seed: int = 42):
+                         gate_fraction: float = 0.25, seed: int = 42,
+                         arm: str = "gate"):
     """Bind a gate that actually fits models and scores held-out patients.
 
-    The gate patients are split off ONCE, here, before any proposal is seen. They are
-    never fitted on, never used to select, and are scored exactly once per proposal. That
-    is the same contract ``selfimprove.py`` runs under, and it is the reason its honest
-    answer was 0 accepted out of 16.
+    The pools are split off ONCE, by ``three_way_split``, before any proposal is seen.
+    They are never fitted on, never used to select, and are scored exactly once per
+    proposal. That is the contract ``selfimprove.py`` runs under, and it is why its
+    honest answer was 0 accepted out of 16.
+
+    ``arm`` chooses which held-out pool this instance scores. ``"gate"`` is the first
+    test; ``"replication"`` is the confirmation, and because both arms come from one
+    partition the replication patients are *provably* ones the gate never touched.
+    Both arms fit on the same search pool, which is correct: replication asks whether the
+    same change generalises to new patients, not whether a different fit does.
 
     Expensive on purpose. A cheap gate is a gate somebody will run a thousand times until
-    something passes, which is precisely the failure this whole design exists to prevent.
+    something passes, which is precisely the failure this design exists to prevent.
     """
     from backend.ml.eval.bench import Benchmark
-    from backend.ml.eval.splits import stratified_group_split
     from backend.ml import selfimprove as si
     from backend.ml.models.stacked import StackedEnsembleDetector
     from backend.ml.eval import metrics
+    from backend.ml import config as _mlcfg
     import pandas as pd
 
     bench = Benchmark.load(spec, n_folds=n_folds)
     ds = bench.ds
-    search_idx, gate_idx = stratified_group_split(ds.groups, ds.y, gate_fraction, seed)
+    search_idx, gate_idx, rep_idx = three_way_split(ds.groups, ds.y, seed)
+    score_idx = rep_idx if arm == "replication" else gate_idx
     feats = pd.DataFrame(ds.X, columns=ds.feature_names)
+
+    CHAMPION_ROSTER = ["hgb", "hgb2", "et", "lr", "xgb@utility"]
+    _champ_cache: Dict[str, np.ndarray] = {}
 
     def _fit_score(objective: str, roster, params) -> np.ndarray:
         m = StackedEnsembleDetector(
-            channels=list(__import__("backend.ml.config", fromlist=["x"]).WEARABLE_CHANNELS),
+            channels=list(_mlcfg.WEARABLE_CHANNELS),
             use_hdc=False, objective=objective,
             **({"roster": list(roster)} if roster else {}),
             **({"params": params} if params else {}))
         m.fit(feats.iloc[search_idx], ds.y[search_idx], groups=ds.groups[search_idx],
               hour_index=ds.hour_index[search_idx], onset_hour=ds.onset_hour[search_idx])
-        return m.predict_proba(feats.iloc[gate_idx])
+        return m.predict_proba(feats.iloc[score_idx])
 
-    def adjudicate(p: Proposal) -> Dict[str, Any]:
+    def _champion() -> np.ndarray:
+        """Fit the shipped configuration once per arm, not once per proposal.
+
+        The champion is the same model every time — same search pool, same roster, same
+        objective, same seed — and it was being refitted for every proposal in the
+        campaign. On a full run that is one wasted stack fit per test, which roughly
+        doubled the campaign's wall time for a result known to be identical.
+        """
+        if "p" not in _champ_cache:
+            _champ_cache["p"] = _fit_score("patient", CHAMPION_ROSTER, None)
+        return _champ_cache["p"]
+
+    def adjudicate(p: Proposal, alpha: float = 0.05) -> Dict[str, Any]:
+        """``alpha`` is the bar the Lab charged this test, and it is APPLIED here.
+
+        The Lab computes a geometric bar, spends it and prints it; until this parameter
+        existed it then called the adjudicator with no alpha at all, so every test used
+        ``bootstrap_delta_ci``'s 95% default. The correction was accounted for and never
+        applied — the same defect, in the same module, for the third time.
+        """
         ch = p.change or {}
-        # Champion: the shipped configuration.
-        champ = _fit_score("patient", ["hgb", "hgb2", "et", "lr", "xgb@utility"], None)
-        # Candidate: the same, with the proposal applied.
+        champ = _champion()
         params = None
         if ch.get("learner") and ch.get("key") is not None and ch.get("value") is not None:
             params = {ch["learner"]: {ch["key"]: ch["value"]}}
-        roster = ch.get("roster") or ["hgb", "hgb2", "et", "lr", "xgb@utility"]
+        roster = ch.get("roster") or CHAMPION_ROSTER
         objective = ch.get("objective", "patient")
         cand = _fit_score(objective, roster, params)
 
-        yg, gg = ds.y[gate_idx], ds.groups[gate_idx]
+        yg, gg = ds.y[score_idx], ds.groups[score_idx]
         a_champ = metrics.auroc(yg, champ)
         a_cand = metrics.auroc(yg, cand)
         # ARGUMENT ORDER MATTERS: bootstrap_delta_ci returns AUROC(pb) - AUROC(pa),
@@ -731,15 +1053,32 @@ def held_out_adjudicator(spec: str = "dev", n_folds: int = 2,
         # way round inverts every verdict — a candidate that loses would read as a win.
         # It also returns a TUPLE (mean, lo, hi), not a dict.
         boot_delta, lo, hi = si.bootstrap_delta_ci(
-            yg, champ, cand, gg, n_boot=400, seed=seed)
+            yg, champ, cand, gg, n_boot=400, seed=seed, alpha=alpha)
         return {"delta": float(a_cand - a_champ),
+                "alpha": float(alpha),
                 "bootstrap_mean_delta": float(boot_delta),
                 "ci_lo": float(lo), "ci_hi": float(hi),
                 "significant": bool(np.isfinite(lo) and lo > 0),
                 "champion_auroc": float(a_champ), "candidate_auroc": float(a_cand),
-                "n_gate_patients": int(len(set(gg.tolist())))}
+                "arm": arm,
+                "n_score_patients": int(len(set(gg.tolist()))),
+                "patient_ids_hash": _pool_hash(gg),
+                "metric": "AUROC on held-out patients, paired patient bootstrap"}
 
     return adjudicate
+
+
+def _pool_hash(groups: np.ndarray) -> str:
+    """A short fingerprint of exactly which patients an arm scored.
+
+    Printed into every verdict so the gate and replication arms can be shown to be
+    different sets of people without publishing patient identifiers. Two arms reporting
+    the same hash would mean the replication was a re-run, which is the defect the
+    policy arm actually had.
+    """
+    import hashlib
+    ids = ",".join(str(g) for g in sorted(set(groups.tolist())))
+    return hashlib.sha256(ids.encode()).hexdigest()[:12]
 
 
 # --------------------------------------------------------------------------- #

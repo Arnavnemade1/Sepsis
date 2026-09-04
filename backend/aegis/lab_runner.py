@@ -48,6 +48,7 @@ from typing import Any, Callable, Dict, List, Optional, Sequence
 import numpy as np
 
 from backend.aegis import lab as L
+from backend.aegis.lab_registry import LabRegistry
 from backend.ml import config
 
 
@@ -65,7 +66,7 @@ def _cached_oof(spec: str = "dev") -> Optional[Dict[str, Any]]:
 
 
 def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
-                       budget: float = 0.15):
+                       budget: float = 0.15, arm: str = "gate"):
     """Judge a DECISION-LAYER change without refitting anything.
 
     A policy change does not touch the model, so the honest comparison re-reads the same
@@ -73,6 +74,19 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
     fixed alarm budget** — the ward fixes an alarm load, not a threshold, and comparing
     two decision rules at a shared threshold flatters whichever one happens to have the
     convenient score shape.
+
+    ``arm`` SELECTS A DISJOINT PATIENT POOL, AND IT HAD TO
+    ------------------------------------------------------
+    This function did not split the cohort at all. Every call scored the same 8000
+    patients against the same cached scores, so the campaign's "replication" — built by
+    calling it again at ``seed=977`` — re-ran the identical computation. Measured: the
+    raw delta came back **bit-identical at +0.025037** on both calls, and only the
+    suppression null's RNG moved the reported number, by 0.002.
+
+    A policy candidate therefore replicated with probability ~1. The conformal-band
+    policy would have been published as a FINDING at +0.0543 "replicated +0.0523" on the
+    strength of a test that was the same test twice. The gate and replication arms now
+    draw from ``three_way_split``, whose pools are disjoint by construction.
     """
     from backend.ml.eval.bench import Benchmark
     from backend.ml.eval import metrics
@@ -80,14 +94,25 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
     bench = Benchmark.load(spec, n_folds=n_folds)
     ds = bench.ds
     cached = _cached_oof(spec)
+    _, gate_idx, rep_idx = L.three_way_split(ds.groups, ds.y, seed=42)
+    pool = rep_idx if arm == "replication" else gate_idx
+    in_pool = np.zeros(len(ds.y), dtype=bool)
+    in_pool[pool] = True
 
-    def adjudicate(p: L.Proposal) -> Dict[str, Any]:
+    def adjudicate(p: L.Proposal, alpha: float = 0.05) -> Dict[str, Any]:
+        """``alpha`` is the bar the Lab charged this test, and it is APPLIED here.
+
+        Before this parameter existed the Lab spent a geometric alpha, printed it in the
+        verdict's limits, and then took a fixed 95% interval regardless.
+        """
         if cached is None:
             return {"delta": float("nan"), "ci_lo": float("nan"), "ci_hi": float("nan"),
                     "significant": False,
                     "note": "no cached OOF scores; run `make subgroup-audit` first"}
         scores = cached["p"]
-        ok = np.isfinite(scores)
+        # The arm's pool, intersected with rows that actually carry a score. Before this
+        # the mask was `np.isfinite(scores)` alone — every patient, every time.
+        ok = np.isfinite(scores) & in_pool
         ch = p.change or {}
         far = float(ch.get("max_false_alarm_rate", budget))
 
@@ -187,10 +212,12 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
 
         # Paired patient bootstrap on the same peaks-based statistic.
         d = _bootstrap_detection_delta(ds.y[ok], variant[ok], scores[ok], ds.groups[ok],
-                                       ds.onset_hour[ok], ds.hour_index[ok], far, seed)
+                                       ds.onset_hour[ok], ds.hour_index[ok], far, seed,
+                                       alpha=alpha)
         # The reportable effect is the EXCESS over the suppression null, not the raw
         # delta. A policy whose whole gain is budget accounting reports ~0 here.
         return {"delta": excess,
+                "alpha": float(alpha),
                 "raw_delta": delta,
                 "suppression_null_delta": null_delta,
                 # The CI must describe the SAME quantity as the point estimate. An
@@ -209,6 +236,9 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
                     _widen(d[0] - null_delta, d[1] - null_delta, null_se)[0] > 0
                     and _widen(d[0] - null_delta, d[1] - null_delta, null_se)[1]
                         - _widen(d[0] - null_delta, d[1] - null_delta, null_se)[0] > 1e-9),
+                "arm": arm,
+                "n_score_patients": int(len(set(ds.groups[ok].tolist()))),
+                "patient_ids_hash": L._pool_hash(ds.groups[ok]),
                 "baseline_detection": float(base["detection_rate"]),
                 "candidate_detection": float(cand["detection_rate"]),
                 "n_hours_suppressed": n_changed,
@@ -239,8 +269,13 @@ def _widen(lo: float, hi: float, extra_se: float) -> tuple:
     return mid - new_half, mid + new_half
 
 
-def _bootstrap_detection_delta(y, pa, pb, groups, onset, hour, far, seed=0, n_boot=400):
-    """Patient-resampled CI for detection(a) - detection(b) at a fixed alarm budget."""
+def _bootstrap_detection_delta(y, pa, pb, groups, onset, hour, far, seed=0, n_boot=400,
+                               alpha=0.05):
+    """Patient-resampled CI for detection(a) - detection(b) at a fixed alarm budget.
+
+    ``alpha`` sets the interval's width. It was hardcoded to the 2.5/97.5 quantiles, so
+    a test the Lab charged at alpha=0.00625 still got a 95% interval.
+    """
     from backend.ml.eval import metrics
     rng = np.random.default_rng(seed)
     uniq = np.array(sorted(set(groups.tolist())))
@@ -263,7 +298,8 @@ def _bootstrap_detection_delta(y, pa, pb, groups, onset, hour, far, seed=0, n_bo
     if not out:
         return float("nan"), float("nan")
     arr = np.asarray(out)
-    return float(np.quantile(arr, 0.025)), float(np.quantile(arr, 0.975))
+    q = float(alpha) / 2.0
+    return float(np.quantile(arr, q)), float(np.quantile(arr, 1.0 - q))
 
 
 def replicator_for(kind_adjudicators: Dict[str, Callable], seed_offset: int = 977):
@@ -408,8 +444,22 @@ class Campaign:
     def run(self, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         ctx = dict(ctx or {})
         t0 = time.time()
+        # PRE-REGISTER the test count, before the first proposal is generated. The
+        # ceiling is rounds x proposers and it is known here, so the budget can be spent
+        # flat instead of geometrically — 8 tests at alpha=0.00625 rather than 4 tests
+        # front-loaded at 0.025 and then a bar under the bootstrap's resolution. The
+        # budget refuses a plan declared after any alpha has been spent, which is what
+        # keeps this a pre-registration rather than a knob.
+        planned = max(1, self.rounds * len(self.proposers))
+        try:
+            self.lab.budget.plan(planned)
+        except ValueError as exc:
+            self._say(f"note: keeping the open-ended geometric schedule ({exc})")
+        b = self.lab.budget
         self._say(f"campaign: {len(self.proposers)} proposers, {self.rounds} rounds, "
-                  f"family-wise alpha {self.lab.budget.total}")
+                  f"family-wise alpha {b.total} over a PRE-DECLARED {b.planned_tests} "
+                  f"tests ({b.schedule()}), so every test faces "
+                  f"alpha={b.next_alpha():.5f}")
         for r in range(1, self.rounds + 1):
             if self.lab.budget.exhausted():
                 self._say(f"\n[round {r}] STOPPING — error budget exhausted after "
@@ -423,7 +473,8 @@ class Campaign:
             self._say("  PI agenda: " + " | ".join(
                 f"{a['line']}({a['score']:+.2f})" for a in agenda))
             for _ in range(len(self.proposers)):
-                move = self.pi.next_move(self.lab.ledger, {**ctx, "seed": r * 17})
+                move = self.pi.next_move(self.lab.ledger,
+                                         {**ctx, "seed": int(ctx.get("seed", 0)) + r * 17})
                 if move is None:
                     self._say("  PI: every line is dry or unjudgeable — stopping the round")
                     break
@@ -461,14 +512,64 @@ class Campaign:
         return {"summary": summary, "log": self.log}
 
 
+def _write_partition(spec: str, path: str) -> Optional[Dict[str, Any]]:
+    """Measure the search/gate/replication partition and persist what it is.
+
+    The console used to state the pool sizes and the zero intersection as literal text.
+    That is exactly the kind of claim that goes stale silently — the split could change
+    and the page would keep asserting the old numbers. Measured here, served from disk.
+    """
+    try:
+        from backend.ml.eval.bench import Benchmark
+        ds = Benchmark.load(spec, n_folds=2).ds
+        srch, gate, rep = L.three_way_split(ds.groups, ds.y, 42)
+        S = set(ds.groups[srch].tolist())
+        G = set(ds.groups[gate].tolist())
+        R = set(ds.groups[rep].tolist())
+        out = {
+            "spec": spec, "seed": 42,
+            "measured": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "pools": {
+                "search": {"n_patients": len(S), "septic_rate": round(float(ds.y[srch].mean()), 5),
+                           "role": "every model is fitted here, and only here"},
+                "gate": {"n_patients": len(G), "septic_rate": round(float(ds.y[gate].mean()), 5),
+                         "role": "scored once per proposal; can accept a candidate",
+                         "fingerprint": L._pool_hash(ds.groups[gate])},
+                "replication": {"n_patients": len(R), "septic_rate": round(float(ds.y[rep].mean()), 5),
+                                "role": "disjoint by construction; the only route to a finding",
+                                "fingerprint": L._pool_hash(ds.groups[rep])},
+            },
+            "intersections": {"gate_replication": len(G & R),
+                              "search_gate": len(S & G),
+                              "search_replication": len(S & R)},
+            "n_patients_total": len(S | G | R),
+            "disjoint": bool(not (G & R) and not (S & G) and not (S & R)),
+        }
+        with open(path, "w") as fh:
+            json.dump(out, fh, indent=2, allow_nan=False)
+        print(f"partition: search {len(S)} | gate {len(G)} | replication {len(R)}, "
+              f"pairwise intersection {len(G & R)}/{len(S & G)}/{len(S & R)} -> {path}")
+        return out
+    except Exception as exc:
+        print(f"note: could not measure the partition ({exc})")
+        return None
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--rounds", type=int, default=3)
+    ap.add_argument("--seed", type=int, default=None,
+                    help="proposal-generation seed. Defaults to one derived from the "
+                         "number of campaigns already on the record, so a new campaign "
+                         "explores new hypotheses instead of re-asking the last one's "
+                         "questions and hitting the dedup refusal on every proposal.")
     ap.add_argument("--spec", default="dev")
     ap.add_argument("--alpha", type=float, default=L.FAMILY_ALPHA)
     ap.add_argument("--with-detection", action="store_true",
                     help="bind the EXPENSIVE held-out model gate (minutes per proposal)")
     ap.add_argument("--out", default=os.path.join(config.ARTIFACTS_DIR, "lab_ledger.json"))
+    ap.add_argument("--registry",
+                    default=os.path.join(config.ARTIFACTS_DIR, "lab_registry.json"))
     args = ap.parse_args()
 
     pol = policy_adjudicator(spec=args.spec)
@@ -476,14 +577,51 @@ def main() -> None:
     if det is None:
         print("note: detection gate NOT bound (--with-detection to enable). Detection "
               "proposals will be refused for want of a judge rather than mis-adjudicated.")
-    rep = replicator_for({L.POLICY: policy_adjudicator(spec=args.spec, seed=977),
-                          **({L.DETECTION: L.held_out_adjudicator(spec=args.spec, seed=977)}
-                             if args.with_detection else {})})
+    # The replication arm scores a DISJOINT pool from the same partition. It used to be
+    # built by re-seeding at 977, which drew an overlapping sample for detection (25.1%
+    # shared) and no new sample at all for policy (the same 8000 patients twice).
+    rep = replicator_for({
+        L.POLICY: policy_adjudicator(spec=args.spec, arm="replication"),
+        **({L.DETECTION: L.held_out_adjudicator(spec=args.spec, arm="replication")}
+           if args.with_detection else {})})
 
-    lab = L.Lab(adjudicator=det, policy_adjudicator=pol, replicator=rep, alpha=args.alpha)
+    # The registry is the Lab's memory. Loading it here is what makes a campaign part of
+    # a research programme rather than an isolated run that overwrites its predecessor.
+    reg = LabRegistry.load(args.registry)
+    prog = reg.programme()
+    if prog["n_campaigns"]:
+        print(f"registry: {prog['n_campaigns']} prior campaign(s), "
+              f"{prog['n_hypotheses']} hypotheses already tested, "
+              f"{prog['expected_false_findings']:.4f} of alpha spent across the "
+              f"programme ({prog['findings_vs_expected_false']})")
+        ok, bad = reg.verify_chain()
+        if not ok:
+            print(f"WARNING: registry hash chain BROKEN at seq {bad}. A verdict has been "
+                  f"edited or removed since it was recorded.")
+
+    # Record the partition the campaign actually ran on, so the console can show real
+    # pool sizes instead of numbers typed into a page by hand. Disjointness is the claim
+    # a finding rests on; it should be served from the split, not asserted in markup.
+    _write_partition(args.spec, os.path.join(
+        os.path.dirname(args.registry) or config.ARTIFACTS_DIR, "lab_partition.json"))
+
+    lab = L.Lab(adjudicator=det, policy_adjudicator=pol, replicator=rep,
+                alpha=args.alpha, registry=reg)
     camp = Campaign(lab=lab, proposers=L.adaptive_proposers(), rounds=args.rounds)
-    camp.run()
-    print(f"\nledger -> {lab.save(args.out)}")
+    seed = args.seed if args.seed is not None else 1009 * (prog["n_campaigns"] + 1)
+    print(f"proposal seed {seed} (campaign {prog['n_campaigns'] + 1} of the programme)")
+    camp.run({"seed": seed})
+
+    cid = reg.record_campaign(lab.ledger, lab.budget,
+                              notes={"spec": args.spec,
+                                     "detection_gate": bool(det is not None)})
+    reg.save()
+    after = reg.programme()
+    print(f"\ncampaign {cid} recorded. Programme now: {after['n_campaigns']} campaigns, "
+          f"{after['n_tested']} tests, {after['expected_false_findings']:.4f} expected "
+          f"false findings, {after['n_findings']} finding(s).")
+    print(f"registry -> {reg.path}")
+    print(f"ledger   -> {lab.save(args.out)}")
 
 
 if __name__ == "__main__":
