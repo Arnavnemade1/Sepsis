@@ -766,10 +766,43 @@ class Lab:
         mdes = [v.mde for v in self.ledger if v.mde is not None]
         tested = [v for v in self.ledger if v.alpha_spent is not None]
         n_uncorrected = sum(1 for v in tested if not v.alpha_applied)
+        med = float(np.median(mdes)) if mdes else None
+        preds = [abs(float(v.proposal.predicted_delta)) for v in tested
+                 if v.proposal.predicted_delta is not None]
+        typ_pred = float(np.median(preds)) if preds else None
+
+        # THE DIAGNOSIS THAT MATTERS. If the median MDE sits far above the effects the
+        # agents are actually proposing, the campaign's refusals are a statement about
+        # the INSTRUMENT, not about the changes. Measured on the first corrected
+        # campaign: median MDE +0.0329 against a MIN_EFFECT of +0.0020 and predictions
+        # around +0.0030 — the gate was roughly sixteen times too coarse to see what was
+        # being asked of it. Reporting a pile of refusals without that ratio would be
+        # reporting "these changes do not work" when the honest statement is "this test
+        # could not have told you either way".
+        ratio = (med / typ_pred) if (med and typ_pred and typ_pred > 0) else None
+        power_limited = bool(ratio is not None and ratio >= 3.0)
+        if med is None:
+            diagnosis = None
+        elif power_limited:
+            diagnosis = (
+                f"POWER-LIMITED. The median test could resolve {med:+.4f}, while the "
+                f"proposals predict about {typ_pred:+.4f} — roughly {ratio:.0f}x smaller "
+                f"than this gate can see. These refusals are evidence about the "
+                f"instrument, not about the changes. Resolving effects this small needs "
+                f"more held-out patients, not more proposals.")
+        else:
+            diagnosis = (
+                f"The median test resolves {med:+.4f} against proposals of about "
+                f"{typ_pred:+.4f}, so a refusal here does carry information about the "
+                f"change itself.")
         return {
             "n_tested": len(tested),
-            "median_mde": (round(float(np.median(mdes)), 5) if mdes else None),
+            "median_mde": (round(med, 5) if med is not None else None),
             "worst_mde": (round(float(np.max(mdes)), 5) if mdes else None),
+            "typical_predicted_effect": (round(typ_pred, 5) if typ_pred is not None else None),
+            "mde_to_prediction_ratio": (round(ratio, 2) if ratio is not None else None),
+            "power_limited": power_limited,
+            "diagnosis": diagnosis,
             "n_alpha_uncorrected": n_uncorrected,
             "note": ("The campaign was blind to true effects below the median MDE. A "
                      "refusal is evidence against effects LARGER than a test's MDE and "

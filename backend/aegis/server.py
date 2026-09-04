@@ -637,12 +637,21 @@ def lab_state() -> Dict[str, Any]:
     # cannot show whether a finding came from one campaign or from the tenth attempt, and
     # that is the number a reader most needs. The registry carries every campaign ever
     # run, hash-chained, and reports cumulative alpha as the expected false-finding count.
-    programme, campaigns, chain = None, [], None
+    programme, campaigns, chain, record = None, [], None, []
     try:
         from backend.aegis.lab_registry import LabRegistry as _Reg
         reg = _Reg.load()
         programme = reg.programme()
         campaigns = reg.campaigns[-12:]
+        # The permanent record, newest first. The console showed only the last
+        # campaign's ledger, which is the one thing a research record must not do —
+        # a reader cannot tell a finding from the tenth attempt at one.
+        record = [{"campaign": e.campaign, "agent": e.agent, "kind": e.kind,
+                   "title": e.title, "status": e.status, "accepted": e.accepted,
+                   "observed_delta": e.observed_delta, "mde": e.mde,
+                   "alpha_spent": e.alpha_spent, "protocol": e.protocol,
+                   "change_key": e.change_key}
+                  for e in reversed(reg.entries[-80:])]
         ok, bad = reg.verify_chain()
         chain = {"ok": ok, "broken_at": bad, "n_entries": len(reg.entries),
                  "note": ("every recorded verdict re-hashes to its stored value"
@@ -665,6 +674,7 @@ def lab_state() -> Dict[str, Any]:
         },
         "programme": programme,
         "campaigns": campaigns,
+        "record": record,
         "chain": chain,
         "partition": _read_json(_os.path.join(_cfg.ARTIFACTS_DIR, "lab_partition.json")),
         "min_effect": _lab.MIN_EFFECT,

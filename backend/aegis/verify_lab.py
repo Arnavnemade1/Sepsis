@@ -626,6 +626,34 @@ def main() -> int:
     check("pre-registering doubles the tests a campaign can honestly run",
           8 > n_geo, f"8 planned vs {n_geo} geometric, at the same family-wise 0.05")
 
+    print("\n24. a pile of refusals must say whether it is about the change or the gate")
+    # Measured on the first corrected campaign: median MDE +0.0329 against proposals of
+    # about +0.0030. The gate was ~16x too coarse to see what was being asked of it, so
+    # reporting those refusals as "these changes do not work" would have been wrong.
+    wide = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.0004, "ci_lo": -0.033,
+                                                    "ci_hi": 0.033, "significant": False})
+    for i in range(3):
+        wide.submit(_prop(title=f"small ask {i}", predicted_delta=0.003,
+                          change={"learner": "hgb", "key": "k", "value": i}))
+    ps = wide.power_summary()
+    check("a gate far coarser than the proposals is called POWER-LIMITED",
+          ps["power_limited"] and ps["mde_to_prediction_ratio"] >= 3,
+          f"MDE {ps['median_mde']:+.4f} vs proposals {ps['typical_predicted_effect']:+.4f} "
+          f"= {ps['mde_to_prediction_ratio']}x coarser")
+    check("...and says so in the diagnosis rather than implying the change failed",
+          "instrument, not about the changes" in (ps["diagnosis"] or ""),
+          (ps["diagnosis"] or "")[:80])
+    tight = L.Lab(adjudicator=lambda p, alpha=0.05: {"delta": 0.0004, "ci_lo": -0.002,
+                                                     "ci_hi": 0.002, "significant": False})
+    for i in range(3):
+        tight.submit(_prop(title=f"resolvable ask {i}", predicted_delta=0.003,
+                           change={"learner": "et", "key": "k", "value": i}))
+    ps2 = tight.power_summary()
+    check("a gate that CAN resolve the proposals is not flagged (the check can fail)",
+          not ps2["power_limited"],
+          f"MDE {ps2['median_mde']:+.4f} vs proposals "
+          f"{ps2['typical_predicted_effect']:+.4f} = {ps2['mde_to_prediction_ratio']}x")
+
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")
     for s_, nm, dt in _res:

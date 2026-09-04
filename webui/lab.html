@@ -309,10 +309,19 @@ function render(d){
     h.push('<div class="tiles">'+
       tile('Median MDE', sgn(POW.median_mde,4), 'the campaign was blind below this', 'hot')+
       tile('Worst MDE', sgn(POW.worst_mde,4), 'the least sensitive test run')+
+      tile('Proposed effect', sgn(POW.typical_predicted_effect,4),
+           'what the agents actually predict')+
+      tile('Gate is coarser by', POW.mde_to_prediction_ratio!=null ?
+             POW.mde_to_prediction_ratio.toFixed(0)+'×' : '—',
+           'MDE ÷ proposed effect', POW.power_limited ? 'bad' : 'good')+
       tile('Tests', POW.n_tested, 'charged α this campaign')+
-      tile('Uncorrected', POW.n_alpha_uncorrected,
-           'α charged but not applicable', POW.n_alpha_uncorrected ? 'bad' : 'good')+
     '</div>');
+    if(POW.diagnosis){
+      h.push('<div class="note '+(POW.power_limited?'alarm':'good')+'"><b>'+
+        (POW.power_limited?'These refusals are about the instrument.':
+                           'These refusals are about the changes.')+'</b> '+
+        esc(POW.diagnosis)+'</div>');
+    }
     h.push('<div class="note">'+esc(POW.note)+'</div>');
   }
 
@@ -347,6 +356,33 @@ function render(d){
         esc(c.n_accepted)+'</td><td class="num '+(c.n_findings?'pos':'nil')+'">'+
         esc(c.n_findings)+'</td><td class="num">'+f(c.alpha_spent,5)+'</td>'+
         '<td class="mono" style="color:var(--dim)">'+esc(c.protocol||"—")+'</td></tr>');
+    });
+    h.push('</tbody></table>');
+  }
+
+  // ---- the permanent record: every hypothesis ever asked ----
+  var REC = d.record || [];
+  if(REC.length){
+    h.push('<h2>Every hypothesis ever asked<span class="h2note">'+REC.length+
+      ' on the record · a hypothesis gets one test</span></h2>');
+    h.push('<div class="note">This is the part a reader needs and a single-campaign '+
+      'ledger cannot give: whether a result is a finding or the tenth attempt at one. '+
+      'Rows are hash-chained, so nothing here can be removed once it is written — '+
+      'including the refusals.</div>');
+    h.push('<table><thead><tr><th>hypothesis</th><th>agent</th><th>campaign</th>'+
+      '<th class="num">observed</th><th class="num">resolvable</th>'+
+      '<th class="num">α</th><th>verdict</th></tr></thead><tbody>');
+    REC.forEach(function(e){
+      var st = e.status || 'refused';
+      h.push('<tr'+(e.protocol!=="v2"?' class="retracted"':'')+'>'+
+        '<td>'+esc(e.title)+'</td>'+
+        '<td class="mono" style="color:var(--dim)">'+esc(e.agent)+'</td>'+
+        '<td class="mono" style="color:var(--dim)">'+esc(e.campaign)+'</td>'+
+        '<td class="num '+cls(e.observed_delta)+'">'+sgn(e.observed_delta)+'</td>'+
+        '<td class="num nil">'+sgn(e.mde)+'</td>'+
+        '<td class="num nil">'+(e.alpha_spent!=null?f(e.alpha_spent,5):
+          '<span title="never adjudicated">—</span>')+'</td>'+
+        '<td><span class="badge '+esc(st)+'">'+esc(st)+'</span></td></tr>');
     });
     h.push('</tbody></table>');
   }

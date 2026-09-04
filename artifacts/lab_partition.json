@@ -1,0 +1,31 @@
+{
+  "spec": "dev",
+  "seed": 42,
+  "measured": "2026-09-03T19:33:18",
+  "pools": {
+    "search": {
+      "n_patients": 3993,
+      "septic_rate": 0.0214,
+      "role": "every model is fitted here, and only here"
+    },
+    "gate": {
+      "n_patients": 2004,
+      "septic_rate": 0.01887,
+      "role": "scored once per proposal; can accept a candidate",
+      "fingerprint": "0b63157bf7be"
+    },
+    "replication": {
+      "n_patients": 2003,
+      "septic_rate": 0.02207,
+      "role": "disjoint by construction; the only route to a finding",
+      "fingerprint": "bac1b9471054"
+    }
+  },
+  "intersections": {
+    "gate_replication": 0,
+    "search_gate": 0,
+    "search_replication": 0
+  },
+  "n_patients_total": 8000,
+  "disjoint": true
+}
