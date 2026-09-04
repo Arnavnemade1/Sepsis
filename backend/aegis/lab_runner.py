@@ -240,7 +240,8 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
         # Paired patient bootstrap on the same peaks-based statistic.
         d_lo, d_hi, d_arr = _bootstrap_detection_delta(
             ds.y[ok], variant[ok], scores[ok], ds.groups[ok],
-            ds.onset_hour[ok], ds.hour_index[ok], far, seed, alpha=alpha)
+            ds.onset_hour[ok], ds.hour_index[ok], far, seed, alpha=alpha,
+            n_boot=L.resamples_for(alpha))
         d = (d_lo, d_hi)
         # The p-value must describe the SAME quantity as the point estimate — the excess
         # over the suppression null, not the raw delta. Testing the raw delta would credit
@@ -250,7 +251,8 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
         # delta. A policy whose whole gain is budget accounting reports ~0 here.
         return {"delta": excess,
                 "alpha": float(alpha),
-                **{k: sigp[k] for k in ("p_value", "n_boot", "resolvable")},
+                **{k: sigp[k] for k in ("p_value", "n_boot", "resolvable",
+                                        "well_resolved", "tail_resamples")},
                 "significance_note": sigp.get("note"),
                 "raw_delta": delta,
                 "suppression_null_delta": null_delta,

@@ -232,6 +232,7 @@ class Verdict:
     #: One-sided bootstrap p-value and whether the charged alpha was expressible at all.
     p_value: Optional[float] = None
     resolvable: Optional[bool] = None
+    well_resolved: Optional[bool] = None
     n_boot: Optional[int] = None
     #: Whether the adjudicator actually APPLIED the alpha it was charged, or merely had
     #: it recorded. See Lab._call_judge — this was silently False for every test.
@@ -506,6 +507,32 @@ def _call_judge(judge: Callable, p: "Proposal", alpha: float) -> Tuple[Dict[str,
     return judge(p), False
 
 
+#: Resamples whose delta must fall on the losing side before a p-value is more than the
+#: floor. Ten is the conventional minimum for a proportion to carry any resolution at all;
+#: below it the p-value has one attainable value and the test degenerates into "every
+#: resample must agree".
+MIN_TAIL_RESAMPLES = 10
+
+
+def resamples_for(alpha: float, floor: int = 400, cap: int = 6000) -> int:
+    """How many bootstrap resamples an alpha actually needs.
+
+    A fixed 400 was fine at alpha=0.05 and silently became a wall as the Lab learned to
+    correct properly. A pre-declared 16-test campaign charges alpha=0.003125, where the
+    finest p-value 400 resamples can express is 1/401 = 0.002494 — so the ONLY way to
+    pass is for all 400 resamples to agree. That is not a strict bar, it is a test with
+    one attainable outcome.
+
+    Scaling the resample count with the bar keeps the p-value resolvable:
+    ``n = MIN_TAIL_RESAMPLES / alpha`` puts ten resamples in the tail the bar sits in.
+    Capped, because a test that would need more than the cap should be REFUSED rather
+    than run at a bar its instrument cannot express — which is what ``resolvable`` on
+    the verdict reports.
+    """
+    need = int(np.ceil(MIN_TAIL_RESAMPLES / max(float(alpha), 1e-12)))
+    return int(min(max(floor, need), cap))
+
+
 def bootstrap_significance(deltas: "np.ndarray", alpha: float) -> Dict[str, Any]:
     """One-sided bootstrap p-value, and whether alpha is resolvable at all.
 
@@ -532,16 +559,29 @@ def bootstrap_significance(deltas: "np.ndarray", alpha: float) -> Dict[str, Any]
                 "note": "no usable bootstrap resamples"}
     p = (float((np.asarray(deltas) <= 0.0).sum()) + 1.0) / (n + 1.0)
     finest = 1.0 / (n + 1.0)
+    # FEASIBILITY: can a p-value below the bar exist at all?
     resolvable = bool(alpha >= finest)
+    # RESOLUTION: how many resamples sit in the tail the bar lives in. Feasible-but-
+    # coarse is a real state — it is what a capped resample count produces — and it must
+    # be visible rather than reported as though the bar were cleanly measured.
+    tail = float(alpha) * n
+    well_resolved = bool(tail >= MIN_TAIL_RESAMPLES)
     return {
         "p_value": p,
         "n_boot": n,
         "finest_p": finest,
         "resolvable": resolvable,
+        "well_resolved": well_resolved,
+        "tail_resamples": round(tail, 1),
         "significant": bool(resolvable and p < alpha),
-        "note": (None if resolvable else
-                 f"alpha={alpha:.6f} is below the finest p-value {n} resamples can "
-                 f"express ({finest:.6f}). The test cannot be run at this bar."),
+        "note": (
+            f"alpha={alpha:.6f} is below the finest p-value {n} resamples can express "
+            f"({finest:.6f}). The test cannot be run at this bar."
+            if not resolvable else
+            f"only {tail:.1f} resample(s) fall in the tail this bar sits in, under the "
+            f"{MIN_TAIL_RESAMPLES} needed for the p-value to carry real resolution. The "
+            f"test is feasible but coarse."
+            if not well_resolved else None),
     }
 
 
@@ -743,12 +783,14 @@ class Lab:
                     alpha_spent=alpha_k, alpha_applied=alpha_applied,
                     mde=mde, power_note=_power_note(delta, mde, accepted),
                     p_value=out.get("p_value"), resolvable=resolvable,
+                    well_resolved=out.get("well_resolved"),
                     n_boot=out.get("n_boot"),
                     arm=out.get("arm"), patient_ids_hash=out.get("patient_ids_hash"),
                     prediction_error=(p.predicted_delta - delta
                                       if np.isfinite(delta) else None),
                     status="candidate" if accepted else "refused",
-                    limits=limits + [alpha_limit])
+                    limits=limits + [alpha_limit]
+                    + ([out["significance_note"]] if out.get("significance_note") else []))
 
         # A single significant result at alpha=0.05 is what one-in-twenty noise looks
         # like. A candidate becomes a FINDING only if it survives an independent split.
@@ -1146,13 +1188,15 @@ def held_out_adjudicator(spec: str = "dev", n_folds: int = 2,
         # so the champion goes in `pa` and the candidate in `pb`. Passing them the other
         # way round inverts every verdict — a candidate that loses would read as a win.
         # It also returns a TUPLE (mean, lo, hi), not a dict.
+        n_boot = resamples_for(alpha)
         boot_delta, lo, hi, deltas = si.bootstrap_delta_ci(
-            yg, champ, cand, gg, n_boot=400, seed=seed, alpha=alpha,
+            yg, champ, cand, gg, n_boot=n_boot, seed=seed, alpha=alpha,
             return_deltas=True)
         sig = bootstrap_significance(deltas, alpha)
         return {"delta": float(a_cand - a_champ),
                 "alpha": float(alpha),
-                **{k: sig[k] for k in ("p_value", "n_boot", "resolvable")},
+                **{k: sig[k] for k in ("p_value", "n_boot", "resolvable",
+                                       "well_resolved", "tail_resamples")},
                 "significance_note": sig.get("note"),
                 "bootstrap_mean_delta": float(boot_delta),
                 "ci_lo": float(lo), "ci_hi": float(hi),

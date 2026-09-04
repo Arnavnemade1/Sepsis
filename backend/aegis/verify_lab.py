@@ -758,6 +758,37 @@ def main() -> int:
           L.bootstrap_significance(_np.full(400, 0.02), 0.05)["p_value"] > 0,
           "the +1 correction keeps it strictly positive — no finite resample supports 0")
 
+    print("\n28. the resample count follows the bar, and says when it cannot")
+    # A fixed 400 was fine at alpha=0.05 and became a wall as the Lab learned to correct.
+    # At the alpha a 16-test campaign charges, 400 resamples can only express p=0.002494,
+    # so the sole way to pass was for every resample to agree.
+    check("400 resamples make a 16-test campaign's bar effectively unanimous",
+          abs(L.bootstrap_significance(_np.full(400, 0.02), 0.003125)["p_value"]
+              - 1 / 401) < 1e-9
+          and 0.003125 * 400 < L.MIN_TAIL_RESAMPLES,
+          f"only {0.003125 * 400:.1f} resample(s) in the tail, under "
+          f"{L.MIN_TAIL_RESAMPLES}")
+    for a, want in ((0.05, 400), (0.00625, 1600), (0.003125, 3200)):
+        n = L.resamples_for(a)
+        sg = L.bootstrap_significance(_np.full(n, 0.02), a)
+        check(f"alpha={a} scales to {n} resamples with real tail room",
+              n == want and sg["resolvable"] and sg["well_resolved"],
+              f"{sg['tail_resamples']} resample(s) in the tail, finest p "
+              f"{sg['finest_p']:.6f}")
+    n_cap = L.resamples_for(0.0005)
+    sg_cap = L.bootstrap_significance(_np.full(n_cap, 0.02), 0.0005)
+    check("when the cap binds, the test is FEASIBLE but flagged coarse — not silent",
+          sg_cap["resolvable"] and not sg_cap["well_resolved"]
+          and "coarse" in (sg_cap["note"] or ""),
+          f"n={n_cap} capped, {sg_cap['tail_resamples']} in the tail")
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: dict(
+        {"delta": 0.02, "ci_lo": 0.005, "ci_hi": 0.035, "significant": True},
+        **L.bootstrap_significance(_np.full(L.resamples_for(alpha), 0.02), alpha)))
+    v = lab.submit(_prop(title="a well-resolved test"))
+    check("a verdict carries the resample count it was decided on",
+          v.n_boot == L.resamples_for(v.alpha_spent) and v.well_resolved,
+          f"alpha {v.alpha_spent:.5f} decided on {v.n_boot} resamples, p={v.p_value:.6f}")
+
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")
     for s_, nm, dt in _res:
