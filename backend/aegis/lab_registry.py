@@ -66,12 +66,26 @@ GENESIS = "0" * 64
 #: the identical patient pool for policy; and the geometric alpha was charged to the
 #: budget but never passed to the adjudicator, so every test ran at a 95% interval.
 #:
-#: v1 REFUSALS remain sound — a change that failed at 95% also fails at a tighter bar —
-#: so they are kept, and they still inform the Critic. v1 ACCEPTANCES are not sound, and
-#: ``seen()`` lets their hypotheses be asked again under v2 rather than treating a
-#: retracted pass as a settled question.
-PROTOCOL = "v2"
-RETRACTED_PROTOCOLS = {"v1"}
+#: v3 (2026-09-03) retracts v2 after its first campaign produced a FINDING that was an
+#: artifact of two defects introduced by the v2 work itself:
+#:
+#: * **A negative suppression null was subtracted.** The null removes INFLATION — a
+#:   suppression policy frees alarm budget and can post a gain that is pure accounting.
+#:   When the null is NEGATIVE there is no inflation to remove, and subtracting it adds
+#:   to the estimate. Silencing the UNCERTAIN band moved detection by raw +0.0000 on both
+#:   pools; the null was -0.0225; the excess came out +0.0225 and was reported as the
+#:   largest result the Lab had ever produced. Only a positive null is subtracted now.
+#: * **Significance came from a percentile endpoint that was not estimable.** A planned
+#:   16-test campaign charges alpha=0.003125, so ``ci_lo`` was the 0.0016 quantile of 400
+#:   resamples — order statistic 0.62, which is the sample minimum wearing a percentile's
+#:   name. Significance is a one-sided bootstrap p-value now, estimable to 1/(n+1).
+#:
+#: RETRACTED REFUSALS REMAIN SOUND in every case — a change that failed a looser bar
+#: fails a tighter one — so they are kept and still inform the Critic. Retracted
+#: ACCEPTANCES are not sound, and ``seen()`` lets their hypotheses be asked again rather
+#: than treating a pass nobody should trust as a settled question.
+PROTOCOL = "v3"
+RETRACTED_PROTOCOLS = {"v1", "v2"}
 
 
 def _canonical(obj: Any) -> bytes:
@@ -269,16 +283,27 @@ class LabRegistry:
         # as ignoring it would understate its history. It is reported separately.
         live = [e for e in tested if e.protocol not in RETRACTED_PROTOCOLS]
         exp_false = float(sum(e.alpha_spent or 0.0 for e in live))
-        n_find = sum(1 for e in self.entries if e.status == "finding")
+        # The finding count and the alpha budget must describe the SAME set of tests.
+        # Counting a retracted finding against a budget that excludes retracted alpha
+        # compares 1 finding to 0.000 expected — a damning ratio assembled from two
+        # different populations.
+        n_find = sum(1 for e in self.entries
+                     if e.status == "finding" and e.protocol not in RETRACTED_PROTOCOLS)
+        n_find_retracted = sum(1 for e in self.entries
+                               if e.status == "finding"
+                               and e.protocol in RETRACTED_PROTOCOLS)
         retracted = sum(1 for e in self.entries if e.protocol in RETRACTED_PROTOCOLS)
         return {
             "protocol": PROTOCOL,
             "n_retracted_entries": retracted,
             "retraction_note": (
                 f"{retracted} verdict(s) were produced under a protocol since found to "
-                f"be looser than advertised (v1: overlapping replication pool, alpha "
-                f"charged but not applied). Their refusals stand; their acceptances are "
-                f"retracted and may be asked again." if retracted else None),
+                f"be looser than advertised — v1: the replication pool overlapped the "
+                f"gate and the charged alpha was never applied; v2: a negative "
+                f"suppression null was subtracted, and significance came from a "
+                f"percentile endpoint that 400 resamples could not estimate. Their "
+                f"refusals stand; their acceptances are retracted and may be asked "
+                f"again." if retracted else None),
             "n_campaigns": len(self.campaigns),
             "n_proposals": len(self.entries),
             "n_tested": len(live),
@@ -288,8 +313,11 @@ class LabRegistry:
             "n_vetoed": sum(1 for e in self.entries if e.status == "vetoed"),
             "n_hypotheses": len({e.change_key for e in self.entries}),
             "expected_false_findings": round(exp_false, 5),
+            "n_findings_retracted": n_find_retracted,
             "findings_vs_expected_false": (
-                f"{n_find} finding(s) against {exp_false:.3f} expected by chance"),
+                f"{n_find} finding(s) against {exp_false:.3f} expected by chance"
+                + (f", plus {n_find_retracted} retracted under an earlier protocol"
+                   if n_find_retracted else "")),
             "chain_ok": self.verify_chain()[0],
             "interpretation": (
                 "Cumulative alpha over every test in every campaign IS the expected "

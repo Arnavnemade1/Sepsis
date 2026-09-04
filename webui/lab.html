@@ -481,6 +481,15 @@ function ledgerHTML(vs){
              (v.alpha_applied===false?' <span class="neg">(charged, not applied)</span>':'')+
              '</span>');
     }
+    // The p-value, not the interval endpoint, is what decides. At the alphas a planned
+    // campaign charges, ci_lo is the sample minimum rather than a percentile.
+    if(v.p_value!=null){
+      n.push('<span><span class="lbl">p</span>'+f(v.p_value,5)+
+             (v.n_boot?' <span class="nil">/'+v.n_boot+' resamples</span>':'')+'</span>');
+    }
+    if(v.resolvable===false)
+      n.push('<span class="neg"><span class="lbl">unrunnable</span>α finer than the '+
+             'resamples can express</span>');
     if(v.replicated===true)
       n.push('<span class="pos"><span class="lbl">replicated</span>'+
              sgn(v.replication_delta)+(v.replication_pool_hash?

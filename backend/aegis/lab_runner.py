@@ -205,21 +205,64 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
         # uncertainty had been silently discarded along with the null's spread.
         null_se = (float(np.std(null_deltas, ddof=1)) / max(len(null_deltas), 1) ** 0.5
                    if len(null_deltas) > 1 else 0.0)
-        excess = delta - null_delta
+
+        # ONLY A POSITIVE NULL IS SUBTRACTED, AND THIS IS LOAD-BEARING.
+        #
+        # The null exists to remove INFLATION: suppressing hours frees alarm budget,
+        # which lets other patients alarm and can post a gain that is pure accounting.
+        # That inflation is what a POSITIVE null measures, and subtracting it is a
+        # correction.
+        #
+        # A NEGATIVE null is not inflation and there is nothing to correct. Subtracting
+        # it ADDS to the estimate, which is not a correction but a different claim — and
+        # it manufactured this Lab's first "finding". Measured: silencing the UNCERTAIN
+        # band at a 10% alarm budget moved detection by raw +0.0000 on the gate pool and
+        # +0.0000 on the replication pool. It did nothing. The null was -0.0225, so the
+        # excess came out +0.0225, cleared MIN_EFFECT, replicated, and was reported as
+        # "FINDING ... +0.0225" — an improvement of exactly zero, dressed as the largest
+        # result the Lab had ever produced.
+        #
+        # An earlier version DID use max(null, 0) for the interval while the point
+        # estimate used the full null, and the two disagreed. The defect there was the
+        # INCONSISTENCY; today's fix made both use the full null, which was the wrong
+        # half to standardise on. Both use max(null, 0) now.
+        null_used = max(null_delta, 0.0)
+        excess = delta - null_used
+        # How much better than random suppression of equal volume. This is a real and
+        # interesting property — evidence the band selects genuinely uninformative hours
+        # — but it is a property of the BAND, not a benefit delivered to a ward, and it
+        # is never what the gate accepts on.
+        selectivity = delta - null_delta
         control = ("random-suppression null of equal volume" if n_changed
                    else "none applicable — this policy does not suppress, so the raw "
                         "delta is reported and no null is subtracted")
 
         # Paired patient bootstrap on the same peaks-based statistic.
-        d = _bootstrap_detection_delta(ds.y[ok], variant[ok], scores[ok], ds.groups[ok],
-                                       ds.onset_hour[ok], ds.hour_index[ok], far, seed,
-                                       alpha=alpha)
+        d_lo, d_hi, d_arr = _bootstrap_detection_delta(
+            ds.y[ok], variant[ok], scores[ok], ds.groups[ok],
+            ds.onset_hour[ok], ds.hour_index[ok], far, seed, alpha=alpha)
+        d = (d_lo, d_hi)
+        # The p-value must describe the SAME quantity as the point estimate — the excess
+        # over the suppression null, not the raw delta. Testing the raw delta would credit
+        # a policy for alarm-budget accounting the null exists to strip out.
+        sigp = L.bootstrap_significance(d_arr - null_used, alpha)
         # The reportable effect is the EXCESS over the suppression null, not the raw
         # delta. A policy whose whole gain is budget accounting reports ~0 here.
         return {"delta": excess,
                 "alpha": float(alpha),
+                **{k: sigp[k] for k in ("p_value", "n_boot", "resolvable")},
+                "significance_note": sigp.get("note"),
                 "raw_delta": delta,
                 "suppression_null_delta": null_delta,
+                "suppression_null_applied": null_used,
+                "selectivity_vs_random": selectivity,
+                "null_direction": (
+                    "positive — suppression inflated detection through alarm-budget "
+                    "accounting, and that inflation IS subtracted" if null_delta > 0 else
+                    "negative — random suppression of equal volume HURT, so there is no "
+                    "inflation to remove and nothing is subtracted. The margin over "
+                    "random is reported as selectivity_vs_random, which describes the "
+                    "band and is not a benefit delivered."),
                 # The CI must describe the SAME quantity as the point estimate. An
                 # earlier version shifted the bootstrap by max(null_delta, 0) as a
                 # "conservative" hack while the point estimate used the full
@@ -229,13 +272,18 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
                 # Widen by the null's standard error, in quadrature with the raw
                 # interval's own half-width, so the reported interval covers both
                 # sources of uncertainty rather than only the one that was convenient.
-                "ci_lo": _widen(d[0] - null_delta, d[1] - null_delta, null_se)[0],
-                "ci_hi": _widen(d[0] - null_delta, d[1] - null_delta, null_se)[1],
+                "ci_lo": _widen(d[0] - null_used, d[1] - null_used, null_se)[0],
+                "ci_hi": _widen(d[0] - null_used, d[1] - null_used, null_se)[1],
                 "null_standard_error": round(null_se, 6),
+                # NOT the interval endpoint. `ci_lo > 0` was the rule, and at
+                # alpha=0.003125 that endpoint is order statistic 0.62 of 400 — the
+                # sample minimum. A degenerate interval is still refused, because a
+                # statistic that does not vary is a sign of discarded uncertainty rather
+                # than of certainty.
                 "significant": bool(
-                    _widen(d[0] - null_delta, d[1] - null_delta, null_se)[0] > 0
-                    and _widen(d[0] - null_delta, d[1] - null_delta, null_se)[1]
-                        - _widen(d[0] - null_delta, d[1] - null_delta, null_se)[0] > 1e-9),
+                    sigp["significant"]
+                    and _widen(d[0] - null_used, d[1] - null_used, null_se)[1]
+                        - _widen(d[0] - null_used, d[1] - null_used, null_se)[0] > 1e-9),
                 "arm": arm,
                 "n_score_patients": int(len(set(ds.groups[ok].tolist()))),
                 "patient_ids_hash": L._pool_hash(ds.groups[ok]),
@@ -245,8 +293,8 @@ def policy_adjudicator(spec: str = "dev", n_folds: int = 3, seed: int = 42,
                 "alarm_budget": far,
                 "control": control,
                 "metric": ("detection at fixed alarm budget"
-                           + (", EXCESS over a random-suppression null of equal volume"
-                              if n_changed else "")),
+                           + (", minus any INFLATION a random-suppression null of equal "
+                              "volume showed" if n_changed else "")),
                 "uncounted_cost": "this metric charges nothing for hours routed to a "
                                   "human. It measures SILENCING; a review queue spends "
                                   "clinician attention that does not appear here."}
@@ -296,10 +344,14 @@ def _bootstrap_detection_delta(y, pa, pb, groups, onset, hour, far, seed=0, n_bo
         if np.isfinite(a) and np.isfinite(b):
             out.append(float(a - b))
     if not out:
-        return float("nan"), float("nan")
+        return float("nan"), float("nan"), np.empty(0)
     arr = np.asarray(out)
     q = float(alpha) / 2.0
-    return float(np.quantile(arr, q)), float(np.quantile(arr, 1.0 - q))
+    # The interval is descriptive. Significance is decided by a one-sided p-value over
+    # these same resamples, because at the alphas a planned campaign charges the interval
+    # endpoint is an extreme order statistic and not estimable. See
+    # lab.bootstrap_significance.
+    return float(np.quantile(arr, q)), float(np.quantile(arr, 1.0 - q)), arr
 
 
 def replicator_for(kind_adjudicators: Dict[str, Callable], seed_offset: int = 977):
@@ -365,11 +417,22 @@ class PrincipalInvestigator:
                 "best_delta": best,
                 "untestable": bool(mine) and not tested}
 
-    def agenda(self, ledger: Sequence[L.Verdict]) -> List[Dict[str, Any]]:
+    def agenda(self, ledger: Sequence[L.Verdict], ctx: Optional[Dict[str, Any]] = None
+               ) -> List[Dict[str, Any]]:
         """Rank the lines of inquiry, with the reason attached to each."""
         out = []
         for pr in self.proposers:
             y = self._yield_of(pr.name, ledger)
+            # Whether the line has anything LEFT to ask is a different fact from whether
+            # what it has asked paid off, and the campaign reported both as "dry".
+            exhausted = (pr.space_exhausted(dict(ctx or {}), ledger)
+                         if ctx is not None else None)
+            if exhausted:
+                score, why = -0.5, ("proposal space exhausted — every change this line "
+                                    "can express has already been asked")
+                out.append({"line": pr.name, "prior": pr.prior, "score": score,
+                            "why": why, "space_exhausted": True, **y})
+                continue
             if y["n"] == 0:
                 score, why = 1.0, "never tried — worth one look"
             elif y["untestable"]:
@@ -384,13 +447,13 @@ class PrincipalInvestigator:
                 score = 0.2 - 0.05 * y["n_tested"]
                 why = f"{y['n_tested']} test(s), nothing positive — deprioritised"
             out.append({"line": pr.name, "prior": pr.prior, "score": round(score, 4),
-                        "why": why, **y})
+                        "why": why, "space_exhausted": bool(exhausted), **y})
         return sorted(out, key=lambda r: -r["score"])
 
     def next_move(self, ledger: Sequence[L.Verdict], ctx: Dict[str, Any]
                   ) -> Optional[tuple]:
         """Pick the line to spend the next test on, and get a proposal from it."""
-        for row in self.agenda(ledger):
+        for row in self.agenda(ledger, ctx):
             if row["score"] < 0:
                 continue
             pr = next(p for p in self.proposers if p.name == row["line"])
@@ -399,7 +462,7 @@ class PrincipalInvestigator:
                 return prop, row
         return None
 
-    def conclude(self, lab: L.Lab) -> List[str]:
+    def conclude(self, lab: L.Lab, ctx: Optional[Dict[str, Any]] = None) -> List[str]:
         """What the campaign found, written from the ledger including the refusals."""
         s = lab.summary()
         out = [f"{s['n_proposals']} proposals: {s['n_accepted']} cleared the gate, "
@@ -411,10 +474,18 @@ class PrincipalInvestigator:
                        f"CI[{v.ci_lo:+.4f},{v.ci_hi:+.4f}], replicated "
                        f"{v.replication_delta:+.4f}. Proposed by {v.proposal.agent}, "
                        f"which predicted {v.proposal.predicted_delta:+.4f}.")
-        dead = [r for r in self.agenda(lab.ledger) if r["score"] < 0]
-        for r in dead:
-            out.append(f"UNTESTABLE — the {r['line']} line: {r['why']}. Its refusals say "
-                       f"nothing about the science, only that no judge was bound.")
+        agenda = self.agenda(lab.ledger, ctx)
+        for r in agenda:
+            if r.get("space_exhausted"):
+                out.append(
+                    f"EXHAUSTED — the {r['line']} line has asked every change it can "
+                    f"express ({r['n']} proposal(s), {r['n_tested']} adjudicated). Its "
+                    f"silence is a result: this lever has been explored, not neglected. "
+                    f"Widening it means writing new proposals, not running more rounds.")
+            elif r["score"] < 0:
+                out.append(
+                    f"UNTESTABLE — the {r['line']} line: {r['why']}. Its refusals say "
+                    f"nothing about the science, only that no judge was bound.")
         if not findings:
             out.append("No finding. That is the expected outcome under this protocol and "
                        "is reported as a result, not as a failure to try.")
@@ -469,14 +540,19 @@ class Campaign:
                 break
             self._say(f"\n[round {r}] bar for the next test: "
                       f"alpha={self.lab.budget.next_alpha():.5f}")
-            agenda = self.pi.agenda(self.lab.ledger)
+            agenda = self.pi.agenda(self.lab.ledger, {**ctx, "seed": r * 17})
             self._say("  PI agenda: " + " | ".join(
-                f"{a['line']}({a['score']:+.2f})" for a in agenda))
+                f"{a['line']}({a['score']:+.2f}"
+                + (",exhausted" if a.get("space_exhausted") else "") + ")"
+                for a in agenda))
             for _ in range(len(self.proposers)):
                 move = self.pi.next_move(self.lab.ledger,
                                          {**ctx, "seed": int(ctx.get("seed", 0)) + r * 17})
                 if move is None:
-                    self._say("  PI: every line is dry or unjudgeable — stopping the round")
+                    dry = [a["line"] for a in agenda if a.get("space_exhausted")]
+                    self._say("  PI: nothing left to ask this round"
+                              + (f" — exhausted: {', '.join(dry)}" if dry else
+                                 " — every remaining line is unjudgeable"))
                     break
                 p, row = move
                 self._say(f"  PI picks {row['line']} — {row['why']}")
@@ -502,7 +578,7 @@ class Campaign:
                   f"{summary['n_mechanism_only']} mechanism-only")
         self._say(f"error budget: {json.dumps(summary['budget'])}")
         self._say("\nPI CONCLUSIONS:")
-        for line in self.pi.conclude(self.lab):
+        for line in self.pi.conclude(self.lab, ctx):
             self._say(f"  · {line}")
         self._say("")
         for a in self.lab.score_agents():

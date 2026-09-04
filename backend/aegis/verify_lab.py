@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import inspect as _inspect
 import sys
+
+import numpy as _np
 from typing import Any, Dict, List, Tuple
 
 from backend.aegis import lab as L
@@ -318,10 +320,23 @@ def main() -> int:
               and band["suppression_null_delta"] != 0.0,
               f"{band['n_hours_suppressed']:,} hours suppressed, "
               f"null {band['suppression_null_delta']:+.4f}")
-        check("...and the credited effect is the EXCESS over that null, not the raw delta",
-              abs(band["delta"] - (band["raw_delta"] - band["suppression_null_delta"])) < 1e-9,
-              f"raw {band['raw_delta']:+.4f} - null {band['suppression_null_delta']:+.4f} "
-              f"= {band['delta']:+.4f}")
+        # This check used to assert `credited == raw - null` unconditionally, which is
+        # the rule that manufactured a finding out of a policy that did nothing. It now
+        # asserts the corrected rule: an INFLATING null is subtracted, a negative one is
+        # not, and the margin over random is reported separately as selectivity.
+        _applied = max(band["suppression_null_delta"], 0.0)
+        check("...and only an INFLATING null is subtracted from the credit",
+              abs(band["delta"] - (band["raw_delta"] - _applied)) < 1e-9
+              and abs(band["suppression_null_applied"] - _applied) < 1e-12,
+              f"raw {band['raw_delta']:+.4f} - applied {_applied:+.4f} "
+              f"= {band['delta']:+.4f}  (null was "
+              f"{band['suppression_null_delta']:+.4f})")
+        check("...and the margin over random suppression is reported, not credited",
+              abs(band["selectivity_vs_random"]
+                  - (band["raw_delta"] - band["suppression_null_delta"])) < 1e-9
+              and band["selectivity_vs_random"] != band["delta"],
+              f"selectivity {band['selectivity_vs_random']:+.4f} vs credited "
+              f"{band['delta']:+.4f} — a property of the band, not a benefit delivered")
         check("the uncounted cost of a review queue is stated, not hidden",
               "attention" in (band.get("uncounted_cost") or ""))
         # BUG 4: the null was subtracted as if KNOWN. Its sampling error was discarded,
@@ -653,6 +668,95 @@ def main() -> int:
           not ps2["power_limited"],
           f"MDE {ps2['median_mde']:+.4f} vs proposals "
           f"{ps2['typical_predicted_effect']:+.4f} = {ps2['mde_to_prediction_ratio']}x")
+
+    print("\n25. an exhausted line and an unproductive line are different results")
+    # The campaign reported both as "dry". A line whose SPACE is exhausted has been fully
+    # explored and its silence is informative; a line still producing refusals has room
+    # and simply is not paying. Collapsing them hides which one you are looking at.
+    import backend.aegis.lab_runner as _LR2
+    _adj25 = lambda p, alpha=0.05: {"delta": 0.0001, "ci_lo": -0.01, "ci_hi": 0.01,
+                                    "significant": False}
+    lab = L.Lab(adjudicator=_adj25, policy_adjudicator=_adj25)
+    props = L.adaptive_proposers()
+    pi = _LR2.PrincipalInvestigator(props)
+    ctx25 = {"seed": 5}
+    dec = next(x for x in props if x.name == "Decider")
+    for k in range(9):
+        pr = dec.propose({**ctx25, "seed": 5 + k * 3}, lab.ledger)
+        if pr is None:
+            break
+        lab.submit(pr)
+    rows = {r["line"]: r for r in pi.agenda(lab.ledger, ctx25)}
+    check("a line with a finite space is marked EXHAUSTED once it is spent",
+          rows["Decider"].get("space_exhausted") is True,
+          f"{sum(1 for v in lab.ledger if v.proposal.agent == 'Decider')} proposals, "
+          f"then nothing left to ask")
+    check("...and a line with a continuous space is NOT (the check can fail)",
+          rows["Tuner"].get("space_exhausted") is False,
+          "the Tuner samples a continuous hyperparameter space")
+    concl = pi.conclude(lab, ctx25)
+    check("the conclusion says the silence is a result, not neglect",
+          any("EXHAUSTED" in c and "explored, not neglected" in c for c in concl),
+          next((c[:88] for c in concl if "EXHAUSTED" in c), "no exhaustion line"))
+    check("an exhausted line is not picked again, so it cannot spend more budget",
+          pi.next_move(lab.ledger, ctx25) is None
+          or pi.next_move(lab.ledger, ctx25)[1]["line"] != "Decider",
+          "the PI ranks it below zero and skips it")
+
+    print("\n26. a policy that changes nothing cannot become a finding")
+    # THE DEFECT, EXACTLY AS IT HAPPENED. Silencing the UNCERTAIN band moved detection by
+    # raw +0.0000 on both pools. The random-suppression null was -0.0225. excess =
+    # 0 - (-0.0225) = +0.0225, which cleared MIN_EFFECT, replicated, and was reported as
+    # "FINDING ... +0.0225" — an improvement of exactly zero, dressed as the largest
+    # result this Lab had ever produced.
+    import backend.aegis.lab_runner as _LR3
+    _widen = _LR3._widen
+    raw, null = 0.0, -0.0225
+    old_excess = raw - null
+    new_excess = raw - max(null, 0.0)
+    check("subtracting a NEGATIVE null manufactures an effect from nothing",
+          old_excess >= L.MIN_EFFECT,
+          f"raw {raw:+.4f}, null {null:+.4f} -> excess {old_excess:+.4f} "
+          f"(>= MIN_EFFECT {L.MIN_EFFECT}), which is how the artifact passed")
+    check("...and only an INFLATING null is subtracted now",
+          new_excess < L.MIN_EFFECT and new_excess == raw,
+          f"credited {new_excess:+.4f} — the policy did nothing, and says so")
+    check("a POSITIVE null is still subtracted, so real inflation is still removed",
+          abs((0.03 - max(0.02, 0.0)) - 0.01) < 1e-12,
+          "raw +0.0300 with an inflating null +0.0200 credits +0.0100")
+    src = _inspect.getsource(_LR3.policy_adjudicator)
+    check("the adjudicator reports the margin over random SEPARATELY from the credit",
+          "selectivity_vs_random" in src and "null_direction" in src,
+          "band selectivity is a property of the band, never the accepted effect")
+
+    print("\n27. significance must be a number the resamples can express")
+    check("a percentile endpoint at a planned campaign's alpha is NOT estimable",
+          (0.003125 / 2) * (400 - 1) < 1.0,
+          f"alpha/2 x (n-1) = {(0.003125 / 2) * 399:.2f} — order statistic 0.62 of 400, "
+          f"which is the sample minimum, not a percentile")
+    d_pos = _np.full(400, 0.02)
+    sg = L.bootstrap_significance(d_pos, 0.003125)
+    check("a one-sided bootstrap p-value IS estimable at that alpha",
+          sg["resolvable"] and sg["significant"],
+          f"p={sg['p_value']:.6f} (floor {sg['finest_p']:.6f}) < alpha 0.003125")
+    d_mixed = _np.concatenate([_np.full(390, 0.02), _np.full(10, -0.01)])
+    sg2 = L.bootstrap_significance(d_mixed, 0.003125)
+    check("...and 10 of 400 resamples crossing zero is enough to fail it",
+          not sg2["significant"], f"p={sg2['p_value']:.6f} vs alpha 0.003125")
+    sg3 = L.bootstrap_significance(d_pos, 0.0001)
+    check("an alpha finer than 1/(n+1) is REFUSED, not silently passed",
+          not sg3["resolvable"] and not sg3["significant"],
+          (sg3["note"] or "")[:80])
+    lab = L.Lab(adjudicator=lambda p, alpha=0.05: {
+        "delta": 0.9, "ci_lo": 0.8, "ci_hi": 1.0, "significant": True,
+        "resolvable": False, "significance_note": "alpha below the resample floor"})
+    v = lab.submit(_prop(title="unrunnable but 'significant'"))
+    check("the Lab refuses a judge that says significant on an unrunnable test",
+          not v.accepted and v.resolvable is False,
+          (v.refusal_reason or "")[:76])
+    check("...and a p-value of exactly zero is never reported",
+          L.bootstrap_significance(_np.full(400, 0.02), 0.05)["p_value"] > 0,
+          "the +1 correction keeps it strictly positive — no finite resample supports 0")
 
     n_fail = sum(1 for s_, _, _ in _res if s_ == FAIL)
     print(f"\n{'=' * 70}\n{len(_res) - n_fail}/{len(_res)} checks passed")

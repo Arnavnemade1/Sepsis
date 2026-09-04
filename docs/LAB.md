@@ -29,6 +29,49 @@ the **claim**, not the computation: the model runs and reports exposure, and
 `Verdict.efficacy_claim` is structurally always `None`. This project has already tuned a
 detector against its own generator and watched it score near chance on real patients.
 
+## Two more, found by distrusting our own first finding (v2 → v3)
+
+The first campaign under v2 produced a FINDING: *silence the UNCERTAIN band at a tighter
+alarm budget*, +0.0225 CI[+0.0208,+0.0934], replicated +0.0112 on the disjoint pool. Two
+things about it did not look right, and both were real.
+
+**4. A negative suppression null was being subtracted.** The null exists to remove
+*inflation*: suppressing hours frees alarm budget, which lets other patients alarm and can
+post a gain that is pure accounting. That inflation is what a **positive** null measures.
+A **negative** null is not inflation, and subtracting it *adds* to the estimate. The
+policy's raw effect on detection was:
+
+```
+gate          raw +0.0000    null -0.0225    excess +0.0225   "FINDING"
+replication   raw +0.0000    null -0.0112    excess +0.0112   "replicated"
+```
+
+It changed detection by **exactly nothing**, on both pools, and was reported as the
+largest result the Lab had ever produced. Only an inflating null is subtracted now, and
+the margin over random suppression is reported separately as `selectivity_vs_random` —
+a real property of the band (it selects genuinely uninformative hours) but not a benefit
+delivered to any ward. Credited effect: **+0.0000, refused.**
+
+An earlier version *did* use `max(null, 0)` for the interval while the point estimate
+used the full null. The defect there was the **inconsistency**; the v2 work standardised
+both on the full null, which was the wrong half to standardise on.
+
+**5. Significance came from a percentile endpoint that could not be estimated.** A planned
+16-test campaign charges α=0.003125, and the rule was `ci_lo > 0`. With 400 resamples that
+asks `np.quantile` for the 0.0016 quantile — order statistic **0.62 of 400**, which is the
+sample minimum wearing a percentile's name. It carries no coverage guarantee.
+
+The Lab's own `RESOLUTION_FLOOR`, added in the v2 work, missed this: it compared α against
+`1/n_boot` while the interval is **two-sided** and the binding requirement is
+`α/2 ≥ 1/n_boot`. Significance is now a **one-sided bootstrap p-value**,
+`p = (#{δ_b ≤ 0} + 1)/(n+1)` — a proportion, estimable to `1/(n+1)`, strictly positive
+because no finite resample supports a p of zero. An α finer than that floor is **refused**
+rather than silently passed, and the Lab treats "could not be run" as distinct from "no
+effect".
+
+Protocol v3. v1 and v2 are retracted: refusals stand, acceptances do not, and their
+hypotheses may be asked again.
+
 ## Three defects found by auditing our own gate (protocol v1 → v2)
 
 All three made the gate **looser** than it advertised. Each is now a regression test.

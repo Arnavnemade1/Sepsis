@@ -224,7 +224,8 @@ def paired_t_one_sided(deltas: np.ndarray) -> float:
 
 def bootstrap_delta_ci(y: np.ndarray, pa: np.ndarray, pb: np.ndarray,
                        groups: np.ndarray, n_boot: int = 400, seed: int = 0,
-                       alpha: float = 0.05) -> Tuple[float, float, float]:
+                       alpha: float = 0.05,
+                       return_deltas: bool = False) -> Tuple[float, ...]:
     """Patient-level bootstrap CI for AUROC(b) - AUROC(a).
 
     Resamples PATIENTS, not rows: rows within a patient are correlated, so a row
@@ -243,11 +244,19 @@ def bootstrap_delta_ci(y: np.ndarray, pa: np.ndarray, pb: np.ndarray,
             continue
         deltas.append(metrics.auroc(yy, pb[idx]) - metrics.auroc(yy, pa[idx]))
     if not deltas:
+        if return_deltas:
+            return float("nan"), float("nan"), float("nan"), np.empty(0)
         return float("nan"), float("nan"), float("nan")
     arr = np.array(deltas)
-    return (float(arr.mean()),
-            float(np.quantile(arr, alpha / 2)),
-            float(np.quantile(arr, 1 - alpha / 2)))
+    out = (float(arr.mean()),
+           float(np.quantile(arr, alpha / 2)),
+           float(np.quantile(arr, 1 - alpha / 2)))
+    # The resample deltas themselves, for callers that need a p-value rather than an
+    # interval endpoint. At a tight alpha the endpoint is an extreme order statistic and
+    # stops being estimable — alpha/2 = 0.0016 against 400 resamples asks for order
+    # statistic 0.6, which is the sample minimum wearing a percentile's name. A one-sided
+    # bootstrap p-value is resolvable to 1/(n+1) and does not have that failure mode.
+    return (out + (arr,)) if return_deltas else out
 
 
 # --------------------------------------------------------------------------- #

@@ -106,10 +106,17 @@ class AlphaBudget:
     #: Tests this session declared it would run, BEFORE running any. None = open-ended.
     planned_tests: Optional[int] = None
 
-    #: With 400 bootstrap resamples the finest resolvable quantile is ~1/400. A nominal
-    #: alpha below that is a bar the instrument cannot actually apply, and pretending to
-    #: test at alpha=1e-9 would be a claim about arithmetic, not about patients.
-    RESOLUTION_FLOOR: float = 2.5e-3
+    #: The finest alpha 400 bootstrap resamples can express as a one-sided p-value is
+    #: 1/(400+1). A nominal alpha below that is a bar the instrument cannot apply, and
+    #: pretending to test at alpha=1e-9 would be a claim about arithmetic, not patients.
+    #:
+    #: This constant was 2.5e-3 = 1/n_boot, derived for a percentile interval endpoint —
+    #: and it was wrong for one, because the interval is TWO-SIDED and needs
+    #: alpha/2 >= 1/n_boot, i.e. alpha >= 5e-3. Significance is now a one-sided p-value
+    #: (see bootstrap_significance), for which 1/(n+1) is the correct and less
+    #: restrictive floor. The adjudicators enforce it against their own resample count;
+    #: this is the budget's own conservative default.
+    RESOLUTION_FLOOR: float = 1.0 / 401.0
 
     def plan(self, n: int) -> "AlphaBudget":
         """Pre-declare how many tests this session will run. Once, before test one.
@@ -222,6 +229,10 @@ class Verdict:
     #: effects were ruled out and which were simply too small to see.
     mde: Optional[float] = None
     power_note: Optional[str] = None
+    #: One-sided bootstrap p-value and whether the charged alpha was expressible at all.
+    p_value: Optional[float] = None
+    resolvable: Optional[bool] = None
+    n_boot: Optional[int] = None
     #: Whether the adjudicator actually APPLIED the alpha it was charged, or merely had
     #: it recorded. See Lab._call_judge — this was silently False for every test.
     alpha_applied: bool = False
@@ -495,6 +506,45 @@ def _call_judge(judge: Callable, p: "Proposal", alpha: float) -> Tuple[Dict[str,
     return judge(p), False
 
 
+def bootstrap_significance(deltas: "np.ndarray", alpha: float) -> Dict[str, Any]:
+    """One-sided bootstrap p-value, and whether alpha is resolvable at all.
+
+    WHY NOT `ci_lo > 0`, WHICH IS WHAT THIS REPLACES
+    -------------------------------------------------
+    A percentile interval's endpoint at a tight alpha is an extreme order statistic. The
+    Lab charges alpha=0.003125 under a 16-test plan, which asks ``np.quantile`` for the
+    0.0016 quantile of 400 resamples — order statistic 0.62. That is the sample minimum
+    with a percentile's name on it, and it carries no coverage guarantee. The Lab's own
+    RESOLUTION_FLOOR missed this: it compared alpha against 1/n_boot while the interval
+    is TWO-SIDED and the binding requirement is alpha/2 >= 1/n_boot. Fourth time a
+    correction in this module has been off by something.
+
+    A one-sided bootstrap p-value has no such failure mode. It is a proportion, estimable
+    to 1/(n+1), and the +1 in both numerator and denominator keeps it conservative and
+    strictly positive — a p-value of exactly zero is a claim no finite resample supports.
+
+    A test whose alpha is below the smallest attainable p-value cannot be run. Refusing
+    is the honest answer; reporting significance a resample count cannot express is not.
+    """
+    n = int(len(deltas))
+    if n == 0:
+        return {"p_value": None, "n_boot": 0, "resolvable": False,
+                "note": "no usable bootstrap resamples"}
+    p = (float((np.asarray(deltas) <= 0.0).sum()) + 1.0) / (n + 1.0)
+    finest = 1.0 / (n + 1.0)
+    resolvable = bool(alpha >= finest)
+    return {
+        "p_value": p,
+        "n_boot": n,
+        "finest_p": finest,
+        "resolvable": resolvable,
+        "significant": bool(resolvable and p < alpha),
+        "note": (None if resolvable else
+                 f"alpha={alpha:.6f} is below the finest p-value {n} resamples can "
+                 f"express ({finest:.6f}). The test cannot be run at this bar."),
+    }
+
+
 def minimum_detectable_effect(ci_lo: Optional[float], ci_hi: Optional[float]) -> Optional[float]:
     """The smallest true effect this test could have called significant.
 
@@ -658,11 +708,20 @@ class Lab:
         lo, hi = out.get("ci_lo"), out.get("ci_hi")
         sig = bool(out.get("significant", False))
         big_enough = np.isfinite(delta) and delta >= MIN_EFFECT
-        accepted = bool(sig and big_enough)
+        # A judge that reports its alpha was finer than its resamples can express has
+        # said the test could not be run. That is a refusal, not a negative result, and
+        # conflating the two would let an unrunnable test read as evidence of no effect.
+        resolvable = out.get("resolvable", True)
+        accepted = bool(sig and big_enough and resolvable)
         mde = minimum_detectable_effect(lo, hi)
         reason = None
         if not accepted:
-            if not big_enough:
+            if not resolvable:
+                reason = (out.get("significance_note")
+                          or "the test's alpha is finer than its bootstrap can express; "
+                             "refusing to report a significance the resamples cannot "
+                             "support")
+            elif not big_enough:
                 reason = (f"effect {delta:+.4f} is below the minimum {MIN_EFFECT:+.4f}; "
                           f"beating the champion on the mean alone is not enough")
             else:
@@ -683,6 +742,8 @@ class Lab:
                     refusal_reason=reason, critic_warning=warning,
                     alpha_spent=alpha_k, alpha_applied=alpha_applied,
                     mde=mde, power_note=_power_note(delta, mde, accepted),
+                    p_value=out.get("p_value"), resolvable=resolvable,
+                    n_boot=out.get("n_boot"),
                     arm=out.get("arm"), patient_ids_hash=out.get("patient_ids_hash"),
                     prediction_error=(p.predicted_delta - delta
                                       if np.isfinite(delta) else None),
@@ -1085,13 +1146,20 @@ def held_out_adjudicator(spec: str = "dev", n_folds: int = 2,
         # so the champion goes in `pa` and the candidate in `pb`. Passing them the other
         # way round inverts every verdict — a candidate that loses would read as a win.
         # It also returns a TUPLE (mean, lo, hi), not a dict.
-        boot_delta, lo, hi = si.bootstrap_delta_ci(
-            yg, champ, cand, gg, n_boot=400, seed=seed, alpha=alpha)
+        boot_delta, lo, hi, deltas = si.bootstrap_delta_ci(
+            yg, champ, cand, gg, n_boot=400, seed=seed, alpha=alpha,
+            return_deltas=True)
+        sig = bootstrap_significance(deltas, alpha)
         return {"delta": float(a_cand - a_champ),
                 "alpha": float(alpha),
+                **{k: sig[k] for k in ("p_value", "n_boot", "resolvable")},
+                "significance_note": sig.get("note"),
                 "bootstrap_mean_delta": float(boot_delta),
                 "ci_lo": float(lo), "ci_hi": float(hi),
-                "significant": bool(np.isfinite(lo) and lo > 0),
+                # NOT `lo > 0`: at the alphas a planned campaign charges, that endpoint
+                # is the sample minimum rather than a percentile. See
+                # bootstrap_significance.
+                "significant": bool(sig["significant"]),
                 "champion_auroc": float(a_champ), "candidate_auroc": float(a_cand),
                 "arm": arm,
                 "n_score_patients": int(len(set(gg.tolist()))),
@@ -1148,6 +1216,18 @@ class AdaptiveProposer:
     def tried(self, ledger: Sequence[Verdict]) -> set:
         return {json.dumps(v.proposal.change, sort_keys=True, default=str)
                 for v in ledger if v.proposal.agent == self.name}
+
+    def space_exhausted(self, ctx: Dict[str, Any], ledger: Sequence[Verdict],
+                        max_attempts: int = 8) -> bool:
+        """True when this proposer has no untried change left to offer.
+
+        Distinct from "this line has produced nothing", and the campaign used to report
+        both as "dry". They are different research conclusions: a line whose SPACE is
+        exhausted has been fully explored and its silence is informative, while a line
+        that keeps producing refusals still has room and is simply not paying. Saying
+        "dry" for both hides which one you are looking at.
+        """
+        return self.propose(ctx, ledger, max_attempts) is None
 
     def propose(self, ctx: Dict[str, Any], ledger: Sequence[Verdict],
                 max_attempts: int = 8) -> Optional[Proposal]:
