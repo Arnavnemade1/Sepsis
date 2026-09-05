@@ -24,11 +24,13 @@
 import * as THREE from "three";
 import { OrbitControls } from "./vendor/three/OrbitControls.js";
 import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
-import { EffectComposer } from "./vendor/three/postprocessing/EffectComposer.js";
-import { RenderPass } from "./vendor/three/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "./vendor/three/postprocessing/UnrealBloomPass.js";
-import { OutputPass } from "./vendor/three/postprocessing/OutputPass.js";
-let composer, bloomPass;
+// The render pipeline and the surface materials live in their own modules now.
+// This file owns the anatomy, the animation and the clinical colour rules; how
+// any of it is SHADED is a separate concern with its own defects to answer for
+// (the composer was discarding multisampling, and there was no environment map).
+import { createPipeline, createEnvironment, BLOOM_LAYER } from "./twin3d_pipeline.js";
+import { makeOrganMaterial, makeShellMaterial } from "./twin3d_materials.js";
+let pipeline = null;
 
 const H = 1.7;                                    // body height (feet ~0)
 // Clinical-instrument palette — mirrors the --low/--med/--dys/--high tokens in os.css.
@@ -190,109 +192,23 @@ function tierColor(region) {
 const worse = (a, b) => (((a && a.severity) || 0) >= ((b && b.severity) || 0) ? a : b);
 
 /* ---------------- body shell material ----------------
-   Translucent so the organs read through it; height-zoned colour, a
-   fresnel rim, animated scanlines, and a rising diagnostic sweep band. */
+   Moved to twin3d_materials.js. Kept as a thin wrapper so the call site reads
+   the same and so `shellU` — which the scan band, the reticle and the heartbeat
+   all drive — still resolves to the live uniform block. */
 function bodyMaterial() {
-  const m = new THREE.MeshStandardMaterial({
-    transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide,
-    roughness: 1, metalness: 0,
-  });
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uHead = { value: ZONE.head }; sh.uniforms.uChest = { value: ZONE.chest };
-    sh.uniforms.uAbd = { value: ZONE.abd }; sh.uniforms.uPelvis = { value: ZONE.pelvis };
-    sh.uniforms.uLimb = { value: ZONE.limb }; sh.uniforms.uRim = { value: ZONE.rim };
-    sh.uniforms.uYmax = { value: H }; sh.uniforms.uTime = { value: 0 };
-    sh.uniforms.uScan = { value: -1 }; sh.uniforms.uPulse = { value: 0 };
-    sh.vertexShader = sh.vertexShader
-      .replace("#include <common>", "#include <common>\nvarying float vWY; varying float vWX;")
-      .replace("#include <project_vertex>",
-        "#include <project_vertex>\n vec4 _wp = modelMatrix * vec4(transformed,1.0); vWY=_wp.y; vWX=abs(_wp.x);");
-    sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", `#include <common>
-        varying float vWY; varying float vWX;
-        uniform vec3 uHead,uChest,uAbd,uPelvis,uLimb,uRim;
-        uniform float uYmax,uTime,uScan,uPulse;`)
-      .replace("#include <dithering_fragment>", `#include <dithering_fragment>
-        float h = clamp(vWY/uYmax, 0.0, 1.0);
-        vec3 col = uLimb;
-        col = mix(col, uPelvis, smoothstep(0.44,0.50,h));
-        col = mix(col, uAbd,    smoothstep(0.50,0.60,h));
-        col = mix(col, uChest,  smoothstep(0.60,0.74,h));
-        col = mix(col, uHead,   smoothstep(0.80,0.88,h));
-        float arm = smoothstep(0.17,0.27,vWX) * smoothstep(0.55,0.62,h) * (1.0-smoothstep(0.80,0.86,h));
-        col = mix(col, uLimb, arm);
-        // Exponent 1.5 spread the rim across most of a curved surface, so the smallest,
-        // roundest parts — the head above all — grazed the viewer nearly everywhere and
-        // lit up brighter than the torso. The head carries no clinical signal; it should
-        // not be the brightest thing on the body. A tighter falloff confines the rim to
-        // the actual silhouette edge, which is what a rim is.
-        float fres = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 2.4);
-        // horizontal scanlines drifting downward
-        float sl = 0.86 + 0.14*sin(vWY*150.0 - uTime*2.2);
-        // Rising diagnostic sweep. The width coefficient is load-bearing: at 8.0 the
-        // Gaussian was ~25cm of body tall, so for a large fraction of every cycle the
-        // band sat over the TORSO and its alpha term rendered the chest an opaque
-        // white slab — erasing the heart, lungs and liver, which are the only things
-        // on this body carrying clinical meaning. An animated decoration that
-        // periodically deletes the signal is not a decoration worth having.
-        // Narrow enough to read as an instrument line rather than a wash.
-        float sweep = exp(-pow((h - uScan)*26.0, 2.0));
-        // A second, much wider and fainter halo keeps the sense of a volume being
-        // scanned without ever approaching opacity.
-        float sweepGlow = exp(-pow((h - uScan)*7.0, 2.0));
-        // Weighted toward the FRESNEL rim rather than the flat fill. The old mix was
-        // 0.42 flat + 0.55 edge, which lit the whole surface fairly evenly — the shell
-        // read as milk, not glass, so the organ atlas underneath it was a vague smudge.
-        // Dropping the flat term and pushing the rim gives a defined silhouette with a
-        // genuinely transparent interior: you can see the anatomy through the body.
-        // Weighted toward the FRESNEL rim rather than the flat fill, but only so far.
-        // The old mix was 0.42 flat + 0.55 edge, which lit the surface evenly and made
-        // the shell read as milk rather than glass, hiding the organ atlas underneath.
-        // Pushing the rim too hard has the opposite failure: a limb is a near-cylinder,
-        // so it grazes the viewer almost everywhere and blows out to solid white while
-        // the flatter torso stays dark. These values keep a defined silhouette AND an
-        // even luminance from head to foot, with the interior genuinely transparent.
-        vec3 outc = col*(0.26 + 0.52*fres) + uRim*fres*0.55;
-        outc *= sl;
-        outc += col*0.07;                          // faint volumetric luminescence
-        // The scan tint is the interface accent (--accent 122,162,247), not an ad-hoc
-        // cyan: a sweep is an instrument affordance, and the OS already has one hue
-        // reserved for those.
-        outc += col*sweep*0.55 + vec3(0.48,0.64,0.97)*sweep*0.62;
-        outc += col*sweepGlow*0.10;
-        outc *= (1.0 + 0.08*uPulse);
-        // capped below 1.0: the shell is a window onto the anatomy and must never
-        // resolve to an opaque surface, however steep the viewing angle gets.
-        // The sweep's contribution to ALPHA is what turned it into a slab. It now
-        // brightens the shell it crosses without closing the window through it.
-        float a = clamp(0.13 + fres*0.42 + sweep*0.10 + sweepGlow*0.03, 0.0, 0.68);
-        gl_FragColor = vec4(outc, a);`);
-    shellU = sh.uniforms;
-  };
+  const m = makeShellMaterial(ZONE, H);
+  shellU = m.userData.aegis;
+  shellMat = m;
   return m;
 }
+let shellMat = null;
 
 /* ---------------- internal organs (real anatomy) ----------------
    Holographic organ material: dark surface lit only by a settable emissive
    colour + a fresnel rim, so each organ glows its system's tier colour and the
    edges read crisply against the translucent shell. */
-function makeOrganMat() {
-  // translucent "wet tissue" look: a real shaded surface (key light gives form)
-  // tinted by the system colour, plus a bright fresnel rim so the organ reads as
-  // a glowing volume rather than a flat blob.
-  const m = new THREE.MeshStandardMaterial({
-    color: 0x1d2024, emissive: BASE.clone(), emissiveIntensity: 0.5,
-    transparent: true, opacity: 0.6, roughness: 0.42, metalness: 0.0,
-    depthWrite: true, side: THREE.DoubleSide,
-  });
-  m.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>", `#include <dithering_fragment>
-      float fr = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)),0.0,1.0), 1.7);
-      gl_FragColor.rgb += emissive.rgb * (0.35 + 1.7 * fr);
-      gl_FragColor.a = clamp(gl_FragColor.a + fr * 0.42, 0.0, 1.0);`);
-  };
-  return m;
-}
+function makeOrganMat() { return makeOrganMaterial(); }
+
 /* Vascular tree material — an additive glowing network that always reads as a
    faint circulatory web and floods with the tier colour under circulatory stress.
    MeshBasic so it self-illuminates (and blooms) regardless of scene lighting. */
@@ -308,7 +224,17 @@ function loadOrgans() {
   ORGAN_FILES.forEach((cfg) => {
     const load = () => loader.load("./vendor/models/organs/" + cfg.file, (g) => {
       const root = g.scene, vascular = !!cfg.vascular, mat = vascular ? makeVascularMat() : makeOrganMat();
-      root.traverse((o) => { if (o.isMesh) { o.material = mat; o.frustumCulled = false; o.castShadow = o.receiveShadow = false; } });
+      // Organs are the things that are SUPPOSED to glow, so they go on the bloom
+      // layer. Bloom used to be global and thresholded, which meant the body shell
+      // — a large, softly lit surface — bloomed too, laying a wide low-frequency
+      // haze directly over the anatomy and costing it every edge it had.
+      root.traverse((o) => {
+        if (o.isMesh) {
+          o.material = mat; o.frustumCulled = false;
+          o.castShadow = o.receiveShadow = false;
+          o.layers.enable(BLOOM_LAYER);
+        }
+      });
       // wrap in a pivot at the organ's own centre so beat/breathe scale about it
       const box = new THREE.Box3().setFromObject(root), c = box.getCenter(new THREE.Vector3());
       const pivot = new THREE.Group(); pivot.position.copy(c); root.position.sub(c); pivot.add(root);
@@ -747,7 +673,15 @@ function start(el) {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(2, devicePixelRatio)); renderer.setSize(w, h);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 0.98;
+  // Left on the renderer, which is correct with a composer attached: three
+  // applies NoToneMapping whenever it renders into a render target (see the
+  // `_currentRenderTarget === null` guard in WebGLRenderer), so the scene reaches
+  // the composer in linear light and OutputPass does the ACES + sRGB conversion
+  // once, at the end. Setting this to NoToneMapping would not move tone mapping
+  // to the output pass — OutputPass reads this very property — it would turn it
+  // off altogether.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.02;
   el.querySelectorAll("canvas").forEach((c) => c.remove()); el.appendChild(renderer.domElement);
 
   controls = new OrbitControls(camera, renderer.domElement);
@@ -765,21 +699,42 @@ function start(el) {
   const rim = new THREE.DirectionalLight(0xdfe3e8, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // back-rim → separates the body from the dark
   scene.add(new THREE.HemisphereLight(0x9298a1, 0x101113, 0.45));                                          // soft sky/ground gradient over the tissue
 
-  // ---- bloom post-processing: the single biggest step up from "rudimentary" —
-  // the emissive organs/vessels now bloom like a real hologram instead of reading
-  // as flat glowing blobs. Tuned subtle so healthy tissue stays crisp and only the
-  // hot (high-emissive) organs bloom.
-  composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  // strength / radius / threshold — tuned so only genuinely hot organ cores get a
-  // soft halo instead of the whole torso + head blowing out to white.
-  bloomPass = new UnrealBloomPass(new THREE.Vector2(w, h), 0.34, 0.55, 0.9);
-  composer.addPass(bloomPass);
-  composer.addPass(new OutputPass());
+  // ---- image-based lighting ------------------------------------------------
+  // Three directional lights and an ambient term are enough to shade a matte
+  // solid and nowhere near enough for wet tissue, which is why the organs read
+  // as flat glowing blobs. A PMREM-filtered procedural studio gives them a real
+  // specular response and a plausible ambient, with no asset to fetch.
+  scene.environment = createEnvironment(renderer);
+  scene.environmentIntensity = 1.0;
+
+  // ---- post-processing -----------------------------------------------------
+  // Selective bloom (only BLOOM_LAYER glows), a multisampled target so the
+  // composer stops throwing the renderer's antialiasing away, and a final grade.
+  pipeline = createPipeline({
+    renderer, scene, camera, width: w, height: h,
+    pixelRatio: Math.min(2, devicePixelRatio),
+  });
+  // Says out loud when the GPU could not give us multisampling or a depth
+  // texture, and switches the focus pass off rather than let it blur the whole
+  // frame uniformly. Both of those failed silently in the previous pipeline.
+  pipeline.selfTest();
 
   glowTex = glowTexture();
   buildGround(); buildParticles(); buildReticle(); buildInfusionParticles();
   loadBody(); loadOrgans(); buildBeacon(); buildInfection(); buildInspect();
+
+  // Everything that self-illuminates joins the organs on the bloom layer:
+  // additive FX are lights by construction, and a light that does not bloom in a
+  // scene where lights bloom reads as a decal stuck on the glass. The shell, the
+  // ground and the backdrop are deliberately left off it — they are surfaces.
+  scene.traverse((o) => {
+    if (!o.isMesh && !o.isPoints && !o.isLine) return;
+    const m = o.material;
+    if (!m) return;
+    if (m.blending === THREE.AdditiveBlending || o.isPoints || o.isLine) {
+      o.layers.enable(BLOOM_LAYER);
+    }
+  });
   renderer.domElement.addEventListener("pointerdown", onDown);
   renderer.domElement.addEventListener("pointerup", onUp);
   clock = new THREE.Clock(); started = true;
@@ -943,7 +898,7 @@ function resize() {
   if (!renderer || !container) return;
   const w = container.clientWidth, h = container.clientHeight; if (!w || !h) return;
   camera.aspect = w / h; camera.updateProjectionMatrix(); renderer.setSize(w, h);
-  if (composer) composer.setSize(w, h); if (bloomPass) bloomPass.setSize(w, h);
+  if (pipeline) pipeline.resize(w, h);
   fitCamera();
 }
 
@@ -1010,7 +965,10 @@ function animate() {
       o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.55) * (1.05 + 0.35 * ip);
       if (!o.cfg.beat && !o.cfg.breathe) o.pivot.scale.setScalar(1 + 0.05 * ip);
     }
-    o.mat.emissiveIntensity = Math.min(o.mat.emissiveIntensity, 1.45);   // never blow out
+    // Never blow out. This ceiling matters more since bloom became selective:
+    // the organs are the only things on the bloom layer, so all of the glow
+    // budget is theirs and an uncapped CRITICAL organ washes the torso flat.
+    o.mat.emissiveIntensity = Math.min(o.mat.emissiveIntensity, 1.15);
     // glow halo: a hot organ blooms through the body, beating with the pulse
     if (o.halo) {
       if (o.mon && o.sev > 0.04) {
@@ -1028,7 +986,7 @@ function animate() {
     // infusion colour for the drug-arrival "lights up" effect.
     if (o.flash > 0) {
       o.flash = Math.max(0, o.flash - dt * 1.8);
-      o.mat.emissiveIntensity = Math.min(1.7, o.mat.emissiveIntensity + o.flash * 1.2);
+      o.mat.emissiveIntensity = Math.min(1.35, o.mat.emissiveIntensity + o.flash * 1.2);
       if (o.halo) {
         o.halo.visible = true;
         o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
@@ -1147,7 +1105,14 @@ function animate() {
     inspectLabel.position.set(_v.x, _v.y + 0.13, _v.z + 0.14);
   }
 
-  if (composer) composer.render(); else renderer.render(scene, camera);
+  if (pipeline) {
+    // Park the focus plane on the orbit target, which is the mid-torso — the
+    // part of this body every clinically meaningful organ sits in. It has to be
+    // updated per frame because the user can orbit and zoom, and a focus plane
+    // fixed at start distance would drift off the anatomy the moment they did.
+    pipeline.focusOn(controls.target, camera);
+    pipeline.render();
+  } else renderer.render(scene, camera);
 }
 
 /* live calibration helpers (used to tune organ placement against the Xbot mesh) */
@@ -1278,7 +1243,15 @@ function _placeFlags() {
   });
 }
 
+/* The render pipeline, exposed for tuning and for the checks in twin3d_verify.js.
+   A shader whose effect is subtle is indistinguishable from a shader that is
+   silently doing nothing, and the only way to tell them apart is to be able to
+   turn the knob and watch the picture move. */
+function _pipeline() { return pipeline; }
+function _shell() { return shellMat; }
+
 window.AegisTwin = { start, update, resize, setOptical, setFocus, _setAtlas, _measure,
+  _pipeline, _shell,
                      triggerInfusion, _lendAnatomy, setParked,
                      setHyperscan, flag, clearFlags,
                      isParked: () => parked };
