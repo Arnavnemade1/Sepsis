@@ -505,11 +505,16 @@ export function buildBody(opts = {}) {
   const t0 = performance.now();
   const { sdf, anchors, build } = makeBodyField(opts.build);
   const H = build.height;
+  // Its own scale factor. `HS` inside makeBodyField is scoped to that closure; a
+  // blanket rename of `(H / 1.7)` reached these two lines as well and left them
+  // referencing a name that does not exist here, so buildBody threw a
+  // ReferenceError on every call and the body silently never appeared.
+  const hs = H / 1.7;
   const pad = 0.06;
   const halfW = build.shoulderSpan + build.armDrop + 0.09;
   const mesh = polygonise(sdf, {
-    min: [-halfW - pad, -pad, -0.20 * HS - pad],
-    max: [halfW + pad, H * 0.99 + pad, 0.22 * HS + pad],
+    min: [-halfW - pad, -pad, -0.20 * hs - pad],
+    max: [halfW + pad, H * 0.99 + pad, 0.22 * hs + pad],
   }, opts.resolution || 0.012);
 
   return {

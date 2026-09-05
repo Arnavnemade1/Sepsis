@@ -463,25 +463,41 @@ function loadBody() {
     console.warn("[twin] no module worker; generating the body inline", err);
   }
 
+  // Generate on the main thread. Slow and blocking, which is the whole reason
+  // for the worker — but a frozen second is survivable and a missing body is not.
+  const inline = (why) => {
+    console.warn(`[twin] generating the body inline — ${why}`);
+    try { adoptBody(buildBody(opts)); }
+    catch (e) { console.error("[twin] body generation failed outright", e); }
+  };
+
   if (worker) {
+    let settled = false;
+    const done = () => { if (settled) return true; settled = true; worker.terminate(); return false; };
     worker.onmessage = (ev) => {
-      worker.terminate();
+      if (done()) return;
+      // A worker that ran and REPORTED a failure used to log and return, leaving
+      // no body at all — the organs would load into empty space and the shell
+      // simply never appeared. That is how a ReferenceError inside buildBody
+      // showed up as "the anatomy doesn't load" rather than as an error anyone
+      // could act on. Any failure now falls through to the inline path.
       if (!ev.data || !ev.data.ok) {
-        console.error("[twin] body generation failed", ev.data && ev.data.error);
+        inline(`the worker reported: ${(ev.data && ev.data.error) || "no result"}`);
         return;
       }
       adoptBody(ev.data);
     };
     worker.onerror = (err) => {
-      worker.terminate();
-      console.warn("[twin] body worker failed; generating inline", err.message);
-      try { adoptBody(buildBody(opts)); }
-      catch (e) { console.error("[twin] body generation failed", e); }
+      if (done()) return;
+      inline(`the worker errored: ${err.message || err}`);
     };
+    // A worker that never answers is a third failure mode, and it leaves exactly
+    // the same empty stage as the other two.
+    setTimeout(() => { if (!settled) { done(); inline("the worker did not answer in 20 s"); } },
+               20000);
     worker.postMessage(opts);
   } else {
-    try { adoptBody(buildBody(opts)); }
-    catch (e) { console.error("[twin] body generation failed", e); }
+    inline("no module worker available");
   }
 }
 
