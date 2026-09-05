@@ -53,19 +53,40 @@ const REGION_LABEL = {
    in one coordinate space, so loading them together assembles a correct torso;
    we then scale/place the whole assembly inside the body shell.
    region = which body_state region drives this organ's colour. */
+/* ANATOMICAL COLOUR — what each organ actually looks like.
+   The twin used to render every organ the same neutral slate and let severity
+   supply all the colour, which made a healthy body a uniform grey smear with no
+   way to tell a liver from a spleen. These are the atlas colours; they are
+   CONSTANT, so they carry no clinical signal, and every one of them is a
+   desaturated earth tone. That is what keeps the rule intact: anatomy is fixed
+   and muted, pathology is the only saturated, only CHANGING colour in frame. */
+const TINT = {
+  heart:     0xa04036,   // myocardium, deep red-brown
+  lung:      0xb58186,   // dusky pink-grey
+  liver:     0x7d3529,   // maroon
+  spleen:    0x6e3040,   // purple-red
+  kidney:    0x944735,   // red-brown
+  pancreas:  0xc6a46d,   // tan
+  intestine: 0xc28d6b,   // pink-tan
+  bladder:   0xcbbc8a,   // pale yellow
+  cord:      0xdad3c1,   // cream
+  thymus:    0xd4a493,   // pale pink-tan
+  brain:     0xc2b7ad,   // pale grey
+};
+
 const ORGAN_FILES = [
-  { key: "lung",    file: "VH_M_Lung.glb",       region: "lungs",   breathe: true },
-  { key: "heart",   file: "VH_M_Heart.glb",      region: "heart",   beat: true },
-  { key: "liver",   file: "VH_M_Liver.glb",      region: "liver" },
-  { key: "spleen",  file: "VH_M_Spleen.glb",     region: "blood" },
-  { key: "kidneyL", file: "VH_M_Kidney_L.glb",   region: "kidneys" },
-  { key: "kidneyR", file: "VH_M_Kidney_R.glb",   region: "kidneys" },
+  { key: "lung",    file: "VH_M_Lung.glb",       region: "lungs",   breathe: true , tint: TINT.lung},
+  { key: "heart",   file: "VH_M_Heart.glb",      region: "heart",   beat: true , tint: TINT.heart},
+  { key: "liver",   file: "VH_M_Liver.glb",      region: "liver" , tint: TINT.liver},
+  { key: "spleen",  file: "VH_M_Spleen.glb",     region: "blood" , tint: TINT.spleen},
+  { key: "kidneyL", file: "VH_M_Kidney_L.glb",   region: "kidneys" , tint: TINT.kidney},
+  { key: "kidneyR", file: "VH_M_Kidney_R.glb",   region: "kidneys" , tint: TINT.kidney},
   // expanded coverage — more organ systems light up on the same co-registered atlas
-  { key: "pancreas",  file: "VH_M_Pancreas.glb",        region: "metabolic" },
-  { key: "intestine", file: "VH_M_Small_Intestine.glb", region: "metabolic", calExclude: true },
-  { key: "bladder",   file: "VH_M_Urinary_Bladder.glb", region: "kidneys",   calExclude: true },
-  { key: "cord",      file: "VH_M_Spinal_Cord.glb",     region: "brain",     calExclude: true },
-  { key: "thymus",    file: "VH_M_Thymus.glb",          region: "immune" },
+  { key: "pancreas",  file: "VH_M_Pancreas.glb",        region: "metabolic" , tint: TINT.pancreas},
+  { key: "intestine", file: "VH_M_Small_Intestine.glb", region: "metabolic", calExclude: true , tint: TINT.intestine},
+  { key: "bladder",   file: "VH_M_Urinary_Bladder.glb", region: "kidneys",   calExclude: true , tint: TINT.bladder},
+  { key: "cord",      file: "VH_M_Spinal_Cord.glb",     region: "brain",     calExclude: true , tint: TINT.cord},
+  { key: "thymus",    file: "VH_M_Thymus.glb",          region: "immune" , tint: TINT.thymus},
   // VH_M_Blood_Vasculature.glb is DELIBERATELY NOT LOADED. It was, and it was
   // described here as "a systemic vessel network" reaching the limbs. It is not:
   // rendered with a magenta probe at full opacity it resolves to a small cluster in
@@ -208,7 +229,7 @@ let shellMat = null;
    Holographic organ material: dark surface lit only by a settable emissive
    colour + a fresnel rim, so each organ glows its system's tier colour and the
    edges read crisply against the translucent shell. */
-function makeOrganMat() { return makeOrganMaterial(); }
+function makeOrganMat(tint) { return makeOrganMaterial(tint); }
 
 /* Vascular tree material — an additive glowing network that always reads as a
    faint circulatory web and floods with the tier colour under circulatory stress.
@@ -224,7 +245,8 @@ function loadOrgans() {
   const N_CAL = ORGAN_FILES.filter((c) => !c.defer).length;   // vessels load lazily, don't gate calibration
   ORGAN_FILES.forEach((cfg) => {
     const load = () => loader.load("./vendor/models/organs/" + cfg.file, (g) => {
-      const root = g.scene, vascular = !!cfg.vascular, mat = vascular ? makeVascularMat() : makeOrganMat();
+      const root = g.scene, vascular = !!cfg.vascular,
+            mat = vascular ? makeVascularMat() : makeOrganMat(cfg.tint);
       // Organs are the things that are SUPPOSED to glow, so they go on the bloom
       // layer. Bloom used to be global and thresholded, which meant the body shell
       // — a large, softly lit surface — bloomed too, laying a wide low-frequency
@@ -261,17 +283,22 @@ function loadOrgans() {
   // dark: this system carries no data, and a no-data organ must never look like a
   // confident reading.
   const bg = new THREE.IcosahedronGeometry(0.070, 3);
-  brainStub = new THREE.Mesh(bg, makeOrganMaterial());
+  brainStub = new THREE.Mesh(bg, makeOrganMaterial(TINT.brain));
   // NO DATA, so it must not read as a reading. The wireframe version was
   // obviously artificial; the first solid replacement went the other way — put
   // on the bloom layer at 0.30 emissive it became the brightest object on the
   // whole body, a glowing ball in the skull for a system this cohort does not
   // monitor at all. Dim, and deliberately NOT on the bloom layer: on this body
   // a glow means a measurement.
-  brainStub.material.emissive.copy(NODATA);
-  brainStub.material.emissiveIntensity = 0.10;
-  brainStub.material.opacity = 0.26;
-  brainStub.material.envMapIntensity = 0.35;
+  // NO DATA, handled the same way every unmonitored organ is: keep it
+  // recognisable, drain it. Emissive stays black — on this body a glow means a
+  // measurement, and the neurological system has none.
+  {
+    const hsl = {}; new THREE.Color(TINT.brain).getHSL(hsl);
+    brainStub.material.color.setHSL(hsl.h, hsl.s * 0.22, hsl.l * 0.42);
+    brainStub.material.emissive.setRGB(0, 0, 0);
+    brainStub.material.envMapIntensity = 0.55;
+  }
   brainStub.position.set(0, 1.585, -0.008);
   brainStub.scale.set(1.0, 1.06, 1.14);
   scene.add(brainStub);
@@ -911,9 +938,40 @@ function applyRegions() {
     const anyFocus = focusFoci.length > 0;
     o.focused = !!focusRegions[o.region];
     const dim = anyFocus && !o.focused ? 0.42 : 1.0;         // non-focused organs fade back
-    o.mat.emissive.copy(tierColor(reg));
-    o.mat.emissiveIntensity = (mon ? (0.7 + 1.0 * sev) : 0.5) * dim;
-    o.mat.opacity = (mon ? (0.64 + 0.26 * sev) : 0.46) * (o.focused ? 1.12 : dim);
+    // ANATOMY IN `color`, PATHOLOGY IN `emissive`.
+    //
+    // A healthy organ emits NOTHING and is lit purely by the studio environment,
+    // so it simply looks like a liver. Emissive rises only with severity, which
+    // makes a sick organ the one glowing object in an otherwise still frame —
+    // rather than the old arrangement, where every organ glowed and a failing
+    // one had to out-shout eleven healthy ones.
+    const base = new THREE.Color(o.cfg.tint || 0xb08070);
+    if (!mon) {
+      // NO DATA: keep the organ recognisable, drain the life out of it. A
+      // desaturated, darkened liver still reads as a liver and could never be
+      // mistaken for a confident healthy reading.
+      const hsl = {}; base.getHSL(hsl);
+      o.mat.color.setHSL(hsl.h, hsl.s * 0.22, hsl.l * 0.42);
+      o.mat.emissive.setRGB(0, 0, 0);
+      o.mat.emissiveIntensity = 1.0;
+    } else {
+      o.mat.color.copy(base);
+      if (sev < 0.18 || (reg && reg.status === "NORMAL")) {
+        o.mat.emissive.setRGB(0, 0, 0);            // healthy: no glow at all
+      } else {
+        // Ramp from the tier colour, scaled by severity. The floor keeps a
+        // just-crossed threshold visible; the ceiling stops CRITICAL blowing
+        // out into a white blob under bloom.
+        o.mat.emissive.copy(tierColor(reg))
+          .multiplyScalar(Math.min(0.85, 0.16 + 0.80 * sev) * dim);
+      }
+      o.mat.emissiveIntensity = 1.0;
+    }
+    o.mat.needsUpdate = false;
+    // Focus dimming now works on the LIGHT response, not on opacity: the organs
+    // are opaque, which is what gives them edges.
+    o.mat.envMapIntensity = 1.55 * (o.focused ? 1.15 : dim);
+    if (o.mat.userData.aegis) o.mat.userData.aegis.uRim.value = o.focused ? 1.25 : dim;
     if (o.halo) o.halo.material.color.copy(tierColor(reg));   // glow halo tracks the tier colour
     if (mon) overall = Math.max(overall, sev);
     if (mon && reg.status !== "NORMAL" && sev > worstSev) { worstSev = sev; worstKey = k; worstRegion = reg; }
@@ -1034,6 +1092,12 @@ function animate() {
     else o.pivot.scale.setScalar(1);
     const anyFocus = focusFoci.length > 0;
     const fdim = anyFocus && !o.focused ? 0.42 : 1.0;   // recede everything but the focus
+    // The alarm pulse. Gated on severity inside the shader, so a healthy atlas
+    // sits perfectly still — any movement in the frame is then information.
+    if (o.mat.userData.aegis) {
+      o.mat.userData.aegis.uAlarm.value =
+        o.mon && o.sev > 0.18 ? (0.5 + 0.5 * Math.sin(t * (2.2 + 3.0 * o.sev))) : 0.0;
+    }
     if (o.mon) {
       const env = o.cfg.beat ? (0.62 + 0.5 * beat) : (0.85 + 0.15 * Math.sin(t * 1.6 + (o.ph || 0)));
       o.mat.emissiveIntensity = (0.5 + 0.7 * o.sev) * env * fdim;

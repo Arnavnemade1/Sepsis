@@ -40,11 +40,30 @@ import * as THREE from "three";
  *
  * @returns {THREE.MeshPhysicalMaterial}
  */
-export function makeOrganMaterial() {
+/**
+ * @param {number} tint the organ's ANATOMICAL colour (constant, muted)
+ *
+ * TWO CHANNELS, AND THE SPLIT IS THE WHOLE DESIGN.
+ *
+ * `color` is anatomy. It never changes, so it carries no clinical signal — a
+ * liver is maroon whether or not it is failing. `emissive` is pathology, and it
+ * is BLACK on a healthy organ: the scatter, wrap and rim terms below are all
+ * multiplied by it, so a well patient's organ is lit purely by the studio
+ * environment and simply looks like itself.
+ *
+ * That is what makes the atlas look compatible with this project's rule that
+ * colour is signal. Before, every organ shared one neutral slate and severity
+ * supplied all the colour, so a healthy body was a grey smear in which a liver
+ * and a spleen were indistinguishable — and the only way to make a sick organ
+ * stand out was to out-shout eleven glowing healthy ones.
+ */
+export function makeOrganMaterial(tint = 0xb08070) {
   const m = new THREE.MeshPhysicalMaterial({
-    color: 0x23272d,
-    emissive: new THREE.Color(0x848a93),
-    emissiveIntensity: 0.5,
+    color: tint,
+    // Black: a healthy organ emits nothing and is simply lit. Pathology writes
+    // this channel, and it is the only saturated colour the body can show.
+    emissive: new THREE.Color(0x000000),
+    emissiveIntensity: 1.0,
     roughness: 0.34,          // wet, but not a mirror
     metalness: 0.0,
     clearcoat: 0.85,          // the serous film every abdominal organ has
@@ -52,10 +71,14 @@ export function makeOrganMaterial() {
     sheen: 0.5,               // velvety falloff at grazing angles
     sheenRoughness: 0.72,
     sheenColor: new THREE.Color(0x9a5c48),
-    envMapIntensity: 1.75,    // the studio env is what makes it read as wet
-    transparent: true,
-    opacity: 0.95,
-    side: THREE.DoubleSide,
+    envMapIntensity: 1.55,    // the studio env is what makes it read as wet
+    // OPAQUE. Translucent organs stacked inside a translucent shell was the
+    // reason the whole twin read as one foggy smear: every surface averaged
+    // with every surface behind it and nothing had an edge. An atlas organ is a
+    // solid object that occludes what is behind it.
+    transparent: false,
+    opacity: 1.0,
+    side: THREE.FrontSide,
     depthWrite: true,
   });
 
@@ -64,6 +87,7 @@ export function makeOrganMaterial() {
     uSSSDir: { value: new THREE.Vector3(0.6, 1.4, 1.2).normalize() },
     uRim: { value: 1.0 },
     uPulse: { value: 0.0 },
+    uAlarm: { value: 0.0 },        // 0..1 severity pulse, driven per frame
   };
 
   m.onBeforeCompile = (sh) => {
@@ -78,12 +102,15 @@ export function makeOrganMaterial() {
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>
         uniform vec3 uSSSDir;
-        uniform float uScatter, uRim, uPulse;
+        uniform float uScatter, uRim, uPulse, uAlarm;
         varying vec3 vWorldNrm; varying vec3 vWorldPos;`)
       .replace("#include <dithering_fragment>", `#include <dithering_fragment>
         // The emissive uniform arrives pre-multiplied by emissiveIntensity, so
         // severity, infection and treatment response reach these unchanged.
+        // PATHOLOGY ONLY. On a healthy organ this is black and every term below
+        // vanishes, leaving the plain lit surface — which is the point.
         vec3 tint = emissive;
+        float sick = clamp(max(max(tint.r, tint.g), tint.b), 0.0, 1.0);
         vec3 N = normalize(vWorldNrm);
         vec3 V = normalize(cameraPosition - vWorldPos);
         vec3 L = normalize(uSSSDir);
@@ -114,15 +141,27 @@ export function makeOrganMaterial() {
         float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.2);
         vec3 rim = tint * fres * 1.15 * uRim;
 
-        gl_FragColor.rgb += scatter + wrapped + rim;
+        // An anatomical rim that does NOT depend on pathology, so a healthy organ
+        // still separates from the one behind it. Drawn from the organ's own
+        // colour and kept dim — it is definition, not signal.
+        vec3 anatRim = gl_FragColor.rgb * fres * 0.55;
+
+        gl_FragColor.rgb += anatRim + scatter + wrapped + rim;
         // The heartbeat modulates brightness, never hue: a beating organ must
         // not appear to change clinical state as it beats.
         gl_FragColor.rgb *= (1.0 + 0.10 * uPulse);
-        gl_FragColor.a = clamp(gl_FragColor.a + fres * 0.30, 0.0, 1.0);`);
+        // A sick organ PULSES, gated on the emissive magnitude above, so a
+        // healthy atlas sits perfectly still and any movement in the frame
+        // means something. (No backticks in here: this GLSL lives inside a JS
+        // template literal, and one in a comment ends the literal early — the
+        // file then fails to parse for a reason that is nowhere near the code
+        // that broke it.)
+        gl_FragColor.rgb *= (1.0 + 0.22 * sick * uAlarm);
+        gl_FragColor.a = 1.0;`);
   };
 
   m.userData.aegis = u;
-  m.customProgramCacheKey = () => "aegis-organ-v2";
+  m.customProgramCacheKey = () => "aegis-organ-atlas-v1";
   return m;
 }
 
@@ -173,7 +212,21 @@ export function makeShellMaterial(zones, bodyHeight) {
     // correct hierarchy, since the organs are the only part carrying a reading.
     // Swept against the render with the anatomy in frame: 0.68 washed the body
     // to a uniform pale shape; 0.34 lost it entirely and left the head floating.
-    uGain: { value: 0.50 },
+    // Higher than before because the shell now contributes far less: what is
+    // left is mostly the silhouette line, and that wants to be crisp.
+    // MEASURED, not guessed. Sampled the rendered pixel on the thigh — shell
+    // only, no organ behind it — against the near-black background:
+    //   gain 1.00 -> rgb(187,190,195)   a white cutout
+    //   gain 0.60 -> rgb(111,115,123)
+    //   gain 0.35 -> rgb( 67, 70, 76)
+    //   gain 0.20 -> rgb( 34, 37, 42)
+    // The style wants a body that is a window with a defined edge, so the fill
+    // belongs near the bottom of that range. Every coefficient in this shader
+    // scales through this one number, which is why tuning them individually
+    // while it sat at 1.0 changed nothing visible.
+    uGain: { value: 0.30 },
+    uLitMix: { value: 0.55 },     // how much PBR shading the shell shows
+    uAlphaLit: { value: 0.10 },  // how much of that reaches ALPHA
   };
 
   m.onBeforeCompile = (sh) => {
@@ -192,7 +245,7 @@ export function makeShellMaterial(zones, bodyHeight) {
         varying float vWY; varying float vWX;
         varying vec3 vWNrm; varying vec3 vWPos;
         uniform vec3 uHead,uChest,uAbd,uPelvis,uLimb,uRim;
-        uniform float uYmax,uTime,uScan,uPulse,uGain;`)
+        uniform float uYmax,uTime,uScan,uPulse,uGain,uLitMix,uAlphaLit;`)
       .replace("#include <dithering_fragment>", `#include <dithering_fragment>
         float h = clamp(vWY / uYmax, 0.0, 1.0);
         vec3 col = uLimb;
@@ -204,7 +257,19 @@ export function makeShellMaterial(zones, bodyHeight) {
                     * (1.0 - smoothstep(0.80, 0.86, h));
         col = mix(col, uLimb, arm);
 
+        // BACK FACES MUST HAVE THEIR NORMAL FLIPPED, and this was the bug that
+        // made the whole figure a solid white cutout.
+        //
+        // The shell is DoubleSide. three flips the normal it uses for its own
+        // lighting on a back face, but a CUSTOM world-normal varying gets no
+        // such treatment — so on every rear-facing pixel N pointed away from the
+        // camera, dot(N, V) went negative, the clamp took it to 0, and fresnel
+        // read 1.0. The entire back half of the body therefore rendered as pure
+        // silhouette edge at full alpha, which is exactly what a flat white
+        // body-shaped fill looks like. No amount of tuning the lit or alpha
+        // coefficients could touch it: the term at fault was already saturated.
         vec3 N = normalize(vWNrm);
+        if (!gl_FrontFacing) N = -N;
         vec3 V = normalize(cameraPosition - vWPos);
         float ndv = clamp(dot(N, V), 0.0, 1.0);
 
@@ -273,13 +338,38 @@ export function makeShellMaterial(zones, bodyHeight) {
         // At this point gl_FragColor.rgb holds the real PBR shading. Mixing it
         // in is what lets curvature read, and it is the only thing that makes
         // surface anatomy worth carving.
-        vec3 lit = gl_FragColor.rgb;
-        float litLum = dot(lit, vec3(0.299, 0.587, 0.114));
+        // BOUND IT. The colour at this point is a LINEAR HDR radiance: with the
+        // studio environment it runs to 5 or 10 — so every coefficient written
+        // against it behaves like ten times itself, and the shell blew out to a
+        // flat white body no matter what number went in front. Reinhard maps it
+        // into 0..1 so a coefficient means what it looks like it means, and the
+        // shell can never again saturate purely because the room got brighter.
+        vec3 litRaw = gl_FragColor.rgb;
+        vec3 lit = litRaw / (1.0 + litRaw);
+        float litLum = clamp(dot(lit, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
 
-        vec3 outc = (lit * 2.9 * headDamp) + col * (0.06 + 0.22 * fres)
-                  + uRim * fres * 0.46 + haze;
+        // A THIN EDGE, NOT A FILLED VOLUME.
+        //
+        // The shell used to contribute a broad lit term plus a haze, which put a
+        // pale wash over every organ behind it — the twin read as one foggy
+        // smear because the body and its contents were the same value. The
+        // diffuse and haze terms are now a fraction of what they were and the
+        // fresnel EDGE carries almost the whole shell: you get a crisp
+        // silhouette and a body that is otherwise a window.
+        float edge = pow(fres, 1.7);
+        // The lit term is a LINEAR HDR value — with the studio environment it runs well
+        // above 1.0 — so a coefficient that looks modest written down can be 5
+        // or 10 by the time it reaches the tone mapper, where it clips to white.
+        // At 0.55 the shell rendered as a solid white cutout over the anatomy.
+        // Exposed as a uniform because the right value is not something to guess
+        // from the source: it was swept against the render.
+        vec3 outc = (lit * uLitMix * headDamp) + col * (0.012 + 0.05 * fres)
+                  + uRim * edge * 1.05 + haze * 0.18;
         outc *= sl;
-        outc += col * 0.06;
+        // The flat fill is what made the body a lit surface rather than a
+        // window. Nearly gone: the shell should be visible as an EDGE and as a
+        // faint suggestion of volume, nothing more.
+        outc += col * 0.010;
         // The sweep uses the interface accent, not an ad-hoc cyan: a sweep is
         // an affordance, and the OS reserves one hue for those.
         outc += col * sweep * 0.50 + vec3(0.48, 0.64, 0.97) * sweep * 0.58;
@@ -295,12 +385,20 @@ export function makeShellMaterial(zones, bodyHeight) {
         // suggests, and a coefficient that looks right at full-body framing
         // turns the body to milk as soon as anyone zooms in. Held low enough
         // that three or four stacked layers still read as glass.
-        float a = clamp(0.040 + fres * 0.26 + litLum * 0.80 * headDamp
-                        + sweep * 0.08 + sweepGlow * 0.025, 0.0, 0.58);
+        // Alpha follows the same rule: ~5% over the body, rising to a defined
+        // line at the silhouette. The old floor of 0.040 plus a 0.80 lit term
+        // meant the torso alone was often 30-40% opaque, which is a veil over
+        // the anatomy rather than a boundary around it.
+        // The lit term is all but out of ALPHA. It belongs in colour, where it
+        // lets curvature read; in alpha it made the whole torso semi-opaque and
+        // put a veil over the anatomy — which is the single thing this style is
+        // meant not to do. Alpha is now essentially the silhouette edge.
+        float a = clamp(0.016 + edge * 0.70 + litLum * uAlphaLit * headDamp
+                        + sweep * 0.04, 0.0, 0.70);
         gl_FragColor = vec4(outc * uGain, a * uGain);`);
   };
 
   m.userData.aegis = u;
-  m.customProgramCacheKey = () => "aegis-shell-v2";
+  m.customProgramCacheKey = () => "aegis-shell-atlas-v4";
   return m;
 }

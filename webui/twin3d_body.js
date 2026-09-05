@@ -497,10 +497,18 @@ export function polygonise(sdf, bounds, resolution = 0.012) {
   // Pass 2: a quad per grid edge that changes sign, joining the four cells
   // around it. Winding follows the sign so every face points outward.
   const indices = [];
+  // WINDING. Measured against the SDF-gradient normals, the first version had
+  // 99.8% of its triangles wound backwards — so every face the GPU considered
+  // front-facing was actually the inside of the body. Nothing crashes, because
+  // the shell renders DoubleSide; what happens instead is that `gl_FrontFacing`
+  // is inverted everywhere, any shader that uses it flips the wrong normals, and
+  // fresnel saturates across the whole surface. The visible symptom was a body
+  // that rendered as a flat white cutout no matter how the lighting coefficients
+  // were tuned, because the term at fault was already at 1.0.
   const quad = (a, b, c, d, flip) => {
     if (a < 0 || b < 0 || c < 0 || d < 0) return;
-    if (flip) indices.push(a, c, b, a, d, c);
-    else indices.push(a, b, c, a, c, d);
+    if (flip) indices.push(a, b, c, a, c, d);
+    else indices.push(a, c, b, a, d, c);
   };
   for (let l = 0; l < nz - 1; l++) {
     for (let j = 0; j < ny - 1; j++) {

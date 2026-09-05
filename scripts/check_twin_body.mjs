@@ -56,6 +56,27 @@ for (const c of edges.values()) { if (c === 1) holes++; else if (c !== 2) pinche
 check("the surface is watertight (no boundary edges)", holes === 0, `${holes} holes`);
 check("...and manifold (no edge shared by 3+ triangles)", pinches === 0, `${pinches} pinches`);
 
+// WINDING vs NORMALS. Invisible until it isn't: with the shell drawn DoubleSide
+// nothing crashes, but `gl_FrontFacing` is inverted everywhere, so any shader
+// that uses it flips the wrong normals and fresnel saturates over the whole
+// surface. The body rendered as a flat white cutout and no lighting coefficient
+// could touch it, because the term at fault was already 1.0. Measured before the
+// fix: 99.8% of triangles wound backwards.
+let wOk = 0, wBad = 0;
+for (let i = 0; i < idx.length; i += 3) {
+  const a = idx[i], c = idx[i + 1], d = idx[i + 2];
+  const ax = pos[a * 3], ay = pos[a * 3 + 1], az = pos[a * 3 + 2];
+  const e1 = [pos[c * 3] - ax, pos[c * 3 + 1] - ay, pos[c * 3 + 2] - az];
+  const e2 = [pos[d * 3] - ax, pos[d * 3 + 1] - ay, pos[d * 3 + 2] - az];
+  const gx = e1[1] * e2[2] - e1[2] * e2[1];
+  const gy = e1[2] * e2[0] - e1[0] * e2[2];
+  const gz = e1[0] * e2[1] - e1[1] * e2[0];
+  (gx * nrm[a * 3] + gy * nrm[a * 3 + 1] + gz * nrm[a * 3 + 2] > 0) ? wOk++ : wBad++;
+}
+const pctBad = 100 * wBad / (wOk + wBad);
+check("triangle winding agrees with the surface normals",
+      pctBad < 2, `${pctBad.toFixed(1)}% wound backwards`);
+
 let badN = 0;
 for (let i = 0; i < nrm.length; i += 3) {
   if (Math.abs(Math.hypot(nrm[i], nrm[i + 1], nrm[i + 2]) - 1) > 1e-3) badN++;

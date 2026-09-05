@@ -29,6 +29,15 @@ for f in webui/*.js; do
   else
     echo "FAIL  $f"
     node --check "$tmp" 2>&1 | head -4 | sed 's/^/      /'
+    # The parser blames the .replace() call, which is nowhere near the cause.
+    # Only run this hint on a file that ALREADY failed — a backtick in an
+    # ordinary JS comment is perfectly legal, and guarding every file for it
+    # flagged os.js and tactical-os.js, which have no shaders at all.
+    if grep -n '^[[:space:]]*//.*`' "$f" >/dev/null 2>&1; then
+      echo "      HINT: backtick inside a comment. If that comment is GLSL inside"
+      echo "      a template literal, it ends the literal early:"
+      grep -n '^[[:space:]]*//.*`' "$f" | head -3 | sed 's/^/        /'
+    fi
     fail=1
   fi
 done
