@@ -224,13 +224,13 @@ export function makeShellMaterial(zones, bodyHeight) {
     // belongs near the bottom of that range. Every coefficient in this shader
     // scales through this one number, which is why tuning them individually
     // while it sat at 1.0 changed nothing visible.
-    uGain: { value: 0.30 },
-    uLitMix: { value: 0.55 },     // how much PBR shading the shell shows
+    uGain: { value: 0.62 },
+    uLitMix: { value: 0.45 },     // how much PBR shading the shell shows
     // Measured against the render, not guessed: sampling the thigh pixel gave
     // rim 0.95 -> rgb(200,205,211) (a slab again), 0.50 -> (152,161,173),
     // 0.25 -> (94,106,123), 0.00 -> (41,54,69). 0.30 keeps the fill a window
     // and still draws a defined silhouette.
-    uRimGain: { value: 0.30 },
+    uRimGain: { value: 0.55 },
     uDebug: { value: 0.0 },    // the outline, independent of the fill
     uAlphaLit: { value: 0.10 },  // how much of that reaches ALPHA
   };
@@ -313,14 +313,17 @@ export function makeShellMaterial(zones, bodyHeight) {
 
         // NO SCANLINES ON THE BODY. This was
         //   0.88 + 0.12 * sin(vWY * 150.0 - uTime * 2.2)
-        // — 150 cycles per metre, so about 255 stripes down a 1.7 m figure. At
-        // any realistic panel size that is not a scanline, it is corduroy: the
-        // whole body reads as ribbed fabric and the surface anatomy underneath
-        // it is completely lost. The grade pass already lays a single, subtle
-        // screen-space scanline over the finished frame, which is where a
-        // display artefact belongs — on the display, not painted onto the
-        // patient.
-        float sl = 1.0;
+        // SCANLINES, at a frequency that reads as one. The original ran at 150
+        // cycles per metre — about 255 stripes down a 1.7 m figure, which is not
+        // a scanline, it is corduroy, and it buried the surface anatomy. Then
+        // they were removed entirely and the body became a flat fill. 17 per
+        // metre is roughly 29 bands head to foot: legible as an instrument
+        // artefact at panel size, and coarse enough that a rib or a clavicle
+        // still reads between them.
+        float sl = 0.80 + 0.20 * sin(vWY * 17.0 - uTime * 1.3);
+        // A second, much slower band gives the surface some drift so it does not
+        // sit perfectly still — a hologram that never moves reads as a decal.
+        sl *= 0.94 + 0.06 * sin(vWY * 3.1 + uTime * 0.7);
 
         // The diagnostic sweep. Its width is load-bearing: wide enough and the
         // Gaussian covers the whole torso for much of every cycle, and its
@@ -369,18 +372,42 @@ export function makeShellMaterial(zones, bodyHeight) {
         // At 0.55 the shell rendered as a solid white cutout over the anatomy.
         // Exposed as a uniform because the right value is not something to guess
         // from the source: it was swept against the render.
-        // THE OUTLINE IS SEPARATE FROM THE FILL, and that separation is the point.
+        // FRESNEL-DOMINANT, NOT A UNIFORM FILL PLUS AN OUTLINE.
         //
-        // Both used to run through the single master gain, so dropping the gain
-        // far enough to stop the body being a white slab also crushed the edge
-        // — and the figure became a flat dark cutout with no silhouette at all.
-        // The rim now has its own gain and is added AFTER the master scale, so
-        // the interior can be a window while the outline stays a defined line.
-        // The head's rim is damped along with everything else on the head: an
-        // undamped rim on the roundest part of the body is what made it read as
-        // a polished chrome ball floating above the shoulders.
-        vec3 outc = (lit * uLitMix * headDamp) + col * (0.012 + 0.05 * fres)
-                  + haze * 0.18;
+        // The previous arrangement was a flat interior with one evenly-weighted
+        // edge term bolted on, which is exactly what "uniform outline" looks
+        // like: a cardboard cutout with a line round it. A hologram is the other
+        // way round — almost nothing where the surface faces you, and more and
+        // more as it turns away, so the body is a volume made of its own
+        // silhouette rather than a shape with a border drawn on.
+        //
+        // Three bands of fresnel rather than one. A single power gives either a
+        // hard line or a broad wash; layering a wide falloff, a mid glow and a
+        // tight edge is what produces depth — you can see the far side of the
+        // torso through the near side, and the limbs read as tubes.
+        // EXPONENTS, chosen against the geometry rather than by feel. A limb is a
+        // cylinder: only a narrow strip down its centre actually faces the
+        // camera, and the debug tap measured dot(N,V) ~= 0.87 across the middle
+        // of a thigh — 29 degrees off. That is not noisy normals (adjacent
+        // vertices disagree by 8 degrees on average), it is what fresnel does to
+        // a cylinder, and at pow 1.4 it left 0.063 of glow over the whole limb.
+        // Zeroing the rim gain halved the mid-thigh brightness, which is how a
+        // "uniform outline" happens: the edge term was never confined to edges.
+        //
+        // At these powers the same 0.87 gives 0.006 / 0.00004 / ~0 — dark — while
+        // a true silhouette at 0.30 gives 0.41 / 0.17 / 0.02, which glows.
+        float glowWide = pow(1.0 - ndv, 2.5);
+        float glowMid  = pow(1.0 - ndv, 5.0);
+        float edgeHot  = pow(1.0 - ndv, 11.0);
+
+        vec3 outc = col * glowWide * 0.85
+                  + col * glowMid  * 1.60
+                  + uRim * edgeHot * 3.20
+                  + haze * 0.22;
+        // A little real shading, so curvature and the carved surface anatomy
+        // still read. Kept small: at anything higher it flattens the fresnel
+        // structure back into the fill this is meant to replace.
+        outc += lit * uLitMix * 0.30 * headDamp;
         outc *= sl;
         // The flat fill is what made the body a lit surface rather than a
         // window. Nearly gone: the shell should be visible as an EDGE and as a
@@ -388,8 +415,11 @@ export function makeShellMaterial(zones, bodyHeight) {
         outc += col * 0.010;
         // The sweep uses the interface accent, not an ad-hoc cyan: a sweep is
         // an affordance, and the OS reserves one hue for those.
-        outc += col * sweep * 0.50 + vec3(0.48, 0.64, 0.97) * sweep * 0.58;
-        outc += col * sweepGlow * 0.09;
+        // The diagnostic sweep, in the interface accent. Brighter than before —
+        // it is the most obviously "instrument" thing on the body and it was
+        // nearly invisible under a flat fill.
+        outc += col * sweep * 0.55 + vec3(0.48, 0.64, 0.97) * sweep * 0.95;
+        outc += vec3(0.30, 0.44, 0.78) * sweepGlow * 0.16;
         outc *= (1.0 + 0.07 * uPulse);
 
         // Alpha follows the shading too. Without the luminance term a lit fold
@@ -409,12 +439,17 @@ export function makeShellMaterial(zones, bodyHeight) {
         // lets curvature read; in alpha it made the whole torso semi-opaque and
         // put a veil over the anatomy — which is the single thing this style is
         // meant not to do. Alpha is now essentially the silhouette edge.
-        float a = clamp(0.016 + edge * 0.70 + litLum * uAlphaLit * headDamp
-                        + sweep * 0.04, 0.0, 0.70);
-        // A tight, bright edge. pow(fres, 3.2) keeps it to the true silhouette
-        // rather than washing across curved surfaces, and it is added outside
-        // the master gain so the outline survives a dark fill.
-        float outline = pow(fres, 3.2) * headDamp;
+        // Alpha follows the same fresnel shape, so the body is genuinely a
+        // window face-on and gains substance as it turns away. A flat floor
+        // here is what made it read as a solid sheet with a rim.
+        float a = clamp(0.010
+                        + glowWide * 0.18
+                        + glowMid  * 0.46
+                        + edgeHot  * 0.80
+                        + litLum * uAlphaLit * headDamp
+                        + sweep * 0.06, 0.0, 0.80);
+        // The silhouette line, still on its own gain so it survives a dark fill.
+        float outline = edgeHot * headDamp;
         // Debug tap, kept. uDebug = 1 shows the world normal, 2 shows dot(N,V).
         // A normal varying that is never written looks exactly like a correct
         // one until you display it, and "fresnel is 1 everywhere" got blamed on
@@ -428,6 +463,6 @@ export function makeShellMaterial(zones, bodyHeight) {
   };
 
   m.userData.aegis = u;
-  m.customProgramCacheKey = () => "aegis-shell-atlas-v6";
+  m.customProgramCacheKey = () => "aegis-shell-holo-v2";
   return m;
 }

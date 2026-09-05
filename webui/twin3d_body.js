@@ -543,8 +543,17 @@ export function polygonise(sdf, bounds, resolution = 0.012) {
   }
 
   // Normals from the analytic gradient — see the docstring.
+  //
+  // EPSILON IS A LOW-PASS FILTER, and it matters more than it looks. At
+  // 0.5 * resolution the central difference picks up the field's own voxel-scale
+  // wobble, so dot(N, V) never actually reaches 1 on a surface facing the camera
+  // — it floors somewhere well below. Every fresnel term in every shader is
+  // pow(1 - ndv, k), so that floor survives even a 7th power and the whole body
+  // glows as though it were edge-on everywhere. Measured: zeroing the rim gain
+  // halved the brightness in the MIDDLE of a thigh, which is the last place a
+  // silhouette term should be doing anything.
   const normals = new Float32Array(positions.length);
-  const e = resolution * 0.5;
+  const e = resolution * 1.35;
   for (let v = 0; v < positions.length; v += 3) {
     const x = positions[v], y = positions[v + 1], z = positions[v + 2];
     let gx = sdf(x + e, y, z) - sdf(x - e, y, z);
@@ -552,6 +561,31 @@ export function polygonise(sdf, bounds, resolution = 0.012) {
     let gz = sdf(x, y, z + e) - sdf(x, y, z - e);
     const len = Math.hypot(gx, gy, gz) || 1;
     normals[v] = gx / len; normals[v + 1] = gy / len; normals[v + 2] = gz / len;
+  }
+
+  // One Laplacian pass, weighted toward the original so the form survives.
+  // Cheap, and it removes the residual per-vertex scatter a wider stencil does
+  // not: adjacent vertices on a smooth surface should not disagree by 9 degrees.
+  const acc = new Float32Array(normals.length);
+  const deg = new Float32Array(positions.length / 3);
+  for (let i = 0; i < indices.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      const a = indices[i + k], b = indices[i + ((k + 1) % 3)];
+      for (let c = 0; c < 3; c++) {
+        acc[a * 3 + c] += normals[b * 3 + c];
+        acc[b * 3 + c] += normals[a * 3 + c];
+      }
+      deg[a]++; deg[b]++;
+    }
+  }
+  const W = 0.45;   // neighbour weight; above ~0.6 the surface starts to melt
+  for (let v = 0, nv = positions.length / 3; v < nv; v++) {
+    if (!deg[v]) continue;
+    const nx = normals[v * 3] * (1 - W) + (acc[v * 3] / deg[v]) * W;
+    const ny = normals[v * 3 + 1] * (1 - W) + (acc[v * 3 + 1] / deg[v]) * W;
+    const nz = normals[v * 3 + 2] * (1 - W) + (acc[v * 3 + 2] / deg[v]) * W;
+    const l = Math.hypot(nx, ny, nz) || 1;
+    normals[v * 3] = nx / l; normals[v * 3 + 1] = ny / l; normals[v * 3 + 2] = nz / l;
   }
 
   return {
