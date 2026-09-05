@@ -30,6 +30,7 @@ import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
 // (the composer was discarding multisampling, and there was no environment map).
 import { createPipeline, createEnvironment, BLOOM_LAYER } from "./twin3d_pipeline.js";
 import { makeOrganMaterial, makeShellMaterial } from "./twin3d_materials.js";
+import { buildBody } from "./twin3d_body.js";
 let pipeline = null;
 
 const H = 1.7;                                    // body height (feet ~0)
@@ -262,17 +263,20 @@ function loadOrgans() {
    atlas can be seated INSIDE the real thorax/abdomen rather than at a guessed
    height. Returns torso Y span, lateral/depth centre and front-back thickness. */
 function computeBodyMetrics(root) {
-  const B = {}; root.traverse((o) => { if (o.isBone) B[o.name.toLowerCase()] = o; });
-  const v = new THREE.Vector3();
-  const yOf = (re) => { const k = Object.keys(B).find((k) => re.test(k)); if (!k) return null; B[k].getWorldPosition(v); return v.y; };
-  const hips = yOf(/hips|pelvis/), neck = yOf(/neck/);
+  // Exact, because the body generator placed these. The previous version read
+  // them off a rig by regex and silently substituted hand-tuned constants when
+  // a bone name did not match, so the organ atlas could be seated against
+  // numbers that had nothing to do with the mesh on screen.
   const box = new THREE.Box3().setFromObject(root);
   const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
-  return {
-    lo: hips != null ? hips : H * 0.50,            // pelvis floor of the torso
-    hi: neck != null ? neck : H * 0.82,            // shoulders / base of neck
-    cx: c.x, cz: c.z, depth: sz.z,                 // lateral + front-back centring
-  };
+  if (bodyAnchors) {
+    return {
+      lo: bodyAnchors.torsoLo,      // pelvis floor of the torso
+      hi: bodyAnchors.torsoHi,      // shoulders / base of neck
+      cx: c.x, cz: c.z, depth: sz.z,
+    };
+  }
+  return { lo: H * 0.50, hi: H * 0.82, cx: c.x, cz: c.z, depth: sz.z };
 }
 
 /* Assemble + seat the co-registered organ atlas inside the body. When the body is
@@ -426,59 +430,112 @@ function buildReticle() {
 
 /* ---------------- model ---------------- */
 function loadBody() {
-  new GLTFLoader().load("./vendor/models/Xbot.glb", (gltf) => {
-    modelGroup = gltf.scene;
-    const mat = bodyMaterial();
-    modelGroup.traverse((o) => {
-      if (!o.isMesh) return;
-      if (/joint/i.test(o.name)) { o.visible = false; return; }
-      o.material = mat; o.frustumCulled = false; o.renderOrder = 6;
-    });
-    modelGroup.traverse((o) => { if (o.isBone && !wristBone && /lefthand|leftwrist/i.test(o.name)) wristBone = o; });
-    if (!wristBone) modelGroup.traverse((o) => { if (o.isBone && !wristBone && /hand/i.test(o.name)) wristBone = o; });
-    scene.add(modelGroup);
-    // The body is the mesh the panel is empty without; the organs land after it and
-    // are visible arriving, which is fine. This module owns #twin-stage, so it
-    // clears its own placeholder rather than announcing to a listener that then has
-    // to be kept in sync with it.
-    const ld = document.getElementById("twin-loading");
-    if (ld) { ld.classList.add("done"); setTimeout(() => ld.remove(), 600); }
-    poseArms(modelGroup);
-    normalizeBySkeleton(modelGroup);
-    bodyMetrics = computeBodyMetrics(modelGroup);   // seat the organs in the REAL torso
-    calibrateAtlas();                               // (re-runs once organs are loaded)
-    fitCamera(); buildWrist();
-    if (pendingData) { update(pendingData); pendingData = null; }
-  }, undefined, (e) => console.error("[twin] model load failed", e));
+  // GENERATED, not loaded. This used to pull vendor/models/Xbot.glb — the
+  // three.js example ROBOT — which is built as separate armour plates: a chest
+  // piece, a pelvis piece, upper and lower arm segments, thigh and calf
+  // segments, each a closed mesh with a visible gap at every joint. The twin
+  // read as disjointed parts because it WAS disjointed parts, and no material
+  // could have fixed that; a robot rendered as glass is a glass robot. It also
+  // had no business being here at all: the organs are real anatomy from the
+  // Visible Human and the thing housing them was a game character.
+  //
+  // twin3d_body.js builds the shell as a signed-distance field whose joints are
+  // SMOOTH unions, so the surface is continuous by construction, and polygonises
+  // it into one watertight mesh.
+  //
+  // 1.05 cm voxels. Measured across resolutions — holes at 0 throughout, and
+  // pinches (an edge shared by more than two triangles, where the surface
+  // self-touches inside one cell) only clearing at this step:
+  //   1.30 cm  25,880 tris  0 holes  1 pinch
+  //   1.15 cm  32,868 tris  0 holes  1 pinch
+  //   1.05 cm  39,756 tris  0 holes  0 pinches
+  const opts = { resolution: 0.0105 };
+
+  // OFF THE MAIN THREAD. It takes ~1.1 s in a browser, and run inline that froze
+  // the console while the twin came up — panels stopped painting, input stopped
+  // responding. The fallback is the synchronous path, for anything that cannot
+  // construct a module worker.
+  let worker = null;
+  try {
+    worker = new Worker(new URL("./twin3d_body_worker.js", import.meta.url),
+                        { type: "module" });
+  } catch (err) {
+    console.warn("[twin] no module worker; generating the body inline", err);
+  }
+
+  if (worker) {
+    worker.onmessage = (ev) => {
+      worker.terminate();
+      if (!ev.data || !ev.data.ok) {
+        console.error("[twin] body generation failed", ev.data && ev.data.error);
+        return;
+      }
+      adoptBody(ev.data);
+    };
+    worker.onerror = (err) => {
+      worker.terminate();
+      console.warn("[twin] body worker failed; generating inline", err.message);
+      try { adoptBody(buildBody(opts)); }
+      catch (e) { console.error("[twin] body generation failed", e); }
+    };
+    worker.postMessage(opts);
+  } else {
+    try { adoptBody(buildBody(opts)); }
+    catch (e) { console.error("[twin] body generation failed", e); }
+  }
 }
 
-function normalizeBySkeleton(root) {
-  const v = new THREE.Vector3();
-  const bounds = () => {
-    root.updateWorldMatrix(true, true);
-    let lo = Infinity, hi = -Infinity, xl = Infinity, xh = -Infinity, zl = Infinity, zh = -Infinity;
-    root.traverse((o) => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); xl = Math.min(xl, v.x); xh = Math.max(xh, v.x); zl = Math.min(zl, v.z); zh = Math.max(zh, v.z); } });
-    return { lo, hi, cx: (xl + xh) / 2, cz: (zl + zh) / 2 };
-  };
-  root.scale.setScalar(1); root.position.set(0, 0, 0);
-  let b = bounds();
-  const realH = b.hi - b.lo || 1;
-  const s = (H * 0.9) / realH;
-  root.scale.setScalar(s); root.userData.baseScale = s;
-  b = bounds();
-  root.position.x -= b.cx; root.position.z -= b.cz;
-  root.position.y -= b.lo - H * 0.05;
-  root.updateWorldMatrix(true, true);
-}
+/** Turn the generator's raw arrays into the scene's body. */
+function adoptBody(built) {
+  console.info(`[twin] body generated: ${built.stats.triangles.toLocaleString()} tris, ` +
+               `${built.stats.vertices.toLocaleString()} verts, ${built.stats.ms} ms`);
 
-function poseArms(root) {
-  const B = {};
-  root.traverse((o) => { if (o.isBone) B[o.name.toLowerCase()] = o; });
-  const find = (re) => Object.keys(B).find((k) => re.test(k));
-  const set = (re, ax, v) => { const k = find(re); if (k) B[k].rotation[ax] += v; };
-  set(/leftarm$/, "z", -1.32); set(/rightarm$/, "z", 1.32);
-  set(/leftforearm$/, "z", -0.22); set(/rightforearm$/, "z", 0.22);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(built.positions, 3));
+  geo.setAttribute("normal", new THREE.BufferAttribute(built.normals, 3));
+  geo.setIndex(new THREE.BufferAttribute(built.indices, 1));
+  geo.computeBoundingSphere();
+
+  const mat = bodyMaterial();
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 6;
+  mesh.name = "bodyShell";
+
+  modelGroup = new THREE.Group();
+  modelGroup.add(mesh);
+
+  // Anchors, placed rather than searched for. The old code hunted a third-party
+  // rig for bones matching /hips|pelvis/ and /lefthand|leftwrist/ and fell back
+  // to hand-tuned constants whenever the search missed.
+  const a = built.anchors;
+  wristBone = new THREE.Object3D();
+  wristBone.position.set(a.wristL.x, a.wristL.y, a.wristL.z);
+  modelGroup.add(wristBone);
+  bodyAnchors = a;
+
+  scene.add(modelGroup);
+
+  // The body is the mesh the panel is empty without; the organs land after it and
+  // are visible arriving, which is fine. This module owns #twin-stage, so it
+  // clears its own placeholder rather than announcing to a listener that then has
+  // to be kept in sync with it.
+  const ld = document.getElementById("twin-loading");
+  if (ld) { ld.classList.add("done"); setTimeout(() => ld.remove(), 600); }
+
+  bodyMetrics = computeBodyMetrics(modelGroup);   // seat the organs in the REAL torso
+  calibrateAtlas();                               // (re-runs once organs are loaded)
+  fitCamera(); buildWrist();
+  if (pendingData) { update(pendingData); pendingData = null; }
 }
+let bodyAnchors = null;
+
+/* normalizeBySkeleton() and poseArms() lived here. Both existed only to wrestle
+   the Xbot rig into shape — scaling the body by its bone bounds and rotating the
+   arm bones down out of a T-pose. The generated shell is built at stature with
+   its arms already where they belong, so neither has anything to act on. They
+   are deleted rather than left dead: a function that traverses for `isBone` in a
+   scene with no bones reads as if a skeleton is still involved. */
 
 /* ---------------- wearable wrist marker ---------------- */
 function buildWrist() {
@@ -689,15 +746,21 @@ function start(el) {
   controls.target.set(0, H * 0.50, 0);
   controls.autoRotate = true; controls.autoRotateSpeed = 0.28;
   controls.minPolarAngle = Math.PI * 0.38; controls.maxPolarAngle = Math.PI * 0.56;
-  // Neutral studio lighting. Every lamp used to be tinted cool blue, which put the old
-  // brand cast back onto the tissue after the materials had been neutralised — and a
-  // blue key light shifts amber toward brown, quietly weakening the exact signal the
+  // DIRECTIONAL, not ambient. Every lamp was once tinted cool blue, which put a
+  // brand cast back onto the tissue after the materials had been neutralised —
+  // and a blue key shifts amber toward brown, weakening the exact signal the
   // organ colours exist to send. White key, neutral fill, achromatic hemisphere.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.5));
-  const key = new THREE.DirectionalLight(0xffffff, 1.5); key.position.set(0.6, 1.4, 1.2); scene.add(key);
-  const fill = new THREE.DirectionalLight(0x9aa0a8, 0.55); fill.position.set(-0.8, 0.6, -0.6); scene.add(fill);
-  const rim = new THREE.DirectionalLight(0xdfe3e8, 0.85); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // back-rim → separates the body from the dark
-  scene.add(new THREE.HemisphereLight(0x9298a1, 0x101113, 0.45));                                          // soft sky/ground gradient over the tissue
+  //
+  // The LEVELS changed with the body. A big ambient term is harmless on a
+  // segmented robot, whose plate edges carry the form on their own; on one
+  // continuous surface it is the thing that flattens it. Ambient and hemisphere
+  // are cut hard and the key raised, so curvature — and the clavicles, sternum,
+  // costal margin and iliac crests carved into the mesh — actually model.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.16));
+  const key = new THREE.DirectionalLight(0xffffff, 2.35); key.position.set(0.7, 1.5, 1.15); scene.add(key);
+  const fill = new THREE.DirectionalLight(0x9aa0a8, 0.42); fill.position.set(-0.9, 0.5, -0.5); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xdfe3e8, 1.05); rim.position.set(0, 0.5, -1.5); scene.add(rim);   // back-rim → separates the body from the dark
+  scene.add(new THREE.HemisphereLight(0x9298a1, 0x101113, 0.22));                                          // soft sky/ground gradient over the tissue
 
   // ---- image-based lighting ------------------------------------------------
   // Three directional lights and an ambient term are enough to shade a matte

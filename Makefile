@@ -339,6 +339,11 @@ verify-lab:
 lab-registry:
 	PYTHONPATH=. $(PY) -m backend.aegis.lab_registry --report
 
+# A backtick inside a GLSL comment terminates the JS template literal holding
+# the shader, and the browser blames the .replace() call. Twice now.
+check-webui:
+	./scripts/check_webui_syntax.sh
+
 verify-timeline:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_risk_timeline
 

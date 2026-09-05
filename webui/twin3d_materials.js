@@ -135,17 +135,17 @@ export function makeOrganMaterial() {
  */
 export function makeShellMaterial(zones, bodyHeight) {
   const m = new THREE.MeshPhysicalMaterial({
-    color: 0x0e1013,
-    roughness: 0.42,
+    color: 0x2b3138,
+    roughness: 0.52,
     metalness: 0.0,
-    // A LOW environment response, and this is the whole argument of the surface.
-    // Giving the shell the same studio reflection the organs get turned it into a
-    // white mannequin: the brightest thing on screen became a body-shaped surface
-    // carrying no clinical signal, with the anatomy a dim smudge behind it. The
-    // shell is a window. It gets a defined edge and almost nothing else.
-    clearcoat: 0.22,
-    clearcoatRoughness: 0.45,
-    envMapIntensity: 0.14,
+    // The environment response was cut to almost nothing while the shell was a
+    // segmented robot, because lighting it only made a white mannequin brighter.
+    // With a continuous body carrying real surface anatomy, the environment is
+    // what reveals that anatomy — so it comes back up, and the overall level is
+    // held down by uGain instead, which does not flatten the form to do it.
+    clearcoat: 0.35,
+    clearcoatRoughness: 0.42,
+    envMapIntensity: 0.55,
     transparent: true,
     opacity: 0.16,
     depthWrite: false,
@@ -171,7 +171,7 @@ export function makeShellMaterial(zones, bodyHeight) {
     // Around 40 the body reads as dark glass with a bright silhouette, and the
     // organ atlas is unambiguously the brightest thing in frame — which is the
     // correct hierarchy, since the organs are the only part carrying a reading.
-    uGain: { value: 0.45 },
+    uGain: { value: 0.68 },
   };
 
   m.onBeforeCompile = (sh) => {
@@ -224,7 +224,7 @@ export function makeShellMaterial(zones, bodyHeight) {
         // what makes the body read as a volume while staying a window: the
         // anatomy behind it is never more than lightly veiled.
         float thickness = pow(1.0 - ndv, 1.25);
-        vec3 haze = col * thickness * 0.085;
+        vec3 haze = col * thickness * 0.055;
 
         float sl = 0.88 + 0.12 * sin(vWY * 150.0 - uTime * 2.2);
 
@@ -236,7 +236,25 @@ export function makeShellMaterial(zones, bodyHeight) {
         float sweep     = exp(-pow((h - uScan) * 26.0, 2.0));
         float sweepGlow = exp(-pow((h - uScan) *  7.0, 2.0));
 
-        vec3 outc = col * (0.15 + 0.34 * fres) + uRim * fres * 0.40 + haze;
+        // THE LIT RESULT IS USED, NOT DISCARDED — and this is the whole change.
+        //
+        // Everything above this line was computed from height and fresnel alone:
+        // no diffuse, no specular, no environment. On the old body that was
+        // survivable, because it was a robot made of separate armour plates and
+        // every plate edge produced a fresnel line for the eye to read. On a
+        // single continuous body the middle of the torso faces the camera almost
+        // everywhere, fresnel goes to zero across all of it, and the figure
+        // renders as a flat grey cutout — with the clavicles, sternum, costal
+        // margin and iliac crests carved into the mesh and completely invisible.
+        //
+        // At this point gl_FragColor.rgb holds the real PBR shading. Mixing it
+        // in is what lets curvature read, and it is the only thing that makes
+        // surface anatomy worth carving.
+        vec3 lit = gl_FragColor.rgb;
+        float litLum = dot(lit, vec3(0.299, 0.587, 0.114));
+
+        vec3 outc = lit * 2.9 + col * (0.06 + 0.22 * fres)
+                  + uRim * fres * 0.46 + haze;
         outc *= sl;
         outc += col * 0.06;
         // The sweep uses the interface accent, not an ad-hoc cyan: a sweep is
@@ -245,8 +263,17 @@ export function makeShellMaterial(zones, bodyHeight) {
         outc += col * sweepGlow * 0.09;
         outc *= (1.0 + 0.07 * uPulse);
 
-        float a = clamp(0.075 + fres * 0.34 + sweep * 0.08 + sweepGlow * 0.025,
-                        0.0, 0.55);
+        // Alpha follows the shading too. Without the luminance term a lit fold
+        // would brighten but stay as transparent as the flat area beside it, so
+        // the form would be there and still not read.
+        // The shell is drawn double-sided with depth writes off, so a torso
+        // stacks a front face, a back face and any overlapping limb into the
+        // same pixel. Alpha therefore accumulates faster than any single term
+        // suggests, and a coefficient that looks right at full-body framing
+        // turns the body to milk as soon as anyone zooms in. Held low enough
+        // that three or four stacked layers still read as glass.
+        float a = clamp(0.040 + fres * 0.26 + litLum * 0.80
+                        + sweep * 0.08 + sweepGlow * 0.025, 0.0, 0.58);
         gl_FragColor = vec4(outc * uGain, a * uGain);`);
   };
 
