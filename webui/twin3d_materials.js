@@ -171,7 +171,9 @@ export function makeShellMaterial(zones, bodyHeight) {
     // Around 40 the body reads as dark glass with a bright silhouette, and the
     // organ atlas is unambiguously the brightest thing in frame — which is the
     // correct hierarchy, since the organs are the only part carrying a reading.
-    uGain: { value: 0.68 },
+    // Swept against the render with the anatomy in frame: 0.68 washed the body
+    // to a uniform pale shape; 0.34 lost it entirely and left the head floating.
+    uGain: { value: 0.50 },
   };
 
   m.onBeforeCompile = (sh) => {
@@ -217,7 +219,19 @@ export function makeShellMaterial(zones, bodyHeight) {
         // explicitly rather than hoping a curve does it. Neurological state,
         // when it IS monitored, arrives through the brain organ inside — which
         // is unaffected by this.
-        fres *= mix(1.0, 0.34, smoothstep(0.84, 0.93, h));
+        // Damping only the FRESNEL was not enough. A head is a smooth sphere
+        // pointed at the key light, so most of its brightness arrives through
+        // the diffuse term, and at low shell gain it stayed lit while the body
+        // faded — a bright ball floating above a dim torso. The factor applies
+        // to the whole surface response at head height instead.
+        // 0.26, not 0.42. The head is the largest smooth convex surface on the
+        // body and it is drawn double-sided, so front and back both contribute;
+        // even damped it was the brightest thing in frame. It also carries the
+        // NEUROLOGICAL system, which on this cohort is unmonitored — and the
+        // rule everywhere else on this body is that a system with no data must
+        // never look like a confident reading.
+        float headDamp = mix(1.0, 0.26, smoothstep(0.845, 0.915, h));
+        fres *= headDamp;
 
         // Interior haze cued to how much shell the eye is looking THROUGH.
         // Facing surfaces are near-invisible, grazing ones thicken. This is
@@ -226,7 +240,16 @@ export function makeShellMaterial(zones, bodyHeight) {
         float thickness = pow(1.0 - ndv, 1.25);
         vec3 haze = col * thickness * 0.055;
 
-        float sl = 0.88 + 0.12 * sin(vWY * 150.0 - uTime * 2.2);
+        // NO SCANLINES ON THE BODY. This was
+        //   0.88 + 0.12 * sin(vWY * 150.0 - uTime * 2.2)
+        // — 150 cycles per metre, so about 255 stripes down a 1.7 m figure. At
+        // any realistic panel size that is not a scanline, it is corduroy: the
+        // whole body reads as ribbed fabric and the surface anatomy underneath
+        // it is completely lost. The grade pass already lays a single, subtle
+        // screen-space scanline over the finished frame, which is where a
+        // display artefact belongs — on the display, not painted onto the
+        // patient.
+        float sl = 1.0;
 
         // The diagnostic sweep. Its width is load-bearing: wide enough and the
         // Gaussian covers the whole torso for much of every cycle, and its
@@ -253,7 +276,7 @@ export function makeShellMaterial(zones, bodyHeight) {
         vec3 lit = gl_FragColor.rgb;
         float litLum = dot(lit, vec3(0.299, 0.587, 0.114));
 
-        vec3 outc = lit * 2.9 + col * (0.06 + 0.22 * fres)
+        vec3 outc = (lit * 2.9 * headDamp) + col * (0.06 + 0.22 * fres)
                   + uRim * fres * 0.46 + haze;
         outc *= sl;
         outc += col * 0.06;
@@ -272,7 +295,7 @@ export function makeShellMaterial(zones, bodyHeight) {
         // suggests, and a coefficient that looks right at full-body framing
         // turns the body to milk as soon as anyone zooms in. Held low enough
         // that three or four stacked layers still read as glass.
-        float a = clamp(0.040 + fres * 0.26 + litLum * 0.80
+        float a = clamp(0.040 + fres * 0.26 + litLum * 0.80 * headDamp
                         + sweep * 0.08 + sweepGlow * 0.025, 0.0, 0.58);
         gl_FragColor = vec4(outc * uGain, a * uGain);`);
   };

@@ -102,236 +102,304 @@ function sdEllipsoid(px, py, pz, cx, cy, cz, rx, ry, rz) {
  * ------------------------------------------------------------------ */
 
 /**
- * Anatomical proportions, expressed in fractions of stature so the whole body
- * scales from one number. These follow standard adult canon (roughly 7.5 heads),
- * which is what makes the silhouette read as a person rather than as a doll:
- * shoulder span ~0.23H, hip width ~0.19H, elbow at ~0.63H, knee at ~0.29H.
+ * Build parameters. Only the knobs a caller should turn; the anatomy itself is a
+ * profile table below, because a body's silhouette is not something three
+ * ellipsoids can be talked into.
  */
 export const DEFAULT_BUILD = {
   height: 1.7,
-  shoulderSpan: 0.115,   // half-span, x
-  chestDepth: 0.098,
-  waistScale: 0.80,      // waist width relative to chest
-  hipSpan: 0.088,
-  limbScale: 1.0,        // overall limb thickness
-  armDrop: 0.16,         // how far the arms hang from the body, x
-  blend: 0.052,          // smooth-union radius: THE seam control
+  girth: 1.0,        // scales widths and depths, not lengths
+  limbScale: 1.0,
+  blend: 0.020,      // joint blend radius: small, deliberately
 };
+
+/**
+ * TORSO PROFILE — [y as a fraction of stature, half-width, half-depth, z-centre],
+ * with the horizontal figures in metres for a 1.70 m adult.
+ *
+ * WHY A PROFILE AND NOT MORE ELLIPSOIDS. The first version stacked three
+ * ellipsoids and smooth-unioned them with a 5 cm blend. The blend is larger than
+ * the differences between the sections, so it averaged them away: measured on
+ * the result, the figure got WIDER going down — shoulders 0.386 m, chest 0.403,
+ * waist 0.462, hips 0.491 — which is a pear, not a person. The neck came out
+ * 0.332 m across against an adult 0.11-0.14, because the head, the neck and the
+ * shoulder mass all merged into one lump.
+ *
+ * A profile is sampled, not blended, so the silhouette is exactly what is
+ * written here. Figures follow standard adult anthropometry: biacromial 0.395,
+ * chest 0.30, waist 0.28, hip 0.33, chest depth 0.215, waist depth 0.185.
+ */
+const TORSO_PROFILE = [
+  // y/H     halfW   halfD   zC
+  [0.830,   0.058,  0.055,  0.000],   // base of neck
+  [0.812,   0.120,  0.078, -0.004],   // clavicle line
+  [0.795,   0.158,  0.094, -0.008],   // top of shoulder girdle
+  [0.762,   0.152,  0.104, -0.010],   // armpit
+  [0.720,   0.150,  0.107, -0.009],   // nipple line — widest of the chest
+  [0.680,   0.145,  0.101, -0.005],
+  [0.640,   0.140,  0.094, -0.001],
+  [0.620,   0.139,  0.092,  0.000],   // natural waist — the narrowest point
+  [0.596,   0.145,  0.095,  0.002],
+  [0.570,   0.158,  0.099,  0.004],   // iliac crest
+  [0.545,   0.165,  0.100,  0.004],   // hips — widest below the chest
+  [0.515,   0.152,  0.098,  0.004],
+  [0.487,   0.118,  0.090,  0.002],   // crotch
+];
+
+/**
+ * Distance to a lofted profile: an elliptical cross-section whose half-width and
+ * half-depth vary with height. Approximate, smooth and conservative, which is
+ * all smooth-min and surface extraction need.
+ */
+function sdProfile(px, py, pz, H, profile, girth) {
+  const n = profile.length;
+  const yTop = profile[0][0] * H, yBot = profile[n - 1][0] * H;
+  // Clamp into the table, then blend the radial distance with the overshoot past
+  // the ends so the caps round off instead of shearing flat.
+  const yc = Math.max(yBot, Math.min(yTop, py));
+  let i = 0;
+  while (i < n - 2 && profile[i + 1][0] * H > yc) i++;
+  const a = profile[i], b = profile[i + 1];
+  const ya = a[0] * H, yb = b[0] * H;
+  const t = ya === yb ? 0 : (ya - yc) / (ya - yb);
+  // Smoothstep between slices: linear interpolation leaves a visible crease at
+  // every table row, which on a glass surface the fresnel then traces.
+  const ts = t * t * (3 - 2 * t);
+  const hw = (a[1] + (b[1] - a[1]) * ts) * girth;
+  const hd = (a[2] + (b[2] - a[2]) * ts) * girth;
+  const zc = (a[3] + (b[3] - a[3]) * ts) * girth;
+
+  const qx = px / hw, qz = (pz - zc) / hd;
+  const q = Math.sqrt(qx * qx + qz * qz);
+  const radial = (q - 1) * Math.min(hw, hd);
+
+  // dy must be SIGNED — negative inside the profile's height range. A first
+  // version clamped it with Math.max(..., 0), which made the interior term
+  // max(radial, 0) = 0 everywhere inside the torso: the field came back 0 on the
+  // whole centreline and the trunk polygonised HOLLOW, an outline with nothing
+  // in it. Measured body width at the chest, waist and hips was 0.000 m.
+  const yMid = (yTop + yBot) / 2, yHalf = (yTop - yBot) / 2;
+  const dy = Math.abs(py - yMid) - yHalf;
+
+  // The standard extruded-2D combination: the interior is the larger (less
+  // negative) of the two negatives, the exterior is the length of the positive
+  // parts.
+  return Math.min(Math.max(radial, dy), 0)
+       + Math.hypot(Math.max(radial, 0), Math.max(dy, 0));
+}
 
 /**
  * Build the body's signed-distance function and its anchor points.
  *
- * Every joint here is a smooth union, which is the whole point: the shoulder is
- * not an arm mesh butted against a torso mesh, it is one field in which the two
- * are indistinguishable.
+ * Landmark heights are the standard 7.5-head adult canon, which is what makes a
+ * figure read as a person rather than as a doll: crown 1.000, chin 0.867 (one
+ * head unit), shoulder 0.818, nipple 0.720, waist 0.620, crotch 0.487 — the
+ * midpoint of the body — knee 0.285, ankle 0.039.
  */
 export function makeBodyField(build = {}) {
   const B = { ...DEFAULT_BUILD, ...build };
   const H = B.height;
   const k = B.blend;
   const L = B.limbScale;
+  const g = B.girth;
+  const S = H / 1.7;               // stature scale for every horizontal figure
 
-  // Landmarks, as fractions of stature.
-  const yHead = 0.935 * H, yChin = 0.865 * H, yNeck = 0.845 * H;
-  const yShoulder = 0.818 * H, yChest = 0.742 * H, yWaist = 0.625 * H;
-  const yHip = 0.545 * H, yCrotch = 0.485 * H;
-  const yKnee = 0.285 * H, yAnkle = 0.042 * H;
-  // Stature scale, hoisted. `H / 1.7` appeared about forty times inside sdf(),
-  // which is evaluated once per grid point — roughly 700 000 times per build —
-  // so it was some 28 million divisions for a constant.
-  const HS = H / 1.7;
-  const xShoulder = B.shoulderSpan * HS;
-  const xHip = B.hipSpan * HS;
-  const xElbow = xShoulder + B.armDrop * 0.42;
-  const xWrist = xShoulder + B.armDrop * 0.72;
-  const yElbow = 0.630 * H, yWrist = 0.480 * H;
-  const dz = B.chestDepth * HS;
+  const yCrown = 1.000 * H, yChin = 0.867 * H, yNeck = 0.830 * H;
+  const yShoulder = 0.818 * H, yChest = 0.720 * H, yWaist = 0.620 * H;
+  const yHip = 0.560 * H, yCrotch = 0.487 * H;
+  const yElbow = 0.630 * H, yWrist = 0.485 * H;
+  const yKnee = 0.285 * H, yAnkle = 0.039 * H;
 
-  // Anchors the rest of the twin needs. The old code searched a third-party rig
-  // for bones called /hips|pelvis/ and /lefthand|leftwrist/, and silently fell
-  // back to hand-tuned constants when the search missed.
+  // Arms hang OUTSIDE the ribcage. The chest half-width is 0.150; putting the
+  // shoulder joint at 0.175 and the blend at 2 cm leaves a real armpit instead
+  // of welding the arm to the torso, which is what the first version did.
+  // Arm axes, set from the ribcage outward rather than guessed. The torso is
+  // 0.152 half-width at the armpit; an upper arm of radius 0.042 whose axis sits
+  // at 0.212 leaves 1.8 cm of daylight between the two. The first version put
+  // the axis at 0.175, so the arm's inner surface was 1 cm INSIDE the chest wall
+  // and the two fused into one slab — measured gap 0.000 m at the armpit, the
+  // chest, the waist and the hip.
+  const xShoulder = 0.212 * S, xElbow = 0.222 * S, xWrist = 0.228 * S;
+  const xHip = 0.086 * S, xKnee = 0.086 * S, xAnkle = 0.076 * S;
+
   const anchors = {
     hips: { x: 0, y: yHip, z: 0 },
     neck: { x: 0, y: yNeck, z: 0 },
-    head: { x: 0, y: yHead, z: 0 },
+    head: { x: 0, y: (yChin + yCrown) / 2, z: 0 },
     chest: { x: 0, y: yChest, z: 0 },
-    wristL: { x: -xWrist, y: yWrist, z: 0.01 },
-    wristR: { x: xWrist, y: yWrist, z: 0.01 },
-    torsoLo: yHip,
+    wristL: { x: -xWrist, y: yWrist, z: 0.012 },
+    wristR: { x: xWrist, y: yWrist, z: 0.012 },
+    torsoLo: yCrotch,
     torsoHi: yShoulder,
-    depth: dz * 2.1,
+    depth: 0.215 * S * g,
   };
 
   /** The field. Returns signed distance; negative is inside the body. */
   function sdf(x, y, z) {
-    // --- torso: a stack of ellipsoids, blended into one continuous trunk ----
-    // Three sections rather than one, because a human trunk is not an ellipsoid:
-    // it flares at the ribs, draws in at the waist and flares again at the
-    // pelvis. Blending them is what produces that curve without a seam.
-    let d = sdEllipsoid(x, y, z, 0, yChest, 0,
-                        xShoulder * 1.02, (yShoulder - yWaist) * 0.86, dz);
-    d = smin(d, sdEllipsoid(x, y, z, 0, yWaist, 0,
-                            xShoulder * B.waistScale, (yChest - yHip) * 0.52, dz * 0.86), k);
-    d = smin(d, sdEllipsoid(x, y, z, 0, yHip, 0,
-                            xHip * 1.34, (yWaist - yCrotch) * 0.62, dz * 0.92), k);
+    // --- torso, straight off the profile ------------------------------------
+    let d = sdProfile(x, y, z, H, TORSO_PROFILE, g * S);
 
-    // --- neck and head ------------------------------------------------------
-    d = smin(d, sdCapsule(x, y, z, 0, yNeck - 0.02 * H, -0.004,
-                          0, yChin, -0.004, 0.049 * HS * L), k);
-    d = smin(d, sdEllipsoid(x, y, z, 0, yHead, -0.004,
-                            0.082 * HS, 0.104 * HS, 0.092 * HS), k * 1.3);
+    // --- neck: a real one, and narrow ---------------------------------------
+    // Measured 0.332 m across before this; an adult neck is 0.115. It is blended
+    // at a fraction of the joint radius so the head does not sink into the
+    // shoulders, which is what made the first figure look like a snowman.
+    d = smin(d, sdCapsule(x, y, z, 0, yNeck - 0.010 * H, -0.008 * S,
+                          0, yChin - 0.012 * H, -0.012 * S, 0.058 * S * g), k * 0.7);
 
-    // --- shoulders ----------------------------------------------------------
-    // Deliberately generous spheres. A shoulder is the joint where a hard union
-    // is most obvious, and it is the first place the eye reads "assembled".
+    // --- head ----------------------------------------------------------------
+    // An ellipsoid taller than it is wide, set back a little, plus a jaw mass.
+    // One head unit is H/7.5, and the cranium must occupy it or the whole canon
+    // collapses: a small head on wide shoulders is what reads as "blob".
+    const yHead = (yChin + yCrown) / 2;
+    d = smin(d, sdEllipsoid(x, y, z, 0, yHead + 0.006 * H, -0.008 * S,
+                            0.077 * S, 0.098 * S, 0.086 * S), k * 0.8);
+    d = smin(d, sdEllipsoid(x, y, z, 0, yChin + 0.026 * H, -0.020 * S,
+                            0.058 * S, 0.048 * S, 0.062 * S), k * 1.1);
+
+    // --- shoulder caps -------------------------------------------------------
     for (const s of [-1, 1]) {
-      d = smin(d, sdEllipsoid(x, y, z, s * xShoulder, yShoulder, 0,
-                              0.062 * HS * L, 0.058 * HS * L,
-                              0.060 * HS * L), k * 1.5);
+      // The deltoid bridges ribcage to arm ABOVE the armpit. Its blend is held
+      // down because a generous one reaches below the joint and quietly fills
+      // the gap the arm placement just bought.
+      d = smin(d, sdEllipsoid(x, y, z, s * xShoulder * 0.86, yShoulder - 0.010 * H, -0.004 * S,
+                              0.058 * S * L, 0.052 * S * L, 0.058 * S * L), k * 1.1);
     }
 
-    // --- arms ---------------------------------------------------------------
+    // --- arms ----------------------------------------------------------------
     for (const s of [-1, 1]) {
       d = smin(d, sdCapsule(x, y, z,
-                            s * xShoulder, yShoulder - 0.012 * H, 0,
-                            s * xElbow, yElbow, 0.004,
-                            0.046 * HS * L), k * 1.2);
+                            s * xShoulder, yShoulder - 0.020 * H, -0.002 * S,
+                            s * xElbow, yElbow, 0.004 * S,
+                            0.042 * S * L), k * 0.55);
       d = smin(d, sdCapsule(x, y, z,
-                            s * xElbow, yElbow, 0.004,
-                            s * xWrist, yWrist, 0.010,
-                            0.037 * HS * L), k);
-      // hand — flattened, so it reads as a hand and not a club
+                            s * xElbow, yElbow, 0.004 * S,
+                            s * xWrist, yWrist, 0.012 * S,
+                            0.034 * S * L), k * 0.55);
+      // Hand — flat, and long enough to read as one, but not thinner than the
+      // grid can resolve. At 0.015 m half-depth it was about three voxels thick,
+      // and the front and back surfaces met inside single cells: the mesh came
+      // back with non-manifold pinch edges that no resolution fixed (5 at
+      // 1.05 cm, 3 at 0.95, 4 at 0.85, 1 at 0.75). A real hand is ~0.024 half.
       d = smin(d, sdEllipsoid(x, y, z,
-                              s * (xWrist + 0.012 * H), yWrist - 0.052 * H, 0.012,
-                              0.030 * HS, 0.058 * HS, 0.017 * HS), k);
+                              s * (xWrist + 0.004 * S), yWrist - 0.055 * H, 0.014 * S,
+                              0.030 * S, 0.056 * S, 0.024 * S), k);
+    }
+
+    // --- legs ----------------------------------------------------------------
+    for (const s of [-1, 1]) {
+      d = smin(d, sdCapsule(x, y, z,
+                            s * xHip, yCrotch + 0.030 * H, 0,
+                            s * xKnee, yKnee + 0.020 * H, 0.002 * S,
+                            0.079 * S * L), k * 1.5);
+      d = smin(d, sdCapsule(x, y, z,
+                            s * xKnee, yKnee, 0.002 * S,
+                            s * xAnkle, yAnkle, 0.008 * S,
+                            0.052 * S * L), k * 1.1);
+      // foot — long in z, so the figure stands rather than balancing on pegs
+      d = smin(d, sdEllipsoid(x, y, z,
+                              s * xAnkle, yAnkle - 0.016 * H, 0.040 * H,
+                              0.040 * S, 0.028 * S, 0.092 * S), k);
     }
 
     // --- surface anatomy ----------------------------------------------------
-    // A smooth blob of blended capsules is still a mannequin: correct in
-    // silhouette and empty everywhere inside it. What makes a body read as a
-    // body is the landmarks the skin actually shows — the clavicles, the
-    // sternum, the costal margin, the iliac crest, the line of the spine. On a
-    // glass shell these matter more than on an opaque one, because the fresnel
-    // rim traces every one of them and gives the eye something to hold on to
-    // between the silhouette and the organs.
-    //
-    // Added with smooth unions and carved with smooth subtractions, so none of
-    // them introduces the crease the whole approach exists to avoid.
+    // A correct silhouette is still an empty one. These are the landmarks the
+    // skin actually shows, and on a glass shell they matter more than on an
+    // opaque one: the fresnel rim traces every one of them, giving the eye
+    // something between the outline and the organs. Carved with smooth
+    // subtraction so none of them reintroduces a crease.
+    const dzc = 0.107 * S * g;
 
-    // clavicles — the strongest surface landmark on a human chest
+    // Clavicles. Radius and blend both matter here: at 0.013 m the capsule was
+    // about 2.5 voxels across, so where it grazed the chest wall the two
+    // surfaces met inside single cells and every non-manifold pinch edge in the
+    // mesh landed on it — all five, at y/H 0.814-0.830, x 0.10-0.12. A thicker
+    // ridge blended further INTO the torso is both anatomically better (a
+    // clavicle shows as a ridge, not a rod laid on the skin) and resolvable.
     for (const s of [-1, 1]) {
       d = smin(d, sdCapsule(x, y, z,
-                            s * 0.012 * H, yShoulder + 0.012 * H, -dz * 0.52,
-                            s * xShoulder * 0.94, yShoulder + 0.004 * H, -dz * 0.22,
-                            0.016 * HS), k * 0.9);
+                            s * 0.016 * S, yShoulder + 0.007 * H, -dzc * 0.52,
+                            s * xShoulder * 0.84, yShoulder + 0.001 * H, -dzc * 0.24,
+                            0.019 * S), k * 1.6);
     }
-    // suprasternal notch, between them
-    d = ssub(d, sdEllipsoid(x, y, z, 0, yShoulder + 0.016 * H, -dz * 0.72,
-                            0.026 * HS, 0.020 * HS, 0.030 * HS),
-             k * 0.8);
+    d = ssub(d, sdEllipsoid(x, y, z, 0, yShoulder + 0.012 * H, -dzc * 0.86,
+                            0.024 * S, 0.018 * S, 0.026 * S), k * 0.9);
 
-    // pectorals / chest mass, and the sternal groove between them
+    // pectorals, and the sternal groove between them
     for (const s of [-1, 1]) {
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * xShoulder * 0.46, yChest + 0.030 * H, -dz * 0.62,
-                              0.062 * HS, 0.048 * HS, 0.030 * HS),
-               k * 1.4);
+      d = smin(d, sdEllipsoid(x, y, z, s * 0.062 * S, yChest + 0.014 * H, -dzc * 0.58,
+                              0.058 * S, 0.042 * S, 0.026 * S), k * 1.6);
     }
-    d = ssub(d, sdCapsule(x, y, z, 0, yShoulder - 0.008 * H, -dz * 0.86,
-                          0, yChest - 0.008 * H, -dz * 0.90, 0.018 * HS),
-             k * 1.1);
+    d = ssub(d, sdCapsule(x, y, z, 0, yShoulder - 0.014 * H, -dzc * 0.92,
+                          0, yChest - 0.020 * H, -dzc * 0.94, 0.016 * S), k * 1.2);
 
-    // costal margin — the shallow V under the ribs that separates chest from
-    // abdomen, and the single cue that reads most clearly as "torso" rather
-    // than "cylinder"
+    // costal margin — the shallow V under the ribs, the clearest cue that a
+    // torso is a torso and not a cylinder
     for (const s of [-1, 1]) {
       d = ssub(d, sdCapsule(x, y, z,
-                            s * 0.010 * H, yChest - 0.030 * H, -dz * 0.80,
-                            s * xShoulder * 0.86, yChest - 0.002 * H, -dz * 0.30,
-                            0.013 * HS), k * 1.0);
+                            s * 0.008 * S, yChest - 0.056 * H, -dzc * 0.84,
+                            s * 0.124 * S, yChest - 0.012 * H, -dzc * 0.34,
+                            0.012 * S), k * 1.1);
     }
 
-    // linea alba, faint, and the navel
-    d = ssub(d, sdCapsule(x, y, z, 0, yChest - 0.045 * H, -dz * 0.88,
-                          0, yHip + 0.030 * H, -dz * 0.86, 0.009 * HS), k * 1.2);
-    d = ssub(d, sdEllipsoid(x, y, z, 0, yWaist - 0.030 * H, -dz * 0.86,
-                            0.013 * HS, 0.016 * HS, 0.020 * HS),
-             k * 0.7);
+    // linea alba and navel
+    d = ssub(d, sdCapsule(x, y, z, 0, yChest - 0.062 * H, -dzc * 0.90,
+                          0, yWaist - 0.050 * H, -dzc * 0.88, 0.008 * S), k * 1.3);
+    d = ssub(d, sdEllipsoid(x, y, z, 0, yWaist - 0.004 * H, -dzc * 0.88,
+                            0.012 * S, 0.014 * S, 0.018 * S), k * 0.7);
 
-    // iliac crests — the hip landmarks that stop the pelvis reading as a ball
+    // spinal groove and scapulae
+    d = ssub(d, sdCapsule(x, y, z, 0, yShoulder - 0.014 * H, dzc * 0.90,
+                          0, yWaist - 0.010 * H, dzc * 0.88, 0.013 * S), k * 1.4);
     for (const s of [-1, 1]) {
-      d = smin(d, sdCapsule(x, y, z,
-                            s * xHip * 0.62, yHip + 0.028 * H, -dz * 0.52,
-                            s * xHip * 1.30, yHip + 0.008 * H, dz * 0.10,
-                            0.017 * HS), k * 1.3);
+      d = smin(d, sdEllipsoid(x, y, z, s * 0.070 * S, yChest + 0.048 * H, dzc * 0.62,
+                              0.046 * S, 0.050 * S, 0.018 * S), k * 1.6);
     }
 
-    // spinal groove, down the back
-    d = ssub(d, sdCapsule(x, y, z, 0, yShoulder - 0.010 * H, dz * 0.88,
-                          0, yHip + 0.020 * H, dz * 0.86, 0.014 * HS), k * 1.3);
-    // scapulae
+    // deltoid and biceps, so an arm tapers like a limb and not like a pipe
     for (const s of [-1, 1]) {
+      d = smin(d, sdEllipsoid(x, y, z, s * xShoulder, yShoulder - 0.052 * H, 0,
+                              0.040 * S * L, 0.052 * S * L, 0.042 * S * L), k * 0.9);
       d = smin(d, sdEllipsoid(x, y, z,
-                              s * xShoulder * 0.52, yChest + 0.048 * H, dz * 0.60,
-                              0.048 * HS, 0.052 * HS, 0.020 * HS),
-               k * 1.5);
-    }
-
-    // deltoid and biceps mass, so the arms taper like limbs and not like pipes
-    for (const s of [-1, 1]) {
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * (xShoulder + 0.008 * H), yShoulder - 0.030 * H, 0,
-                              0.040 * HS * L, 0.052 * HS * L,
-                              0.042 * HS * L), k * 1.6);
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * (xShoulder + (xElbow - xShoulder) * 0.45),
-                              (yShoulder + yElbow) * 0.5, -0.006,
-                              0.033 * HS * L, 0.055 * HS * L,
-                              0.034 * HS * L), k * 1.5);
+                              s * (xShoulder + (xElbow - xShoulder) * 0.5),
+                              (yShoulder + yElbow) * 0.5, -0.008 * S,
+                              0.031 * S * L, 0.058 * S * L, 0.032 * S * L), k * 0.8);
     }
 
     // sternocleidomastoid — the two cords in the neck
     for (const s of [-1, 1]) {
       d = smin(d, sdCapsule(x, y, z,
-                            s * 0.010 * H, yChin - 0.004 * H, -0.020,
-                            s * 0.028 * H, yNeck - 0.030 * H, -0.016,
-                            0.010 * HS), k * 0.9);
+                            s * 0.012 * S, yChin - 0.010 * H, -0.026 * S,
+                            s * 0.030 * S, yNeck - 0.024 * H, -0.018 * S,
+                            0.009 * S), k * 0.8);
     }
 
-    // --- legs ---------------------------------------------------------------
+    // quadriceps, calf and knee
     for (const s of [-1, 1]) {
-      d = smin(d, sdCapsule(x, y, z,
-                            s * xHip * 0.86, yCrotch + 0.04 * H, 0,
-                            s * xHip * 0.92, yKnee, 0.002,
-                            0.072 * HS * L), k * 1.4);
-      d = smin(d, sdCapsule(x, y, z,
-                            s * xHip * 0.92, yKnee, 0.002,
-                            s * xHip * 0.80, yAnkle, 0.006,
-                            0.050 * HS * L), k * 1.1);
-      // foot — long in z, so the figure stands rather than balancing on pegs
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * xHip * 0.80, yAnkle - 0.012 * H, 0.036 * H,
-                              0.042 * HS, 0.030 * HS, 0.088 * HS), k);
-      // quadriceps at the front of the thigh, calf at the back of the shin —
-      // without them a leg is a cone and the figure reads as a shop dummy
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * xHip * 0.88, (yCrotch + yKnee) * 0.52, -0.014,
-                              0.052 * HS * L, 0.098 * HS * L,
-                              0.048 * HS * L), k * 1.7);
-      d = smin(d, sdEllipsoid(x, y, z,
-                              s * xHip * 0.90, yKnee - 0.062 * H, 0.016,
-                              0.038 * HS * L, 0.062 * HS * L,
-                              0.036 * HS * L), k * 1.5);
-      // knee — a slight widening, so the joint is where the eye expects it
-      d = smin(d, sdEllipsoid(x, y, z, s * xHip * 0.92, yKnee, -0.004,
-                              0.044 * HS * L, 0.038 * HS * L,
-                              0.044 * HS * L), k * 1.4);
+      d = smin(d, sdEllipsoid(x, y, z, s * xHip, (yCrotch + yKnee) * 0.54, -0.016 * S,
+                              0.052 * S * L, 0.105 * S * L, 0.048 * S * L), k * 1.8);
+      d = smin(d, sdEllipsoid(x, y, z, s * xKnee, yKnee - 0.070 * H, 0.018 * S,
+                              0.038 * S * L, 0.066 * S * L, 0.036 * S * L), k * 1.6);
+      d = smin(d, sdEllipsoid(x, y, z, s * xKnee, yKnee, -0.004 * S,
+                              0.045 * S * L, 0.040 * S * L, 0.046 * S * L), k * 1.4);
     }
     return d;
   }
 
-  return { sdf, anchors, build: B };
+  // The volume the field can possibly occupy. Returned rather than recomputed by
+  // the caller: buildBody used to derive it from `shoulderSpan` and `armDrop`,
+  // and when the build parameters were rewritten those names disappeared. The
+  // arithmetic produced NaN, the grid had no cells, and buildBody returned a
+  // mesh of ZERO triangles — a body that silently did not exist. The field is
+  // the only thing that knows how far it reaches, so it is the thing that says.
+  const reach = (xWrist + 0.030 * S) * 1.06;   // hands are the widest point
+  const bounds = {
+    min: [-reach, -0.03 * H, -0.16 * S * g],
+    max: [reach, yCrown + 0.03 * H, 0.20 * S * g],
+  };
+
+  return { sdf, anchors, bounds, build: B };
 }
+
 
 /* ------------------------------------------------------------------ *
  * Naive surface nets
@@ -503,18 +571,11 @@ export function polygonise(sdf, bounds, resolution = 0.012) {
  */
 export function buildBody(opts = {}) {
   const t0 = performance.now();
-  const { sdf, anchors, build } = makeBodyField(opts.build);
-  const H = build.height;
-  // Its own scale factor. `HS` inside makeBodyField is scoped to that closure; a
-  // blanket rename of `(H / 1.7)` reached these two lines as well and left them
-  // referencing a name that does not exist here, so buildBody threw a
-  // ReferenceError on every call and the body silently never appeared.
-  const hs = H / 1.7;
-  const pad = 0.06;
-  const halfW = build.shoulderSpan + build.armDrop + 0.09;
+  const { sdf, anchors, bounds, build } = makeBodyField(opts.build);
+  const pad = 0.05;
   const mesh = polygonise(sdf, {
-    min: [-halfW - pad, -pad, -0.20 * hs - pad],
-    max: [halfW + pad, H * 0.99 + pad, 0.22 * hs + pad],
+    min: [bounds.min[0] - pad, bounds.min[1] - pad, bounds.min[2] - pad],
+    max: [bounds.max[0] + pad, bounds.max[1] + pad, bounds.max[2] + pad],
   }, opts.resolution || 0.012);
 
   return {

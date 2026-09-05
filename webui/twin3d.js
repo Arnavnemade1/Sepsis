@@ -253,11 +253,28 @@ function loadOrgans() {
     // defer the heavy vascular mesh until the core organs are up (keeps first paint fast)
     if (cfg.defer) setTimeout(load, 1400); else load();
   });
-  // dim placeholder for the (unmonitored) brain so the head isn't empty
-  const bg = new THREE.IcosahedronGeometry(0.072, 2);
-  brainStub = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({
-    color: NODATA, wireframe: true, transparent: true, opacity: 0.22, depthWrite: false }));
-  brainStub.position.set(0, 1.555, 0.01); brainStub.scale.set(1, 1.05, 1.12); scene.add(brainStub);
+  // Dim placeholder for the (unmonitored) brain, so the head is not empty.
+  //
+  // It was a WIREFRAME icosahedron, which inside a translucent head rendered as a
+  // geodesic ball floating in the skull — the single most artificial thing on the
+  // body, and nothing like the smooth solids every other organ is. Solid now, and
+  // dark: this system carries no data, and a no-data organ must never look like a
+  // confident reading.
+  const bg = new THREE.IcosahedronGeometry(0.070, 3);
+  brainStub = new THREE.Mesh(bg, makeOrganMaterial());
+  // NO DATA, so it must not read as a reading. The wireframe version was
+  // obviously artificial; the first solid replacement went the other way — put
+  // on the bloom layer at 0.30 emissive it became the brightest object on the
+  // whole body, a glowing ball in the skull for a system this cohort does not
+  // monitor at all. Dim, and deliberately NOT on the bloom layer: on this body
+  // a glow means a measurement.
+  brainStub.material.emissive.copy(NODATA);
+  brainStub.material.emissiveIntensity = 0.10;
+  brainStub.material.opacity = 0.26;
+  brainStub.material.envMapIntensity = 0.35;
+  brainStub.position.set(0, 1.585, -0.008);
+  brainStub.scale.set(1.0, 1.06, 1.14);
+  scene.add(brainStub);
 }
 /* Measure the loaded body's torso from its skeleton + mesh box, so the organ
    atlas can be seated INSIDE the real thorax/abdomen rather than at a guessed
