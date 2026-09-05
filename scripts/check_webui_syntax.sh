@@ -45,12 +45,4 @@ if [ "$fail" -eq 0 ]; then
   echo "$n webui modules parse."
 fi
 
-# Parsing is not enough. The defect that actually shipped was a ReferenceError in
-# the body generator: the file parsed, buildBody() threw on every call, and the
-# only symptom was that the body silently never appeared. So the generator is RUN.
-if [ -f scripts/check_twin_body.mjs ]; then
-  echo ""
-  node scripts/check_twin_body.mjs || fail=1
-fi
-
 exit "$fail"
