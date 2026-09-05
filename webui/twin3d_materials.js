@@ -226,6 +226,12 @@ export function makeShellMaterial(zones, bodyHeight) {
     // while it sat at 1.0 changed nothing visible.
     uGain: { value: 0.30 },
     uLitMix: { value: 0.55 },     // how much PBR shading the shell shows
+    // Measured against the render, not guessed: sampling the thigh pixel gave
+    // rim 0.95 -> rgb(200,205,211) (a slab again), 0.50 -> (152,161,173),
+    // 0.25 -> (94,106,123), 0.00 -> (41,54,69). 0.30 keeps the fill a window
+    // and still draws a defined silhouette.
+    uRimGain: { value: 0.30 },
+    uDebug: { value: 0.0 },    // the outline, independent of the fill
     uAlphaLit: { value: 0.10 },  // how much of that reaches ALPHA
   };
 
@@ -245,7 +251,7 @@ export function makeShellMaterial(zones, bodyHeight) {
         varying float vWY; varying float vWX;
         varying vec3 vWNrm; varying vec3 vWPos;
         uniform vec3 uHead,uChest,uAbd,uPelvis,uLimb,uRim;
-        uniform float uYmax,uTime,uScan,uPulse,uGain,uLitMix,uAlphaLit;`)
+        uniform float uYmax,uTime,uScan,uPulse,uGain,uLitMix,uAlphaLit,uRimGain,uDebug;`)
       .replace("#include <dithering_fragment>", `#include <dithering_fragment>
         float h = clamp(vWY / uYmax, 0.0, 1.0);
         vec3 col = uLimb;
@@ -363,8 +369,18 @@ export function makeShellMaterial(zones, bodyHeight) {
         // At 0.55 the shell rendered as a solid white cutout over the anatomy.
         // Exposed as a uniform because the right value is not something to guess
         // from the source: it was swept against the render.
+        // THE OUTLINE IS SEPARATE FROM THE FILL, and that separation is the point.
+        //
+        // Both used to run through the single master gain, so dropping the gain
+        // far enough to stop the body being a white slab also crushed the edge
+        // — and the figure became a flat dark cutout with no silhouette at all.
+        // The rim now has its own gain and is added AFTER the master scale, so
+        // the interior can be a window while the outline stays a defined line.
+        // The head's rim is damped along with everything else on the head: an
+        // undamped rim on the roundest part of the body is what made it read as
+        // a polished chrome ball floating above the shoulders.
         vec3 outc = (lit * uLitMix * headDamp) + col * (0.012 + 0.05 * fres)
-                  + uRim * edge * 1.05 + haze * 0.18;
+                  + haze * 0.18;
         outc *= sl;
         // The flat fill is what made the body a lit surface rather than a
         // window. Nearly gone: the shell should be visible as an EDGE and as a
@@ -395,10 +411,23 @@ export function makeShellMaterial(zones, bodyHeight) {
         // meant not to do. Alpha is now essentially the silhouette edge.
         float a = clamp(0.016 + edge * 0.70 + litLum * uAlphaLit * headDamp
                         + sweep * 0.04, 0.0, 0.70);
-        gl_FragColor = vec4(outc * uGain, a * uGain);`);
+        // A tight, bright edge. pow(fres, 3.2) keeps it to the true silhouette
+        // rather than washing across curved surfaces, and it is added outside
+        // the master gain so the outline survives a dark fill.
+        float outline = pow(fres, 3.2) * headDamp;
+        // Debug tap, kept. uDebug = 1 shows the world normal, 2 shows dot(N,V).
+        // A normal varying that is never written looks exactly like a correct
+        // one until you display it, and "fresnel is 1 everywhere" got blamed on
+        // three different things before this settled it in one call. Costs a
+        // branch on a uniform, which every GPU folds away.
+        if (uDebug > 0.5 && uDebug < 1.5) { gl_FragColor = vec4(N * 0.5 + 0.5, 1.0); return; }
+        if (uDebug > 1.5) { gl_FragColor = vec4(vec3(ndv), 1.0); return; }
+        vec3 rimCol = mix(uRim, col, 0.25);
+        gl_FragColor = vec4(outc * uGain + rimCol * outline * uRimGain,
+                            clamp(a * uGain + outline * uRimGain * 0.85, 0.0, 0.92));`);
   };
 
   m.userData.aegis = u;
-  m.customProgramCacheKey = () => "aegis-shell-atlas-v4";
+  m.customProgramCacheKey = () => "aegis-shell-atlas-v6";
   return m;
 }

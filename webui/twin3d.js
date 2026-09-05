@@ -31,6 +31,7 @@ import { GLTFLoader } from "./vendor/three/GLTFLoader.js";
 import { createPipeline, createEnvironment, BLOOM_LAYER } from "./twin3d_pipeline.js";
 import { makeOrganMaterial, makeShellMaterial } from "./twin3d_materials.js";
 import { buildBody } from "./twin3d_body.js";
+import { buildVessels, makeVesselMaterial } from "./twin3d_vessels.js";
 let pipeline = null;
 
 const H = 1.7;                                    // body height (feet ~0)
@@ -117,6 +118,7 @@ let modelGroup, atlasGroup, organs = {}, organLoadCount = 0, brainStub, bodyMetr
 let focusFoci = [], focusRegions = {};       // the attending's per-patient focus (risk factor)
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
+let vesselGroup, arterialMesh, venousMesh;
 let infectFX, infLabel, lastInfection = null;     // suspected infection focus
 const INFECT_COL = 0xde833a;                       // distinct "infection" orange (= --dys)
 // suspected-focus region -> organ to light up (null = no single organ / systemic)
@@ -583,12 +585,43 @@ function adoptBody(built) {
   const ld = document.getElementById("twin-loading");
   if (ld) { ld.classList.add("done"); setTimeout(() => ld.remove(), 600); }
 
+  buildVesselTree();
   bodyMetrics = computeBodyMetrics(modelGroup);   // seat the organs in the REAL torso
   calibrateAtlas();                               // (re-runs once organs are loaded)
   fitCamera(); buildWrist();
   if (pendingData) { update(pendingData); pendingData = null; }
 }
 let bodyAnchors = null;
+
+/* The vascular tree. Generated, not loaded — the CCF's
+   VH_M_Blood_Vasculature.glb covers abdominal and pelvic vessels only and
+   resolves to a cluster in the pelvis, which is why the atlas never loads it.
+   See twin3d_vessels.js for what this is and, more importantly, what it is not. */
+function buildVesselTree() {
+  try {
+    const V = buildVessels(H);
+    vesselGroup = new THREE.Group();
+    // Arterial: oxygenated, bright, flowing AWAY from the heart.
+    arterialMesh = new THREE.Mesh(V.arterial,
+      makeVesselMaterial(0xd4453c, { speed: 0.62, dir: 1.0, bright: 1.0 }));
+    // Venous: deoxygenated, deeper and cooler, flowing BACK toward it. The
+    // direction flip is the cheapest way to make the two trees legible as
+    // different things at a glance.
+    venousMesh = new THREE.Mesh(V.venous,
+      makeVesselMaterial(0x3f6fb5, { speed: 0.40, dir: -1.0, bright: 0.78 }));
+    for (const m of [arterialMesh, venousMesh]) {
+      m.frustumCulled = false;
+      m.renderOrder = 4;              // inside the shell, over the organs
+      m.layers.enable(BLOOM_LAYER);   // vessels are emissive; they should bloom
+      vesselGroup.add(m);
+    }
+    scene.add(vesselGroup);
+    console.info(`[twin] vasculature: ${V.counts.arterial} arterial + ` +
+                 `${V.counts.venous} venous segments`);
+  } catch (err) {
+    console.error("[twin] vessel generation failed", err);
+  }
+}
 
 /* normalizeBySkeleton() and poseArms() lived here. Both existed only to wrestle
    the Xbot rig into shape — scaling the body by its bone bounds and rotating the
@@ -1073,6 +1106,19 @@ function animate() {
   // body shell: gentle breathe + shader uniforms
   if (modelGroup && modelGroup.userData.baseScale)
     modelGroup.scale.setScalar(modelGroup.userData.baseScale * (1 + 0.010 * breathe));
+  // Vessels: the pulse travels along each tube, and PERFUSION gates brightness.
+  // Falling MAP is the twin's most direct statement that a territory is losing
+  // its supply, so the tree dims and slows rather than changing colour.
+  if (arterialMesh) {
+    const map = (lastServerData && lastServerData.vitals && lastServerData.vitals.map);
+    const perf = map == null ? 1.0
+               : Math.max(0.18, Math.min(1.0, (Number(map) - 40) / 30));
+    for (const m of [arterialMesh, venousMesh]) {
+      const u = m.material.userData.aegis;
+      u.uTime.value = t;
+      u.uPerfusion.value += (perf - u.uPerfusion.value) * 0.05;   // ease, no snap
+    }
+  }
   if (shellU) {
     shellU.uTime.value = t; shellU.uPulse.value = beat;
     shellU.uScan.value = ((t * 0.20) % 1.5) - 0.15;   // rising scan band, then repeat
