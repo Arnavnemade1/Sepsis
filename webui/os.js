@@ -22,7 +22,7 @@ async function boot() {
   for (let i = 0; i < BOOT_LINES.length; i++) {
     const [n, d] = BOOT_LINES[i];
     const line = document.createElement("div");
-    line.innerHTML = `<span class="ok">[ OK ]</span> layer ${i + 1}/8 · <b>${n}</b> <span style="color:#536084">— ${d}</span>`;
+    line.innerHTML = `<span class="ok">✓</span> <span class="bd">${String(i + 1).padStart(2, "0")}</span>  <b>${n}</b> <span class="bd">· ${d}</span>`;
     log.appendChild(line);
     // 8 layers boot, so keep 8 — the old cap of 7 evicted layer 1 the moment layer 8
     // arrived, and the "8-layer cold boot" footer described a list nobody ever saw whole.
@@ -486,15 +486,15 @@ function sparkline(cv, arr) {
   const pad = 3, lo = Math.min(...arr, 0), hi = Math.max(...arr, 1);
   const px = i => i / Math.max(1, arr.length - 1) * (w - pad * 2) + pad;
   const py = v => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
-  // canvas cannot read CSS custom properties, so --accent (#7aa2f7) is duplicated here
+  // canvas cannot read CSS custom properties, so --accent (#8f94ff) is duplicated here
   // by hand — as tactical.js and twin3d.js already do. The old literal was #5ccaf0, a
   // cyan left over from the retired theme and the last one on the desktop.
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, "rgba(122,162,247,.26)"); grad.addColorStop(1, "rgba(122,162,247,0)");
+  grad.addColorStop(0, "rgba(143,148,255,.26)"); grad.addColorStop(1, "rgba(143,148,255,0)");
   ctx.beginPath(); ctx.moveTo(px(0), h - pad);
   arr.forEach((v, i) => ctx.lineTo(px(i), py(v))); ctx.lineTo(px(arr.length - 1), h - pad); ctx.closePath();
   ctx.fillStyle = grad; ctx.fill();
-  ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#7aa2f7"; ctx.lineJoin = "round";
+  ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = "#8f94ff"; ctx.lineJoin = "round";
   arr.forEach((v, i) => i ? ctx.lineTo(px(i), py(v)) : ctx.moveTo(px(i), py(v)));
   ctx.stroke();
 }
@@ -734,7 +734,7 @@ function drawClinicalChart(cv, arr, m) {
   const px = i => x0 + (i / Math.max(1, arr.length - 1)) * (x1 - x0);
   const py = v => y1 - ((v - lo) / (hi - lo)) * (y1 - y0);
 
-  ctx.font = "9px " + "ui-monospace,'JetBrains Mono',monospace";
+  ctx.font = "9px " + "'Geist Mono',ui-monospace,monospace";
   ctx.textBaseline = "middle";
 
   // horizontal gridlines + y-axis labels (4 divisions)
@@ -963,8 +963,12 @@ function drawTrace(id, buf) {
   ctx.beginPath();
   buf.forEach((v, i) => { i ? ctx.lineTo(xOf(i), yOf(v)) : ctx.moveTo(xOf(i), yOf(v)); });
   ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.lineCap = "round";
-  ctx.strokeStyle = "rgba(242,243,245,.82)";
+  ctx.strokeStyle = "rgba(242,243,245,.86)";
+  // A soft phosphor bloom on the sweep — luminance only, never hue: the trace stays
+  // neutral because every saturated colour in this product is clinical state.
+  ctx.shadowColor = "rgba(255,255,255,.4)"; ctx.shadowBlur = 6;
   ctx.stroke();
+  ctx.shadowBlur = 0;
 
   // leading edge: where the sweep is right now
   const lx = xOf(buf.length - 1), ly = yOf(buf[buf.length - 1]);

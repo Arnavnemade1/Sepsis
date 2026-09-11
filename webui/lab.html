@@ -3,7 +3,7 @@
 <title>AegisOS — The Lab</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap" rel="stylesheet"/>
 <style>
 /* ============================================================
    The Lab — research console.
@@ -13,19 +13,22 @@
    look like a different product from the OS it belongs to.
    ============================================================ */
 :root{
-  --bg:#0a0b0c; --s1:#111214; --s2:#16181b; --s3:#1d1f23;
-  --hair:rgba(255,255,255,.09); --hair-soft:rgba(255,255,255,.05);
-  --hair-hot:rgba(255,255,255,.18);
-  --ink:#f2f3f5; --muted:#a0a4ac; --dim:#6d7178; --faint:#4b4f56;
+  --bg:#050609; --s1:#0d0f14; --s2:#13161d; --s3:#1b1f28;
+  --hair:rgba(255,255,255,.075); --hair-soft:rgba(255,255,255,.045);
+  --hair-hot:rgba(255,255,255,.15);
+  --ink:#f4f5f8; --muted:#a4a9b6; --dim:#6e7482; --faint:#4a505c;
   --ok:rgb(64,184,128); --watch:rgb(226,163,60); --crit:rgb(229,84,76);
   --ok-ink:#7fdcae; --watch-ink:#f0c46a; --crit-ink:#ff9d97;
-  --accent:rgb(122,162,247); --accent-rgb:122,162,247;
-  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --r:5px;
+  --accent:rgb(143,148,255); --accent-rgb:143,148,255;
+  --brand:linear-gradient(135deg,#7cc4ff 0%,#8f8bff 52%,#c49bff 100%); --brand-rgb:143,139,255;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:"Geist","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:12px;
 }
 *{box-sizing:border-box}
 html,body{background:var(--bg)}
+body{background:radial-gradient(1200px 700px at 50% -14%,rgba(var(--brand-rgb),.12),transparent 60%),var(--bg);
+  background-attachment:fixed;letter-spacing:-.005em}
 body{margin:0;color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.55;
   -webkit-font-smoothing:antialiased}
 .wrap{max-width:1180px;margin:0 auto;padding:34px 22px 90px}
@@ -35,11 +38,11 @@ a{color:var(--accent)}
 /* --- masthead --- */
 .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase;
   color:var(--dim);margin-bottom:10px}
-h1{font-size:31px;font-weight:700;letter-spacing:-.022em;margin:0 0 8px}
+h1{font-size:38px;font-weight:600;letter-spacing:-.04em;margin:0 0 10px;line-height:1.1}
 .lede{color:var(--muted);font-size:15px;max-width:76ch;margin:0}
 .lede b{color:var(--ink);font-weight:600}
 h2{font-size:12px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;
-  color:var(--dim);margin:40px 0 12px;font-family:var(--mono);
+  color:var(--dim);margin:40px 0 12px;font-family:var(--sans);
   padding-bottom:8px;border-bottom:1px solid var(--hair)}
 h2 .h2note{float:right;text-transform:none;letter-spacing:0;font-family:var(--sans);
   color:var(--faint);font-weight:400;font-size:11.5px}
@@ -64,7 +67,7 @@ h2 .h2note{float:right;text-transform:none;letter-spacing:0;font-family:var(--sa
 .tile{background:var(--s1);padding:13px 15px}
 .tile .k{font-family:var(--mono);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
   color:var(--dim)}
-.tile .v{font-family:var(--mono);font-size:24px;font-weight:500;margin-top:4px;
+.tile .v{font-family:var(--sans);font-size:26px;font-weight:500;margin-top:4px;
   letter-spacing:-.02em;font-variant-numeric:tabular-nums}
 .tile .ci{font-size:11.5px;color:var(--faint);margin-top:3px;line-height:1.35}
 .tile.hot .v{color:var(--accent)}

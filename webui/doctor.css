@@ -21,11 +21,15 @@
 @keyframes docIn{from{opacity:0;transform:scale(1.015)}to{opacity:1;transform:scale(1)}}
 
 /* ---- head ---- */
-.doc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);
-  padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);flex:0 1 auto}
-.doc-head-l{display:flex;align-items:baseline;gap:var(--sp-3);min-width:0}
-.doc-mark{font-size:15px;color:var(--muted)}
-.doc-title{font-weight:700;letter-spacing:1.1px;font-size:15px}
+.doc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-4);min-height:64px;
+  padding:12px 22px;border-bottom:1px solid var(--line-soft);flex:0 1 auto;background:rgba(5,6,9,.55);
+  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2)}
+.doc-head-l{display:flex;align-items:center;gap:12px;min-width:0}
+/* the app's glyph in a brand icon tile — an identity moment, like every overlay */
+.doc-mark{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;color:#fff;
+  font-size:16px;line-height:1;background:var(--brand);
+  box-shadow:0 8px 22px -8px rgba(var(--brand-rgb),.7),inset 0 1px 0 rgba(255,255,255,.3)}
+.doc-title{font-weight:600;letter-spacing:-.022em;font-size:18px}
 .doc-sub{font-family:var(--sans);font-size:12.5px;color:var(--dim);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 .doc-head-r{display:flex;align-items:center;gap:var(--sp-3);flex:0 1 auto}

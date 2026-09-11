@@ -13,9 +13,9 @@
    Canvas cannot read CSS custom properties, so these literals must be kept in step
    with the tokens in tactical.css by hand. Clinical state is the only saturated set. */
 var C = {
-  ink:"#f2f3f5", muted:"#a0a4ac", dim:"#6d7178", faint:"#4b4f56",
-  accent:"#7aa2f7", accentInk:"#a8c4ff",
-  cyan:"#7aa2f7", indigo:"#7aa2f7", violet:"#7aa2f7",   // legacy aliases -> one accent
+  ink:"#f4f5f8", muted:"#a4a9b6", dim:"#6e7482", faint:"#4a505c",
+  accent:"#8f94ff", accentInk:"#c3c6ff",
+  cyan:"#8f94ff", indigo:"#8f94ff", violet:"#8f94ff",   // legacy aliases -> one accent
   ok:"#40b880", watch:"#e2a33c", crit:"#e5544c",
   grid:"rgba(255,255,255,.045)", gridHi:"rgba(255,255,255,.1)",
 };
@@ -38,8 +38,8 @@ function clamp(v,a,b){ return v<a?a:v>b?b:v; }
 function withAlpha(hex,a){ var n=parseInt(hex.slice(1),16);
   return "rgba("+(n>>16&255)+","+(n>>8&255)+","+(n&255)+","+a+")"; }
 function fmt(n,d){ return (n||0).toFixed(d==null?0:d); }
-function FS(px,w){ return (w||500)+" "+px+'px "Inter",system-ui,sans-serif'; }
-function FM(px,w){ return (w||500)+" "+px+'px "JetBrains Mono",monospace'; }
+function FS(px,w){ return (w||500)+" "+px+'px "Geist","Inter",system-ui,sans-serif'; }
+function FM(px,w){ return (w||500)+" "+px+'px "Geist Mono",ui-monospace,monospace'; }
 function roundRect(ctx,x,y,w,h,r){ r=Math.min(r,h/2,w/2); ctx.beginPath();
   ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }

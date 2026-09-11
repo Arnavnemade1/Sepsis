@@ -6,14 +6,14 @@
 <title>AEGIS-OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300..800&family=Geist+Mono:wght@400..700&display=swap" rel="stylesheet" />
 <script src="config.js?v=9"></script>
-<link rel="stylesheet" href="os.css?v=61" />
+<link rel="stylesheet" href="os.css?v=62" />
 <link rel="stylesheet" href="pktwin.css?v=10" />
-<link rel="stylesheet" href="doctor.css?v=11" />
+<link rel="stylesheet" href="doctor.css?v=12" />
 <link rel="stylesheet" href="summon.css?v=1" />
-<link rel="stylesheet" href="hyperscan.css?v=2" />
-<link rel="stylesheet" href="oskit/oskit.css?v=9" />
+<link rel="stylesheet" href="hyperscan.css?v=3" />
+<link rel="stylesheet" href="oskit/oskit.css?v=11" />
 </head>
 <body>
 <!-- ===================== BOOT SEQUENCE ===================== -->
@@ -21,7 +21,7 @@
   <div class="boot-inner">
     <div class="boot-mark">
       <svg viewBox="0 0 64 64" class="boot-sigil"><use href="#sigil"/></svg>
-      <div class="boot-title">AEGIS·OS</div>
+      <div class="boot-title">Aegis<span>OS</span></div>
       <div class="boot-sub">Hyperdimensional Neurosymbolic Critical-Care OS</div>
     </div>
     <div id="boot-log" class="boot-log"></div>
@@ -36,7 +36,7 @@
   <header class="sysbar">
     <div class="sysbar-l">
       <svg viewBox="0 0 64 64" class="sysbar-sigil"><use href="#sigil"/></svg>
-      <span class="sysbar-name">AEGIS·OS</span>
+      <span class="sysbar-name">Aegis<span>OS</span></span>
       <span class="sysbar-ver" id="sb-ver">v0.8.0</span>
       <span class="sysbar-pill" id="sb-source">— </span>
     </div>
@@ -54,8 +54,8 @@
       </div>
     </div>
     <div class="sysbar-r">
-      <a class="sysbar-tactical" href="tactical.html" title="Open the Global ICU Tactical Sphere — multi-patient kernel cockpit">◎ TACTICAL SPHERE</a>
-      <a class="sysbar-tactical" href="lab.html" title="The Lab — agents propose changes, a locked gate adjudicates them on held-out patients">⚗ THE LAB</a>
+      <a class="sysbar-tactical" href="tactical.html" title="Open the Global ICU Tactical Sphere — multi-patient kernel cockpit"><i>◎</i>Tactical</a>
+      <a class="sysbar-tactical" href="lab.html" title="The Lab — agents propose changes, a locked gate adjudicates them on held-out patients"><i>⚗</i>Lab</a>
       <span class="ses" id="ses-mount"></span>
       <span class="sysbar-risk" id="sb-risk">LOW</span>
       <span class="sysbar-conn" id="sb-conn"><i></i>link</span>
@@ -68,7 +68,7 @@
     <!-- BODY TWIN -->
     <section class="win win-twin" data-win="twin">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">DIGITAL TWIN — full-body state</span>
+        <span class="win-title">Digital twin</span>
         <span class="win-tag" id="twin-risk">monitoring</span></div>
       <div class="win-body twin-body">
         <div id="twin-stage" class="twin-stage"></div>
@@ -93,7 +93,7 @@
     <div class="col-left">
     <section class="win win-risk" data-win="risk">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">SEPSIS RISK CORE</span></div>
+        <span class="win-title">Sepsis risk</span></div>
       <!-- The three score chips used to live INSIDE .risk-side, which is the 172px
            column left over after a 120px gauge. They need 205px, so the panel
            overflowed its own box by 17px and the "signal" chip was clipped — on the
@@ -133,7 +133,7 @@
     <!-- VITALS -->
     <section class="win win-vitals" data-win="vitals">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">LIVE TELEMETRY</span></div>
+        <span class="win-title">Live telemetry</span></div>
       <div class="win-body vitals-body">
         <div class="trace-row">
           <!-- no width/height attributes: drawTrace sizes the backing store from the
@@ -191,7 +191,7 @@
     <!-- REASONING -->
     <section class="win win-agents" data-win="agents">
       <div class="win-bar"><span class="dots"><i></i><i></i><i></i></span>
-        <span class="win-title">MULTI-AGENT REASONING</span>
+        <span class="win-title">Multi-agent reasoning</span>
         <span class="win-tag" id="ag-consensus">consensus —</span></div>
       <div class="win-body agents-body">
         <div id="agent-list" class="agent-list"></div>
@@ -344,7 +344,7 @@
   <header class="cam-head">
     <div class="cam-head-l">
       <span class="cam-sigil">◉</span>
-      <span class="cam-title">OPTICAL BIOSENSOR</span>
+      <span class="cam-title">Optical biosensor</span>
       <span class="cam-sub">contactless rPPG · micro-perfusion · sign recognition</span>
     </div>
     <div class="cam-head-r">
@@ -451,7 +451,7 @@
   <header class="cam-head">
     <div class="cam-head-l">
       <span class="cam-sigil">◔</span>
-      <span class="cam-title">CLINICAL STORY</span>
+      <span class="cam-title">Clinical story</span>
       <span class="story-patient" id="story-patient">—</span>
     </div>
     <div class="cam-head-r">
@@ -525,7 +525,7 @@
   <header class="cam-head">
     <div class="cam-head-l">
       <span class="cam-sigil">⚖</span>
-      <span class="cam-title">CONSENSUS CHAMBER</span>
+      <span class="cam-title">Consensus chamber</span>
       <span class="cam-sub">an independent panel of specialist models reviews <b id="cns-patient">this patient</b></span>
     </div>
     <div class="cam-head-r">
@@ -601,7 +601,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">⬡</span>
-      <span class="cam-title">AUTONOMOUS ICU ORCHESTRATOR</span>
+      <span class="cam-title">Autonomous ICU orchestrator</span>
       <span class="cam-sub">one invariant · every layer · every action provably gated</span>
     </div>
     <div class="cam-head-r">
@@ -683,7 +683,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">⇄</span>
-      <span class="cam-title">FEDERATED INTELLIGENCE NETWORK</span>
+      <span class="cam-title">Federated intelligence network</span>
       <span class="cam-sub">hospitals learn together · raw data never leaves a site</span>
     </div>
     <div class="cam-head-r">
@@ -747,7 +747,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">⬚</span>
-      <span class="cam-title">CLINICAL ACCESS CONTROL</span>
+      <span class="cam-title">Clinical access control</span>
       <span class="cam-sub">privilege rings · signed sessions · Z3-verified policy</span>
     </div>
     <div class="cam-head-r">
@@ -799,7 +799,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">§</span>
-      <span class="cam-title">CLINICAL SAFETY POLICY</span>
+      <span class="cam-title">Clinical safety policy</span>
       <span class="cam-sub">author rules in clinical language · compiled to Z3 · proven before any order</span>
     </div>
     <div class="cam-head-r">
@@ -876,7 +876,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">⚕</span>
-      <span class="cam-title">LIVING PHARMACOPOEIA</span>
+      <span class="cam-title">Living pharmacopoeia</span>
       <span class="cam-sub">real interaction graph · mechanism-aware · every hazard a Z3 constraint</span>
     </div>
     <div class="cam-head-r">
@@ -926,7 +926,7 @@
   <header class="cam-head orch-head">
     <div class="cam-head-l">
       <span class="cam-sigil orch-sigil">⊚</span>
-      <span class="cam-title">PHYSIOLOGIC IDENTITY GUARD</span>
+      <span class="cam-title">Physiologic identity guard</span>
       <span class="cam-sub">continuous proof-of-patient · Mahalanobis drift · dispensing locked on fault</span>
     </div>
     <div class="cam-head-r">
@@ -1123,7 +1123,7 @@
   <header class="hs-head">
     <div class="hs-head-l">
       <span class="hs-mark">◎</span>
-      <span class="hs-title">HYPERSCAN</span>
+      <span class="hs-title">Hyperscan</span>
       <span class="hs-sub">full-subsystem sweep · situation report · requires clinician review</span>
     </div>
     <div class="hs-head-r">
@@ -1157,7 +1157,7 @@
   <header class="doc-head">
     <div class="doc-head-l">
       <span class="doc-mark">◈</span>
-      <span class="doc-title">CONSULT</span>
+      <span class="doc-title">Consult</span>
       <span class="doc-sub">Dr. Aegis · realtime case discussion · research decision-support, not a diagnosis</span>
     </div>
     <div class="doc-head-r">
@@ -1263,7 +1263,7 @@
 <script type="module" src="pktwin.js?v=18"></script>
 <script type="module" src="camera.js?v=97"></script>
 <script src="pktwin_ui.js?v=13"></script>
-<script src="os.js?v=55"></script>
+<script src="os.js?v=56"></script>
 <script src="doctor.js?v=11"></script>
 <script src="summon.js?v=3"></script>
 <script src="hyperscan.js?v=3"></script>

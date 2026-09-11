@@ -1,199 +1,222 @@
 /* ============================================================
-   AEGIS — CLINICAL INSTRUMENT
+   AEGIS — CLINICAL GLASS
    ------------------------------------------------------------
-   Design identity. Read this before changing a colour.
+   Design identity (2026-09-10, replaces "Clinical Instrument").
+   Read this before changing a colour.
 
-   This surface is a medical instrument, not a console game. Three rules
-   carry the whole system, and every token below exists to enforce one:
+   A modern clinical product, not a terminal. Four rules:
 
-   1. COLOUR IS SIGNAL, NEVER DECORATION. Saturated colour is reserved for
-      clinical state — low / medium / high / no-data. If a pixel is amber, a
-      patient is amber. Chrome, structure, and affordances are neutral, so an
-      alarm cannot be lost in a field of decorative cyan (the previous theme's
-      central failure: its brand colour and its "attention" colour were the
-      same colour).
-   2. STRUCTURE IS HAIRLINES, NOT GLOW. Depth comes from 1px borders and
-      genuinely flat panels. No glows, no gradient fills, no grid overlay.
-      A drop shadow is for things that actually float (menus, modals).
-   3. NUMBERS ARE THE INTERFACE. Tabular figures everywhere, tight radii,
-      a strict 4px rhythm. Nothing decorative competes with a reading.
+   1. COLOUR IS STILL SIGNAL. Saturated green / amber / orange / red is
+      reserved for clinical state, and nothing else uses those hues. The one
+      addition is the BRAND gradient (sky -> iris -> lilac). It is cool on
+      purpose, so it can never be mistaken for a tier, and it is allowed only
+      on identity moments: the mark, the wordmark, boot, a primary call to
+      action, focus. Never on data, never on status.
+   2. DEPTH IS LIGHT, NOT LINES. Floating glass plates: a translucent fill, a
+      top-lit hairline, long soft shadows. Blur only on things that genuinely
+      float over content (bars, HUDs, menus, modals).
+   3. NUMBERS ARE THE HERO. Geist display numerals: large, light, tabular.
+      Units small and dim. Mono is for telemetry, identifiers and code only;
+      labels and titles are sans, sentence case.
+   4. MOTION IS EASED, NEVER BOUNCY. Expo-out reveals; pulses only on things
+      that are actually live.
 
-   Surfaces are true neutral graphite — deliberately NO blue cast, so the
-   clinical hues sit on an achromatic ground and read at full strength.
+   The state hues are byte-identical to the previous identity: twin3d.js,
+   os.js RISK_THEME and tactical.js C duplicate them by hand — keep in step.
    ============================================================ */
 :root{
-  /* ---- surfaces: achromatic graphite ---- */
-  --bg:#0a0b0c; --bg2:#0e0f11;
-  --s1:#111214;            /* panel */
-  --s2:#16181b;            /* raised / inset */
-  --s3:#1d1f23;            /* hover / control */
-  --panel:#111214;
-  --panel-solid:#111214;
+  /* ---- ground + surfaces: deep night with the faintest cool cast ---- */
+  --bg:#050609; --bg2:#08090d;
+  --s1:#0d0f14;            /* plate */
+  --s2:#13161d;            /* raised / inset */
+  --s3:#1b1f28;            /* hover / control */
+  --panel:rgba(15,17,23,.80);
+  --panel-solid:#0e1016;
+  /* the glass fill every plate shares: lit from above, falling off below */
+  --glass:linear-gradient(180deg,rgba(255,255,255,.042),rgba(255,255,255,.012) 60%);
+  --glass-float:rgba(13,15,21,.72);
 
-  /* ---- structure: hairlines do the work shadows used to ---- */
-  --line:rgba(255,255,255,.09);
-  --line-soft:rgba(255,255,255,.05);
-  --line-bright:rgba(255,255,255,.18);
+  /* ---- structure ---- */
+  --line:rgba(255,255,255,.075);
+  --line-soft:rgba(255,255,255,.045);
+  --line-bright:rgba(255,255,255,.15);
 
   /* ---- text ---- */
-  --ink:#f2f3f5; --muted:#a0a4ac; --dim:#6d7178; --faint:#4b4f56;
+  --ink:#f4f5f8; --muted:#a4a9b6; --dim:#6e7482; --faint:#4a505c;
 
-  /* ---- CLINICAL STATE — the only saturated colour in the product ---- */
+  /* ---- CLINICAL STATE — the only warm/saturated colour in the product ---- */
   --low-rgb:64,184,128;    --low:rgb(64,184,128);
   --med-rgb:226,163,60;    --med:rgb(226,163,60);
   --dys-rgb:222,131,58;    --dys:rgb(222,131,58);
   --high-rgb:229,84,76;    --high:rgb(229,84,76);
   --nodata-rgb:75,79,86;   --nodata:rgb(75,79,86);
-  /* state INK — the same signal lifted to a text-legible tint. A state's fill and
-     its label are the same hue by construction, so nothing drifts out of sync. */
   --low-ink:#7fdcae; --med-ink:#f0c46a; --dys-ink:#f0a76a; --high-ink:#ff9d97;
-  --accent-ink:#a8c4ff;
-  /* legacy state aliases — existing rules keep working, new palette applies */
+  /* legacy state aliases */
   --ok:var(--low); --stress:var(--med); --crit:var(--high); --unmon:var(--nodata);
 
-  /* ---- affordance accent: focus, selection, active nav. NOT a brand wash.
-         Used sparingly and never to mean "urgent" — that is --high's job. ---- */
-  --accent-rgb:122,162,247; --accent:rgb(122,162,247);
-  /* legacy hue aliases all collapse to the single accent, by design */
+  /* ---- BRAND — identity moments only (rule 1) ---- */
+  --brand-a:#7cc4ff; --brand-b:#8f8bff; --brand-c:#c49bff;
+  --brand-rgb:143,139,255;
+  --brand:linear-gradient(135deg,#7cc4ff 0%,#8f8bff 52%,#c49bff 100%);
+
+  /* ---- affordance accent: focus, selection, active nav. Iris, from the
+         middle of the brand ramp. Never means "urgent" — that is --high. ---- */
+  --accent-rgb:143,148,255; --accent:rgb(143,148,255);
+  --accent-ink:#c3c6ff;
   --cyan:var(--accent); --cyan-deep:var(--accent); --blue:var(--accent);
   --violet:var(--accent); --mag:var(--accent); --accent2:var(--accent); --accent3:var(--accent);
-  --grad-accent:var(--accent);      /* was a 3-stop gradient; identity forbids it */
-  /* Rule 2 retires the glow, but these two tokens are still referenced inside
-     multi-segment box-shadow lists and inside drop-shadow(). `none` is ILLEGAL in
-     both of those positions and would silently void the whole declaration (taking
-     real elevation with it), so they are neutered to valid, invisible no-ops that
-     parse anywhere a shadow is legal. */
+  /* stays FLAT: its consumers are data bars, and data never wears the brand */
+  --grad-accent:var(--accent);
+  /* Both are referenced inside multi-segment box-shadow lists, where `none` is
+     illegal and silently voids the whole declaration. --hair is now the top-lit
+     edge every glass plate carries; --glow stays an invisible no-op. */
   --glow:0 0 0 transparent;
-  --hair:inset 0 0 0 transparent;
+  --hair:inset 0 1px 0 rgba(255,255,255,.055);
 
-  /* ---- geometry: instrument-tight, not pill-soft ---- */
-  --r-xl:10px; --r-lg:8px; --r-md:6px; --r-sm:4px;
+  /* ---- geometry: soft, confident radii ---- */
+  --r-xl:20px; --r-lg:16px; --r-md:12px; --r-sm:8px; --r-xs:6px;
 
   /* ---- 4px rhythm ---- */
   --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
 
-  /* ---- elevation: only for things that truly float ---- */
-  --elev-1:0 1px 2px rgba(0,0,0,.5);
-  --elev:0 16px 40px -12px rgba(0,0,0,.7);
+  /* ---- elevation ---- */
+  --elev-1:0 1px 2px rgba(0,0,0,.35);
+  --elev:0 30px 80px -30px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.035);
+  --plate-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 22px 50px -34px rgba(0,0,0,.95);
 
-  /* ---- motion: quick and mechanical; nothing bounces ---- */
-  --ease:cubic-bezier(.2,.7,.2,1);
-  --t-fast:110ms; --t:160ms; --t-slow:240ms;
+  /* ---- motion: expo-out, nothing bounces ---- */
+  --ease:cubic-bezier(.16,1,.3,1);
+  --t-fast:140ms; --t:220ms; --t-slow:420ms;
 
-  /* ---- type: IBM Plex — drawn for technical instrumentation, and its mono
-         carries the telemetry. Distinct from the old Inter/JetBrains pairing. ---- */
-  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  /* ---- type: Geist for the interface, Geist Mono for telemetry ---- */
+  --sans:"Geist","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-/* Flat achromatic ground. The two radial washes that used to tint the corners are
-   gone: they put brand colour behind every panel, which is exactly the decoration
-   rule 1 forbids and which desaturated the clinical hues sitting on top. */
+/* The ground carries one soft brand light from above — the stage the twin stands
+   in. It never sits under a reading: every plate on it is a near-opaque glass
+   fill, so a clinical hue is judged against neutral, not against the brand. */
 body{
-  background:var(--bg);
+  background:
+    radial-gradient(1400px 820px at 50% -22%,rgba(var(--brand-rgb),.14),transparent 62%),
+    radial-gradient(900px 700px at 108% 118%,rgba(124,196,255,.05),transparent 60%),
+    var(--bg);
   color:var(--ink);font-family:var(--sans);overflow:hidden;
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  text-rendering:optimizeLegibility;letter-spacing:0;
+  text-rendering:optimizeLegibility;letter-spacing:-.005em;
 }
-/* Tabular, slashed-zero figures EVERYWHERE a reading can appear — rule 3. A vital
-   that changes width as its digits change is a vital you cannot read at a glance. */
+::selection{background:rgba(var(--accent-rgb),.3)}
+/* Tabular, slashed-zero figures everywhere a reading can appear. */
 .mono,[class*=mono],.cam-state,.win-title,.win-tag,
-.risk-prob,.rsc-v,.vital-v,.m-v,.trace-tag{font-variant-numeric:tabular-nums slashed-zero}
+.risk-prob,.rsc-v,.vital-v,.vv,.m-v,.trace-tag{font-variant-numeric:tabular-nums slashed-zero}
 .hidden{display:none!important}
 .muted{color:var(--muted);font-size:13.5px}
 b{color:var(--ink)}
 
-/* The 54px grid overlay is deliberately deleted: it was texture pretending to be
-   information, and it sat on top of every reading in the product. */
-
 /* ===================== BOOT ===================== */
-.boot{position:fixed;inset:0;z-index:50;background:var(--bg);
-  display:grid;place-items:center;animation:bootfade var(--t) ease}
-/* Leave by fading, not by zooming the whole instrument at the viewer. */
-.boot.gone{opacity:0;transition:opacity var(--t-slow) ease;pointer-events:none}
-.boot-inner{width:min(680px,90vw);text-align:left}
-.boot-mark{margin-bottom:26px;text-align:left}
-/* The mark holds still. It span 6s on a loop before — motion implying work that was
-   not happening, next to a progress bar that reports the work that is. */
-.boot-sigil{width:34px;height:34px;color:var(--muted)}
-.boot-title{font-size:19px;font-weight:600;letter-spacing:.2em;margin-top:14px;color:var(--ink);
-  text-transform:uppercase}
-.boot-sub{color:var(--dim);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;margin-top:6px;
-  font-family:var(--mono)}
-/* Each entry is one boot line and must read as one line: at the old 560px width the
-   longer layers ("Digital Twin + What-if Scheduler — live twin · predictive sim")
-   wrapped, which both broke the phrase mid-clause and pushed the 8th layer out of the
-   fixed 172px box, so the log visibly clipped as it filled. The box is now sized to
-   hold all 8 lines, and lines ellipsize rather than wrap if a viewport is too narrow
-   to hold them. */
-.boot-log{font-family:var(--mono);font-size:12.5px;text-align:left;min-height:180px;overflow:hidden;
-  margin:22px auto 14px;color:var(--faint);line-height:1.72}
-.boot-log > div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.boot-log .ok{color:var(--low)}.boot-log b{color:var(--muted);font-weight:500}
-.boot-bar{height:2px;background:rgba(255,255,255,.09);border-radius:0;overflow:hidden}
-.boot-fill{height:100%;width:0;background:var(--muted);transition:width var(--t) linear}
-.boot-version{color:var(--faint);font-family:var(--mono);font-size:11.5px;margin-top:12px;letter-spacing:.1em}
+.boot{position:fixed;inset:0;z-index:50;display:grid;place-items:center;overflow:hidden;
+  background:radial-gradient(900px 620px at 50% 36%,rgba(var(--brand-rgb),.17),transparent 66%),var(--bg);
+  animation:bootfade var(--t) ease}
+/* One slow aurora behind the mark — the only ambient motion in the product, and
+   it is gone before a single reading is on screen. */
+.boot::before{content:"";position:absolute;inset:-25%;pointer-events:none;opacity:.55;
+  background:conic-gradient(from 180deg at 50% 44%,transparent 0deg,rgba(124,196,255,.11) 70deg,
+    transparent 130deg,rgba(196,155,255,.11) 230deg,transparent 310deg);
+  filter:blur(48px);animation:bootAurora 16s linear infinite}
+@keyframes bootAurora{to{transform:rotate(360deg)}}
+.boot.gone{opacity:0;transform:scale(1.02);pointer-events:none;
+  transition:opacity var(--t-slow) var(--ease),transform var(--t-slow) var(--ease)}
+.boot-inner{position:relative;width:min(620px,90vw);text-align:center}
+.boot-mark{display:flex;flex-direction:column;align-items:center;margin-bottom:6px}
+/* the app icon: the one place the brand fills a shape */
+.boot-sigil{width:66px;height:66px;padding:16px;border-radius:19px;color:#fff;
+  background:var(--brand);
+  box-shadow:0 22px 56px -14px rgba(var(--brand-rgb),.6),inset 0 1px 0 rgba(255,255,255,.4);
+  animation:markIn .9s var(--ease) both}
+@keyframes markIn{from{opacity:0;transform:translateY(10px) scale(.94)}to{opacity:1;transform:none}}
+.boot-title{font-size:38px;font-weight:600;letter-spacing:-.04em;margin-top:22px;color:var(--ink);
+  line-height:1;animation:markIn .9s .08s var(--ease) both}
+.boot-title span{margin-left:.22em;font-weight:400;background:var(--brand);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.boot-sub{color:var(--muted);font-size:14.5px;margin-top:10px;letter-spacing:-.005em;
+  animation:markIn .9s .16s var(--ease) both}
+/* Each entry is one boot line and must read as one line; the box holds all 8. */
+.boot-log{font-family:var(--mono);font-size:12px;text-align:left;min-height:182px;overflow:hidden;
+  margin:30px auto 18px;color:var(--faint);line-height:1.8;padding:13px 18px;border-radius:var(--r-md);
+  background:rgba(255,255,255,.022);border:1px solid var(--line-soft);
+  animation:markIn .9s .22s var(--ease) both}
+.boot-log > div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:lineIn .35s var(--ease) both}
+@keyframes lineIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.boot-log .ok{color:var(--low-ink)}.boot-log b{color:var(--muted);font-weight:500}
+.boot-log .bd{color:var(--faint)}
+.boot-bar{height:3px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.boot-fill{height:100%;width:0;border-radius:3px;background:var(--brand);
+  box-shadow:0 0 18px rgba(var(--brand-rgb),.75);transition:width var(--t) var(--ease)}
+.boot-version{color:var(--faint);font-family:var(--mono);font-size:11px;margin-top:14px;letter-spacing:.04em}
 
 /* ===================== SHELL ===================== */
-.os{position:fixed;inset:0;display:flex;flex-direction:column;animation:bootfade .8s ease}
-.sysbar{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;gap:14px;
-  background:var(--s1);border-bottom:1px solid var(--line);z-index:10}
-/* flex:0 1 auto, NOT 1 1 0. With a 0 flex-basis these clusters shrank below their own
-   content while their children (flex:0 0 auto by default) refused to — so the children
-   burst out of the cluster and painted over the patient selector in the middle of the
-   bar. Sized to content, allowed to shrink, never below it. */
-.sysbar-l,.sysbar-r{display:flex;align-items:center;gap:9px;flex:0 1 auto;min-width:0}
+.os{position:fixed;inset:0;display:flex;flex-direction:column;animation:bootfade .9s var(--ease)}
+/* The system bar is not a plate: it sits directly on the ground, under the same
+   brand light the twin stands in, and a centred hairline that fades at both ends
+   separates it from the desk. */
+.sysbar{position:relative;height:58px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;gap:14px;background:linear-gradient(180deg,rgba(5,6,9,.5),rgba(5,6,9,0));z-index:10}
+.sysbar::after{content:"";position:absolute;left:18px;right:18px;bottom:0;height:1px;pointer-events:none;
+  background:linear-gradient(90deg,transparent,var(--line) 14%,var(--line) 86%,transparent)}
+/* flex:0 1 auto, NOT 1 1 0: a 0 flex-basis let these clusters shrink below their
+   content while their children refused to, so they painted over the patient
+   selector. Sized to content, allowed to shrink, never below it. */
+.sysbar-l,.sysbar-r{display:flex;align-items:center;gap:10px;flex:0 1 auto;min-width:0}
 .sysbar-r{justify-content:flex-end}
-/* The mark is a mark, not a light source. */
-.sysbar-sigil{width:18px;height:18px;color:var(--muted)}
-.sysbar-name{font-weight:600;letter-spacing:.14em;font-size:14px;color:var(--ink);text-transform:uppercase}
-.sysbar-ver{font-family:var(--mono);font-size:12.5px;color:var(--dim)}
-.sysbar-pill{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--dim);border:1px solid var(--line-soft);
-  padding:3px 8px;border-radius:var(--r-sm);letter-spacing:.1em;background:var(--s2);white-space:nowrap;
-  text-transform:uppercase;line-height:1.3;flex:0 0 auto}
-.sysbar-pill.live{color:var(--low-ink);border-color:rgba(var(--low-rgb),.4);background:rgba(var(--low-rgb),.1)}
-.sysbar-pill.live::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;
-  background:var(--low);margin-right:6px;vertical-align:.5px}
+/* the app icon — a brand moment, so it may wear the gradient */
+.sysbar-sigil{width:30px;height:30px;padding:7px;border-radius:9px;color:#fff;flex:0 0 auto;
+  background:var(--brand);box-shadow:0 8px 22px -8px rgba(var(--brand-rgb),.75),inset 0 1px 0 rgba(255,255,255,.35)}
+.sysbar-name{font-weight:600;font-size:16px;letter-spacing:-.025em;color:var(--ink);white-space:nowrap}
+.sysbar-name span{margin-left:.22em;font-weight:400;color:var(--dim)}
+.sysbar-ver{font-family:var(--mono);font-size:11px;color:var(--dim);padding:2px 7px;border-radius:999px;
+  border:1px solid var(--line-soft);white-space:nowrap}
+.sysbar-pill{font-family:var(--mono);font-size:10.5px;font-weight:500;color:var(--muted);
+  border:1px solid var(--line);padding:4px 10px;border-radius:999px;letter-spacing:.06em;
+  background:rgba(255,255,255,.03);white-space:nowrap;text-transform:uppercase;line-height:1.3;flex:0 0 auto}
+.sysbar-pill.live{color:var(--low-ink);border-color:rgba(var(--low-rgb),.35);background:rgba(var(--low-rgb),.08)}
+.sysbar-pill.live::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;
+  background:var(--low);margin-right:7px;vertical-align:.5px;box-shadow:0 0 0 3px rgba(var(--low-rgb),.18);
+  animation:livePing 2.4s var(--ease) infinite}
+@keyframes livePing{0%,100%{box-shadow:0 0 0 0 rgba(var(--low-rgb),.35)}60%{box-shadow:0 0 0 5px rgba(var(--low-rgb),0)}}
 .sysbar-patient{font-size:14.5px;color:var(--muted)}.sysbar-patient b{color:var(--ink)}
-.sysbar-clock{font-family:var(--mono);font-size:14px;color:var(--ink);letter-spacing:.8px;
-  font-feature-settings:"tnum";padding-left:11px;margin-left:1px;position:relative}
+.sysbar-clock{font-family:var(--mono);font-size:13px;color:var(--muted);letter-spacing:.02em;
+  font-feature-settings:"tnum";padding-left:12px;margin-left:2px;position:relative}
 .sysbar-clock::before{content:"";position:absolute;left:0;top:50%;transform:translateY(-50%);
-  height:16px;width:1px;background:var(--line-soft)}
-.sysbar-conn{font-family:var(--mono);font-size:12.5px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.sysbar-conn i{width:7px;height:7px;border-radius:50%;background:var(--crit);box-shadow:none}
-.sysbar-conn.live i{background:var(--ok);box-shadow:none}
-/* A navigation link is an affordance, not an alarm: neutral until hovered. It also
-   measured 54px tall inside a 46px bar — line-height:1 and a flat padding fix that. */
-.sysbar-tactical{font-family:var(--mono);font-size:11px;font-weight:500;letter-spacing:.12em;
-  text-decoration:none;color:var(--muted);padding:5px 9px;border-radius:var(--r-sm);line-height:1;
-  border:1px solid var(--line);background:var(--s2);white-space:nowrap;flex:0 0 auto;
+  height:16px;width:1px;background:var(--line)}
+.sysbar-conn{font-family:var(--mono);font-size:11.5px;color:var(--dim);display:flex;align-items:center;gap:6px}
+.sysbar-conn i{width:7px;height:7px;border-radius:50%;background:var(--crit)}
+.sysbar-conn.live i{background:var(--ok);box-shadow:0 0 0 3px rgba(var(--low-rgb),.16)}
+/* Navigation is an affordance, not an alarm: a quiet ghost pill until hovered. */
+.sysbar-tactical{display:inline-flex;align-items:center;gap:7px;font-family:var(--sans);font-size:12.5px;
+  font-weight:500;letter-spacing:-.005em;text-decoration:none;color:var(--muted);padding:7px 13px;
+  border-radius:999px;line-height:1;border:1px solid var(--line);background:rgba(255,255,255,.03);
+  white-space:nowrap;flex:0 0 auto;
   transition:color var(--t-fast) ease,border-color var(--t-fast) ease,background var(--t-fast) ease}
-.sysbar-tactical:hover{color:var(--ink);border-color:var(--line-bright);background:var(--s3)}
-.sysbar-tactical:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-/* The bar's tier chip. It legitimately carries state colour — this is the one
-   always-visible answer to "how is this patient right now". HIGH no longer pulses:
-   an opacity animation on a two-word label makes it HARDER to read at the moment it
-   matters, and the tier is already the only red object in the bar. */
-.sysbar-risk{font-family:var(--mono);font-weight:600;font-size:12.5px;letter-spacing:.14em;padding:4px 10px;
-  border-radius:var(--r-sm);line-height:1;flex:0 0 auto;
-  background:rgba(var(--low-rgb),.12);color:var(--low-ink);border:1px solid rgba(var(--low-rgb),.4)}
-.sysbar-risk.MEDIUM{background:rgba(var(--med-rgb),.12);color:var(--med-ink);border-color:rgba(var(--med-rgb),.4)}
-.sysbar-risk.HIGH{background:rgba(var(--high-rgb),.16);color:var(--high-ink);border-color:rgba(var(--high-rgb),.5)}
+.sysbar-tactical i{font-style:normal;color:var(--accent-ink);font-size:12px}
+.sysbar-tactical:hover{color:var(--ink);border-color:var(--line-bright);background:rgba(255,255,255,.07)}
+.sysbar-tactical:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* The bar's tier chip legitimately carries state colour — the one always-visible
+   answer to "how is this patient right now". It does not pulse. */
+.sysbar-risk{font-family:var(--mono);font-weight:600;font-size:11.5px;letter-spacing:.1em;padding:6px 12px;
+  border-radius:999px;line-height:1;flex:0 0 auto;
+  background:rgba(var(--low-rgb),.1);color:var(--low-ink);border:1px solid rgba(var(--low-rgb),.36)}
+.sysbar-risk.MEDIUM{background:rgba(var(--med-rgb),.1);color:var(--med-ink);border-color:rgba(var(--med-rgb),.38)}
+.sysbar-risk.HIGH{background:rgba(var(--high-rgb),.14);color:var(--high-ink);border-color:rgba(var(--high-rgb),.5)}
 
-/* SYSTEM BAR — narrow-width triage.
-   Below ~1180px the bar wants more room than it has. Flex children do not shrink, so
-   without this they burst out of their own cluster and paint over the patient selector.
-   Rather than squeezing everything into illegibility, the bar SHEDS chrome in order of
-   what a clinician can afford to lose, and never sheds the three things it exists for:
-   which patient, what tier, what time. */
+/* SYSTEM BAR — narrow-width triage: shed chrome in order of what a clinician can
+   afford to lose; never the patient, the tier or the time. */
 @media(max-width:1180px){ .sysbar-ver{display:none} }
 @media(max-width:1080px){ .sysbar-pill{display:none} }
 @media(max-width:980px){ .sysbar-name{display:none} }
 @media(max-width:900px){
-  /* the link survives as its glyph — still reachable, no longer 86px wide */
-  .sysbar-tactical{font-size:0;padding:5px 7px}
-  .sysbar-tactical::before{content:"◎";font-size:12.5px;letter-spacing:0}
+  .sysbar-tactical{font-size:0;padding:7px 9px;gap:0}
+  .sysbar-tactical i{font-size:13px}
 }
 
 /* desktop grid — twin spans 3 rows (hero), the agents plane spans 2 (it is the
@@ -232,12 +255,12 @@ b{color:var(--ink)}
    "desktop surface" was added and then removed, because the tiling covers the desk
    completely in EVERY layout including `focus` — the ground was never once visible.
    Decoration you cannot see is still weight. */
-.desk{flex:1;display:grid;gap:12px;padding:14px;min-height:0;overflow:hidden;
+.desk{flex:1;display:grid;gap:14px;padding:8px 16px 14px;min-height:0;overflow:hidden;
   grid-template-columns:minmax(300px,340px) minmax(0,1fr) minmax(340px,400px);
   grid-template-rows:minmax(0,1fr);
   grid-template-areas:"left twin right";}
 .col-left{grid-area:left}.col-right{grid-area:right}
-.col-left,.col-right{display:flex;flex-direction:column;gap:12px;min-height:0}
+.col-left,.col-right{display:flex;flex-direction:column;gap:14px;min-height:0}
 /* Risk is fixed — it is one gauge and three chips and gains nothing from more room.
    Telemetry takes the slack: its two traces are the one thing here that genuinely
    reads better taller. Reasoning does the same job on the right. */
@@ -248,9 +271,9 @@ b{color:var(--ink)}
 .win-act{flex:0 1 auto;min-height:250px}
 .desk::-webkit-scrollbar{width:9px}
 .desk::-webkit-scrollbar-track{background:transparent}
-.desk::-webkit-scrollbar-thumb{background:linear-gradient(rgba(var(--accent-rgb),.26),rgba(var(--accent-rgb),.1));
+.desk::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);
   border-radius:8px;border:2px solid transparent;background-clip:padding-box}
-.desk::-webkit-scrollbar-thumb:hover{background:rgba(var(--accent-rgb),.4)}
+.desk::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.22)}
 .win-twin{grid-area:twin}
 @media(max-width:1240px){.desk{grid-template-columns:minmax(280px,320px) minmax(0,1fr);
   grid-template-rows:minmax(0,1fr) auto;
@@ -269,344 +292,327 @@ b{color:var(--ink)}
   .col-right{flex-direction:column;max-height:none}
   .agents-body,.act-body,.aux-body{overflow-y:visible}}
 
-/* PANELS — flat instrument plates.
-   These are fixed plates in a fixed grid; they do not float, so they cast no shadow
-   and lift on hover. Previously each carried three decorative layers — a 40px drop
-   shadow, an ambient radial wash, and an accent hairline across the top edge — which
-   is a lot of ceremony for a box that never moves, and it put brand colour on all
-   nine panels at once. A 1px border on a slightly lighter plate is the whole design:
-   structure you can see, nothing you have to look past. */
-/* `overflow:hidden` + `min-height:0` here is what actually did the cropping, and the
-   two conspired: `overflow:hidden` zeroes a grid item's content-based minimum size,
-   so when the desk ran short of room the grid shrank the ROW instead of scrolling,
-   and `hidden` then cut off whatever no longer fit — silently, by design. Both are
-   now content-based, so a panel cannot shrink past what it is displaying and the
-   `auto` row is forced to grow (the desk scrolls, which is the honest outcome).
-   Clipping moves to the two children that genuinely need it: the title bar rounds
-   its own top corners, and the media stages round their own bottom ones. */
-.win{position:relative;background:var(--s1);border:1px solid var(--line);border-radius:var(--r-lg);
-  overflow:visible;display:flex;flex-direction:column;min-height:0;
+/* PANELS — glass plates.
+   Each plate is a near-opaque glass fill lit from above (--glass over --s1), a
+   top-lit hairline and one long, soft shadow. The fill is near-opaque on purpose:
+   the brand light on the ground must never tint a reading.
+
+   `overflow:visible` + content-based minimums are load-bearing, not taste:
+   `overflow:hidden` zeroes a grid item's content-based minimum size, so the grid
+   shrank ROWS instead of scrolling and silently cropped whatever no longer fit.
+   Clipping lives on the children that need it — the bar rounds its own top
+   corners, the media stages their own bottom ones. */
+.win{position:relative;background:var(--glass),var(--s1);border:1px solid var(--line);border-radius:var(--r-lg);
+  box-shadow:var(--plate-shadow);overflow:visible;display:flex;flex-direction:column;min-height:0;
   transition:border-color var(--t) var(--ease);
-  animation:winIn var(--t-slow) var(--ease) both}
-.win:hover{border-color:var(--line-bright)}
-/* Reveal is a fade only. The old version also slid and scaled every panel, which
-   made the whole desk lurch on each boot for no informational gain. */
-@keyframes winIn{from{opacity:0}to{opacity:1}}
-.win-risk{animation-delay:.02s}.win-vitals{animation-delay:.05s}.win-camera{animation-delay:.08s}
-.win-sys{animation-delay:.11s}.win-twin{animation-delay:.03s}.win-agents{animation-delay:.07s}
-.win-whatif{animation-delay:.10s}.win-proto{animation-delay:.13s}.win-notes{animation-delay:.15s}
-/* min-height keeps every card's header on the same baseline: a bar carrying a status
-   tag or a button measured 44px while a bare one measured 39px, so headers sat 5px out
-   of alignment across the three columns and shifted whenever a panel gained a tag. */
-.win-bar{display:flex;align-items:center;gap:8px;padding:8px 11px;min-height:40px;box-sizing:border-box;
+  animation:winIn .75s var(--ease) both}
+.win:hover{border-color:rgba(255,255,255,.1)}
+/* A short rise, staggered in reading order. Ends on transform:none so nothing
+   is left holding a containing block for fixed-position children. */
+@keyframes winIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.win-risk{animation-delay:.04s}.win-twin{animation-delay:.08s}.win-agents{animation-delay:.1s}
+.win-vitals{animation-delay:.12s}.win-act{animation-delay:.16s}.win-aux{animation-delay:.2s}
+/* One constant bar height, so headers share a baseline across the three columns
+   and never twitch as a live tag changes length. */
+.win-bar{display:flex;align-items:center;gap:9px;padding:0 12px 0 14px;min-height:46px;box-sizing:border-box;
   border-bottom:1px solid var(--line-soft);border-radius:var(--r-lg) var(--r-lg) 0 0;
-  background:var(--s2);position:relative;z-index:1}
-/* The header tick is structure, not signal, so it is neutral. It used to be a
-   cyan->violet gradient repeated on all nine panels: nine brand marks competing with
-   the one number that actually matters. */
+  background:transparent;position:relative;z-index:1}
+/* Generic mark (the terminal and any bar that is not a desk panel). */
 .dots{width:2px;height:11px;border-radius:1px;background:var(--faint);flex:0 0 auto}
 .dots i{display:none}
-/* A title bar is one line. Without these, a long title next to a live tag ("MULTI-AGENT
-   REASONING PLANE" + "consensus 8% · agree 73%") wrapped BOTH to two lines in a narrow
-   column, so the bar grew and stole height from the panel body below it — and the bar
-   changed height as the tag's text changed, making the whole card twitch on every tick.
-   The title now ellipsizes and the tag never breaks, so bar height is constant. */
-/* Panel titles are quiet labels, not headlines: uppercase, tracked, and dim enough
-   that the eye lands on the readings first. Weight carries the hierarchy, size does not. */
-/* The title identifies the panel; the tag is a live readout of it. When the bar runs
-   out of room the TAG gives way first — an ellipsized title ("MULTI-AGENT REAS…")
-   costs you the name of the panel you are looking at, which is the one thing on the
-   bar you cannot reconstruct from the body below. */
-.win-title{font-family:var(--sans);font-size:12px;letter-spacing:.06em;text-transform:uppercase;
-  color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
-.win-tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.02em;font-weight:400;
-  border:1px solid var(--line-soft);padding:2px 6px;border-radius:var(--r-sm);background:var(--bg);
+/* Desk panels wear a line icon instead, keyed on the window id. Drawn as a mask so
+   it takes the text colour — structure, never signal. */
+.win-bar > .dots{width:16px;height:16px;border-radius:0;background:var(--muted);
+  -webkit-mask:var(--ico) center/contain no-repeat;mask:var(--ico) center/contain no-repeat;
+  --ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='4'/%3E%3C/svg%3E")}
+[data-win="risk"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m12 14 4-4'/%3E%3Cpath d='M3.34 19a10 10 0 1 1 17.32 0'/%3E%3C/svg%3E")}
+[data-win="vitals"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'/%3E%3C/svg%3E")}
+[data-win="twin"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='4.5' r='2'/%3E%3Cpath d='M12 7.5v7M7 10l5-1.5 5 1.5M9.5 21l2.5-6.5 2.5 6.5'/%3E%3C/svg%3E")}
+[data-win="agents"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z'/%3E%3Cpath d='M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z'/%3E%3C/svg%3E")}
+[data-win="aux"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z'/%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3C/svg%3E")}
+[data-win="act"] > .win-bar > .dots{--ico:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7z'/%3E%3Cpath d='m8.5 8.5 7 7'/%3E%3C/svg%3E")}
+/* A title bar is one line: the title ellipsizes, the tag never breaks, so the bar
+   never changes height as live text changes. When room runs out the TAG gives way
+   first — the panel's name is the one thing you cannot reconstruct from its body. */
+.win-title{font-family:var(--sans);font-size:13.5px;font-weight:560;letter-spacing:-.012em;text-transform:none;
+  color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0}
+.win-tag{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:0;font-weight:400;
+  border:1px solid var(--line);padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.03);
   white-space:nowrap;flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
-/* A panel body does not scroll. It reports its content's real height to the `auto`
-   grid row above, and the row grows to fit — so a panel is never smaller than the
-   thing it is displaying. `overflow:auto` here is what let panels crop themselves. */
-.win-body{flex:1 1 auto;min-height:0;overflow:visible;padding:var(--sp-4);position:relative;z-index:1}
+/* A panel body does not scroll: it reports its real height upward. */
+.win-body{flex:1 1 auto;min-height:0;overflow:visible;padding:14px 16px 16px;position:relative;z-index:1}
 /* Bodies that share a bounded row scroll inside it rather than pushing the page. */
 .agents-body,.act-body,.aux-body{overflow-y:auto;overscroll-behavior:contain}
-/* The two genuinely unbounded feeds keep an internal scroll, but an EXPLICIT one:
-   a stated max-height, so the crop is a design decision instead of an accident. */
+/* The one genuinely unbounded feed keeps an EXPLICIT, stated cap. */
 .notes-log{max-height:260px;overflow-y:auto}
 .agent-list{max-height:none}
-/* Scrollbars are neutral furniture — they were an accent gradient, i.e. brand colour
-   appearing purely because content overflowed. */
 .win-body::-webkit-scrollbar{width:8px}
 .win-body::-webkit-scrollbar-track{background:transparent}
-.win-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:var(--r-sm);
+.win-body::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:8px;
   border:2px solid transparent;background-clip:padding-box}
-.win-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
+.win-body::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2);background-clip:padding-box}
 
 /* ===================== TWIN ===================== */
+/* THE HERO. The twin is not a panel among panels: it has no plate, no border and
+   no shadow, and its canvas is masked so the rendered scene dissolves into the
+   ground instead of ending at a rectangle. The body stands in the same brand light
+   as the rest of the page.
+   CSS still cannot paint BEHIND the canvas (the EffectComposer's targets are
+   opaque — a 45% red gradient was verified invisible), which is exactly why this
+   is a mask on the canvas and not a backdrop under it. */
+.win.win-twin{background:transparent;border-color:transparent;box-shadow:none}
+.win.win-twin:hover{border-color:transparent}
+.win.win-twin.wm-focus{box-shadow:none}
+.win-twin > .win-bar{border-bottom-color:transparent}
 .twin-body{display:flex;flex-direction:column;align-items:center;padding:0;position:relative;
   min-height:0;overflow:hidden;border-radius:0 0 var(--r-lg) var(--r-lg)}
-/* The two panels whose content is a viewport rather than a document state their own
-   height: a 3D stage and a video feed have no intrinsic content height to report to
-   an `auto` grid row, and would otherwise collapse to nothing. */
-/* No CSS backdrop here, and it is not an oversight: the renderer is alpha:true, but
-   it draws through an EffectComposer whose render targets are opaque, so the
-   composed frame covers whatever this element paints. A 45%-opacity red gradient
-   was tried as a probe and was completely invisible. The twin's backdrop is a
-   scene-space gradient in twin3d.js instead. */
+/* A 3D stage has no intrinsic content height, so it states its own. */
 .twin-stage{flex:1 1 auto;width:100%;min-height:300px;position:relative;cursor:grab}
 .twin-stage:active{cursor:grabbing}
-/* focus/status HUD tag on the twin (was unstyled here → cramped "DYSFUNCTIONRESPIRATORY") */
-.twin-hud{position:absolute;left:12px;top:12px;z-index:4;display:none;align-items:center;gap:9px;
-  padding:8px 13px 8px 11px;border-radius:10px;pointer-events:none;
-  background:linear-gradient(180deg,rgba(16,22,38,.94),rgba(8,11,20,.9));
-  border:1px solid color-mix(in srgb,var(--tc,var(--dys-ink)) 60%,transparent);
-  box-shadow:0 6px 22px -10px #000;
-  backdrop-filter:blur(3px);animation:hud-in .28s ease}
+.twin-stage canvas{display:block;width:100%!important;height:100%!important;
+  -webkit-mask-image:radial-gradient(ellipse 62% 58% at 50% 50%,#000 62%,transparent 100%);
+  mask-image:radial-gradient(ellipse 62% 58% at 50% 50%,#000 62%,transparent 100%)}
+/* focus / status HUD tag on the twin — glass, pinned to the stage corner */
+.twin-hud{position:absolute;left:14px;top:12px;z-index:4;display:none;align-items:center;gap:10px;
+  padding:9px 14px 9px 12px;border-radius:14px;pointer-events:none;
+  background:var(--glass-float);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
+  border:1px solid color-mix(in srgb,var(--tc,var(--dys-ink)) 42%,transparent);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 14px 34px -16px #000;animation:hud-in .4s var(--ease)}
 @keyframes hud-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-.twin-hud-pip{width:9px;height:9px;border-radius:50%;background:var(--tc,var(--dys-ink));flex:0 0 auto;
-  box-shadow:none;animation:pulse 1.6s infinite}
-.twin-hud-body{display:flex;flex-direction:column;gap:1px;line-height:1.15}
-.twin-hud-k{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
-  color:color-mix(in srgb,var(--tc,var(--dys-ink)) 75%,#fff 25%)}
-.twin-hud-nm{font-family:var(--mono);font-size:14.5px;font-weight:700;letter-spacing:.05em;color:var(--accent-ink)}
-.twin-stage canvas{display:block;width:100%!important;height:100%!important}
-.twin-hint{position:absolute;top:10px;right:14px;font-family:var(--mono);
-  font-size:11px;color:var(--dim);letter-spacing:.5px;pointer-events:none;opacity:.6}
-.twin-optical{position:absolute;top:10px;left:14px;font-family:var(--mono);
-  font-size:11px;color:var(--accent,var(--accent));letter-spacing:.5px;pointer-events:none;
-  padding:3px 8px;border:1px solid rgba(var(--accent-rgb),.5);border-radius:6px;
-  background:rgba(var(--accent-rgb),.08);box-shadow:none;
-  animation:pulse 1.6s infinite}
+.twin-hud-pip{width:8px;height:8px;border-radius:50%;background:var(--tc,var(--dys-ink));flex:0 0 auto;
+  box-shadow:0 0 0 4px color-mix(in srgb,var(--tc,var(--dys-ink)) 18%,transparent);animation:pulse 1.8s infinite}
+.twin-hud-body{display:flex;flex-direction:column;gap:2px;line-height:1.15}
+.twin-hud-k{font-family:var(--sans);font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;
+  color:color-mix(in srgb,var(--tc,var(--dys-ink)) 78%,#fff 22%)}
+.twin-hud-nm{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:-.01em;color:var(--ink)}
+.twin-hint{position:absolute;top:12px;right:16px;font-family:var(--sans);
+  font-size:11.5px;color:var(--dim);pointer-events:none;opacity:.8}
+.twin-optical{position:absolute;top:12px;left:14px;font-family:var(--mono);
+  font-size:11px;color:var(--accent-ink);pointer-events:none;
+  padding:5px 11px;border:1px solid rgba(var(--accent-rgb),.4);border-radius:999px;
+  background:rgba(var(--accent-rgb),.1);backdrop-filter:blur(10px);animation:pulse 1.8s infinite}
 .twin-optical.hidden{display:none}
 
 /* multi-organ dysfunction HUD (SOFA · qSOFA · MODS) — overlaid on the twin */
-.organ-hud{position:absolute;left:12px;bottom:40px;z-index:4;pointer-events:none;
-  display:flex;flex-direction:column;gap:5px;font-family:var(--mono);
-  padding:9px 11px;border:1px solid rgba(255,255,255,.18);border-radius:8px;
-  background:linear-gradient(180deg,rgba(14,15,17,.82),rgba(14,15,17,.62));
-  backdrop-filter:blur(6px);max-width:min(58%,340px);box-shadow:0 6px 22px -12px #000}
+.organ-hud{position:absolute;left:14px;bottom:62px;z-index:4;pointer-events:none;
+  display:flex;flex-direction:column;gap:6px;font-family:var(--mono);
+  padding:11px 13px;border:1px solid var(--line);border-radius:14px;
+  background:var(--glass-float);backdrop-filter:blur(16px) saturate(1.2);-webkit-backdrop-filter:blur(16px) saturate(1.2);
+  max-width:min(58%,340px);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 14px 34px -16px #000}
 .organ-hud.hidden{display:none}
 .organ-hud .ohud-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ohud-k{font-size:11px;letter-spacing:.14em;color:var(--dim)}
-.ohud-sofa{font-size:20px;font-weight:800;line-height:1;color:var(--accent-ink)}
+.ohud-k{font-family:var(--sans);font-size:10.5px;font-weight:500;letter-spacing:.08em;color:var(--dim)}
+.ohud-sofa{font-family:var(--sans);font-size:24px;font-weight:500;letter-spacing:-.03em;line-height:1;color:var(--ink)}
 .ohud-sofa.warn{color:var(--med-ink)}.ohud-sofa.crit{color:var(--high-ink)}
 .ohud-band{font-size:11.5px;color:var(--muted)}
 .ohud-scored{font-size:11px;color:var(--dim);margin-left:auto}
-.ohud-pill{font-size:11.5px;font-weight:700;padding:2px 7px;border-radius:20px;
-  border:1px solid rgba(255,255,255,.25);color:var(--muted)}
+.ohud-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;
+  border:1px solid var(--line-bright);color:var(--muted)}
 .ohud-pill.dim{color:var(--dim)}
-.ohud-pill.ok{color:var(--low);border-color:rgba(var(--low-rgb),.4)}
-.ohud-pill.warn{color:var(--med-ink);border-color:rgba(255,207,91,.45)}
+.ohud-pill.ok{color:var(--low-ink);border-color:rgba(var(--low-rgb),.4)}
+.ohud-pill.warn{color:var(--med-ink);border-color:rgba(var(--med-rgb),.45)}
 .ohud-pill.crit{color:var(--high-ink);border-color:rgba(var(--high-rgb),.5);background:rgba(var(--high-rgb),.08)}
 .ohud-cascade{font-size:11px;color:var(--dys-ink);margin-left:auto}
 .ohud-worse{font-size:11.5px;color:var(--med-ink)}.ohud-worse b{color:var(--dys-ink)}
 .ohud-arrow{color:var(--high-ink);animation:pulse 1s infinite}
 .ohud-onset{font-size:11.5px;font-weight:700;color:var(--high-ink);letter-spacing:.03em;
-  padding-top:2px;border-top:1px solid rgba(var(--high-rgb),.2);animation:pulse 1.1s infinite}
-/* ORGAN STATE — the one place luminance is still allowed to do work.
-   This is a data visualisation, not chrome: on a body map a faint halo genuinely helps
-   the eye find the affected organ, so severity is encoded as fill + a halo that grows
-   with it. But a HEALTHY organ is not an event — it was rendered in saturated blue,
-   which lit the whole torso up and left nothing for an actual alarm to contrast
-   against. Normal is now neutral slate, so colour on this body always means something. */
+  padding-top:3px;border-top:1px solid rgba(var(--high-rgb),.2);animation:pulse 1.1s infinite}
+/* ORGAN STATE (legacy SVG twin) — a data visualisation, so luminance may work here;
+   a HEALTHY organ is neutral, so colour on the body always means something. */
 .organ{transition:fill var(--t-slow) var(--ease),filter var(--t-slow) var(--ease);cursor:default}
 .organ.normal{fill:rgba(255,255,255,.09);stroke:rgba(255,255,255,.28)}
 .organ.stress{fill:rgba(var(--med-rgb),.3);stroke:var(--med);filter:drop-shadow(0 0 5px rgba(var(--med-rgb),.35))}
 .organ.dysfunction{fill:rgba(var(--dys-rgb),.36);stroke:var(--dys);filter:drop-shadow(0 0 7px rgba(var(--dys-rgb),.4))}
 .organ.critical{fill:rgba(var(--high-rgb),.46);stroke:var(--high);filter:drop-shadow(0 0 10px rgba(var(--high-rgb),.55));animation:pulse 1.6s ease-in-out infinite}
 .organ.unmonitored{fill:rgba(var(--nodata-rgb),.14);stroke:rgba(var(--nodata-rgb),.45);stroke-dasharray:3 3}
-/* skin = body envelope: keep it an outline so internal organs read clearly */
 #organ-skin{fill-opacity:.08;stroke-width:1.8}
 #organ-blood{fill:none!important}
 .bodyline{fill:none;stroke:rgba(255,255,255,.22);stroke-width:1.4}
 .heartbeat{transform-origin:center;transform-box:fill-box}
-.twin-legend{flex:0 0 auto;display:flex;gap:14px;flex-wrap:wrap;justify-content:center;
-  font-size:11.5px;color:var(--muted);font-family:var(--mono);padding:8px 8px 10px}
-.twin-legend i.lg{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:5px;vertical-align:-1px}
-.lg.normal{background:rgba(255,255,255,.3)}.lg.stress{background:var(--stress)}.lg.dysfunction{background:var(--dys)}
+/* the legend floats as one glass pill over the foot of the stage */
+.twin-legend{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:4;
+  display:flex;gap:14px;flex-wrap:nowrap;justify-content:center;white-space:nowrap;
+  font-size:11.5px;color:var(--muted);font-family:var(--sans);padding:7px 15px;border-radius:999px;
+  background:var(--glass-float);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--line);box-shadow:0 12px 30px -16px #000}
+.twin-legend i.lg{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:1px}
+.lg.normal{background:rgba(255,255,255,.34)}.lg.stress{background:var(--stress)}.lg.dysfunction{background:var(--dys)}
 .lg.critical{background:var(--crit)}.lg.unmon{background:var(--unmon)}
 
 /* ===================== RISK ===================== */
-/* Horizontal instrument: compact dial on the left, readout column on the right.
-   Sizing is deliberately tight — the desk's grid row gives this body only ~98px,
-   and the dial + readout column previously totalled ~115px, so the SIRS/qSOFA tiles
-   were sheared off behind a scrollbar. The dial is sized in `em`-free fixed px and
-   the side column's rhythm is compressed so the whole instrument fits the row it
-   actually gets, rather than the row it wishes it had. */
-/* `height:100%` here read its height back from the panel, which now reads ITS height
-   from this content — a circular constraint the grid resolves by cropping. Both sides
-   of the panel size themselves from what they contain. */
-.risk-body{display:flex;flex-direction:column;gap:13px;justify-content:center}
-.risk-head{display:flex;flex-direction:row;align-items:center;gap:15px}
-/* 92px was sized around a 20px reading. At the readable type scale the number and its
-   caption together are ~50px tall, which a 92px ring cannot hold without the figure
-   colliding with the arc — and the panel row is content-sized now, so the extra
-   diameter costs nothing. */
-.risk-gauge{position:relative;width:120px;height:120px;flex:none;--halo:64,184,128}
+/* Horizontal instrument: dial left, readout column right, score tiles below.
+   Every part sizes from what it contains — `height:100%` here once read its height
+   back from a panel that reads its height from this, which the grid resolved by
+   cropping. */
+.risk-body{display:flex;flex-direction:column;gap:14px;justify-content:center}
+.risk-head{display:flex;flex-direction:row;align-items:center;gap:16px}
+.risk-gauge{position:relative;width:124px;height:124px;flex:none;--halo:64,184,128}
 .risk-gauge svg{width:100%;height:100%;overflow:visible}
+/* The dial chrome is built once in os.js with presentation attributes; CSS wins
+   over those, so the ticks and track are restyled here without touching the JS.
+   The FILL is untouched: its length is the probability, its colour the tier. */
+.risk-ticks line{stroke:rgba(255,255,255,.09)}
+.risk-ticks line[stroke-width="1.4"]{stroke:rgba(255,255,255,.24)}
+#risk-arc > path:not(#rg-fill){stroke:rgba(255,255,255,.07)}
 .risk-arc-fill{transition:stroke-dashoffset var(--t-slow) var(--ease)}
 .risk-arc-dot{transition:cx var(--t-slow) var(--ease),cy var(--t-slow) var(--ease),opacity var(--t) ease}
-/* The tier-tinted halo behind the dial is gone (rule 2). It was coloured light sitting
-   directly beneath the primary reading, and it pulsed on HIGH — animating the exact
-   pixels a clinician is trying to read at the exact moment reading matters most. HIGH
-   is now carried by the arc's colour and the tier badge, which do not move. */
-.risk-readout{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:1px}
-.risk-prob{font-family:var(--mono);color:var(--ink);line-height:1;white-space:nowrap}
-.risk-prob .rp-int{font-size:25px;font-weight:500;letter-spacing:-.02em}
-.risk-prob .rp-dec{font-size:13.5px;font-weight:400;color:var(--dim);letter-spacing:0}
-.risk-cap{font-size:10px;color:var(--faint);text-transform:uppercase;letter-spacing:.14em;margin-top:3px;
-  font-family:var(--mono)}
+.risk-readout{position:absolute;inset:0;display:grid;place-content:center;text-align:center;gap:2px}
+/* The reading is set in the interface face, not mono: at display size a
+   proportional numeral with tabular figures is both steadier and calmer. */
+.risk-prob{font-family:var(--sans);color:var(--ink);line-height:1;white-space:nowrap}
+.risk-prob .rp-int{font-size:32px;font-weight:500;letter-spacing:-.05em}
+.risk-prob .rp-dec{font-size:14px;font-weight:400;color:var(--dim);letter-spacing:-.01em}
+.risk-cap{font-size:10.5px;color:var(--dim);letter-spacing:.02em;margin-top:4px;font-family:var(--sans)}
 
-.risk-side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:2px 0}
-.risk-tierline{display:flex;flex-direction:column;gap:4px}
-.risk-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
-/* The tier word is the alarm. It carries state colour and nothing else does the job for
-   it — so it needs no text-shadow to shout; on an achromatic panel one coloured word at
-   18px is already the loudest thing on screen. */
-.risk-tier-badge{font-family:var(--sans);font-size:19px;font-weight:600;letter-spacing:.02em;line-height:1;
+.risk-side{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:2px 0}
+.risk-tierline{display:flex;flex-direction:column;gap:5px}
+.risk-eyebrow{font-family:var(--sans);font-size:10.5px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--dim)}
+/* The tier word is the alarm: one coloured word at display size is already the
+   loudest thing on the page, so it needs no glow to shout. */
+.risk-tier-badge{font-family:var(--sans);font-size:25px;font-weight:600;letter-spacing:-.02em;line-height:1;
   color:var(--low);transition:color var(--t) ease}
 .risk-tier-badge.MEDIUM{color:var(--med)}
 .risk-tier-badge.HIGH{color:var(--high)}
-/* Conformal state. Deliberately ACHROMATIC: colour on this panel means clinical
-   severity, and "the model cannot separate the two classes here" is not a severity —
-   giving it a hue would make an epistemic statement compete with the alarm. A
-   hairline chip in mono reads as instrument annotation, which is what it is. */
-.risk-certainty{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
-  color:var(--dim);border:1px solid var(--line);border-radius:var(--r-sm);
-  padding:2px 5px;line-height:1;align-self:flex-start;white-space:nowrap}
+/* Conformal state is an epistemic statement, not a severity — deliberately achromatic. */
+.risk-certainty{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);border:1px solid var(--line);border-radius:999px;
+  padding:3px 7px;line-height:1;align-self:flex-start;white-space:nowrap}
 .risk-certainty.resolved{color:var(--muted);border-color:var(--line-bright)}
-/* segmented band meter: which clinical band the patient is in */
-.risk-bands{display:flex;gap:3px}
-.rb-seg{flex:1;text-align:center;font-family:var(--mono);font-size:10px;font-weight:500;letter-spacing:.08em;
-  padding:4px 0;border-radius:var(--r-sm);color:var(--faint);background:var(--bg);
-  border:1px solid var(--line-soft);transition:color var(--t) ease,background var(--t) ease,border-color var(--t) ease}
-.rb-seg.on[data-t="LOW"]{color:var(--low-ink);border-color:rgba(var(--low-rgb),.45);background:rgba(var(--low-rgb),.12)}
-.rb-seg.on[data-t="MEDIUM"]{color:var(--med-ink);border-color:rgba(var(--med-rgb),.45);background:rgba(var(--med-rgb),.12)}
-.rb-seg.on[data-t="HIGH"]{color:var(--high-ink);border-color:rgba(var(--high-rgb),.5);background:rgba(var(--high-rgb),.14)}
-.risk-scores{display:flex;gap:6px}
-.evidence-request{font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
-  color:var(--blue);border:1px solid rgba(var(--accent-rgb),.38);border-radius:4px;padding:5px 7px;
-  background:rgba(var(--accent-rgb),.06);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.evidence-request.review{color:var(--high);border-color:rgba(255,87,87,.48);background:rgba(255,87,87,.07)}
-.rsc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:1px;
-  padding:6px 9px;border-radius:var(--r-sm);
-  background:var(--bg);border:1px solid var(--line-soft)}
-.rsc-v{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink);line-height:1}
-.rsc-k{font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+.risk-bands{display:flex;gap:4px;padding:3px;border-radius:999px;background:rgba(255,255,255,.03);
+  border:1px solid var(--line-soft)}
+.rb-seg{flex:1;text-align:center;font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.06em;
+  padding:4px 0;border-radius:999px;color:var(--faint);background:transparent;border:1px solid transparent;
+  transition:color var(--t) ease,background var(--t) ease,border-color var(--t) ease}
+.rb-seg.on[data-t="LOW"]{color:var(--low-ink);border-color:rgba(var(--low-rgb),.4);background:rgba(var(--low-rgb),.13)}
+.rb-seg.on[data-t="MEDIUM"]{color:var(--med-ink);border-color:rgba(var(--med-rgb),.4);background:rgba(var(--med-rgb),.13)}
+.rb-seg.on[data-t="HIGH"]{color:var(--high-ink);border-color:rgba(var(--high-rgb),.45);background:rgba(var(--high-rgb),.15)}
+.risk-scores{display:flex;gap:8px}
+.evidence-request{font-family:var(--mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--accent-ink);border:1px solid rgba(var(--accent-rgb),.35);border-radius:var(--r-sm);padding:6px 9px;
+  background:rgba(var(--accent-rgb),.07);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evidence-request.review{color:var(--high-ink);border-color:rgba(var(--high-rgb),.48);background:rgba(var(--high-rgb),.07)}
+.rsc{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:flex-start;gap:4px;
+  padding:9px 11px;border-radius:var(--r-md);
+  background:rgba(255,255,255,.025);border:1px solid var(--line-soft)}
+.rsc-v{font-family:var(--sans);font-size:19px;font-weight:500;letter-spacing:-.03em;color:var(--ink);line-height:1}
+.rsc-k{font-family:var(--sans);font-size:10px;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);
   white-space:nowrap}
 
 /* ===================== VITALS ===================== */
-.vitals-body{display:flex;flex-direction:column;gap:6px;min-height:0}
+.vitals-body{display:flex;flex-direction:column;gap:10px;min-height:0}
 .vital-grid{flex:0 1 auto;min-height:0}
-.trace-row{display:flex;gap:7px;flex:1 1 auto;min-height:100px;max-height:190px}
-/* The label used to be positioned ON the waveform, in a 30px-tall box: the reading and
-   the trace it belongs to were literally overlapping, and each made the other harder
-   to read. The label now gets its own strip at the top and the sweep gets the rest —
-   at 54px it is tall enough for a QRS complex to have a shape. */
-.trace{position:relative;flex:1 1 0;min-width:0;min-height:0;padding-top:22px;background:var(--bg);
-  border:1px solid var(--line);border-radius:var(--r-sm);overflow:hidden;display:flex}
+.trace-row{display:flex;gap:8px;flex:1 1 auto;min-height:100px;max-height:190px}
+/* The label has its own strip and the sweep gets the rest — a reading laid over
+   its own waveform makes each harder to read. */
+.trace{position:relative;flex:1 1 0;min-width:0;min-height:0;padding-top:26px;background:rgba(0,0,0,.3);
+  border:1px solid var(--line-soft);border-radius:var(--r-md);overflow:hidden;display:flex}
 .trace canvas{display:block;width:100%;flex:1 1 auto;min-height:0}
 #ecg,#ppg{height:auto;min-height:54px}
-.trace-tag{position:absolute;top:0;left:0;right:0;height:22px;display:flex;align-items:center;gap:4px;
-  padding:0 9px;font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.3px;
-  border-bottom:1px solid var(--line-soft);background:var(--s2)}
-.trace-tag b{color:var(--ink);font-weight:500}
-.vital-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(52px,80px);gap:5px;margin-top:0}
-.vchip{display:flex;flex-direction:column;gap:0;justify-content:center;min-height:0;
-  padding:7px 9px;border-radius:var(--r-sm);
-  background:rgba(255,255,255,.018);border:1px solid var(--line);font-family:var(--sans);transition:.25s}
-.vchip:hover{border-color:rgba(255,255,255,.2)}
-.vchip .vk{font-size:10.5px;font-weight:600;color:var(--dim);letter-spacing:.06em;text-transform:uppercase}
-.vchip .vnum{display:flex;align-items:baseline;gap:2px}
-.vchip .vv{font-size:16px;font-weight:700;font-family:var(--mono);font-feature-settings:"tnum";line-height:1.1}
-.vchip .vu{font-size:11px;color:var(--dim)}
-.vchip.NORMAL .vv{color:var(--ink)}.vchip.STRESS{border-color:rgba(var(--med-rgb),.4)}.vchip.STRESS .vv{color:var(--stress)}
-.vchip.CRITICAL{border-color:rgba(var(--high-rgb),.5)}.vchip.CRITICAL .vv{color:var(--crit)}
+.trace-tag{position:absolute;top:0;left:0;right:0;height:26px;display:flex;align-items:center;gap:5px;
+  padding:0 10px;font-family:var(--sans);font-size:11px;font-weight:500;color:var(--dim);letter-spacing:.02em;
+  border-bottom:1px solid var(--line-soft)}
+.trace-tag b{color:var(--ink);font-family:var(--mono);font-weight:500;font-size:12px}
+.vital-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:minmax(56px,84px);gap:6px;margin-top:0}
+.vchip{display:flex;flex-direction:column;gap:3px;justify-content:center;min-height:0;min-width:0;
+  padding:8px 10px;border-radius:var(--r-md);
+  background:rgba(255,255,255,.025);border:1px solid var(--line-soft);font-family:var(--sans);
+  transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}
+.vchip:hover{border-color:var(--line-bright)}
+.vchip .vk{font-size:10px;font-weight:500;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
+.vchip .vnum{display:flex;align-items:baseline;gap:2px;min-width:0}
+.vchip .vv{font-size:19px;font-weight:500;font-family:var(--sans);letter-spacing:-.04em;line-height:1.05}
+.vchip .vu{font-size:10.5px;color:var(--dim);white-space:nowrap}
+.vchip.NORMAL .vv{color:var(--ink)}
+.vchip.STRESS{border-color:rgba(var(--med-rgb),.36);background:rgba(var(--med-rgb),.05)}.vchip.STRESS .vv{color:var(--med-ink)}
+.vchip.CRITICAL{border-color:rgba(var(--high-rgb),.46);background:rgba(var(--high-rgb),.06)}.vchip.CRITICAL .vv{color:var(--high-ink)}
 .vchip.UNMONITORED{opacity:.45}
 
 /* ===================== AGENTS ===================== */
-.agents-body{display:flex;flex-direction:column;gap:9px}
-.agent{padding:10px 12px;border-radius:var(--r-md);border:1px solid var(--line);
-  background:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,.008));transition:.3s}
+.agents-body{display:flex;flex-direction:column;gap:10px}
+.agent{padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-soft);
+  background:rgba(255,255,255,.022);transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}
 .agent:hover{border-color:var(--line-bright)}
-.agent.hot{border-color:rgba(var(--dys-rgb),.4);background:linear-gradient(180deg,rgba(var(--dys-rgb),.06),rgba(255,255,255,.008))}
-.agent-head{display:flex;align-items:center;gap:8px;margin-bottom:7px}
-.agent-name{font-weight:600;font-size:14.5px;letter-spacing:.2px}
-.agent-conf{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--dim);font-feature-settings:"tnum"}
-.agent-bar{height:5px;border-radius:6px;background:rgba(255,255,255,.09);overflow:hidden}
-.agent-fill{height:100%;border-radius:6px;transition:width .7s cubic-bezier(.2,.85,.25,1);
-  background:var(--grad-accent);box-shadow:none}
-.agent.hot .agent-fill{background:linear-gradient(90deg,var(--dys),var(--crit));box-shadow:none}
-.agent-ev{font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.5}
-.agent-ev .tag{display:inline-block;background:rgba(var(--accent-rgb),.08);border:1px solid var(--line);
-  color:var(--cyan);border-radius:5px;padding:1px 6px;margin:2px 4px 0 0;font-family:var(--mono);font-size:11.5px}
-.oracle{margin-top:2px;padding:10px 12px;border-radius:10px;border:1px dashed var(--line-bright);
-  background:rgba(var(--accent-rgb),.06);font-size:13.5px}
-.oracle.crit{border-color:var(--crit);background:rgba(var(--high-rgb),.08)}
-.oracle h5{margin:0 0 5px;font-family:var(--mono);font-size:12.5px;letter-spacing:1px;color:var(--cyan);text-transform:uppercase}
-.oracle.crit h5{color:var(--crit)}
-.oracle .flag{display:inline-block;color:var(--crit);font-size:12.5px;margin-right:10px}
+.agent.hot{border-color:rgba(var(--dys-rgb),.42);background:linear-gradient(180deg,rgba(var(--dys-rgb),.08),rgba(255,255,255,.01))}
+.agent-head{display:flex;align-items:center;gap:8px;margin-bottom:9px}
+.agent-name{font-weight:560;font-size:14px;letter-spacing:-.012em}
+.agent-conf{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--dim);font-feature-settings:"tnum"}
+.agent-bar{height:4px;border-radius:4px;background:rgba(255,255,255,.07);overflow:hidden}
+/* Concern is a magnitude, not a state, so a calm agent's bar is neutral. It earns
+   a warm hue only when the agent is actually concerned. */
+.agent-fill{height:100%;border-radius:4px;transition:width .9s var(--ease);
+  background:linear-gradient(90deg,rgba(255,255,255,.28),rgba(255,255,255,.62))}
+.agent.hot .agent-fill{background:linear-gradient(90deg,var(--dys),var(--crit))}
+.agent-ev{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.agent-ev .tag{display:inline-block;background:rgba(var(--accent-rgb),.08);border:1px solid rgba(var(--accent-rgb),.24);
+  color:var(--accent-ink);border-radius:999px;padding:1px 8px;margin:4px 4px 0 0;font-family:var(--mono);font-size:11px}
+.oracle{margin-top:2px;padding:11px 13px;border-radius:var(--r-md);border:1px dashed var(--line-bright);
+  background:rgba(255,255,255,.02);font-size:13.5px}
+.oracle.crit{border:1px solid rgba(var(--high-rgb),.6);background:rgba(var(--high-rgb),.08)}
+.oracle h5{margin:0 0 5px;font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.08em;
+  color:var(--accent-ink);text-transform:uppercase}
+.oracle.crit h5{color:var(--high-ink)}
+.oracle .flag{display:inline-block;color:var(--high-ink);font-size:12.5px;margin-right:10px}
 
 /* ===================== WHAT-IF ===================== */
 .whatif-body{position:relative}
-/* fade at the bottom hints that the ranked path list scrolls */
 .whatif-body::after{content:"";position:absolute;left:0;right:0;bottom:0;height:20px;pointer-events:none;
   background:linear-gradient(transparent,var(--s1))}
-.proto-project{display:block;width:100%;margin-top:9px;padding:8px 11px;cursor:pointer;
-  font-family:var(--mono);font-size:11.5px;font-weight:600;letter-spacing:.04em;
-  text-align:left;color:var(--accent);background:rgba(var(--accent-rgb),.09);
-  border:1px solid rgba(var(--accent-rgb),.28);border-radius:6px;
+.proto-project{display:block;width:100%;margin-top:10px;padding:9px 12px;cursor:pointer;
+  font-family:var(--sans);font-size:12.5px;font-weight:560;text-align:left;color:var(--accent-ink);
+  background:rgba(var(--accent-rgb),.09);border:1px solid rgba(var(--accent-rgb),.3);border-radius:var(--r-sm);
   transition:color var(--t) var(--ease),background var(--t) var(--ease),border-color var(--t) var(--ease)}
-.proto-project:hover{color:var(--ink);background:rgba(var(--accent-rgb),.16);
-  border-color:rgba(var(--accent-rgb),.55)}
+.proto-project:hover{color:var(--ink);background:rgba(var(--accent-rgb),.16);border-color:rgba(var(--accent-rgb),.55)}
 
-.whatif-list{display:flex;flex-direction:column;gap:4px}
-/* The way into the pharmacokinetic twin. It sits ABOVE the candidate paths and is
-   always enabled: the what-if list only populates on elevated risk, but "where
-   does this drug go" is a fair question about a stable patient too, and burying
-   the answer behind a risk gate is what made it hard to find in the first place. */
+.whatif-list{display:flex;flex-direction:column;gap:5px}
+/* The way into the pharmacokinetic twin — the product's primary call to action,
+   so it is one of the few controls allowed to wear the brand. Always enabled:
+   "where does this drug go" is a fair question about a stable patient too. */
 .whatif-pk{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:auto auto;
-  align-items:center;gap:1px 11px;width:100%;margin-bottom:10px;padding:11px 13px;
-  cursor:pointer;text-align:left;
-  background:var(--s2);
-  border:1px solid var(--line);border-radius:8px;transition:border-color var(--t) var(--ease)}
-.whatif-pk:hover{border-color:var(--line-bright)}
-.whatif-pk:hover{border-color:rgba(95,179,212,.62);background:linear-gradient(180deg,rgba(95,179,212,.17),rgba(95,179,212,.07))}
-.whatif-pk-ic{grid-column:1;grid-row:1/3;align-self:center;font-size:17px;color:var(--accent);line-height:1}
-.whatif-pk-t{grid-column:2;grid-row:1;align-self:end;font-size:12.5px;font-weight:600;
-  color:var(--ink);letter-spacing:.01em}
-.whatif-pk-s{grid-column:2;grid-row:2;align-self:start;font-size:10.5px;color:var(--dim);
-  margin-top:2px;line-height:1.35}
-.whatif-pk-chev{grid-column:3;grid-row:1/3;align-self:center;color:var(--accent);font-size:16px;opacity:.75}
-.whatif-hint{font-size:11px;color:var(--dim);letter-spacing:.02em;margin-bottom:2px}
+  align-items:center;gap:2px 12px;width:100%;margin-bottom:12px;padding:12px 14px;cursor:pointer;text-align:left;
+  background:linear-gradient(135deg,rgba(var(--brand-rgb),.13),rgba(124,196,255,.04));
+  border:1px solid rgba(var(--brand-rgb),.3);border-radius:var(--r-md);
+  transition:border-color var(--t) var(--ease),background var(--t) var(--ease)}
+.whatif-pk:hover{border-color:rgba(var(--brand-rgb),.55);
+  background:linear-gradient(135deg,rgba(var(--brand-rgb),.2),rgba(124,196,255,.07))}
+.whatif-pk-ic{grid-column:1;grid-row:1/3;align-self:center;width:30px;height:30px;display:grid;place-items:center;
+  border-radius:9px;font-size:15px;color:#fff;line-height:1;background:var(--brand);
+  box-shadow:0 6px 16px -6px rgba(var(--brand-rgb),.75),inset 0 1px 0 rgba(255,255,255,.3)}
+.whatif-pk-t{grid-column:2;grid-row:1;align-self:end;font-size:13px;font-weight:560;color:var(--ink);letter-spacing:-.01em}
+.whatif-pk-s{grid-column:2;grid-row:2;align-self:start;font-size:11px;color:var(--dim);margin-top:1px;line-height:1.35}
+.whatif-pk-chev{grid-column:3;grid-row:1/3;align-self:center;color:var(--accent-ink);font-size:18px;opacity:.85;
+  transition:transform var(--t) var(--ease)}
+.whatif-pk:hover .whatif-pk-chev{transform:translateX(3px)}
+.whatif-hint{font-size:11px;color:var(--dim);letter-spacing:.01em;margin-bottom:4px}
 .whatif-hint b{color:var(--muted);font-weight:600}
-.cand{display:flex;align-items:center;gap:7px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);
-  background:rgba(255,255,255,.018);cursor:pointer;
-  transition:border-color .2s,box-shadow .2s,transform .2s,background .2s}
-.cand[data-cand]:hover{border-color:var(--line-bright);background:rgba(var(--accent-rgb),.06);transform:translateX(2px)}
-.cand[data-cand]:hover .cand-chev{color:var(--cyan);transform:translateX(2px)}
-.cand[data-cand]:focus-visible{outline:none;border-color:var(--cyan);box-shadow:0 0 0 2px rgba(var(--accent-rgb),.3)}
-.cand.best{border-color:rgba(var(--accent-rgb),.45);background:rgba(var(--accent-rgb),.06)}
+.cand{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:var(--r-sm);border:1px solid var(--line-soft);
+  background:rgba(255,255,255,.02);cursor:pointer;
+  transition:border-color .2s,background .2s,transform .25s var(--ease)}
+.cand[data-cand]:hover{border-color:var(--line-bright);background:rgba(255,255,255,.045);transform:translateX(2px)}
+.cand[data-cand]:hover .cand-chev{color:var(--ink);transform:translateX(2px)}
+.cand[data-cand]:focus-visible{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.25)}
+.cand.best{border-color:rgba(var(--accent-rgb),.42);background:rgba(var(--accent-rgb),.07)}
 .cand.unsafe{opacity:.5}
 .cand-dot{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--dim)}
-.cand-dot.rec{background:var(--cyan);box-shadow:none}
+.cand-dot.rec{background:var(--accent)}
 .cand-dot.safe{background:var(--ok)}
 .cand-dot.no{background:var(--crit)}
-.cand-name{font-size:13px;font-weight:600;text-transform:capitalize;color:var(--ink);
+.cand-name{font-size:13px;font-weight:560;text-transform:capitalize;color:var(--ink);letter-spacing:-.01em;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
 .cand-spark{flex:0 1 60px;min-width:36px;height:22px;opacity:.9}
 .cand-spark canvas{width:100%;height:22px;display:block}
 .cand-risk{display:flex;align-items:baseline;gap:5px;flex:0 0 auto;font-family:var(--mono)}
-.cand-risk b{font-size:14.5px;font-weight:700;color:var(--ink)}
+.cand-risk b{font-family:var(--sans);font-size:15px;font-weight:600;letter-spacing:-.03em;color:var(--ink)}
 .cand-delta{font-size:11.5px;font-weight:600}
-.cand-delta.down{color:var(--ok)}
-.cand-delta.up{color:var(--crit)}
+.cand-delta.down{color:var(--low-ink)}
+.cand-delta.up{color:var(--high-ink)}
 .cand-delta.flat{color:var(--dim)}
-/* MAP nadir — the second axis these paths actually differ on. Amber below 65,
-   the threshold the protocol itself treats as the floor. */
+/* MAP nadir — the second axis these paths differ on. Amber below 65, the floor
+   the protocol itself uses. */
 .cand-nadir{flex:0 0 auto;font-family:var(--mono);font-size:11px;color:var(--dim);
-  border:1px solid var(--line);border-radius:5px;padding:1px 5px;letter-spacing:.02em;
+  border:1px solid var(--line);border-radius:999px;padding:1px 7px;letter-spacing:.02em;
   font-variant-numeric:tabular-nums}
 .cand-nadir::after{content:" MAP";font-size:8.5px;letter-spacing:.06em;opacity:.65}
-.cand-nadir.low{color:var(--med);border-color:rgba(var(--med-rgb),.32)}
+.cand-nadir.low{color:var(--med-ink);border-color:rgba(var(--med-rgb),.34)}
 .cand-chev{flex:0 0 auto;color:var(--dim);font-size:17px;line-height:1;transition:.2s}
 
 /* ===================== WHAT-IF PROJECTION MODAL ===================== */
@@ -719,99 +725,100 @@ b{color:var(--ink)}
 /* ===================== PROTOCOL ===================== */
 .proto-body{position:relative}
 .proto-body::after{content:"";position:absolute;left:0;right:0;bottom:0;height:22px;pointer-events:none;
-  background:linear-gradient(transparent,rgba(17,18,20,.92))}
-.proto{display:flex;flex-direction:column;gap:8px;font-size:13.5px}
+  background:linear-gradient(transparent,rgba(13,15,20,.92))}
+.proto{display:flex;flex-direction:column;gap:9px;font-size:13.5px}
 .proto .rx{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
-.proto .rx div{background:linear-gradient(180deg,rgba(var(--accent-rgb),.05),rgba(255,255,255,.006));
-  border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 8px;text-align:center;transition:.3s}
+.proto .rx div{background:rgba(255,255,255,.025);border:1px solid var(--line-soft);border-radius:var(--r-md);
+  padding:9px 8px;text-align:center;font-size:11px;color:var(--dim);transition:border-color .3s}
 .proto .rx div:hover{border-color:var(--line-bright)}
-.proto .rx b{display:block;font-family:var(--mono);font-size:16px;font-weight:700;color:var(--cyan);margin-top:2px;
-  font-feature-settings:"tnum";text-shadow:0 0 14px rgba(var(--accent-rgb),.35)}
-.proof{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:9px;border:1px solid var(--ok);
-  background:rgba(var(--low-rgb),.08);font-family:var(--mono);font-size:13.5px;color:var(--ok)}
-.proof.bad{border-color:var(--crit);background:rgba(var(--high-rgb),.08);color:var(--crit)}
-.proof i{font-size:16px}
-.proto-advisory{display:flex;align-items:center;gap:7px;padding:7px 10px;border-radius:8px;
-  border:1px solid var(--dys);background:rgba(var(--dys-rgb),.10);color:var(--dys);
-  font-family:var(--mono);font-size:12.5px;letter-spacing:.02em;font-weight:600}
+/* A dose is a reading: ink, display numerals, no glow. */
+.proto .rx b{display:block;font-family:var(--sans);font-size:17px;font-weight:600;letter-spacing:-.02em;
+  color:var(--ink);margin-top:3px;font-feature-settings:"tnum"}
+.proof{display:flex;align-items:center;gap:9px;padding:10px 12px;border-radius:var(--r-md);
+  border:1px solid rgba(var(--low-rgb),.45);background:rgba(var(--low-rgb),.08);
+  font-family:var(--mono);font-size:12.5px;color:var(--low-ink)}
+.proof.bad{border-color:rgba(var(--high-rgb),.5);background:rgba(var(--high-rgb),.08);color:var(--high-ink)}
+.proof i{font-size:16px;font-style:normal}
+.proto-advisory{display:flex;align-items:center;gap:7px;padding:8px 11px;border-radius:var(--r-sm);
+  border:1px solid rgba(var(--dys-rgb),.5);background:rgba(var(--dys-rgb),.1);color:var(--dys-ink);
+  font-family:var(--mono);font-size:12px;letter-spacing:.02em;font-weight:600}
 /* portable, third-party-checkable proof affordance (live core-cage decision) */
-.pproof{margin-top:8px;padding:9px 11px;border-radius:9px;border:1px solid var(--line-bright);
-  background:rgba(255,255,255,.012);display:flex;flex-direction:column;gap:7px}
+.pproof{margin-top:8px;padding:11px 12px;border-radius:var(--r-md);border:1px solid var(--line);
+  background:rgba(255,255,255,.02);display:flex;flex-direction:column;gap:8px}
 .pproof-h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
-.pproof-badge{font-family:var(--mono);font-size:11.5px;letter-spacing:.4px;padding:3px 8px;border-radius:999px;
+.pproof-badge{font-family:var(--mono);font-size:11px;letter-spacing:.03em;padding:3px 9px;border-radius:999px;
   border:1px solid transparent}
 .pproof-badge.ok{color:var(--low-ink);border-color:rgba(var(--low-rgb),.4);background:rgba(var(--low-rgb),.07)}
 .pproof-badge.bad{color:var(--high-ink);border-color:rgba(var(--high-rgb),.4);background:rgba(var(--high-rgb),.07)}
 .pproof-key{font-size:11px;color:var(--dim)}
 .pproof-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.pproof-btn{font-family:var(--mono);font-size:11px;letter-spacing:.4px;cursor:pointer;padding:5px 10px;
-  border-radius:7px;color:var(--ink);border:1px solid rgba(var(--accent-rgb),.35);background:rgba(var(--accent-rgb),.07)}
-.pproof-btn:hover{background:rgba(var(--accent-rgb),.14)}
+.pproof-btn{font-family:var(--sans);font-size:12px;font-weight:500;cursor:pointer;padding:6px 12px;
+  border-radius:999px;color:var(--ink);border:1px solid rgba(var(--accent-rgb),.38);background:rgba(var(--accent-rgb),.1)}
+.pproof-btn:hover{background:rgba(var(--accent-rgb),.18)}
 .pproof-btn:disabled{opacity:.5;cursor:default}
-.pproof-dl{font-family:var(--mono);font-size:11px;letter-spacing:.4px;text-decoration:none;padding:5px 10px;
-  border-radius:7px;color:var(--muted);border:1px solid var(--line-bright)}
+.pproof-dl{font-family:var(--sans);font-size:12px;font-weight:500;text-decoration:none;padding:6px 12px;
+  border-radius:999px;color:var(--muted);border:1px solid var(--line-bright)}
 .pproof-dl:hover{color:var(--ink)}
 .pproof-result{font-family:var(--mono);font-size:11.5px;color:var(--dim);min-height:0}
 .pproof-result b.ok{color:var(--low-ink)}.pproof-result b.bad{color:var(--high-ink)}
 .narr{color:var(--muted);line-height:1.6;border-left:2px solid var(--line-bright);padding-left:11px}
 
 /* ===================== LAYERS ===================== */
-.layers{display:flex;flex-direction:column;gap:5px}
-.layer{display:flex;align-items:center;gap:8px;font-family:var(--sans);font-size:12.5px;color:var(--muted);white-space:nowrap}
-.layer i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:none;flex:0 0 auto}
+.layers{display:flex;flex-direction:column;gap:6px}
+.layer{display:flex;align-items:center;gap:9px;font-family:var(--sans);font-size:12.5px;color:var(--muted);white-space:nowrap}
+.layer i{width:7px;height:7px;border-radius:50%;background:var(--ok);flex:0 0 auto;
+  box-shadow:0 0 0 3px rgba(var(--low-rgb),.14)}
 .layer i.off{background:var(--unmon);box-shadow:none}
-.layer .lx{color:var(--dim)}.layer b{color:var(--ink);font-weight:600}
+.layer .lx{color:var(--dim)}.layer b{color:var(--ink);font-weight:560}
 
-/* ===================== DOCK ===================== */
-/* The dock carries 13 launchers across 4 groups: at laptop widths that content is
-   ~1800px wide and does NOT fit on one row. It used to be a fixed-height nowrap
-   strip with overflow-x:auto, which pushed half the apps off-screen behind a footer
-   scrollbar nobody looks for — the apps were effectively undiscoverable. It now
-   wraps instead: one row on wide displays, two on a laptop, always fully visible.
-   Height is intentionally auto (the .os flex column lets the desk absorb the change)
-   and overflow is left visible so the buttons' hover lift isn't sheared off. */
-/* The twin's meshes are ~20s of GLB over a cold connection, during which the largest
-   panel on screen was an empty black rectangle captioned "drag to rotate" — an
-   instruction for a thing that was not there. It now says what it is doing, and the
-   bar is INDETERMINATE on purpose: the loader reports no total, so a percentage
-   would be invented. */
+/* The twin's meshes take seconds to arrive over a cold connection; the stage says
+   what it is doing. The bar is INDETERMINATE on purpose — the loader reports no
+   total, so a percentage would be invented. */
 .twin-loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:11px;pointer-events:none;z-index:2;
-  transition:opacity .5s ease}
+  justify-content:center;gap:12px;pointer-events:none;z-index:2;transition:opacity .6s var(--ease)}
 .twin-loading.done{opacity:0}
-.twin-loading-txt{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
-  text-transform:uppercase;color:var(--faint)}
-.twin-loading-bar{width:132px;height:2px;border-radius:2px;background:var(--s3);overflow:hidden}
-.twin-loading-bar i{display:block;width:38%;height:100%;border-radius:2px;background:var(--dim);
-  animation:twinload 1.5s ease-in-out infinite}
+.twin-loading-txt{font-family:var(--sans);font-size:11px;font-weight:500;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--dim)}
+.twin-loading-bar{width:150px;height:3px;border-radius:3px;background:rgba(255,255,255,.07);overflow:hidden}
+.twin-loading-bar i{display:block;width:38%;height:100%;border-radius:3px;background:var(--brand);
+  animation:twinload 1.5s var(--ease) infinite}
 @keyframes twinload{0%{transform:translateX(-110%)}100%{transform:translateX(370%)}}
 
-.dock{min-height:52px;display:flex;align-items:center;justify-content:flex-start;
-  gap:8px 14px;padding:7px 14px;flex-wrap:wrap;
-  background:var(--s1);border-top:1px solid var(--line)}
-.dock-grp{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.dock-label{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--faint);letter-spacing:.12em;
-  text-transform:uppercase;margin-right:4px;white-space:nowrap}
-/* Controls are neutral. Every launcher used to sit on an accent tint, which meant the
-   dock read as 13 highlighted things — so nothing was highlighted. Buttons state their
-   presence with a border and earn colour only when they carry a warning. Hover changes
-   the surface, not the position: a 2px jump on 13 targets is visual noise, and it was
-   being clipped by the dock's own overflow anyway. */
-.dock-btn{font-family:var(--sans);font-size:13px;font-weight:500;color:var(--muted);background:var(--s2);
-  border:1px solid var(--line);border-radius:var(--r-md);padding:7px 11px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
+/* ===================== DOCK ===================== */
+/* A floating glass bar, inset from the edges. It WRAPS rather than scrolling
+   sideways: at laptop widths its launchers do not fit one row, and a nowrap strip
+   hid half the apps behind a footer scrollbar nobody looks for. Height is auto
+   (the .os column lets the desk absorb the change). */
+.dock{position:relative;margin:0 16px 14px;min-height:54px;display:flex;align-items:center;justify-content:flex-start;
+  gap:6px 10px;padding:7px 9px;flex-wrap:wrap;border-radius:var(--r-lg);
+  background:var(--glass-float);backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+  border:1px solid var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 24px 50px -30px rgba(0,0,0,.9)}
+.dock-grp{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.dock-label{font-family:var(--sans);font-size:10px;font-weight:600;color:var(--faint);letter-spacing:.1em;
+  text-transform:uppercase;margin:0 6px 0 5px;white-space:nowrap}
+/* Buttons everywhere: a quiet secondary control. */
+.dock-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;font-family:var(--sans);font-size:12.5px;
+  font-weight:500;letter-spacing:-.005em;color:var(--muted);background:rgba(255,255,255,.05);
+  border:1px solid var(--line);border-radius:10px;padding:7px 12px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
   transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
-.dock-btn:hover{background:var(--s3);border-color:var(--line-bright);color:var(--ink)}
-.dock-btn:active{background:var(--bg)}
-.dock-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-/* The one destructive control in the dock; it is allowed to be red because it is a
-   real hazard, not because it is important. */
-/* A dock button whose window is on screen reads as running — the same affordance
-   .wm-task already carries in the taskbar, so the two rows agree about what is open
-   instead of only one of them knowing. */
-.dock-btn.on{border-color:rgba(var(--accent-rgb),.45);color:var(--accent-ink);background:var(--s3)}
-.dock-btn.warn{background:rgba(var(--high-rgb),.1);border-color:rgba(var(--high-rgb),.35);color:var(--high-ink)}
-.dock-btn.warn:hover{background:rgba(var(--high-rgb),.22);box-shadow:none}
-.dock-status{font-family:var(--mono);font-size:12.5px;color:var(--dim);white-space:nowrap;flex:0 0 auto;margin-left:auto;padding-left:12px}
+.dock-btn:hover{background:rgba(255,255,255,.09);border-color:var(--line-bright);color:var(--ink)}
+.dock-btn:active{background:rgba(255,255,255,.04)}
+.dock-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.dock-btn:disabled{opacity:.45;cursor:default}
+/* In the dock they are ghost buttons: the bar is the container, so each launcher
+   needs no box of its own until it is hovered or running. */
+.dock .dock-btn{background:transparent;border-color:transparent}
+.dock .dock-btn:hover{background:rgba(255,255,255,.07);border-color:transparent}
+/* A launcher whose window is on screen reads as running — the same affordance
+   .wm-task carries in the taskbar, so the two rows agree about what is open. */
+.dock-btn.on,.dock .dock-btn.on{border-color:rgba(var(--accent-rgb),.4);color:var(--accent-ink);background:rgba(var(--accent-rgb),.1)}
+/* The one hazardous control; red because it is a real hazard, not because it is important. */
+.dock-btn.warn,.dock .dock-btn.warn{background:rgba(var(--high-rgb),.1);border-color:rgba(var(--high-rgb),.3);color:var(--high-ink)}
+.dock-btn.warn:hover,.dock .dock-btn.warn:hover{background:rgba(var(--high-rgb),.2);border-color:rgba(var(--high-rgb),.45)}
+.dock-kbd{font-family:var(--mono);font-size:10px;color:var(--faint);border:1px solid var(--line);
+  border-radius:5px;padding:1px 5px;line-height:1.3}
+.dock-status{font-family:var(--mono);font-size:11px;color:var(--dim);white-space:nowrap;flex:0 0 auto;
+  margin-left:auto;padding:0 8px 0 12px}
 
 /* ===================== anim ===================== */
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -831,20 +838,28 @@ b{color:var(--ink)}
   background-image:linear-gradient(rgba(var(--accent-rgb),.05) 1px,transparent 1px),linear-gradient(90deg,rgba(var(--accent-rgb),.05) 1px,transparent 1px);
   background-size:44px 44px;mask:radial-gradient(circle at 50% 40%,#000 55%,transparent 100%)}
 
-.cam-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;
-  border-bottom:1px solid var(--line);backdrop-filter:blur(12px);z-index:2}
-.cam-head-l{display:flex;align-items:baseline;gap:12px}
-.cam-sigil{color:var(--cyan);font-size:19px;filter:drop-shadow(0 0 10px rgba(var(--accent-rgb),.7))}
-.cam-title{font-weight:700;letter-spacing:1.2px;font-size:17px}
-.cam-sub{font-family:var(--sans);font-size:13px;color:var(--muted);letter-spacing:.2px}
-.cam-head-r{display:flex;align-items:center;gap:14px}
-.cam-state{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;color:var(--muted)}
+.cam-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 22px;min-height:64px;
+  border-bottom:1px solid var(--line-soft);background:rgba(5,6,9,.55);
+  backdrop-filter:blur(18px) saturate(1.2);-webkit-backdrop-filter:blur(18px) saturate(1.2);z-index:2}
+.cam-head-l{display:flex;align-items:center;gap:12px;min-width:0}
+/* every overlay's glyph sits in a brand app-icon tile — an identity moment */
+.cam-sigil{width:32px;height:32px;display:grid;place-items:center;flex:0 0 auto;border-radius:10px;color:#fff;
+  font-size:16px;line-height:1;background:var(--brand);
+  box-shadow:0 8px 22px -8px rgba(var(--brand-rgb),.7),inset 0 1px 0 rgba(255,255,255,.3)}
+.cam-title{font-weight:600;letter-spacing:-.022em;font-size:18px;white-space:nowrap}
+.cam-sub{font-family:var(--sans);font-size:13px;color:var(--dim);letter-spacing:0;min-width:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cam-head-r{display:flex;align-items:center;gap:12px;flex:0 0 auto}
+.cam-state{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;color:var(--muted);
+  padding:5px 11px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
 .cam-state i{width:8px;height:8px;border-radius:50%;background:var(--stress);box-shadow:none}
 .cam-state.live i{background:var(--ok);box-shadow:none}
 .cam-state.error i{background:var(--crit);box-shadow:none}
-.cam-close{font-family:var(--mono);font-size:12.5px;color:var(--ink);background:rgba(var(--high-rgb),.1);
-  border:1px solid rgba(var(--high-rgb),.4);border-radius:8px;padding:7px 13px;cursor:pointer;transition:.18s}
-.cam-close:hover{background:rgba(var(--high-rgb),.22);box-shadow:none}
+/* Closing a window is not a hazard, so the close control is neutral (it was red). */
+.cam-close{font-family:var(--sans);font-size:12.5px;font-weight:500;color:var(--muted);background:rgba(255,255,255,.05);
+  border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;
+  transition:background .18s,color .18s,border-color .18s}
+.cam-close:hover{background:rgba(255,255,255,.1);color:var(--ink);border-color:var(--line-bright)}
 
 .cam-body{flex:1;display:flex;gap:16px;padding:16px 20px;min-height:0;z-index:1}
 
@@ -880,9 +895,11 @@ b{color:var(--ink)}
 
 /* side rail */
 .cam-rail{width:330px;display:flex;flex-direction:column;gap:12px;min-height:0}
-.cam-card{background:var(--panel);border:1px solid var(--line);border-radius:13px;padding:12px 14px;backdrop-filter:blur(16px)}
+.cam-card{background:var(--glass),var(--panel-solid);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:14px 16px;box-shadow:var(--plate-shadow)}
 .cam-card-grow{flex:1;min-height:0;display:flex;flex-direction:column}
-.cam-card-h{font-family:var(--sans);font-size:13px;font-weight:600;letter-spacing:.3px;color:var(--ink);margin-bottom:11px;display:flex;align-items:center;gap:8px}
+.cam-card-h{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.07em;color:var(--muted);
+  margin-bottom:12px;display:flex;align-items:center;gap:8px}
 
 /* ---- LAYER 1 · SHAL device-driver diagnostics ---- */
 .shal-card{border-color:rgba(var(--accent-rgb),.22);background:linear-gradient(165deg,rgba(34,42,60,.6),rgba(17,18,20,.78))}
@@ -1264,7 +1281,7 @@ b{color:var(--ink)}
   animation:auroraDrift 40s ease-in-out infinite alternate}
 @keyframes auroraDrift{from{transform:translate3d(0,0,0) rotate(0)}to{transform:translate3d(-3%,2%,0) rotate(6deg)}}
 .orch-head{position:relative;z-index:3;border-bottom:1px solid var(--line)}
-.orch-sigil{display:inline-block;animation:spin 14s linear infinite;font-size:20px}
+.orch-sigil{animation:none}
 
 .orch-attest{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12.5px;
   letter-spacing:.6px;color:var(--muted);padding:5px 12px;border-radius:999px;
@@ -1799,175 +1816,134 @@ b.sm{font-size:12px}
   border-radius:6px;padding:7px 9px}
 
 /* ============================================================ *
- *  REFRESH PASS — patient selector · dock groups · story chip  *
+ *  PATIENT SELECTOR — the island in the system bar              *
  * ============================================================ */
-/* top-bar patient selector */
-/* PATIENT SELECTOR — an instrument control, not a dynamic island.
-   It was a 228px fixed-width floating capsule that lifted, popped, and pinged. Two
-   problems: its rigid min-width collided with the system bar's right cluster on
-   anything under ~1100px (the TACTICAL link rendered straight through it), and the
-   thing that identifies WHICH PATIENT you are looking at should be the calmest,
-   most stable element on screen — not the one drawing the eye with animation.
-   Now: a flat rectangular control that can shrink, with state carried by a dot. */
 .sysbar-c{display:flex;justify-content:center;flex:0 1 auto;min-width:0}
 .patient-select{position:relative;min-width:0}
-.patient-trigger{display:flex;align-items:center;gap:9px;min-width:0;max-width:260px;
-  background:var(--s2);border:1px solid var(--line);border-radius:var(--r-md);
-  padding:5px 8px 5px 11px;cursor:pointer;color:var(--ink);
+/* A glass capsule that can shrink — a rigid min-width once collided with the right
+   cluster under ~1100px. State rides the DOT: the control that says which patient
+   you are looking at must be the calmest thing on screen, so it never pops, lifts
+   or tints its own border. */
+.patient-trigger{display:flex;align-items:center;gap:10px;min-width:0;max-width:300px;
+  background:rgba(255,255,255,.045);border:1px solid var(--line);border-radius:999px;
+  padding:5px 7px 5px 14px;cursor:pointer;color:var(--ink);font-family:var(--sans);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 10px 30px -18px rgba(0,0,0,.9);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
   transition:background var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
-.patient-trigger:hover{background:var(--s3);border-color:var(--line-bright)}
-.patient-trigger[aria-expanded="true"]{border-color:var(--accent)}
-.patient-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-/* State rides the dot only. The capsule's tinted outer ring is gone: a border that is
-   subtly red is not an alarm, it is a border you have to squint at. */
-.patient-trigger.live,.patient-trigger.septic,.patient-trigger.stable{box-shadow:none}
-.patient-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--nodata)}
-.patient-dot.live{background:var(--accent)}
-.patient-dot.septic{background:var(--high)}
-.patient-dot.stable{background:var(--low)}
-.patient-id{display:flex;flex-direction:column;line-height:1.25;flex:1;text-align:left;min-width:0}
-.patient-name{font-size:14px;font-weight:500;letter-spacing:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.patient-meta{font-size:11px;color:var(--dim);font-family:var(--mono);letter-spacing:.04em;
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.patient-caret{color:var(--dim);font-size:11px;width:16px;height:16px;display:grid;place-content:center;
-  border-radius:var(--r-sm);transition:color var(--t-fast) ease;flex:none}
-.patient-trigger:hover .patient-caret{background:rgba(var(--accent-rgb),.12)}
+.patient-trigger:hover{background:rgba(255,255,255,.08);border-color:var(--line-bright)}
+.patient-trigger[aria-expanded="true"]{border-color:rgba(var(--accent-rgb),.6)}
+.patient-trigger:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.patient-trigger.live,.patient-trigger.septic,.patient-trigger.stable{
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 10px 30px -18px rgba(0,0,0,.9)}
+.patient-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--nodata)}
+.patient-dot.live{background:var(--accent);box-shadow:0 0 0 3px rgba(var(--accent-rgb),.2)}
+.patient-dot.septic{background:var(--high);box-shadow:0 0 0 3px rgba(var(--high-rgb),.2)}
+.patient-dot.stable{background:var(--low);box-shadow:0 0 0 3px rgba(var(--low-rgb),.18)}
+.patient-id{display:flex;flex-direction:column;line-height:1.2;flex:1;text-align:left;min-width:0}
+.patient-name{font-size:14px;font-weight:560;letter-spacing:-.012em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.patient-meta{font-size:11px;color:var(--dim);font-family:var(--sans);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.patient-caret{color:var(--dim);font-size:10px;width:24px;height:24px;display:grid;place-content:center;flex:none;
+  border-radius:50%;background:rgba(255,255,255,.05);transition:transform var(--t) var(--ease),color var(--t-fast) ease}
+.patient-trigger:hover .patient-caret{color:var(--ink)}
 .patient-trigger[aria-expanded="true"] .patient-caret{transform:rotate(180deg)}
-.patient-menu{position:absolute;top:calc(100% + 7px);left:50%;transform:translateX(-50%);
-  width:300px;max-height:60vh;overflow:auto;z-index:60;padding:6px;
-  background:rgba(14,18,28,.97);backdrop-filter:blur(14px);
-  border:1px solid var(--line);border-radius:12px;box-shadow:var(--elev);
-  animation:menuIn .14s ease}
+.patient-menu{position:absolute;top:calc(100% + 9px);left:50%;transform:translateX(-50%);
+  width:320px;max-height:62vh;overflow:auto;z-index:60;padding:6px;
+  background:rgba(14,16,22,.9);backdrop-filter:blur(22px) saturate(1.3);-webkit-backdrop-filter:blur(22px) saturate(1.3);
+  border:1px solid var(--line-bright);border-radius:var(--r-lg);box-shadow:var(--elev);animation:menuIn .22s var(--ease)}
 .patient-menu.hidden{display:none}
-@keyframes menuIn{from{opacity:0;transform:translate(-50%,-4px)}to{opacity:1;transform:translate(-50%,0)}}
-.patient-opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
-  background:none;border:none;border-radius:8px;padding:8px 10px;color:var(--ink);transition:background .12s ease}
-.patient-opt:hover{background:rgba(var(--accent-rgb),.09)}
+@keyframes menuIn{from{opacity:0;transform:translate(-50%,-6px) scale(.98)}to{opacity:1;transform:translate(-50%,0)}}
+.patient-opt{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;font-family:var(--sans);
+  background:none;border:none;border-radius:10px;padding:9px 11px;color:var(--ink);transition:background .12s ease}
+.patient-opt:hover{background:rgba(255,255,255,.06)}
 .patient-opt.active{background:rgba(var(--accent-rgb),.13)}
 .patient-opt-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--dim)}
-.patient-opt-dot.live{background:var(--cyan)}.patient-opt-dot.septic{background:var(--crit)}.patient-opt-dot.stable{background:var(--ok)}
-.patient-opt-name{flex:1;font-size:14px}
-.patient-opt-tag{font-family:var(--mono);font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;
-  border-radius:5px;padding:2px 7px;color:var(--muted);background:rgba(255,255,255,.04)}
-.patient-opt-tag.live{color:var(--accent-ink);background:rgba(var(--accent-rgb),.12)}
-.patient-opt-tag.septic{color:var(--high-ink);background:rgba(var(--high-rgb),.12)}
-.patient-opt-tag.stable{color:var(--low-ink);background:rgba(var(--low-rgb),.1)}
+.patient-opt-dot.live{background:var(--accent)}.patient-opt-dot.septic{background:var(--crit)}.patient-opt-dot.stable{background:var(--ok)}
+.patient-opt-name{flex:1;font-size:13.5px;font-weight:500;letter-spacing:-.01em}
+.patient-opt-tag{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+  border-radius:999px;padding:2px 8px;color:var(--muted);background:rgba(255,255,255,.05)}
+.patient-opt-tag.live{color:var(--accent-ink);background:rgba(var(--accent-rgb),.13)}
+.patient-opt-tag.septic{color:var(--high-ink);background:rgba(var(--high-rgb),.13)}
+.patient-opt-tag.stable{color:var(--low-ink);background:rgba(var(--low-rgb),.11)}
 
-/* dock: grouped app clusters with dividers */
-.dock-grp-apps{position:relative;padding-left:14px}
-.dock-grp-apps + .dock-grp-apps{margin-left:2px}
-.dock-grp-apps::before{content:"";position:absolute;left:0;top:6px;bottom:6px;width:1px;background:var(--line-soft)}
-.dock-grp .dock-label{text-transform:uppercase;font-family:var(--mono);font-size:11px;letter-spacing:1.4px;color:var(--dim)}
+/* dock: group dividers — one hairline between clusters, none before the first */
+.dock-grp + .dock-grp{position:relative;padding-left:11px}
+.dock-grp + .dock-grp::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;background:var(--line)}
+.dock-grp.dock-status::before{display:none}
 
 /* clinical-story patient chip (header) */
-.story-patient{font-family:var(--mono);font-size:12.5px;letter-spacing:.3px;color:var(--muted);
-  padding:3px 11px;border-radius:999px;border:1px solid var(--line-soft);background:rgba(255,255,255,.02)}
-.story-patient.live{color:var(--accent-ink);border-color:rgba(var(--accent-rgb),.3);background:rgba(var(--accent-rgb),.07)}
-.story-patient.septic{color:var(--high-ink);border-color:rgba(var(--high-rgb),.32);background:rgba(var(--high-rgb),.07)}
-.story-patient.stable{color:var(--low-ink);border-color:rgba(var(--low-rgb),.28);background:rgba(var(--low-rgb),.06)}
+.story-patient{font-family:var(--sans);font-size:12.5px;font-weight:500;color:var(--muted);
+  padding:4px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.03)}
+.story-patient.live{color:var(--accent-ink);border-color:rgba(var(--accent-rgb),.32);background:rgba(var(--accent-rgb),.08)}
+.story-patient.septic{color:var(--high-ink);border-color:rgba(var(--high-rgb),.34);background:rgba(var(--high-rgb),.08)}
+.story-patient.stable{color:var(--low-ink);border-color:rgba(var(--low-rgb),.3);background:rgba(var(--low-rgb),.07)}
 
 /* ============================================================ *
- *  v2 REFINEMENT — calmer motion, consistent spacing           *
- *  (appended last so it wins equal-specificity cascade)        *
+ *  OVERLAYS — one rhythm, one plate, one header vocabulary     *
  * ============================================================ */
-/* Dial back the ambient "showy" motion to something purposeful. */
 .orch-aurora{opacity:.24;animation-duration:36s}
-/* (the .orch-invariant sheen this used to slow down is gone — it was an opaque accent
-   rectangle sweeping over the banner's own text, not a highlight) */
-/* Consistent overlay body + card rhythm across every module. */
-.story-body,.dsl-body,.rbac-body,.orch-body{padding:20px 26px 26px;gap:22px}
+/* The 44px engineering grid behind the camera and story overlays is gone: texture
+   pretending to be information, sitting under every reading. */
+.cam-app::before,.story-app::before{content:none}
+.story-body,.dsl-body,.rbac-body,.orch-body{padding:20px 26px 26px;gap:22px;counter-reset:aegis-sec}
 .story-card,.dsl-card,.rbac-card,.orch-card,.story-rail .story-card{padding:16px 18px}
 .story-rail,.dsl-rail,.rbac-rail,.orch-rail{gap:16px}
-.story-sec-h,.dsl-sec-h,.rbac-sec-h,.orch-card-h{margin-bottom:12px}
-/* Patient chip on the Pharmacopoeia header. */
-.pharma-patient{font-family:var(--mono);font-size:11px;letter-spacing:.4px;color:var(--low-ink);
-  background:rgba(var(--low-rgb),.1);border:1px solid rgba(var(--low-rgb),.25);border-radius:6px;
-  padding:1px 8px;margin-left:2px}
-/* Tighter, calmer focus ring shared by inputs/selects. */
-.dsl-ctl input:focus,.dsl-ctl select:focus,.pharma-input:focus,.idg-swap select:focus,
-.dsl-editor:focus{box-shadow:0 0 0 2px rgba(var(--accent-rgb),.18)}
-
-/* ============================================================ *
- *  SOPHISTICATION LAYER — instrument-grade, premium, dense     *
- *  Appended last; elevates every overlay consistently.         *
- * ============================================================ */
-
-/* — overlay bodies: a faint calibration grid for depth/complexity — */
-.story-body,.orch-body,.dsl-body,.rbac-body{
-  background-image:
-    linear-gradient(rgba(255,255,255,.016) 1px,transparent 1px),
-    linear-gradient(90deg,rgba(255,255,255,.016) 1px,transparent 1px);
-  background-size:48px 48px;background-position:-1px -1px;
-  counter-reset:aegis-sec;
-}
-
-/* — cards as calibrated instrument panels: top hairline + inner top sheen — */
-.story-card,.orch-card,.dsl-card,.rbac-card{
-  position:relative;
-  background:
-    linear-gradient(90deg,transparent 7%,rgba(var(--accent-rgb),.26),transparent 93%) top center/100% 1px no-repeat,
-    linear-gradient(180deg,rgba(255,255,255,.022),transparent 15%),
-    var(--panel);
-  box-shadow:var(--hair),0 16px 42px -30px rgba(0,0,0,.72);
-}
-
-/* — section headers: auto-numbered index + a bottom hairline rule — */
+/* Every overlay card is the same glass plate the desk uses. */
+.story-card,.story-ledger,.orch-card,.dsl-card,.rbac-card,.fed-topo-card,.fed-result-card,.rbac-shell{
+  position:relative;background:var(--glass),var(--panel-solid);border:1px solid var(--line);
+  border-radius:var(--r-lg);box-shadow:var(--plate-shadow)}
+/* Section headers: a quiet tracked label in the interface face (they were 12px
+   mono at 2px tracking — a terminal's voice), auto-numbered, over a hairline. */
+.story-sec-h,.orch-card-h,.dsl-sec-h,.rbac-sec-h,.rbac-grid-h{font-family:var(--sans);font-size:11.5px;font-weight:600;
+  letter-spacing:.07em;color:var(--muted);text-transform:uppercase;margin-bottom:12px}
 .story-sec-h,.orch-card-h,.dsl-sec-h,.rbac-sec-h{
-  counter-increment:aegis-sec;
-  border-bottom:1px solid var(--line-soft);padding-bottom:10px}
+  counter-increment:aegis-sec;border-bottom:1px solid var(--line-soft);padding-bottom:11px}
 .story-sec-h::before,.orch-card-h::before,.dsl-sec-h::before,.rbac-sec-h::before{
   content:counter(aegis-sec,decimal-leading-zero);
-  font-family:var(--mono);font-size:10.5px;font-weight:600;color:var(--accent);
-  letter-spacing:.5px;line-height:1;padding:3px 5px;border-radius:5px;
-  background:rgba(var(--accent-rgb),.08);border:1px solid rgba(var(--accent-rgb),.18);
-  margin-right:3px;flex:none}
-
-/* — tabular, aligned numerals on every metric readout — */
+  font-family:var(--mono);font-size:10px;font-weight:500;color:var(--dim);letter-spacing:0;line-height:1;
+  padding:3px 6px;border-radius:6px;background:rgba(255,255,255,.04);border:1px solid var(--line-soft);
+  margin-right:4px;flex:none}
+.orch-card-sub,.story-sub{font-family:var(--sans);font-size:12px;font-weight:400;letter-spacing:0;
+  color:var(--dim);text-transform:none}
+/* The primary action inside an overlay is a brand moment. */
+.orch-run{border-radius:var(--r-md);background:var(--brand);color:#fff;letter-spacing:.02em;font-weight:600;
+  box-shadow:0 14px 34px -14px rgba(var(--brand-rgb),.8),inset 0 1px 0 rgba(255,255,255,.3)}
+.orch-run:hover{transform:translateY(-1px);filter:brightness(1.08)}
+/* Calmer, shared focus ring on inputs */
+.dsl-ctl input:focus,.dsl-ctl select:focus,.pharma-input:focus,.idg-swap select:focus,
+.dsl-editor:focus{box-shadow:0 0 0 3px rgba(var(--accent-rgb),.2);border-color:rgba(var(--accent-rgb),.5)}
+.pharma-patient{font-family:var(--sans);font-size:11.5px;font-weight:500;color:var(--low-ink);
+  background:rgba(var(--low-rgb),.1);border:1px solid rgba(var(--low-rgb),.25);border-radius:999px;
+  padding:2px 9px;margin-left:2px;text-transform:none;letter-spacing:0}
+/* tabular, aligned numerals on every metric readout */
 .orch-stat b,.idg-val b,.fed-bar-val,.rbac-ring-num,.cns-view-tally,
 .dsl-cert-z3,.orch-led-seq,.rbac-aud-hash,.story-t,.cns-v-sig,.idg-gauge-h b{
   font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1,"zero" 1}
-
-/* — refined micro-cap chips/badges (shared vocabulary) — */
-.story-edge,.pharma-src,.cns-tag,.dsl-cert-z3,.orch-chip,.rbac-role-ring,.idg-caveat{
-  font-feature-settings:"tnum" 1}
-
-/* — premium thin scrollbars inside overlays — */
+.orch-stat b,.idg-val b,.cns-vd-agree b{font-family:var(--sans);font-weight:500;letter-spacing:-.03em}
+/* neutral scrollbars inside overlays */
 .story-app *::-webkit-scrollbar,.orch-app *::-webkit-scrollbar{width:9px;height:9px}
 .story-app *::-webkit-scrollbar-thumb,.orch-app *::-webkit-scrollbar-thumb{
-  background:rgba(120,160,210,.16);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+  background:rgba(255,255,255,.12);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
 .story-app *::-webkit-scrollbar-thumb:hover,.orch-app *::-webkit-scrollbar-thumb:hover{
-  background:rgba(var(--accent-rgb),.32)}
+  background:rgba(255,255,255,.22);background-clip:padding-box}
 .story-app *::-webkit-scrollbar-track,.orch-app *::-webkit-scrollbar-track{background:transparent}
-
-/* — overlay header: instrument eyebrow + corner registration tick — */
-.cam-head{position:relative}
-.cam-head::after{content:"";position:absolute;left:20px;bottom:-1px;width:46px;height:2px;
-  background:var(--grad-accent);border-radius:2px;opacity:.7}
-.cam-sub{position:relative;padding-left:13px}
-.cam-sub::before{content:"";position:absolute;left:0;top:50%;width:5px;height:5px;margin-top:-2.5px;
-  border:1px solid var(--line-bright);border-radius:50%}
-
-/* — calmer, consistent hover lift on interactive cards/chips — */
-.rbac-cap,.pharma-q,.orch-stratum-card{transition:transform .16s var(--ease,ease),border-color .16s,box-shadow .16s}
+.rbac-cap,.pharma-q,.orch-stratum-card{transition:transform .2s var(--ease),border-color .2s,box-shadow .2s}
 
 
 /* ============================================================
    TABBED PANELS
-   Two slots each carry more than one panel's worth of content. The tab strip
-   replaces the title in the bar — a panel that can be three things has no single
-   title, and printing one plus three buttons is the clutter this was meant to cut.
+   Two slots carry more than one panel's worth of content, so the tab strip —
+   a segmented control — replaces the title in the bar.
    ============================================================ */
-.win-tabs{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow:hidden}
-.win-tab{font-family:var(--sans);font-size:11.5px;letter-spacing:.05em;text-transform:uppercase;
-  font-weight:600;color:var(--faint);background:none;border:0;cursor:pointer;
-  padding:5px 9px;border-radius:var(--r-xs);white-space:nowrap;
+.win-tabs{display:flex;gap:2px;flex:0 1 auto;min-width:0;overflow:hidden;padding:3px;border-radius:10px;
+  background:rgba(255,255,255,.035);border:1px solid var(--line-soft)}
+.win-tab{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:-.005em;text-transform:none;
+  color:var(--dim);background:none;border:0;cursor:pointer;padding:4px 11px;border-radius:7px;white-space:nowrap;
   transition:color var(--t) var(--ease),background var(--t) var(--ease)}
-.win-tab:hover{color:var(--muted);background:rgba(255,255,255,.04)}
-.win-tab.on{color:var(--ink);background:rgba(255,255,255,.07)}
-.win-tab:focus-visible{outline:1px solid var(--accent);outline-offset:1px}
-/* Panes are display-toggled, so an inactive pane costs no layout and no paint.
-   The camera pane is the default so the optical feed initialises exactly as it did
-   when it was its own always-on panel. */
+.win-tab:hover{color:var(--ink)}
+.win-tab.on{color:var(--ink);background:rgba(255,255,255,.1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 3px rgba(0,0,0,.35)}
+.win-tab:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+/* Panes are display-toggled, so an inactive pane costs no layout and no paint. */
 .pane{display:none}
 .pane.on{display:block}
 .aux-body .pane.on.cam-mini-body{display:flex}

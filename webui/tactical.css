@@ -12,15 +12,15 @@
    accent, and the bed tiles keep colour for state alone.
    ============================================================ */
 :root{
-  --bg:#0a0b0c; --bg2:#0e0f11;
-  --s1:#111214; --s2:#16181b; --s3:#1d1f23;
-  --steel-1:#16181b; --steel-2:#111214;
+  --bg:#050609; --bg2:#08090d;
+  --s1:#0d0f14; --s2:#13161d; --s3:#1b1f28;
+  --steel-1:#13161d; --steel-2:#0d0f14;
   --surface-1:var(--s2); --surface-2:var(--s1);
-  --panel:#111214;
-  --hair:rgba(255,255,255,.09); --hair-soft:rgba(255,255,255,.05);
-  --hair-hot:rgba(255,255,255,.18);
+  --panel:rgba(15,17,23,.8);
+  --hair:rgba(255,255,255,.075); --hair-soft:rgba(255,255,255,.045);
+  --hair-hot:rgba(255,255,255,.15);
   --grid:rgba(255,255,255,.03);
-  --ink:#f2f3f5; --muted:#a0a4ac; --dim:#6d7178; --faint:#4b4f56;
+  --ink:#f4f5f8; --muted:#a4a9b6; --dim:#6e7482; --faint:#4a505c;
 
   /* clinical state — the only saturated colour */
   --low-rgb:64,184,128;  --ok:rgb(64,184,128);
@@ -31,14 +31,22 @@
   --ok-ink:#7fdcae; --watch-ink:#f0c46a; --crit-ink:#ff9d97;
 
   /* one affordance accent; the old four brand hues all alias onto it */
-  --accent-rgb:122,162,247; --accent:rgb(122,162,247);
+  --accent-rgb:143,148,255; --accent:rgb(143,148,255);
+  /* brand — identity moments only (see os.css rule 1) */
+  --brand-rgb:143,139,255;
+  --brand:linear-gradient(135deg,#7cc4ff 0%,#8f8bff 52%,#c49bff 100%);
+  --glass:linear-gradient(180deg,rgba(255,255,255,.042),rgba(255,255,255,.012) 60%);
+  --glass-float:rgba(13,15,21,.72);
+  --plate-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 22px 50px -34px rgba(0,0,0,.95);
+  --elev:0 30px 80px -30px rgba(0,0,0,.9),0 0 0 1px rgba(255,255,255,.035);
+  --r-lg:16px; --r-md:12px;
   --cyan:var(--accent); --indigo:var(--accent); --violet:var(--accent); --pink:var(--accent);
   --grad:var(--accent);
 
-  --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
-  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-  --r:5px; --r-sm:4px; --r-xs:2px;
-  --ease:cubic-bezier(.2,.7,.2,1); --t-fast:110ms; --t:160ms; --t-slow:240ms;
+  --mono:"Geist Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:"Geist","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --r:14px; --r-sm:10px; --r-xs:6px;
+  --ease:cubic-bezier(.16,1,.3,1); --t-fast:110ms; --t:160ms; --t-slow:240ms;
   --shadow:0 16px 40px -18px rgba(0,0,0,.8);
 
   /* ---- os.css token aliases -------------------------------------------- */
@@ -48,11 +56,11 @@
      an invalid value and silently drops — a window bar with no background, a
      palette row with no border. Aliases rather than a rename because this file's
      own 1,300 lines already use the local names. */
-  --s1:#111214; --s2:#16181b; --s3:#1d1f23; --panel-solid:#111214;
-  --line:rgba(255,255,255,.09); --line-soft:rgba(255,255,255,.05);
-  --line-bright:rgba(255,255,255,.18);
+  --s1:#0d0f14; --s2:#13161d; --s3:#1b1f28; --panel-solid:#0e1016;
+  --line:rgba(255,255,255,.075); --line-soft:rgba(255,255,255,.045);
+  --line-bright:rgba(255,255,255,.15);
   --low:rgb(64,184,128); --med:rgb(226,163,60); --high:rgb(229,84,76);
-  --low-ink:#7fdcae; --med-ink:#f0c46a; --high-ink:#ff9d97; --accent-ink:#a8c4ff;
+  --low-ink:#7fdcae; --med-ink:#f0c46a; --high-ink:#ff9d97; --accent-ink:#c3c6ff;
   /* valid no-ops: both are referenced inside multi-segment shadow lists, where
      `none` would silently void the entire declaration. */
   --hilite:inset 0 0 0 transparent;
@@ -1476,3 +1484,101 @@ b{font-weight:700}
    console has no such layer. Kept in the DOM (tactical.js owns its lifecycle)
    and taken down to where it reads as grain rather than motion. */
 #ambient{opacity:.16}
+
+
+/* ============================================================================
+   CLINICAL GLASS — 2026-09-10
+   ----------------------------------------------------------------------------
+   One identity with the clinical console (see os.css, rules 1-4): the same glass
+   plates, the same Geist type, the same brand rules. What goes: the Palantir
+   corner brackets, the steel gradients, the engineering grid on the ground, and
+   the solid-accent active tab (a slab of accent on furniture is exactly what
+   rule 1 forbids). Appended last so it wins the equal-specificity cascade over
+   both earlier chrome blocks in this file.
+   ========================================================================== */
+body::before{background:
+  radial-gradient(1400px 820px at 50% -22%,rgba(var(--brand-rgb),.13),transparent 62%),
+  radial-gradient(135% 118% at 50% 24%,transparent 58%,rgba(2,4,9,.55))}
+
+/* ---- boot ---- */
+.boot{background:radial-gradient(900px 620px at 50% 36%,rgba(var(--brand-rgb),.17),transparent 66%),var(--bg)}
+.boot-sigil{width:66px;height:66px;padding:16px;border-radius:19px;color:#fff;background:var(--brand);
+  filter:none;animation:none;box-shadow:0 22px 56px -14px rgba(var(--brand-rgb),.6),inset 0 1px 0 rgba(255,255,255,.4)}
+.boot-title{font-size:34px;font-weight:600;letter-spacing:-.04em;margin-top:20px}
+.boot-title b{font-weight:400;background:var(--brand);-webkit-background-clip:text;background-clip:text;color:transparent}
+.boot-tag{font-family:var(--sans);font-size:13.5px;letter-spacing:0;color:var(--muted);margin-top:8px}
+.boot-log{font-size:12px;border-radius:var(--r-md);background:rgba(255,255,255,.022);
+  border:1px solid var(--hair-soft);padding:13px 18px}
+.boot-bar{height:3px;border-radius:3px;background:rgba(255,255,255,.06)}
+.boot-fill,.boot-bar i{border-radius:3px;background:var(--brand);box-shadow:0 0 18px rgba(var(--brand-rgb),.75)}
+
+/* ---- system bar: sits on the ground, one fading hairline below ---- */
+.topbar{min-height:58px;padding:0 18px;gap:14px;border-bottom:0;
+  background:linear-gradient(180deg,rgba(5,6,9,.5),rgba(5,6,9,0))}
+.topbar::after{display:block;content:"";position:absolute;left:18px;right:18px;bottom:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--line) 14%,var(--line) 86%,transparent)}
+.brand-mark{width:30px;height:30px;padding:7px;border-radius:9px;color:#fff;background:var(--brand);border:0;
+  box-shadow:0 8px 22px -8px rgba(var(--brand-rgb),.75),inset 0 1px 0 rgba(255,255,255,.35)}
+.brand-mark svg{width:16px;height:16px}
+.brand-name{font-size:16px;font-weight:600;letter-spacing:-.025em}
+.brand-name b{font-weight:400;color:var(--dim)}
+.brand-sub{font-family:var(--sans);font-size:12px;letter-spacing:0;text-transform:none;color:var(--dim)}
+/* segmented control, the same one the console's tabbed panels use */
+.tabs{padding:3px;border-radius:12px;border:1px solid var(--hair-soft);background:rgba(255,255,255,.035)}
+.tab{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:-.005em;text-transform:none;
+  padding:6px 13px;border-radius:9px;color:var(--dim)}
+.tab:hover{color:var(--ink);background:transparent}
+.tab.active{color:var(--ink);background:rgba(255,255,255,.1);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 1px 3px rgba(0,0,0,.35)}
+.m-k{font-family:var(--sans);font-size:10px;font-weight:500;letter-spacing:.07em;color:var(--dim)}
+.m-v{font-family:var(--mono);font-size:12.5px;font-weight:500}
+.m-v.is-preempt{text-shadow:none}
+.conn{font-size:11.5px;text-transform:none;letter-spacing:0}
+.clock{font-size:13px}
+.to-clinical{font-family:var(--sans);font-size:12.5px;font-weight:500;text-transform:none;letter-spacing:-.005em;
+  border-radius:999px;padding:7px 13px;background:rgba(255,255,255,.03);border:1px solid var(--hair)}
+.to-clinical:hover{color:var(--ink);border-color:var(--hair-hot);background:rgba(255,255,255,.07)}
+
+/* ---- cards: the console's glass plate ---- */
+.card{border-radius:var(--r-lg);background:var(--glass),var(--s1);border:1px solid var(--hair);
+  box-shadow:var(--plate-shadow);backdrop-filter:none;-webkit-backdrop-filter:none}
+.card::before,.card::after{display:none}
+.card-hd{min-height:44px;padding:0 14px;gap:9px;background:transparent;border-bottom:1px solid var(--hair-soft);
+  border-radius:var(--r-lg) var(--r-lg) 0 0}
+.hd-dot{width:6px;height:6px;border-radius:50%;background:var(--dim)}
+.card-hd h2{font-family:var(--sans);font-size:13.5px;font-weight:560;letter-spacing:-.012em;
+  text-transform:none;color:var(--ink)}
+.card-hd .hd-note,.card-hd > span:last-child{font-size:11px;color:var(--dim)}
+.card.wm-focus{box-shadow:inset 0 0 0 1px rgba(var(--accent-rgb),.3),var(--plate-shadow)}
+.card.wm-focus > .card-hd h2{color:var(--ink)}
+
+/* ---- beds: a stable bed is neutral; only watch/critical carry hue ---- */
+.bed{border-radius:var(--r-md);border:1px solid var(--hair-soft);background:rgba(255,255,255,.025)}
+.bed:hover{border-color:var(--hair-hot);background:rgba(255,255,255,.045);box-shadow:0 14px 30px -20px rgba(0,0,0,.9)}
+.bed::before{background:var(--hair-hot);opacity:.7;top:10px;bottom:10px;border-radius:2px}
+.bed.watch::before{background:var(--watch);opacity:.9}
+.bed.critical::before{background:var(--crit);opacity:1}
+.bed.critical{background:linear-gradient(180deg,rgba(var(--high-rgb),.07),rgba(var(--high-rgb),.015))}
+.bed-name{font-weight:560;letter-spacing:-.012em}
+.bed-tag{border-radius:999px;padding:2px 8px}
+.bed-risk{font-family:var(--sans)}
+.bed-risk b{font-weight:600;letter-spacing:-.02em}
+.bed-bar i{background:linear-gradient(90deg,rgba(255,255,255,.3),rgba(255,255,255,.65))}
+
+/* ---- protocol terminal + device plane: plates, not steel ---- */
+.terminal,.devplane{border-radius:var(--r-lg);background:var(--glass),var(--s1);box-shadow:var(--plate-shadow)}
+.term-bar{background:transparent;border-radius:var(--r-lg) var(--r-lg) 0 0;min-height:44px;padding:0 14px}
+.term-title{font-family:var(--sans);font-size:13.5px;font-weight:560;letter-spacing:-.012em;
+  text-transform:none;color:var(--ink)}
+.term-dot{width:6px;height:6px;border-radius:50%}
+
+/* ---- dock: the floating glass bar ---- */
+.control.dock{margin:0 16px 14px;min-height:52px;padding:7px 10px;border-radius:var(--r-lg);
+  background:var(--glass-float);border:1px solid var(--hair);
+  backdrop-filter:blur(20px) saturate(1.3);-webkit-backdrop-filter:blur(20px) saturate(1.3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 24px 50px -30px rgba(0,0,0,.9)}
+.control.dock .dock-btn{background:transparent;border-color:transparent;border-radius:10px;
+  padding:7px 12px;font-size:12.5px}
+.control.dock .dock-btn:hover{background:rgba(255,255,255,.07);border-color:transparent}
+.dock-label{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.1em}
+.dock-kbd{border-radius:5px}
