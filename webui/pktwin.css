@@ -397,3 +397,30 @@
   .pkt-side{border-left:0;border-top:1px solid var(--hair-soft);max-height:38vh}
   .pkt-head{flex-wrap:wrap;row-gap:8px}
 }
+
+/* ============================================================================
+   CLINICAL GLASS — 2026-09-10
+   The projection is a full-screen app in the same OS, so it wears the same
+   plate, type and header vocabulary. Its toggles are NEUTRAL when on: the drug
+   hue is a data channel (where the drug is in the body), and a control filled
+   with it spent that channel on furniture.
+   ========================================================================== */
+.pkt-frame{border-radius:var(--r-xl,20px);border:1px solid var(--line,rgba(255,255,255,.075));
+  background:var(--panel-solid,#0e1016);overflow:hidden;
+  box-shadow:0 40px 100px -30px rgba(0,0,0,.95),inset 0 1px 0 rgba(255,255,255,.05)}
+.pkt-head{min-height:60px;padding:12px 18px;background:rgba(255,255,255,.02)}
+.pkt-tag{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--dim);border:0;background:none;padding:0}
+.pkt-name{font-size:16px;font-weight:600;letter-spacing:-.02em}
+.pkt-state{border-radius:999px}
+.pkt-opts-h{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.07em}
+.pkt-sec-h h3{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.07em}
+.pkt-tab{font-family:var(--sans);font-size:12.5px;font-weight:500;letter-spacing:-.005em;text-transform:none}
+.pkt-tab.on{border-bottom-color:var(--ink)}
+.pkt-btn{font-family:var(--sans);font-size:12px;font-weight:500;letter-spacing:-.005em;text-transform:capitalize;
+  border-radius:999px;padding:6px 13px}
+.pkt-btn.on{color:var(--ink);background:rgba(255,255,255,.1);border-color:var(--line-bright,rgba(255,255,255,.15))}
+.pkt-rate{border-radius:999px;padding:2px;gap:2px;background:rgba(255,255,255,.03)}
+.pkt-rate button{border-radius:999px;border-right:0;font-family:var(--sans);font-size:11.5px}
+.pkt-rate button.on{color:var(--ink);background:rgba(255,255,255,.12);font-weight:600}
+.pkt-foot{padding:12px 18px}

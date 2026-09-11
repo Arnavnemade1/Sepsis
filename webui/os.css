@@ -899,11 +899,12 @@ b{color:var(--ink)}
   padding:14px 16px;box-shadow:var(--plate-shadow)}
 .cam-card-grow{flex:1;min-height:0;display:flex;flex-direction:column}
 .cam-card-h{font-family:var(--sans);font-size:11.5px;font-weight:600;letter-spacing:.07em;color:var(--muted);
-  margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  margin-bottom:12px;display:flex;align-items:center;gap:8px;white-space:nowrap;min-width:0}
 
 /* ---- LAYER 1 · SHAL device-driver diagnostics ---- */
 .shal-card{border-color:rgba(var(--accent-rgb),.22);background:linear-gradient(165deg,rgba(34,42,60,.6),rgba(17,18,20,.78))}
-.shal-sub{font-family:var(--mono);font-size:10px;color:var(--dim);letter-spacing:.4px;text-transform:uppercase}
+.shal-sub{font-family:var(--sans);font-size:10.5px;color:var(--dim);letter-spacing:0;text-transform:none;
+  min-width:0;overflow:hidden;text-overflow:ellipsis}
 .shal-badge{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;
   padding:2px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted);background:rgba(255,255,255,.03)}
 .shal-badge.locked{color:var(--ok);border-color:rgba(var(--low-rgb),.5);background:rgba(var(--low-rgb),.1)}
@@ -944,9 +945,11 @@ b{color:var(--ink)}
 .cam-risk-bar > div.crit{background:linear-gradient(90deg,var(--dys),var(--crit));box-shadow:none}
 #cam-risk-val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--ink);min-width:40px;text-align:right}
 .cam-sens{display:flex;align-items:center;gap:8px;margin-top:11px}
-.cam-sens-l{font-family:var(--mono);font-size:11px;letter-spacing:1px;color:var(--dim);text-transform:uppercase}
-.cam-seg{margin-left:auto;display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
-.cam-seg button{background:transparent;border:0;color:var(--muted);font-family:var(--mono);font-size:11.5px;padding:4px 9px;cursor:pointer;transition:.2s}
+.cam-sens-l{font-family:var(--sans);font-size:10px;font-weight:600;letter-spacing:.07em;color:var(--dim);text-transform:uppercase}
+.cam-seg{margin-left:auto;display:flex;gap:2px;padding:2px;border:1px solid var(--line-soft);border-radius:999px;
+  background:rgba(255,255,255,.03)}
+.cam-seg button{background:transparent;border:0;border-radius:999px;color:var(--muted);font-family:var(--sans);
+  font-size:11.5px;font-weight:500;padding:4px 8px;cursor:pointer;transition:.2s}
 .cam-seg button:hover{color:var(--ink)}
 .cam-seg button.on{background:rgba(var(--accent-rgb),.16);color:var(--accent-ink)}
 

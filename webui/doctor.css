@@ -327,3 +327,19 @@
   .doc-stage{gap:var(--sp-3)}
   .doc-caption{min-height:48px;font-size:15px}
 }
+
+/* ============================================================================
+   CLINICAL GLASS — 2026-09-10
+   ========================================================================== */
+.doc-card{background:var(--glass),var(--panel-solid);box-shadow:var(--plate-shadow)}
+.doc-card-h{font-family:var(--sans);font-size:11px;font-weight:600;letter-spacing:.07em}
+.doc-fact,.doc-cap{border-radius:var(--r-md)}
+.doc-fact b{font-family:var(--sans);font-size:15px;font-weight:500;letter-spacing:-.02em}
+.doc-fact span{font-family:var(--sans);font-size:9.5px;letter-spacing:.06em}
+.doc-btn{font-family:var(--sans);font-size:12.5px;font-weight:500;border-radius:999px;padding:8px 14px}
+/* Starting a call is this page's primary action — a brand moment. It used to wear
+   the healthy-patient green, i.e. a clinical state on a control. */
+.doc-btn.call{color:#fff;background:var(--brand);border-color:transparent;
+  box-shadow:0 10px 26px -12px rgba(var(--brand-rgb),.8),inset 0 1px 0 rgba(255,255,255,.3)}
+.doc-btn.call:hover{filter:brightness(1.08);background:var(--brand)}
+.doc-btn.call:disabled{opacity:.5;filter:none}
