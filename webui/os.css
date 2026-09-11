@@ -1888,6 +1888,9 @@ b.sm{font-size:12px}
    pretending to be information, sitting under every reading. */
 .cam-app::before,.story-app::before{content:none}
 .story-body,.dsl-body,.rbac-body,.orch-body{padding:20px 26px 26px;gap:22px;counter-reset:aegis-sec}
+/* the federation overlay numbers its cards too; with no reset on an ancestor every
+   header instantiated its own counter, so all five read "01" */
+.fed-body{counter-reset:aegis-sec}
 .story-card,.dsl-card,.rbac-card,.orch-card,.story-rail .story-card{padding:16px 18px}
 .story-rail,.dsl-rail,.rbac-rail,.orch-rail{gap:16px}
 /* Every overlay card is the same glass plate the desk uses. */
