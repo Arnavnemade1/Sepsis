@@ -18,7 +18,7 @@ should not be.
 
 Two findings in this repo are the same failure seen from different sides:
 
-* `artifacts/alarm_policy.json` records a **refusal** — four firing-rule families
+* `artifacts/alarm_policy.json` records a **refusal** — the firing-rule families
   (plain, persistent, integrator, per-patient) and none beats a plain threshold. The
   false-alarm rate is not fixable by a better rule.
 * `docs/SUBGROUP_AUDIT.md` measured that the alarm burden **is not flat** (80+ absorb
@@ -100,7 +100,7 @@ At the shipped threshold 0.0525, on the locked patients:
 | UNCERTAIN escalated | −0.1455 | 0.975 | 0.949 | 27.5 |
 
 Neither reading beats the shipped policy. **Conformal abstention is not a better firing
-rule and this repo does not claim it is** — it joins the four families
+rule and this repo does not claim it is** — it joins the families
 `search_alarm_policy.py` already refused. Its value is informational, and the
 information is this:
 

@@ -581,14 +581,25 @@ export default function ResearchPage() {
                   </h3>
                 </div>
                 <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
-                  Four families of alarm policy were searched against it — a plain threshold,
-                  K consecutive hours, a leaky exceedance integrator, and a per-patient
-                  z-score. None beat a plain threshold. The search refused to promote its own
-                  challenger:
+                  {alarmPolicy.familiesSearched.length} families of alarm policy have been
+                  searched against it — {alarmPolicy.familiesSearched.join(", ")}. No
+                  first-alarm family beat a plain threshold. The search refused to promote
+                  its own challenger:
                 </p>
                 <p className="mt-3 border-l-2 border-line-bright pl-4 font-mono text-[12.5px] leading-relaxed text-dim">
                   {alarmPolicy.reason}
                 </p>
+                {alarmPolicy.burden ? (
+                  <p className="mt-3 text-[13.5px] leading-relaxed text-muted text-pretty">
+                    The episode layer was refused for a sharper reason. Re-notifying less
+                    genuinely does cut interruptions — {alarmPolicy.burden.championBurden} →{" "}
+                    {alarmPolicy.burden.challengerBurden} per patient-day, on an interval
+                    excluding zero — but it buys them by leaving an unresolved HIGH
+                    unannounced for longer: {alarmPolicy.burden.championSilentHigh} →{" "}
+                    {alarmPolicy.burden.challengerSilentHigh} hours per episode. The saving
+                    was the silence, so the gate refused it.
+                  </p>
+                ) : null}
                 <SourceNote>
                   artifacts/alarm_policy.json · {count(alarmPolicy.nBoot)} bootstrap
                   resamples · shipped <code>{alarmPolicy.shipped}</code> vs challenger{" "}

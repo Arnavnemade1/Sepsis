@@ -7,7 +7,7 @@ the detector to say *I cannot separate these two classes for this hour*, so an h
 whose evidence is genuinely ambiguous is rounded down to LOW and disappears. Two
 measured findings in this repo are the same failure seen from different sides:
 
-* ``artifacts/alarm_policy.json`` records a **refusal**: four alarm-policy families
+* ``artifacts/alarm_policy.json`` records a **refusal**: the alarm-policy families
   (plain, persistent, integrator, per-patient) and none beats a plain threshold.
   The false-alarm rate is not fixable by a better *firing rule*.
 * ``docs/SUBGROUP_AUDIT.md`` measured that the alarm burden **is not flat** — 80+

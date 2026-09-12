@@ -2616,8 +2616,16 @@
    "plain threshold",
    "K consecutive hours",
    "leaky exceedance integrator",
-   "per-patient z-score"
-  ]
+   "per-patient z-score",
+   "re-notification schedule (episode layer)"
+  ],
+  "burden": {
+   "promoted": false,
+   "championBurden": 1.6003,
+   "challengerBurden": 1.3093,
+   "championSilentHigh": 11.0792,
+   "challengerSilentHigh": 14.5125
+  }
  },
  "selfImprove": {
   "baselineAuroc": 0.7314,
