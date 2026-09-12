@@ -188,12 +188,31 @@ bv_same = gate_burden(EpisodePolicy(3600.0), EpisodePolicy(3600.0), locked_ep,
                       0.08, 0.04, n_boot=400, seed=1)
 check("an identical schedule is refused", not bv_same.promoted, bv_same.reason)
 
+# Non-septic stays only: there is no septic episode to go quiet on, so the guard
+# below cannot fire and a real burden reduction is the only thing left to measure.
 sustained = [PatientSeries(np.full(48, 0.9), np.arange(48.0), -1) for _ in range(60)]
 bv_win = gate_burden(EpisodePolicy(3600.0), EpisodePolicy(None), sustained,
                      0.08, 0.04, n_boot=400, seed=1)
 check("a genuinely lower-burden schedule IS promoted", bv_win.promoted,
       f"burden {bv_win.champion_burden:.2f} -> {bv_win.challenger_burden:.2f}, "
       f"CI {bv_win.ci_low:+.3f}..{bv_win.ci_high:+.3f}")
+
+# ------------------------------------------- burden must not be bought with silence
+print("\n[9b] a schedule cannot win by going quiet on a deteriorating patient")
+# Septic stays that sit at HIGH for two days after onset, plus non-septic stays that
+# carry the burden. "Never re-notify" minimises interruptions BY CONSTRUCTION here,
+# which is exactly the tautology the guard exists to refuse.
+mixed = ([PatientSeries(np.full(48, 0.9), np.arange(48.0), 2) for _ in range(40)]
+         + [PatientSeries(np.full(48, 0.9), np.arange(48.0), -1) for _ in range(40)])
+bv_quiet = gate_burden(EpisodePolicy(3600.0), EpisodePolicy(None), mixed,
+                       0.08, 0.04, n_boot=400, seed=1)
+check("burden falls, and the gate refuses it anyway",
+      (not bv_quiet.promoted) and bv_quiet.challenger_burden < bv_quiet.champion_burden,
+      bv_quiet.reason)
+check("the refusal names the unannounced-HIGH cost",
+      bv_quiet.challenger_silent_high > bv_quiet.champion_silent_high,
+      f"silent HIGH h/episode {bv_quiet.champion_silent_high:.1f} -> "
+      f"{bv_quiet.challenger_silent_high:.1f}")
 
 # ------------------------------------------------- strict JSON
 print("\n[10] a NaN metric serialises as null, not bare NaN")

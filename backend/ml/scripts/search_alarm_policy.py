@@ -153,8 +153,11 @@ def main() -> None:
                              r.nonseptic_episodes_per_patient_day,
                          "repeat_notifications_per_septic_episode":
                              r.repeat_notifications_per_septic_episode,
-                         "median_time_to_clear_h": r.median_time_to_clear_h})
-        print(f"    {cand.describe():18} burden {burden:.3f}")
+                         "median_time_to_clear_h": r.median_time_to_clear_h,
+                         "silent_high_hours_per_septic_episode":
+                             r.silent_high_hours_per_septic_episode})
+        print(f"    {cand.describe():18} burden {burden:.3f}   "
+              f"unannounced HIGH h/episode {r.silent_high_hours_per_septic_episode:.1f}")
     finite = [e for e in ep_field if np.isfinite(e["burden_per_patient_day"])]
     best_ep = ap.EpisodePolicy(min(finite, key=lambda e: e["burden_per_patient_day"])
                                ["high_renotify_seconds"]) if finite else shipped_ep
@@ -166,6 +169,8 @@ def main() -> None:
           f"delta {bv.delta_burden:+.3f}  95% CI [{bv.ci_low:+.3f}, {bv.ci_high:+.3f}]")
     print(f"    first-alarm detection delta {bv.detection_delta:+.4f}  "
           f"false-alarm delta {bv.false_alarm_delta:+.4f}  (both must be 0 by construction)")
+    print(f"    unannounced HIGH h/septic episode {bv.champion_silent_high:.1f} -> "
+          f"{bv.challenger_silent_high:.1f}  (a burden win bought with silence is refused)")
     print(f"\n  {'PROMOTED' if bv.promoted else 'REFUSED'} — {bv.reason}")
 
     if args.save:
@@ -200,7 +205,9 @@ def main() -> None:
                                 "repeat_notifications_per_septic_episode":
                                     ship_ep_res.repeat_notifications_per_septic_episode,
                                 "escalation_recall": ship_ep_res.escalation_recall,
-                                "median_time_to_clear_h": ship_ep_res.median_time_to_clear_h},
+                                "median_time_to_clear_h": ship_ep_res.median_time_to_clear_h,
+                                "silent_high_hours_per_septic_episode":
+                                    ship_ep_res.silent_high_hours_per_septic_episode},
                     "field": ep_field},
                 burden_verdict=bv.__dict__,
                 candidate_field=[{"family": p.family,

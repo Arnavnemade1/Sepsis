@@ -59,6 +59,12 @@ evidence budget on a question already answered:
     50/50 blend                 utility +0.323; an AUROC crumb for the metric that counts
     persistent K>=2 / integrator / per-patient z   the four families above
 
+THE EPISODE ENDPOINT IS GAMEABLE, AND IS GUARDED. Interruptions per patient-day is
+monotone in the re-notification interval: "never re-notify" minimises it by
+construction, which would be a tautology dressed as a finding. So a burden win is
+refused unless unannounced HIGH hours per septic episode also fail to rise. Episode
+metrics are an additional operational outcome, never a way to hide a missed patient.
+
 The genuinely open object is the EPISODE layer — how often a person is interrupted
 AFTER the first alarm. That leaves the score, the threshold and the first crossing
 untouched, so first-alarm detection and false-alarm rate are invariant BY
@@ -296,6 +302,14 @@ class EpisodeResult:
     total_notifications: int
     n_septic: int
     n_nonseptic: int
+    #: SEPTIC stays only: HIGH-tier hours that pass with no notification, per opened
+    #: episode. This is the COST side of a quieter schedule, and it exists because the
+    #: burden endpoint is mechanically monotone in the re-notification interval — a
+    #: schedule can always "win" on interruptions by never interrupting again. That is
+    #: the same failure as the retracted lead-time claim: a number that measures the
+    #: policy's own geometry rather than anything about the patient. Re-notification
+    #: exists so an unresolved HIGH does not disappear; this counts how long it does.
+    silent_high_hours_per_septic_episode: float = float("nan")
     #: Per NON-SEPTIC patient: notifications per patient-day. This is the vector the
     #: burden bootstrap resamples — the pooled headline rate above is not a mean over
     #: patients, so it is not a legal unit for a patient-level interval.
@@ -309,6 +323,7 @@ def evaluate_episodes(policy: EpisodePolicy, patients: Sequence[PatientSeries],
     ns_days: List[float] = []
     ns_episodes = opened_septic = renotify_septic = 0
     escalated = escalatable = 0
+    silent_high = 0
     clears: List[float] = []
     total_notifications = 0
     n_septic = n_nonseptic = 0
@@ -330,6 +345,8 @@ def evaluate_episodes(policy: EpisodePolicy, patients: Sequence[PatientSeries],
             n_septic += 1
             opened_septic += sum(1 for e in ev if e["state"] == "OPENED")
             renotify_septic += sum(1 for e in ev if e["state"] == "RENOTIFY")
+            silent_high += sum(1 for e in ev
+                               if e["level"] == "HIGH" and not e["notify"])
         else:
             n_nonseptic += 1
             days = max(len(p.scores), 1) / 24.0
@@ -349,6 +366,8 @@ def evaluate_episodes(policy: EpisodePolicy, patients: Sequence[PatientSeries],
         median_time_to_clear_h=float(np.median(clears)) if clears else nan,
         total_notifications=int(total_notifications),
         n_septic=n_septic, n_nonseptic=n_nonseptic,
+        silent_high_hours_per_septic_episode=(
+            float(silent_high / opened_septic) if opened_septic else nan),
         burden_per_patient=per_patient)
 
 
@@ -365,6 +384,8 @@ class BurdenVerdict:
     ci_high: float
     detection_delta: float
     false_alarm_delta: float
+    champion_silent_high: float
+    challenger_silent_high: float
     n_boot: int
 
 
@@ -393,7 +414,9 @@ def gate_burden(champion: EpisodePolicy, challenger: EpisodePolicy,
         return BurdenVerdict(False, "refused: no non-septic patients to measure burden on",
                              champion.describe(), challenger.describe(),
                              float("nan"), float("nan"), float("nan"),
-                             float("nan"), float("nan"), 0.0, 0.0, n_boot)
+                             float("nan"), float("nan"), 0.0, 0.0,
+                             c_ep.silent_high_hours_per_septic_episode,
+                             x_ep.silent_high_hours_per_septic_episode, n_boot)
     deltas = np.empty(n_boot)
     for b in range(n_boot):
         i = rng.integers(0, n, n)
@@ -403,10 +426,21 @@ def gate_burden(champion: EpisodePolicy, challenger: EpisodePolicy,
     det_d = x_fa.detection_rate - c_fa.detection_rate
     far_d = x_fa.false_alarm_rate - c_fa.false_alarm_rate
 
+    # A quieter schedule must not buy its quiet by leaving an unresolved HIGH
+    # unannounced for longer. Without this the endpoint is a tautology: burden is
+    # monotone in the re-notification interval, so "never re-notify" wins every time
+    # while being exactly the change a clinician would refuse.
+    c_sil = c_ep.silent_high_hours_per_septic_episode
+    x_sil = x_ep.silent_high_hours_per_septic_episode
+    silent_worse = (np.isfinite(c_sil) and np.isfinite(x_sil) and x_sil > c_sil + 1e-9)
+
     if det_d < -1e-12:
         ok, why = False, "refused: first-alarm detection fell (%.4f)" % det_d
     elif far_d > 1e-12:
         ok, why = False, "refused: first-alarm false-alarm rate rose (%.4f)" % far_d
+    elif silent_worse:
+        ok, why = False, ("refused: burden falls only by going quiet — unannounced HIGH "
+                          "hours per septic episode rise %.2f -> %.2f" % (c_sil, x_sil))
     elif hi >= 0.0:
         ok, why = False, ("refused: burden reduction is not separable from zero "
                           "(95%% CI %+.4f to %+.4f)" % (lo, hi))
@@ -416,7 +450,8 @@ def gate_burden(champion: EpisodePolicy, challenger: EpisodePolicy,
     return BurdenVerdict(ok, why, champion.describe(), challenger.describe(),
                          float(c_ep.burden_per_patient.mean()),
                          float(x_ep.burden_per_patient.mean()),
-                         d, lo, hi, float(det_d), float(far_d), n_boot)
+                         d, lo, hi, float(det_d), float(far_d),
+                         float(c_sil), float(x_sil), n_boot)
 
 
 def episode_grid() -> List[EpisodePolicy]:
