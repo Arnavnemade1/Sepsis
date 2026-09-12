@@ -1,0 +1,68 @@
+{
+  "protocol": "host-response-v1",
+  "frozen": "2026-09-12",
+  "status": "FROZEN BEFORE ANY MODEL WAS FITTED. run_study.py hashes this file and refuses the locked phase if the digest changed after the discovery phase ran, so moving a bar after seeing a result is a diff, not a decision.",
+
+  "clinical_question": "Does a host-response blood expression signature separate INFECTIOUS sepsis from STERILE (non-infectious) systemic inflammation, and does that separation survive a change of cohort and sequencing/array platform?",
+
+  "why_it_matters_here": "The production detector reads hourly vitals and labs and is therefore structurally blind to this axis: trauma, major surgery and pancreatitis derange the same channels infection does. backend/ml/alarm_policy.py has already established that no post-processing of that score recovers a separation the input channels do not carry. This tests a DIFFERENT measurement, not a better reading of the same one.",
+
+  "what_this_study_cannot_show": "That any of this reduces THIS product's false-alarm rate. No bed in the CinC cohort carries transcriptomics, so there is no per-patient input to fuse and no such claim is available from this design. The artifact is asserted to contain no per-patient field.",
+
+  "primary_endpoint": {
+    "metric": "mean leave-one-cohort-out (LOCO) AUROC for infectious vs sterile",
+    "count": 1,
+    "note": "Exactly one primary. No co-primary, and no endpoint may be swapped for another after the fact."
+  },
+
+  "acceptance_bar": {
+    "mean_loco_auroc_min": 0.75,
+    "ci95_lower_bound_min": 0.70,
+    "cohort_identity_auroc_max": 0.90,
+    "label_permutation_auroc_range": [0.42, 0.58],
+    "all_four_required": true,
+    "alpha": 0.05,
+    "ci_method": "cluster bootstrap over samples (one sample = one patient), stratified by cohort, via backend.ml.eval.metrics.bootstrap_ci"
+  },
+
+  "why_0_75_and_not_higher": "SeptiCyte RAPID (a 2-transcript sepsis-vs-SIRS assay) and IMX-BVN / TriVerity (29-mRNA bacterial/viral panels) report AUROC in the region of 0.83-0.91 in their own validation cohorts. Beating — or missing — a published number on different cohorts, different platforms and different case definitions is NOT a like-for-like comparison and this study will not claim it is. The bar is set deliberately below the commercial range because cross-platform archival data is a harder and different problem. Clearing 0.75 here says the signal survives a platform change; it says nothing about matching a cleared assay.",
+
+  "cohorts": {
+    "source": "artifacts/hostresponse/cohort_manifest.json (gate passed 2026-09-12)",
+    "admissible": [
+      {"accession": "GSE74224", "platform": "GPL5175", "technology": "array",
+       "n_infectious": 74, "n_sterile": 31, "role": "discovery",
+       "control_arm": "post-surgical, infection-negative systemic inflammation"},
+      {"accession": "GSE63042", "platform": "GPL9115", "technology": "RNA-seq",
+       "n_infectious": 106, "n_sterile": 23, "role": "locked",
+       "control_arm": "SIRS without infection"},
+      {"accession": "GSE40012", "platform": "GPL6947", "technology": "array",
+       "n_infectious": 114, "n_sterile": 40, "role": "locked",
+       "control_arm": "non-infective systemic inflammatory response"}
+    ],
+    "excluded": [
+      {"accession": "GSE28750", "reason": "only 10 infectious samples (minimum 20)"},
+      {"accession": "GSE65682", "reason": "no characteristics key identifies an infectious vs sterile arm; its arms are CAP/HAP, ICU-acquired infection and abdominal-sepsis-vs-GI-control. Its GEO summary implies a non-infectious comparator, which is exactly why the decision was made from per-sample characteristics rather than from the summary."}
+    ],
+    "role_meaning": "DISCOVERY is the only cohort that may be iterated on. LOCKED cohorts are parsed and scored ONCE, at the end. LOCO still rotates every admissible cohort through the held-out position; the roles govern what may be looked at while choices are still being made."
+  },
+
+  "class_definitions": {
+    "infectious": "any documented infection, bacterial or viral — the axis under test is infection vs sterile inflammation, and influenza pneumonia is an infection.",
+    "sterile": "systemic inflammation with no infection: SIRS, post-surgical, trauma, pancreatitis.",
+    "healthy_excluded": "HEALTHY samples (36 in GSE40012) are EXCLUDED from the primary endpoint. Infection-vs-healthy is a trivially easier question and including those samples would inflate the result while answering something nobody asked.",
+    "bacterial_only_sensitivity": "Descriptive only, reported without a hypothesis test and spending no alpha."
+  },
+
+  "normalisation": "Within each sample independently: rank the genes, then z-score the ranks. No mean, variance, quantile or gene list is computed across samples or pooled across cohorts, so no cross-cohort statistic can reach a feature. Features are restricted to the gene-symbol intersection of all included platforms; the size of that intersection is itself a reported result.",
+
+  "negative_controls": {
+    "cohort_identity": "Train the identical pipeline on the identical features to predict WHICH COHORT a sample came from. If that AUROC is >= 0.90 the primary endpoint is reported CONFOUNDED and is not published at any value — the features would be encoding which lab ran the assay.",
+    "label_permutation": "Shuffle infectious/sterile labels WITHIN cohort and re-run LOCO. Must land in [0.42, 0.58], the same band verify_integrity.py check 1 asserts. Outside it means leakage and the study is void.",
+    "easiness_calibrator": "Infectious vs HEALTHY AUROC, reported only to show how much easier the trivial task is. It is not an endpoint and may never be quoted as the result."
+  },
+
+  "refusal_rule": "If any one of the four acceptance conditions fails, nothing is published: no site block, published=false in the artifact, and the outcome is written up as docs/HOST_RESPONSE_NULL.md. A documented negative is the expected and acceptable outcome of this study.",
+
+  "what_had_been_seen_before_freezing": "Only cohort admissibility: per-class sample counts and the verbatim characteristics strings, needed to decide which cohorts exist at all. No expression value has been read, no model has been fitted, and no outcome has been computed for any cohort."
+}
