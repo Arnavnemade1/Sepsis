@@ -8,23 +8,53 @@ model search uses ([[self-improvement-loop]]): a locked holdout the search never
 sees, paired bootstrap over PATIENTS, and promotion only when the confidence
 interval on the improvement excludes zero.
 
-WHAT THE SEARCH FOUND (2026-08-03, CinC 2019, wearable channels)
----------------------------------------------------------------
-Four policy families were searched at or below the shipped false-alarm rate:
+WHAT THE SEARCH FOUND (re-measured 2026-09-12, CinC 2019, wearable channels)
+---------------------------------------------------------------------------
+Measured at the SHIPPED operating point — high = 0.03 on detector
+``patient:hgb+hgb2+et+lr+xgb@utility`` — over 3,004 patients, half searched and
+half locked away. Four first-alarm families, at or below the shipped policy's own
+false-alarm rate on the half it constrains (32.7%):
 
-    plain threshold (shipped)        FA 10.6%   detection 38.1%
-    K consecutive hours above thr    FA 10.6%   detection 38.1%   (no K >= 2 won;
-                                                                   K = 1 IS the plain
-                                                                   family, and the grid
-                                                                   searches K >= 2)
-    leaky exceedance integrator      FA 10.6%   detection 38.1%   (collapsed to
-                                                                   a plain threshold)
-    per-patient z against own stay   FA  9.0%   detection 32.8%
+    plain threshold (shipped)        FA 32.7%   detection 62.9%
+    K consecutive hours above thr    FA 20.8%   detection 51.7%   (best k = 2; the
+                                                                   grid searches k >= 2
+                                                                   because k = 1 IS
+                                                                   the plain family)
+    leaky exceedance integrator      FA 30.6%   detection 59.4%
+    per-patient z against own stay   FA 31.5%   detection 46.2%
 
-None of them beats a plain threshold. The integrator result is the informative
-one: the search was free to pick any decay and trigger level and it chose
-decay = 1.0 with a trigger so small that the policy reduces to "first hour above
-a threshold". Given the freedom to be cleverer, the optimum was to not be.
+None of them beats a plain threshold, and the gate refused the winner on the
+locked half: detection delta 0.000, 95% CI [+0.000, +0.000]. Every alternative
+buys a lower false-alarm rate with a larger loss of detection — movement along
+the ROC curve, not a better curve.
+
+THE PREVIOUS NUMBERS ARE SUPERSEDED, NOT DELETED. The 2026-08-03 run reported
+FA 10.6% / detection 38.1% for the shipped policy. That was measured at
+``plain(0.0725)`` on roster ``[hgb, hgb2, et, lr]`` — an operating point and a
+model this system no longer runs — by a script that hardcoded both. The
+conclusion survived re-measurement; its numbers did not, and could not, because
+the shipped threshold more than halved. A claim whose fit is not named is a claim
+that cannot be checked, so the artifact now carries the operating point and the
+fit identity beside the verdict.
+
+EPISODE ECONOMICS (new in this run)
+-----------------------------------
+The study above measures only the FIRST alarm. Replaying the same locked patients
+through the live AlertEpisodeController, the shipped renotify(4h) schedule costs
+1.05 non-septic alert episodes per patient-day and 3.43 repeat notifications per
+septic episode, with a median 2.0 h to clear.
+
+The re-notification interval trades interruptions against silence, monotonically:
+
+    renotify(1h)      burden 2.78 /patient-day    unannounced HIGH  0.0 h/episode
+    renotify(4h)      burden 1.68                                  13.1
+    renotify(never)   burden 1.42                                  17.2
+
+So the burden endpoint can always be "won" by never interrupting again — which is
+why a burden reduction is refused unless unannounced HIGH hours also fail to rise.
+On the locked half that refusal fired: burden 1.60 -> 1.31 (95% CI [-0.341,
+-0.240], which excludes zero) but unannounced HIGH hours 11.1 -> 14.5. REFUSED.
+The quiet was the whole of the saving.
 
 Cross-hospital threshold transfer behaves the same way. The shipped threshold
 sits at the 93rd percentile of the home score distribution; matching that
@@ -44,6 +74,13 @@ separation the score does not have. The 36% cross-hospital false-alarm rate is
 the AUROC 0.716 being honest, not a policy that needs tuning. Reducing it
 requires a better-separating signal — which is the data-limited problem this
 project has already documented — or accepting less detection.
+
+(The cross-hospital transfer figures in the paragraph above are from the 2026-08-03
+run and have NOT been re-measured at the current operating point; only the
+same-cohort search was re-run. What did change is that the home-cohort false-alarm
+rate is now 32.2% at the shipped threshold, because the operating point moved down
+to 0.03 — so the alarm burden this project once described as a cross-hospital
+problem is now substantially a same-hospital one.)
 
 WHAT MUST NOT BE RE-PROPOSED
 ----------------------------
