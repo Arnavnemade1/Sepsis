@@ -16,7 +16,7 @@ help:
 	@echo "  make verify-evidence-router AERIS source, budget, override and stale-event checks"
 	@echo "  make verify-evidence-replay AERIS patient-level replay metric checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
-	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-alarm      Alarm-policy gate + episode economics (planted-failure suite)"
 	@echo "  make verify-disposition Clinical decision layer: abstention may never downgrade"
 	@echo "  make audit             Model audit: what the detector's AUROC is made of"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
@@ -235,7 +235,10 @@ operating-point:
 
 # The alarm POLICY, not the threshold: searches persistence / integrator /
 # per-patient families against a locked holdout and refuses to promote anything
-# that does not beat the shipped policy with a CI excluding zero.
+# that does not beat the shipped policy with a CI excluding zero. Also covers the
+# EPISODE layer: that a notification schedule cannot move the first alarm, that the
+# replay matches the live controller, that no schedule can suppress an escalation,
+# and that a study refuses a threshold derived on another fit.
 verify-alarm:
 	$(PY) -m backend.ml.scripts.verify_alarm_policy
 
