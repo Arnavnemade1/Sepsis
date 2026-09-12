@@ -13,7 +13,10 @@ WHAT THE SEARCH FOUND (2026-08-03, CinC 2019, wearable channels)
 Four policy families were searched at or below the shipped false-alarm rate:
 
     plain threshold (shipped)        FA 10.6%   detection 38.1%
-    K consecutive hours above thr    FA 10.6%   detection 38.1%   (best K = 1)
+    K consecutive hours above thr    FA 10.6%   detection 38.1%   (no K >= 2 won;
+                                                                   K = 1 IS the plain
+                                                                   family, and the grid
+                                                                   searches K >= 2)
     leaky exceedance integrator      FA 10.6%   detection 38.1%   (collapsed to
                                                                    a plain threshold)
     per-patient z against own stay   FA  9.0%   detection 32.8%
@@ -42,6 +45,30 @@ the AUROC 0.716 being honest, not a policy that needs tuning. Reducing it
 requires a better-separating signal — which is the data-limited problem this
 project has already documented — or accepting less detection.
 
+WHAT MUST NOT BE RE-PROPOSED
+----------------------------
+Everything below transforms the SCORE before thresholding. All of it has been
+measured on this data and all of it lost; re-running any of it is spending the
+evidence budget on a question already answered:
+
+    EMA / causal smoothing      docs/FRONTIER_REPORT.md — utility +0.294 vs +0.339 raw,
+                                and permanently dedup-blocked in the Lab registry
+                                (change_key for {"policy":"ema","halflife":6})
+    running max (cummax)        utility +0.304, ECE 0.0145
+    decaying log-odds (hazard)  utility -0.011 — the worst decision layer measured here
+    50/50 blend                 utility +0.323; an AUROC crumb for the metric that counts
+    persistent K>=2 / integrator / per-patient z   the four families above
+
+The genuinely open object is the EPISODE layer — how often a person is interrupted
+AFTER the first alarm. That leaves the score, the threshold and the first crossing
+untouched, so first-alarm detection and false-alarm rate are invariant BY
+CONSTRUCTION (asserted, not measured, in verify_alarm_policy). See EpisodePolicy.
+
+LEAD TIME IS NOT REPORTED HERE. A random score reproduces this detector's median
+lead at every matched detection rate (docs/LEAD_TIME_NULL.md), so no lead quantity
+is written to the artifact. ``PolicyResult.median_lead_hours`` survives as an
+internal field only because the first-alarm MECHANICS test asserts against it.
+
 This module is kept because the SEARCH is the durable asset: any new policy idea
 can be added as a family and tested against the same locked gate, and the gate
 will refuse it unless it genuinely wins.
@@ -55,6 +82,9 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
+
+from backend.aegis.alert_episodes import AlertEpisodeController
+from backend.ml.jsonio import json_safe
 
 ARTIFACT = Path("artifacts/alarm_policy.json")
 
@@ -200,6 +230,207 @@ def evaluate(policy: Policy, patients: Sequence[PatientSeries]) -> PolicyResult:
         fired_septic=det, fired_nonseptic=fa)
 
 
+
+# --------------------------------------------------------------------------- #
+# episode economics — the OPERATIONAL layer, measured with the RUNTIME controller
+# --------------------------------------------------------------------------- #
+#: Human labels for the artifact, so the console and the website render the field
+#: that was actually searched instead of a list re-declared in three other files.
+FAMILY_LABELS = {
+    "plain": "plain threshold",
+    "persistent": "K consecutive hours",
+    "integrator": "leaky exceedance integrator",
+    "per_patient": "per-patient z-score",
+    "renotify": "re-notification schedule (episode layer)",
+}
+
+
+@dataclass(frozen=True)
+class EpisodePolicy:
+    """A notification schedule, evaluated on top of a FIXED alarm threshold.
+
+    This is a different object from a :class:`Policy`. A Policy decides when the
+    first alarm fires; an EpisodePolicy decides how often a person is interrupted
+    after it. Keeping them apart is what makes the safety guard structural rather
+    than statistical: nothing here can move the first crossing, so detection and
+    false-alarm rate are unchanged by construction.
+    """
+    high_renotify_seconds: Optional[float] = 4 * 3600.0
+
+    def describe(self) -> str:
+        h = self.high_renotify_seconds
+        return "renotify(%s)" % ("never" if h is None else "%gh" % (h / 3600.0))
+
+
+def tier_of(score: float, high: float, medium: float) -> str:
+    """The product's own tier mapping. MEDIUM is a pre-alarm below HIGH."""
+    return "HIGH" if score >= high else ("MEDIUM" if score >= medium else "LOW")
+
+
+def replay_episodes(p: PatientSeries, high: float, medium: float,
+                    policy: EpisodePolicy) -> List[Dict[str, object]]:
+    """Drive the LIVE controller across one admission and return its events.
+
+    The controller is imported, never reimplemented. An offline study that models
+    the notification layer with its own copy of the rules measures an object the
+    product does not have — and the product's rules include one guarantee that must
+    survive any schedule searched here: an escalation is never suppressed.
+    """
+    ctl = AlertEpisodeController(high_renotify_seconds=policy.high_renotify_seconds)
+    out: List[Dict[str, object]] = []
+    for s, h in zip(p.scores, p.hours):
+        level = tier_of(float(s), high, medium)
+        ev = ctl.update(level, float(h) * 3600.0)
+        out.append({"state": ev.state, "notify": bool(ev.notify), "level": level,
+                    "elapsed": float(ev.elapsed_seconds)})
+    return out
+
+
+@dataclass
+class EpisodeResult:
+    """Operational burden, in the units a clinician is actually charged in."""
+    nonseptic_episodes_per_patient_day: float
+    repeat_notifications_per_septic_episode: float
+    escalation_recall: float
+    median_time_to_clear_h: float
+    total_notifications: int
+    n_septic: int
+    n_nonseptic: int
+    #: Per NON-SEPTIC patient: notifications per patient-day. This is the vector the
+    #: burden bootstrap resamples — the pooled headline rate above is not a mean over
+    #: patients, so it is not a legal unit for a patient-level interval.
+    burden_per_patient: np.ndarray = field(repr=False, default_factory=lambda: np.array([]))
+
+
+def evaluate_episodes(policy: EpisodePolicy, patients: Sequence[PatientSeries],
+                      high: float, medium: float) -> EpisodeResult:
+    """Replay every admission through the runtime controller and tally the burden."""
+    ns_notifies: List[float] = []
+    ns_days: List[float] = []
+    ns_episodes = opened_septic = renotify_septic = 0
+    escalated = escalatable = 0
+    clears: List[float] = []
+    total_notifications = 0
+    n_septic = n_nonseptic = 0
+
+    for p in patients:
+        ev = replay_episodes(p, high, medium, policy)
+        notifies = sum(1 for e in ev if e["notify"])
+        total_notifications += notifies
+        clears.extend(float(e["elapsed"]) / 3600.0 for e in ev if e["state"] == "RESOLVED")
+        # escalation recall: MEDIUM -> HIGH inside an already-open episode. The
+        # controller emits ESCALATED exactly then, so this is 1.0 by construction —
+        # it is a conformance tripwire on the replay, not a discovery.
+        for i in range(1, len(ev)):
+            if ev[i]["level"] == "HIGH" and ev[i - 1]["level"] == "MEDIUM" \
+                    and ev[i]["state"] != "OPENED":
+                escalatable += 1
+        escalated += sum(1 for e in ev if e["state"] == "ESCALATED")
+        if p.septic:
+            n_septic += 1
+            opened_septic += sum(1 for e in ev if e["state"] == "OPENED")
+            renotify_septic += sum(1 for e in ev if e["state"] == "RENOTIFY")
+        else:
+            n_nonseptic += 1
+            days = max(len(p.scores), 1) / 24.0
+            ns_days.append(days)
+            ns_notifies.append(float(notifies))
+            ns_episodes += sum(1 for e in ev if e["state"] == "OPENED")
+
+    nan = float("nan")
+    pooled = (ns_episodes / sum(ns_days)) if ns_days else nan
+    per_patient = (np.asarray(ns_notifies, dtype=float) / np.asarray(ns_days, dtype=float)
+                   if ns_days else np.array([]))
+    return EpisodeResult(
+        nonseptic_episodes_per_patient_day=float(pooled),
+        repeat_notifications_per_septic_episode=(
+            float(renotify_septic / opened_septic) if opened_septic else nan),
+        escalation_recall=float(escalated / escalatable) if escalatable else nan,
+        median_time_to_clear_h=float(np.median(clears)) if clears else nan,
+        total_notifications=int(total_notifications),
+        n_septic=n_septic, n_nonseptic=n_nonseptic,
+        burden_per_patient=per_patient)
+
+
+@dataclass
+class BurdenVerdict:
+    promoted: bool
+    reason: str
+    champion: str
+    challenger: str
+    champion_burden: float
+    challenger_burden: float
+    delta_burden: float
+    ci_low: float
+    ci_high: float
+    detection_delta: float
+    false_alarm_delta: float
+    n_boot: int
+
+
+def gate_burden(champion: EpisodePolicy, challenger: EpisodePolicy,
+                locked: Sequence[PatientSeries], high: float, medium: float,
+                n_boot: int = 2000, seed: int = 0) -> BurdenVerdict:
+    """Promote a schedule only on a burden reduction measured on locked patients.
+
+    The existing :func:`gate` resamples SEPTIC patients, because it adjudicates
+    detection. An interruption-burden endpoint lives entirely on the NON-SEPTIC
+    side, which that bootstrap never touches — so a burden claim gated by it would
+    be an interval about the wrong patients. This resamples non-septic patients for
+    the burden delta and keeps first-alarm detection as a non-inferiority guard.
+    """
+    c_ep = evaluate_episodes(champion, locked, high, medium)
+    x_ep = evaluate_episodes(challenger, locked, high, medium)
+    # The first-alarm layer is identical for both by construction; measuring it is
+    # how we find out if that ever stops being true.
+    fire = Policy("plain", {"threshold": high})
+    c_fa = evaluate(fire, locked)
+    x_fa = evaluate(fire, locked)
+
+    rng = np.random.default_rng(seed)
+    n = c_ep.burden_per_patient.size
+    if n == 0 or x_ep.burden_per_patient.size != n:
+        return BurdenVerdict(False, "refused: no non-septic patients to measure burden on",
+                             champion.describe(), challenger.describe(),
+                             float("nan"), float("nan"), float("nan"),
+                             float("nan"), float("nan"), 0.0, 0.0, n_boot)
+    deltas = np.empty(n_boot)
+    for b in range(n_boot):
+        i = rng.integers(0, n, n)
+        deltas[b] = x_ep.burden_per_patient[i].mean() - c_ep.burden_per_patient[i].mean()
+    lo, hi = (float(v) for v in np.percentile(deltas, [2.5, 97.5]))
+    d = float(x_ep.burden_per_patient.mean() - c_ep.burden_per_patient.mean())
+    det_d = x_fa.detection_rate - c_fa.detection_rate
+    far_d = x_fa.false_alarm_rate - c_fa.false_alarm_rate
+
+    if det_d < -1e-12:
+        ok, why = False, "refused: first-alarm detection fell (%.4f)" % det_d
+    elif far_d > 1e-12:
+        ok, why = False, "refused: first-alarm false-alarm rate rose (%.4f)" % far_d
+    elif hi >= 0.0:
+        ok, why = False, ("refused: burden reduction is not separable from zero "
+                          "(95%% CI %+.4f to %+.4f)" % (lo, hi))
+    else:
+        ok, why = True, ("promoted: burden reduction 95%% CI %+.4f to %+.4f excludes zero"
+                         % (lo, hi))
+    return BurdenVerdict(ok, why, champion.describe(), challenger.describe(),
+                         float(c_ep.burden_per_patient.mean()),
+                         float(x_ep.burden_per_patient.mean()),
+                         d, lo, hi, float(det_d), float(far_d), n_boot)
+
+
+def episode_grid() -> List[EpisodePolicy]:
+    """Only the re-notification interval is searched.
+
+    It is the one schedule parameter ``AlertEpisodeController`` already exposes.
+    Cooldown, resolve-hysteresis and episode-gap would each require a change to the
+    live controller first; searching them here would measure an object the product
+    does not have, which is the failure this module's docstring warns about.
+    """
+    return [EpisodePolicy(h) for h in
+            (3600.0, 2 * 3600.0, 4 * 3600.0, 8 * 3600.0, 12 * 3600.0, None)]
+
+
 # --------------------------------------------------------------------------- #
 # search
 # --------------------------------------------------------------------------- #
@@ -304,10 +535,40 @@ def gate(champion: Policy, challenger: Policy, locked: Sequence[PatientSeries],
                    n_boot=n_boot)
 
 
-def save(verdict: Verdict, shipped: Policy, path: Path = ARTIFACT) -> None:
+def save(verdict: Verdict, shipped: Policy, path: Path = ARTIFACT, *,
+         families: Optional[Sequence[str]] = None,
+         verdict_note: Optional[str] = None,
+         operating_point: Optional[Dict[str, object]] = None,
+         fit: Optional[Dict[str, object]] = None,
+         episode_semantics: Optional[Dict[str, object]] = None,
+         episode_metrics: Optional[Dict[str, object]] = None,
+         burden_verdict: Optional[Dict[str, object]] = None,
+         candidate_field: Optional[Sequence[Dict[str, object]]] = None) -> None:
+    """Write the verdict, the field that produced it, and the fit it belongs to.
+
+    Everything goes through ``json_safe``: an empty episode set makes a median NaN,
+    ``json.dump`` writes that as bare ``NaN``, and the website's sync script parses
+    this file with a strict parser that rejects it. That exact failure has already
+    happened once in this repo, to a different artifact.
+
+    ``shipped_policy`` and ``verdict`` keep their historic shape — the live console
+    and the public site read those two objects by name.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({
+    payload = {
         "shipped_policy": {"family": shipped.family, "params": shipped.params,
                            "describe": shipped.describe()},
         "verdict": verdict.__dict__,
-    }, indent=2))
+        "families": list(families) if families else None,
+        "verdict_note": verdict_note,
+        "operating_point": operating_point,
+        "fit": fit,
+        "episode_semantics": episode_semantics,
+        "episode_metrics": episode_metrics,
+        "burden_verdict": burden_verdict,
+        "candidate_field": list(candidate_field) if candidate_field else None,
+        "lead_time": {"reported": False,
+                      "reason": "retracted — a random score reproduces it; "
+                                "see docs/LEAD_TIME_NULL.md"},
+    }
+    path.write_text(json.dumps(json_safe(payload), indent=2))
