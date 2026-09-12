@@ -79,6 +79,15 @@
       "alternative_left_open": "If an Excel dependency is later accepted, GSE63042 can be re-admitted — but as a NEW pre-registration, not by reopening this one."
     },
     {
+      "n": 3,
+      "date": "2026-09-12",
+      "change": "The 95% interval clusters on PATIENT, not on sample. The acceptance_bar.ci_method line said 'one sample = one patient'; that is false for GSE40012 and the code asserting it has been corrected.",
+      "reason": "GSE40012 contributes 190 samples from 58 patients — its characteristics carry an `id` key with 58 distinct values and a `day` key of 1/2/3/5, i.e. repeated timepoints per person. Resampling samples would treat repeated measurements of one patient as independent evidence and report an interval narrower than the data supports, on the headline number this study is judged by. Caught while testing pipeline mechanics on the DISCOVERY cohort; the locked cohort had not been scored.",
+      "what_this_costs": "The effective sample size is far smaller than the sample count suggests, and the reported CI will be correspondingly wider. That is the honest width.",
+      "also_changed": "The label-permutation control now averages MANY draws rather than one. A single permutation at this sample size has sd ~0.066, so a lone draw falls outside the pre-registered [0.42, 0.58] band roughly one time in twenty by construction — an alarm that fires on nothing. The band now applies to the mean of the null, and its spread is reported. This was found when a single draw returned 0.626 and a 20-draw null centred at 0.484.",
+      "what_was_NOT_changed": "The endpoint, the 0.75/0.70 bar, the alpha, the cohort-identity threshold, the normalisation and the refusal rule are untouched."
+    },
+    {
       "n": 2,
       "date": "2026-09-12",
       "change": "Records the probe-to-gene-symbol route per platform, which the frozen normalisation section assumed without naming.",
