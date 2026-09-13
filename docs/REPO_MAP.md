@@ -20,6 +20,7 @@ what is experimental, and what exists to preserve research history.
 | `backend/aegis/` | Active runtime | Unified session, stream contract, body state, OS/kernel layer, cohort simulator, protocol proof path. |
 | `backend/ml/` | Active ML subsystem | CinC data loader, causal features, calibrated GBM/stacked detectors, rigorous evaluation scripts. |
 | `backend/physio/` | Active validation subsystem | HRV, PPG/ECG agreement, MIMIC-IV waveform adapter. |
+| `backend/hostresponse/` | Offline research study | Pre-registered test of whether blood expression separates infection from STERILE inflammation across public GEO cohorts and array platforms (`make geo-manifest`, `make hostresponse PHASE=discovery|locked`, `make verify-hostresponse`). Never per-patient: no bed carries transcriptomics. Rules in `preregistration.json`; verdict and numbers in `artifacts/hostresponse.json`. |
 | `backend/vision/` | Active sensor subsystem | rPPG, camera vitals, motion robustness, distress/perfusion signs. |
 | `backend/llm/` | Optional narrative layer | Deterministic fallback is required; the system must not depend on LLM availability. |
 | `backend/core/` | Legacy + primitives | Original HDC, simulator, neurosymbolic rules, Z3 verifier used by tests/runtime. |

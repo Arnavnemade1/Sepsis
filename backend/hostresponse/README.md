@@ -138,7 +138,15 @@ distinct values, so any classification can be read against the source.
 
 ## Status
 
-Gate passed; pre-registration frozen and amended four times (cohort withdrawal,
-annotation route, patient-level CI, learner and guards); annotation, feature
-pipeline and interval property-tested. **No endpoint has been computed.** The
-locked cohort has not been scored.
+**Locked result, 2026-09-12: BAR MISSED** under the rules in force, **CONFOUNDED**
+under the frozen rules; `published: false`.
+
+Per direction 0.773 (held-out GSE40012) and 0.682 (held-out GSE74224); mean 0.727,
+95% patient-cluster interval 0.636–0.810; permutation null 0.495; cohort identity
+1.000. The interval excludes chance, so some transfer is present — but it misses the
+pre-registered bar, and its upper bound sits below the ~0.85 the study was powered
+to detect. Amendment 4 changed the failure's label, not its outcome: neither rule set
+publishes. The rules and code were committed (`a1ef44b`) before the locked cohort
+was loaded.
+
+Full write-up: [`docs/HOST_RESPONSE_NULL.md`](../../docs/HOST_RESPONSE_NULL.md).
