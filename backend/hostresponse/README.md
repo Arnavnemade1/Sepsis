@@ -40,6 +40,11 @@ comparator, and its per-sample characteristics say otherwise (its arms are
 CAP/HAP, ICU-acquired infection, abdominal sepsis vs GI control). That is why
 admissibility is decided from characteristics rather than from a summary.
 
+**The unit is the patient, not the sample.** GSE40012's 154 infectious/sterile
+samples come from 40 people sampled repeatedly (27 infectious, 13 sterile), so the
+study is 145 patients, not 259 samples — and its sterile arm, 44 patients, binds
+every interval it reports.
+
 GSE63042 was pre-registered and then withdrawn: GEO holds no usable expression
 table for it — metadata-only series matrix, empty family SOFT, and a single
 `.xlsx.gz` of relative RPM that would need both a new dependency and a fragile
@@ -70,24 +75,45 @@ gene-symbol intersection**. The feature space is not the limiting factor.
 3. **Intersect** to the shared symbols.
 4. **Leave one cohort out**, reporting *every* direction — a signature that
    transfers one way and not the other has fitted one cohort's idiosyncrasy.
+5. **Learner: L2 logistic regression, no scaling, C = 0.01**, chosen on the
+   discovery cohort by a rule stated before looking. `GBMDetector` emits a single
+   constant prediction at 13,785 features × 52 rows; a scaler would re-introduce a
+   cross-cohort statistic by fitting gene means on one cohort and applying them to
+   the other.
 
 ## What would make a good number meaningless
 
-Three controls are pre-registered and computed in the same run as the primary,
-never on request:
+Every guard is computed in the same run as the primary, never on request:
 
+* **Per-direction interval** — each held-out cohort's AUROC is computed inside that
+  cohort and the directions are averaged, so a platform offset cannot enter. A +3.0
+  offset leaves it unchanged while a pooled AUROC on the same data falls 0.834 → 0.714.
+* **Label permutation** within cohort, **≥ 20 draws**, each with a fresh fold split —
+  the *mean* of that null must land in [0.42, 0.58]. Two thin nulls raised false
+  alarms here before this was fixed.
 * **Cohort identity** — the same pipeline predicting *which cohort* a sample came
-  from. AUROC ≥ 0.90 reports the primary **CONFOUNDED** at any value.
-* **Label permutation** within cohort — must land in [0.42, 0.58].
+  from. Reported. The frozen rule voided the study at ≥ 0.90; amendment 4 retired
+  that, because under a per-direction endpoint a cohort signal cannot rank patients
+  and the rule could only fire on platform differences.
 * **Easiness calibrator** — infection vs *healthy*, reported only to show how much
   easier the trivial task is. Never quotable as the result.
 
 ## The bar, and the three ways this ends
 
 `preregistration.json` is frozen and hashed; `run_study.py` refuses the locked
-phase if the digest changed after the discovery phase ran. Passing requires **all
-four**: mean LOCO AUROC ≥ 0.75, 95% cluster-bootstrap lower bound > 0.70,
-cohort-identity < 0.90, permutation in [0.42, 0.58].
+phase if the digest changed after the discovery phase ran. Four amendments are
+recorded inside it, each with the canonical digest it superseded.
+
+The bar **in force** (amendment 4) requires all of: mean per-direction AUROC ≥ 0.75,
+95% patient-cluster lower bound > 0.70, **each direction ≥ 0.70 on its own**, and a
+permutation null centred in [0.42, 0.58]. The artifact also reports the verdict
+under the **frozen** rules, so the effect of every amendment is visible in the
+result, not only in the document's history.
+
+**Power, stated before any outcome:** simulated from cluster counts alone, the
+lower bound clears 0.70 in 6/20 replicates at a true transfer AUROC of 0.80, 18/20
+at 0.85 and 20/20 at 0.90. This study can detect transfer at or above ~0.85 and not
+below it, so a miss reads "not detected at ≥ 0.85" — never "no transfer".
 
 The bar sits deliberately below the 0.83–0.91 that SeptiCyte RAPID and
 IMX-BVN/TriVerity report in their own validation cohorts, because those are
@@ -102,7 +128,8 @@ failure**, **confounded**, and **bar missed** → `docs/HOST_RESPONSE_NULL.md`, 
 
 ```bash
 make geo-manifest        # fetch candidates, classify control arms, apply the gate
-make hostresponse        # --phase discovery | locked
+make hostresponse PHASE=discovery   # iterate freely; records the pre-registration digest
+make hostresponse PHASE=locked      # ONCE; refuses if the digest moved since discovery
 make verify-hostresponse # the adversarial suite
 ```
 
@@ -111,6 +138,7 @@ distinct values, so any classification can be read against the source.
 
 ## Status
 
-Gate passed; pre-registration frozen and amended once; annotation and the feature
-pipeline built and property-tested. **No endpoint has been computed.** The locked
-cohort has not been scored.
+Gate passed; pre-registration frozen and amended four times (cohort withdrawal,
+annotation route, patient-level CI, learner and guards); annotation, feature
+pipeline and interval property-tested. **No endpoint has been computed.** The
+locked cohort has not been scored.

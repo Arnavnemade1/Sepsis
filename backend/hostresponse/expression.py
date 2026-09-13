@@ -32,15 +32,22 @@ THE PIPELINE, AND WHY EACH STEP IS THE WAY IT IS
 WHAT WOULD MAKE A GOOD NUMBER HERE MEANINGLESS
 ----------------------------------------------
 A model can score well by learning WHICH COHORT a sample came from — different lab,
-different scanner, different year. Two pre-registered controls exist for that and
-both are computed in the same run as the primary, never on request:
+different scanner, different year — wherever cohorts are POOLED. Three guards exist
+for that, all computed in the same run as the primary, never on request:
 
-* :func:`cohort_identity_auroc` — >= 0.90 VOIDS the primary at any value.
+* :func:`mean_direction_ci` — the interval never pools cohorts, so a platform offset
+  cannot enter it. Verified rather than assumed: a +3.0 offset on one cohort leaves
+  it identical while a pooled AUROC on the same data moves 0.834 -> 0.714.
+* :func:`cohort_identity_auroc` — REPORTED, and under amendment 4 no longer a void
+  condition. The primary is a mean of per-direction AUROCs, each computed inside one
+  held-out cohort, where a cohort signal is constant and cannot rank patients; the
+  frozen rule (>= 0.90 voids) would have voided the study on platform differences
+  alone. The artifact reports the verdict under BOTH the frozen and amended rules.
 * :func:`permutation_loco` — labels shuffled within cohort over MANY draws. The
-  [0.42, 0.58] band applies to the MEAN of that null, not to a single draw: one
-  permutation at this sample size has sd ~0.066, so a lone draw lands outside the
-  band about one time in twenty by construction. That is an alarm that fires on
-  nothing, and it did fire once here before the control was fixed.
+  [0.42, 0.58] band applies to the MEAN of that null, not to one draw: a properly
+  designed null here has per-draw sd ~0.10, so a lone draw leaves the band often by
+  construction. Two thin nulls raised false alarms in this study before that was
+  fixed — a single draw, and five draws that all reused one fold split.
 
 A PATIENT IS THE UNIT, NOT A SAMPLE. GSE40012 contributes 190 samples from 58
 people at days 1/2/3/5. Every interval clusters on patient, because resampling
@@ -57,12 +64,12 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from sklearn.linear_model import LogisticRegression
 
 from backend.hostresponse import annotation as ann
 from backend.hostresponse.data import geo_series as gs
 from backend.hostresponse.data.build_geo_manifest import _class_of, label_field
 from backend.ml.eval import metrics
-from backend.ml.models.gbm_baseline import GBMDetector
 
 #: The only two classes in the primary endpoint. HEALTHY is not a third class; it is
 #: dropped, and the count of dropped samples is reported.
@@ -131,6 +138,10 @@ class GeoCohort(ExpressionCohortSource):
     accession: str
     platform: str
     root: str = "data/geo"
+    #: Which class is the NEGATIVE one. "sterile" is the study's question. "healthy"
+    #: exists only for the easiness calibrator, which asks the trivial question ON
+    #: PURPOSE so the gap between the two can be reported — never quoted as a result.
+    contrast: str = "sterile"
 
     def load(self) -> Cohort:
         series = gs.parse_series_matrix(gs.local_path(self.accession, self.root),
@@ -140,9 +151,11 @@ class GeoCohort(ExpressionCohortSource):
                              % self.accession)
         key, values = label_field(series)
         classes = [_class_of(v) for v in values]
-        keep = [i for i, c in enumerate(classes) if c in ("infectious", "sterile")]
+        if self.contrast not in ("sterile", "healthy"):
+            raise ValueError("contrast must be 'sterile' or 'healthy', not %r" % self.contrast)
+        keep = [i for i, c in enumerate(classes) if c in ("infectious", self.contrast)]
         if not keep:
-            raise ValueError("%s has no infectious/sterile samples" % self.accession)
+            raise ValueError("%s has no infectious/%s samples" % (self.accession, self.contrast))
 
         cols = [series.samples[i] for i in keep]
         mat = series.matrix.loc[:, [c for c in cols if c in series.matrix.columns]]
@@ -156,7 +169,8 @@ class GeoCohort(ExpressionCohortSource):
         pkey, patients = self._patients(series, present)
         return Cohort(accession=self.accession, platform=self.platform, X=X, y=y,
                       samples=present, patients=patients,
-                      n_healthy_dropped=sum(1 for c in classes if c == "healthy"),
+                      n_healthy_dropped=(sum(1 for c in classes if c == "healthy")
+                                         if self.contrast == "sterile" else 0),
                       label_key=key, patient_key=pkey)
 
     #: Characteristics keys that identify a PERSON rather than a sample.
@@ -225,11 +239,30 @@ def align(cohorts: Sequence[Cohort]) -> Aligned:
                    np.concatenate(ids), np.concatenate(pids), symbols)
 
 
+#: L2-regularised logistic regression, no feature scaling, C = 0.01 (amendment 4).
+#: Chosen on the DISCOVERY cohort only, by a rule stated before looking: the most
+#: regularised C within 0.005 of the best 5-fold x 3-seed CV AUROC.
+#:
+#: * GBMDetector — the plan's reuse target — is unusable at p >> n. On 13,785 features
+#:   and 52 training rows it emits ONE distinct prediction, which is why an early
+#:   mechanics check read exactly 0.500.
+#: * No StandardScaler, on principle: it fits per-gene statistics on the TRAINING
+#:   cohort and applies them to the HELD-OUT one, re-introducing a cross-cohort
+#:   statistic immediately after the normalisation was built to exclude one. The
+#:   rank-z features already share a bounded per-sample scale (+/- sqrt 3).
+L2_C = 0.01
+
+
 def _fit_predict(Xtr: np.ndarray, ytr: np.ndarray, Xte: np.ndarray,
                  symbols: Sequence[str], seed: int = 42) -> np.ndarray:
-    m = GBMDetector(feature_names=list(symbols))
+    """Fit on the training rows; return P(infectious) for the held-out rows.
+
+    ``symbols`` and ``seed`` are kept for the callers' sake: lbfgs is deterministic,
+    and the feature names travel with the Aligned matrix, not the model.
+    """
+    m = LogisticRegression(C=L2_C, max_iter=5000)
     m.fit(Xtr, ytr)
-    return m.predict_proba(Xte)
+    return m.predict_proba(Xte)[:, 1]
 
 
 def loco(a: Aligned, seed: int = 42) -> Dict[str, object]:
@@ -268,6 +301,58 @@ def auroc_ci(y: np.ndarray, p: np.ndarray, patient_ids: np.ndarray,
     ok = ~np.isnan(p)
     return metrics.bootstrap_ci(y[ok], p[ok], patient_ids[ok], stat="auroc",
                                 n_boot=n_boot, seed=seed)
+
+
+def mean_direction_ci(y: np.ndarray, p: np.ndarray, cohort: np.ndarray,
+                      patient_ids: np.ndarray, n_boot: int = 2000, seed: int = 0,
+                      alpha: float = 0.05) -> Dict[str, object]:
+    """The PRIMARY and its interval: the mean of per-direction AUROCs.
+
+    Every bootstrap draw resamples patients WITHIN each held-out cohort independently,
+    recomputes that cohort's AUROC on its own samples only, and averages the
+    directions. No quantity is ever pooled across cohorts.
+
+    Why that matters, measured rather than assumed: a per-cohort AUROC is invariant to
+    any cohort-level score offset, because the offset is constant within the cohort it
+    is added to. A POOLED AUROC is not. In a simulation at this study's real cluster
+    counts, adding a platform-style +1.5 offset to one cohort's scores dragged the
+    pooled interval's expected lower bound below the per-direction design's at every
+    true AUROC tested (0.719 vs 0.766 at a true 0.85). So the pooled interval this
+    module previously computed was exposed to exactly the batch effect the design
+    exists to exclude, and this one is not.
+    """
+    ok = ~np.isnan(p)
+    y, p, cohort, patient_ids = y[ok], p[ok], cohort[ok], patient_ids[ok]
+    names = sorted(set(cohort.tolist()))
+    # per cohort: patient -> the row indices that patient contributes
+    rows_by = {}
+    for c in names:
+        idx = np.where(cohort == c)[0]
+        pats = {}
+        for i in idx:
+            pats.setdefault(patient_ids[i], []).append(i)
+        rows_by[c] = [np.array(v) for v in pats.values()]
+
+    point = {c: metrics.auroc(y[cohort == c], p[cohort == c]) for c in names}
+    rng = np.random.default_rng(seed)
+    draws: List[float] = []
+    for _ in range(n_boot):
+        vals = []
+        for c in names:
+            groups = rows_by[c]
+            pick = rng.integers(0, len(groups), size=len(groups))
+            r = np.concatenate([groups[k] for k in pick])
+            v = metrics.auroc(y[r], p[r])       # nan if a resample lost a class
+            vals.append(v)
+        if not any(np.isnan(vals)):
+            draws.append(float(np.mean(vals)))
+    arr = np.array(draws)
+    lo, hi = (np.percentile(arr, 100 * alpha / 2), np.percentile(arr, 100 * (1 - alpha / 2))) \
+        if arr.size else (float("nan"), float("nan"))
+    finite = [v for v in point.values() if not np.isnan(v)]
+    return {"point_mean": float(np.mean(finite)) if finite else float("nan"),
+            "per_direction": point, "ci_low": float(lo), "ci_high": float(hi),
+            "n_boot_used": int(arr.size), "n_boot_requested": int(n_boot)}
 
 
 # --------------------------------------------------------------------------- #
