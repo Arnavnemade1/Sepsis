@@ -1,4 +1,4 @@
-# AegisOS — HyperSepsisTwin-Omega
+# AegisOS
 
 > **A unified software operating system for continuous critical care monitoring.**
 > AegisOS turns ordinary sensors — a wearable band and a plain camera — into a
