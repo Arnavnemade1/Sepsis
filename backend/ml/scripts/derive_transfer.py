@@ -29,30 +29,12 @@ import numpy as np
 from backend.ml import config, conformal as cf, shift
 from backend.ml.eval import metrics
 from backend.ml.eval.bench import _load_cached
+from backend.ml.jsonio import json_safe
 from backend.ml.eval.splits import stratified_group_split
 from backend.ml.models.boosters import UtilityAlignedBooster
 from backend.ml.eval.utility import utility_terms, normalized_utility_fast
 
 SETS = {"A": "wearable_training_setA_limitall", "B": "wearable_training_setB_limitall"}
-
-
-def json_safe(o):
-    """Recursively replace NaN/Inf with None.
-
-    ``json.dump`` happily writes bare ``NaN``, which Python reads back and every
-    strict parser rejects — Node's ``JSON.parse`` included. artifacts/transfer.json
-    was written that way and was unreadable by the website's own sync script, which
-    is exactly the kind of artifact that looks fine until something outside Python
-    tries to use it. NaN here is meaningful (BBSE reports failure that way), so it
-    becomes ``null`` rather than being coerced to a number.
-    """
-    if isinstance(o, dict):
-        return {k: json_safe(v) for k, v in o.items()}
-    if isinstance(o, (list, tuple)):
-        return [json_safe(v) for v in o]
-    if isinstance(o, float) and not math.isfinite(o):
-        return None
-    return o
 
 
 def subsample(fm, limit: Optional[int], seed: int):

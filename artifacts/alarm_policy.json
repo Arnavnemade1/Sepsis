@@ -2,22 +2,2518 @@
   "shipped_policy": {
     "family": "plain",
     "params": {
-      "threshold": 0.0725
+      "threshold": 0.03
     },
-    "describe": "plain(threshold=0.0725)"
+    "describe": "plain(threshold=0.03)"
   },
   "verdict": {
     "promoted": false,
     "reason": "refused: detection gain is not separable from zero (95% CI +0.000 to +0.000)",
-    "champion": "plain(threshold=0.0725)",
-    "challenger": "plain(threshold=0.0857843)",
-    "champion_detection": 0.36,
-    "challenger_detection": 0.36,
-    "champion_far": 0.10820624546114742,
-    "challenger_far": 0.10820624546114742,
+    "champion": "plain(threshold=0.03)",
+    "challenger": "plain(threshold=0.0308043)",
+    "champion_detection": 0.624,
+    "challenger_detection": 0.624,
+    "champion_far": 0.3224400871459695,
+    "challenger_far": 0.3224400871459695,
     "delta_detection": 0.0,
     "ci_low": 0.0,
     "ci_high": 0.0,
     "n_boot": 2000
+  },
+  "families": [
+    "plain threshold",
+    "K consecutive hours",
+    "leaky exceedance integrator",
+    "per-patient z-score",
+    "re-notification schedule (episode layer)"
+  ],
+  "verdict_note": "No first-alarm policy beat a plain threshold. At a fixed detection rate the false-alarm rate is set by how well the score separates, and no post-processing recovers separation the score does not have.",
+  "operating_point": {
+    "high": 0.03,
+    "medium": 0.015,
+    "detector": "patient:hgb+hgb2+et+lr+xgb@utility",
+    "source": "artifacts/operating_point.json"
+  },
+  "fit": {
+    "roster": [
+      "hgb",
+      "hgb2",
+      "et",
+      "lr",
+      "xgb@utility"
+    ],
+    "objective": "patient",
+    "feature_set": "wearable",
+    "spec": "wearable_limit4000",
+    "seed": 42,
+    "n_rows": 116535,
+    "n_patients": 3004,
+    "key": "patient:hgb+hgb2+et+lr+xgb@utility/wearable/wearable_limit4000",
+    "digest": "9a82c8e1cbe3"
+  },
+  "episode_semantics": {
+    "controller": "backend.aegis.alert_episodes.AlertEpisodeController",
+    "high_renotify_seconds": 14400.0,
+    "tier_thresholds": {
+      "high": 0.03,
+      "medium": 0.015
+    }
+  },
+  "episode_metrics": {
+    "shipped": {
+      "policy": "renotify(4h)",
+      "nonseptic_episodes_per_patient_day": 1.0486967777363758,
+      "repeat_notifications_per_septic_episode": 3.433333333333333,
+      "escalation_recall": 1.0,
+      "median_time_to_clear_h": 2.0,
+      "silent_high_hours_per_septic_episode": 11.079166666666667
+    },
+    "field": [
+      {
+        "policy": "renotify(1h)",
+        "high_renotify_seconds": 3600.0,
+        "burden_per_patient_day": 2.782763210492686,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 17.209923664122137,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 0.0
+      },
+      {
+        "policy": "renotify(2h)",
+        "high_renotify_seconds": 7200.0,
+        "burden_per_patient_day": 2.0419062731529247,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 8.461832061068701,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 8.748091603053435
+      },
+      {
+        "policy": "renotify(4h)",
+        "high_renotify_seconds": 14400.0,
+        "burden_per_patient_day": 1.6802884584499282,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 4.103053435114504,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 13.106870229007633
+      },
+      {
+        "policy": "renotify(8h)",
+        "high_renotify_seconds": 28800.0,
+        "burden_per_patient_day": 1.5165239654514868,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 1.9465648854961832,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 15.263358778625955
+      },
+      {
+        "policy": "renotify(12h)",
+        "high_renotify_seconds": 43200.0,
+        "burden_per_patient_day": 1.4707898935051866,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 1.2366412213740459,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 15.973282442748092
+      },
+      {
+        "policy": "renotify(never)",
+        "high_renotify_seconds": null,
+        "burden_per_patient_day": 1.4173160285134907,
+        "nonseptic_episodes_per_patient_day": 1.1501260050402,
+        "repeat_notifications_per_septic_episode": 0.0,
+        "median_time_to_clear_h": 2.0,
+        "silent_high_hours_per_septic_episode": 17.209923664122137
+      }
+    ]
+  },
+  "burden_verdict": {
+    "promoted": false,
+    "reason": "refused: burden falls only by going quiet \u2014 unannounced HIGH hours per septic episode rise 11.08 -> 14.51",
+    "champion": "renotify(4h)",
+    "challenger": "renotify(never)",
+    "champion_burden": 1.6003168313402292,
+    "challenger_burden": 1.3093430561057082,
+    "delta_burden": -0.29097377523452095,
+    "ci_low": -0.34128601818382026,
+    "ci_high": -0.24037288893834666,
+    "detection_delta": 0.0,
+    "false_alarm_delta": 0.0,
+    "champion_silent_high": 11.079166666666667,
+    "challenger_silent_high": 14.5125,
+    "n_boot": 2000
+  },
+  "candidate_field": [
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.020317
+      },
+      "false_alarm_rate": 0.729948,
+      "detection_rate": 0.867133
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.024341
+      },
+      "false_alarm_rate": 0.465048,
+      "detection_rate": 0.734266
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.028028
+      },
+      "false_alarm_rate": 0.3922,
+      "detection_rate": 0.671329
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.030804
+      },
+      "false_alarm_rate": 0.326711,
+      "detection_rate": 0.629371
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.03268
+      },
+      "false_alarm_rate": 0.326711,
+      "detection_rate": 0.629371
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.036829
+      },
+      "false_alarm_rate": 0.285504,
+      "detection_rate": 0.615385
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.04886
+      },
+      "false_alarm_rate": 0.15894,
+      "detection_rate": 0.503497
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.050584
+      },
+      "false_alarm_rate": 0.110375,
+      "detection_rate": 0.482517
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.074592
+      },
+      "false_alarm_rate": 0.066961,
+      "detection_rate": 0.391608
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.085821
+      },
+      "false_alarm_rate": 0.04415,
+      "detection_rate": 0.363636
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.087533
+      },
+      "false_alarm_rate": 0.041943,
+      "detection_rate": 0.34965
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.109677
+      },
+      "false_alarm_rate": 0.041207,
+      "detection_rate": 0.265734
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.143774
+      },
+      "false_alarm_rate": 0.013245,
+      "detection_rate": 0.230769
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.151899
+      },
+      "false_alarm_rate": 0.010302,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.222222
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.235955
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.388889
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "plain",
+      "params": {
+        "threshold": 0.75
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.020317,
+        "k": 2.0
+      },
+      "false_alarm_rate": 0.526858,
+      "detection_rate": 0.72028
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.020317,
+        "k": 3.0
+      },
+      "false_alarm_rate": 0.467255,
+      "detection_rate": 0.678322
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.020317,
+        "k": 4.0
+      },
+      "false_alarm_rate": 0.432671,
+      "detection_rate": 0.65035
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.020317,
+        "k": 6.0
+      },
+      "false_alarm_rate": 0.38337,
+      "detection_rate": 0.587413
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.020317,
+        "k": 8.0
+      },
+      "false_alarm_rate": 0.337748,
+      "detection_rate": 0.552448
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.289183,
+      "detection_rate": 0.58042
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.188374,
+      "detection_rate": 0.517483
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.066961,
+      "detection_rate": 0.426573
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.03532,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.011038,
+      "detection_rate": 0.230769
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.8,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.306107,
+      "detection_rate": 0.594406
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.212656,
+      "detection_rate": 0.524476
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.131714,
+      "detection_rate": 0.461538
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.04415,
+      "detection_rate": 0.412587
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.019868,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.006623,
+      "detection_rate": 0.20979
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.9,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.083916
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.311994,
+      "detection_rate": 0.594406
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.231052,
+      "detection_rate": 0.531469
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.165563,
+      "detection_rate": 0.482517
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.075791,
+      "detection_rate": 0.440559
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.030169,
+      "detection_rate": 0.370629
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.012509,
+      "detection_rate": 0.293706
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 0.95,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.174825
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.331126,
+      "detection_rate": 0.601399
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.241354,
+      "detection_rate": 0.538462
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.190581,
+      "detection_rate": 0.482517
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.130979,
+      "detection_rate": 0.461538
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.073584,
+      "detection_rate": 0.405594
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.02649,
+      "detection_rate": 0.34965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.020317,
+        "decay": 1.0,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.012509,
+      "detection_rate": 0.293706
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.03268,
+        "k": 2.0
+      },
+      "false_alarm_rate": 0.208241,
+      "detection_rate": 0.517483
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.03268,
+        "k": 3.0
+      },
+      "false_alarm_rate": 0.18028,
+      "detection_rate": 0.496503
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.03268,
+        "k": 4.0
+      },
+      "false_alarm_rate": 0.149375,
+      "detection_rate": 0.482517
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.03268,
+        "k": 6.0
+      },
+      "false_alarm_rate": 0.10596,
+      "detection_rate": 0.454545
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.03268,
+        "k": 8.0
+      },
+      "false_alarm_rate": 0.092715,
+      "detection_rate": 0.433566
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.130979,
+      "detection_rate": 0.48951
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.083149,
+      "detection_rate": 0.447552
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.042678,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.023547,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.007358,
+      "detection_rate": 0.223776
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.8,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.157469,
+      "detection_rate": 0.496503
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.090508,
+      "detection_rate": 0.447552
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.049301,
+      "detection_rate": 0.412587
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.033113,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.015453,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.181818
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.9,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.161148,
+      "detection_rate": 0.496503
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.107432,
+      "detection_rate": 0.475524
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.058867,
+      "detection_rate": 0.41958
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.040471,
+      "detection_rate": 0.384615
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.019868,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.00883,
+      "detection_rate": 0.272727
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 0.95,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.167832
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.170714,
+      "detection_rate": 0.51049
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.129507,
+      "detection_rate": 0.482517
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.077999,
+      "detection_rate": 0.433566
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.046358,
+      "detection_rate": 0.405594
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.030905,
+      "detection_rate": 0.363636
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.01766,
+      "detection_rate": 0.307692
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.03268,
+        "decay": 1.0,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.009566,
+      "detection_rate": 0.265734
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.074592,
+        "k": 2.0
+      },
+      "false_alarm_rate": 0.040471,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.074592,
+        "k": 3.0
+      },
+      "false_alarm_rate": 0.032377,
+      "detection_rate": 0.34965
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.074592,
+        "k": 4.0
+      },
+      "false_alarm_rate": 0.027226,
+      "detection_rate": 0.34965
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.074592,
+        "k": 6.0
+      },
+      "false_alarm_rate": 0.018396,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.074592,
+        "k": 8.0
+      },
+      "false_alarm_rate": 0.015453,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.043414,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.027226,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.019132,
+      "detection_rate": 0.251748
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.009566,
+      "detection_rate": 0.230769
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.083916
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.8,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.048951
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.043414,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.027226,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.019132,
+      "detection_rate": 0.307692
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.013245,
+      "detection_rate": 0.230769
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.005151,
+      "detection_rate": 0.181818
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.9,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.043414,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.027226,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.022075,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.014717,
+      "detection_rate": 0.300699
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.007358,
+      "detection_rate": 0.216783
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.174825
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 0.95,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.043414,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.027962,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.022811,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.016188,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.011773,
+      "detection_rate": 0.27972
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.005151,
+      "detection_rate": 0.202797
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.074592,
+        "decay": 1.0,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.167832
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.143774,
+        "k": 2.0
+      },
+      "false_alarm_rate": 0.010302,
+      "detection_rate": 0.223776
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.143774,
+        "k": 3.0
+      },
+      "false_alarm_rate": 0.007358,
+      "detection_rate": 0.216783
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.143774,
+        "k": 4.0
+      },
+      "false_alarm_rate": 0.005887,
+      "detection_rate": 0.216783
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.143774,
+        "k": 6.0
+      },
+      "false_alarm_rate": 0.002943,
+      "detection_rate": 0.181818
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.143774,
+        "k": 8.0
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.174825
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.004415,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.083916
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.8,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.006623,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.104895
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.9,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.006623,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.001472,
+      "detection_rate": 0.104895
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.104895
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 0.95,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.06993
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.006623,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.002208,
+      "detection_rate": 0.111888
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.001472,
+      "detection_rate": 0.104895
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.000736,
+      "detection_rate": 0.097902
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.090909
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.083916
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.143774,
+        "decay": 1.0,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.076923
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.388889,
+        "k": 2.0
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.06993
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.388889,
+        "k": 3.0
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.06993
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.388889,
+        "k": 4.0
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.388889,
+        "k": 6.0
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.062937
+    },
+    {
+      "family": "persistent",
+      "params": {
+        "threshold": 0.388889,
+        "k": 8.0
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.055944
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.8,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.020979
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.9,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.020979
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 0.95,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.020979
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.02
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.05
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.1
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.2
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.4
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 0.8
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.034965
+    },
+    {
+      "family": "integrator",
+      "params": {
+        "threshold": 0.388889,
+        "decay": 1.0,
+        "trigger": 1.5
+      },
+      "false_alarm_rate": 0.0,
+      "detection_rate": 0.020979
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.314937,
+      "detection_rate": 0.461538
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.239882,
+      "detection_rate": 0.426573
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.06181,
+      "detection_rate": 0.384615
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.022075,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.5,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.266372,
+      "detection_rate": 0.433566
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.5,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.206034,
+      "detection_rate": 0.405594
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.5,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.058867,
+      "detection_rate": 0.377622
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 2.5,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.021339,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 3.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.227373,
+      "detection_rate": 0.405594
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 3.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.178808,
+      "detection_rate": 0.384615
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 3.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.055923,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 3.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.019868,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 4.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.16262,
+      "detection_rate": 0.370629
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 4.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.13245,
+      "detection_rate": 0.363636
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 4.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.051508,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 4.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.01766,
+      "detection_rate": 0.293706
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 5.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.127299,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 5.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.097866,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 5.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.04415,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 6.0,
+        "z": 5.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.013981,
+      "detection_rate": 0.265734
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.260486,
+      "detection_rate": 0.405594
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.19794,
+      "detection_rate": 0.384615
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.054452,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.019868,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.5,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.221486,
+      "detection_rate": 0.391608
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.5,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.169978,
+      "detection_rate": 0.377622
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.5,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.050037,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 2.5,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.016924,
+      "detection_rate": 0.328671
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 3.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.18543,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 3.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.147903,
+      "detection_rate": 0.356643
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 3.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.047829,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 3.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.015453,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 4.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.125828,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 4.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.103753,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 4.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.041207,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 4.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.011773,
+      "detection_rate": 0.286713
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 5.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.091979,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 5.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.075791,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 5.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.033848,
+      "detection_rate": 0.293706
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 12.0,
+        "z": 5.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.00883,
+      "detection_rate": 0.258741
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.182487,
+      "detection_rate": 0.391608
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.143488,
+      "detection_rate": 0.370629
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.042678,
+      "detection_rate": 0.34965
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.013981,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.5,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.150846,
+      "detection_rate": 0.377622
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.5,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.121413,
+      "detection_rate": 0.363636
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.5,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.039735,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 2.5,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.013245,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 3.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.125092,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 3.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.104489,
+      "detection_rate": 0.342657
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 3.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.036792,
+      "detection_rate": 0.321678
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 3.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.011773,
+      "detection_rate": 0.300699
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 4.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.085357,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 4.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.075055,
+      "detection_rate": 0.335664
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 4.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.033113,
+      "detection_rate": 0.314685
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 4.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.00883,
+      "detection_rate": 0.27972
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 5.0,
+        "floor": 0.0
+      },
+      "false_alarm_rate": 0.056659,
+      "detection_rate": 0.307692
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 5.0,
+        "floor": 0.02
+      },
+      "false_alarm_rate": 0.051508,
+      "detection_rate": 0.307692
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 5.0,
+        "floor": 0.04
+      },
+      "false_alarm_rate": 0.025754,
+      "detection_rate": 0.286713
+    },
+    {
+      "family": "per_patient",
+      "params": {
+        "warmup": 24.0,
+        "z": 5.0,
+        "floor": 0.06
+      },
+      "false_alarm_rate": 0.007358,
+      "detection_rate": 0.251748
+    }
+  ],
+  "lead_time": {
+    "reported": false,
+    "reason": "retracted \u2014 a random score reproduces it; see docs/LEAD_TIME_NULL.md"
   }
 }

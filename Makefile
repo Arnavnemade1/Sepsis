@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -16,7 +16,10 @@ help:
 	@echo "  make verify-evidence-router AERIS source, budget, override and stale-event checks"
 	@echo "  make verify-evidence-replay AERIS patient-level replay metric checks"
 	@echo "  make verify-integrity  Adversarial audit: inject known lies, prove the guards fire"
-	@echo "  make verify-alarm      Alarm-policy search + promotion gate (16 checks)"
+	@echo "  make verify-alarm      Alarm-policy gate + episode economics (planted-failure suite)"
+	@echo "  make geo-manifest      Fetch GEO host-response candidates, classify control arms, apply the gate"
+	@echo "  make hostresponse      Host-response study (PHASE=discovery|locked); offline, never per-patient"
+	@echo "  make verify-hostresponse  Host-response planted-failure suite"
 	@echo "  make verify-disposition Clinical decision layer: abstention may never downgrade"
 	@echo "  make audit             Model audit: what the detector's AUROC is made of"
 	@echo "  make verify-supervision Supervision density: the window-is-inert control"
@@ -235,9 +238,31 @@ operating-point:
 
 # The alarm POLICY, not the threshold: searches persistence / integrator /
 # per-patient families against a locked holdout and refuses to promote anything
-# that does not beat the shipped policy with a CI excluding zero.
+# that does not beat the shipped policy with a CI excluding zero. Also covers the
+# EPISODE layer: that a notification schedule cannot move the first alarm, that the
+# replay matches the live controller, that no schedule can suppress an escalation,
+# and that a study refuses a threshold derived on another fit.
 verify-alarm:
 	$(PY) -m backend.ml.scripts.verify_alarm_policy
+
+# Host-response gene expression: does blood expression separate infection from STERILE
+# inflammation across cohorts and platforms? Offline only — no cohort bed carries
+# transcriptomics, so nothing here may render against a patient. The manifest gate reads
+# each cohort's own per-sample characteristics; healthy-volunteer controls never pass.
+geo-manifest:
+	$(PY) -m backend.hostresponse.data.build_geo_manifest --save
+
+# PHASE=discovery may be iterated on. PHASE=locked runs ONCE and refuses if the
+# pre-registration digest changed after discovery recorded it.
+PHASE ?= discovery
+hostresponse:
+	$(PY) -m backend.hostresponse.run_study --phase $(PHASE) --save
+
+# Plants each way this study could produce a confident wrong answer — a batch effect
+# posing as biology, a shuffled label that does not collapse, a healthy-only cohort
+# admitted, a moved bar, a NaN, a per-patient field — and asserts the guard fires.
+verify-hostresponse:
+	$(PY) -m backend.hostresponse.verify_hostresponse
 
 # The self-improvement loop's acceptance rule: refuses for the right reasons, and
 # still lets a genuine winner through.

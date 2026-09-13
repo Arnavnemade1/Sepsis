@@ -29,7 +29,7 @@ Study it on patient-held-out CinC trajectories before enabling notifications:
 
 | Primary outcome | Candidate policy must beat | Safety guard |
 |---|---|---|
-| non-septic alert episodes / patient-day | per-tick notification baseline | first pre-onset alert detection and lead time may not fall |
+| non-septic alert episodes / patient-day | per-tick notification baseline | first pre-onset alert detection may not fall (lead time is **retracted** — a random score reproduces it; see `docs/LEAD_TIME_NULL.md`) |
 | repeat notifications / septic episode | unbounded duplicate baseline | every MEDIUM→HIGH escalation is immediately emitted |
 | active-episode duration | report only | no retrospective "resolution" before the score actually returns LOW |
 

@@ -1,0 +1,188 @@
+{
+  "candidates": [
+    {
+      "accession": "GSE74224",
+      "candidate_reason": "titled 'Discrimination of SIRS from Sepsis in Critically Ill Adults'; controls are post-surgical, infection-negative (SeptiCyte discovery)",
+      "title": "Discrimination of SIRS from Sepsis in Critically Ill Adults",
+      "platforms": [
+        "GPL5175"
+      ],
+      "role": null,
+      "label_key": "group",
+      "n_total": 105,
+      "n_infectious": 74,
+      "n_sterile": 31,
+      "n_healthy": 0,
+      "n_other": 0,
+      "control_type": "post_surgical_sirs",
+      "control_evidence": [
+        {
+          "value": "Sepsis",
+          "n": 74
+        },
+        {
+          "value": "post-surgical",
+          "n": 31
+        }
+      ],
+      "inclusion_ok": true,
+      "exclusion_reason": ""
+    },
+    {
+      "accession": "GSE63042",
+      "candidate_reason": "RNA-seq; SIRS vs sepsis vs septic shock (CAPSOD)",
+      "title": "An integrated transcriptome and expressed variant analysis of sepsis survival and death",
+      "platforms": [
+        "GPL9115"
+      ],
+      "role": null,
+      "label_key": "sirs outcomes",
+      "n_total": 129,
+      "n_infectious": 106,
+      "n_sterile": 23,
+      "n_healthy": 0,
+      "n_other": 0,
+      "control_type": "sterile_inflammation",
+      "control_evidence": [
+        {
+          "value": "Septic shock",
+          "n": 33
+        },
+        {
+          "value": "sepsis death",
+          "n": 28
+        },
+        {
+          "value": "Uncomplicated sepsis",
+          "n": 24
+        },
+        {
+          "value": "SIRS",
+          "n": 23
+        },
+        {
+          "value": "severe sepsis",
+          "n": 21
+        }
+      ],
+      "inclusion_ok": true,
+      "exclusion_reason": ""
+    },
+    {
+      "accession": "GSE40012",
+      "candidate_reason": "bacterial vs influenza pneumonia vs non-infective SIRS vs healthy",
+      "title": "Blood transcriptome of human bacterial and influenza A pneumonia",
+      "platforms": [
+        "GPL6947"
+      ],
+      "role": null,
+      "label_key": "sample type",
+      "n_total": 190,
+      "n_infectious": 114,
+      "n_sterile": 40,
+      "n_healthy": 36,
+      "n_other": 0,
+      "control_type": "mixed",
+      "control_evidence": [
+        {
+          "value": "bacterial pneumonia",
+          "n": 61
+        },
+        {
+          "value": "systemic inflammatory response",
+          "n": 40
+        },
+        {
+          "value": "influenza A pneumonia",
+          "n": 39
+        },
+        {
+          "value": "healthy control",
+          "n": 36
+        },
+        {
+          "value": "mixed bacterial and influenza A pneumonia",
+          "n": 14
+        }
+      ],
+      "inclusion_ok": true,
+      "exclusion_reason": ""
+    },
+    {
+      "accession": "GSE28750",
+      "candidate_reason": "sepsis vs post-surgical sterile inflammation vs healthy; small",
+      "title": "Development and Validation of a Novel Molecular Biomarker Diagnostic Test for the Early Detection of Sepsis",
+      "platforms": [
+        "GPL570"
+      ],
+      "role": null,
+      "label_key": "health status",
+      "n_total": 41,
+      "n_infectious": 10,
+      "n_sterile": 11,
+      "n_healthy": 20,
+      "n_other": 0,
+      "control_type": "mixed",
+      "control_evidence": [
+        {
+          "value": "HEALTHY",
+          "n": 20
+        },
+        {
+          "value": "POST_SURGICAL",
+          "n": 11
+        },
+        {
+          "value": "SEPSIS",
+          "n": 10
+        }
+      ],
+      "inclusion_ok": false,
+      "exclusion_reason": "too few infectious samples (10 < 20)"
+    },
+    {
+      "accession": "GSE65682",
+      "candidate_reason": "MARS consortium; comparator arm UNVERIFIED from the summary alone",
+      "title": "Genome-wide blood transcriptional profiling in critically ill patients - MARS consortium",
+      "platforms": [
+        "GPL13667"
+      ],
+      "role": null,
+      "label_key": null,
+      "n_total": 802,
+      "n_infectious": 0,
+      "n_sterile": 0,
+      "n_healthy": 0,
+      "n_other": 802,
+      "control_type": "unknown",
+      "control_evidence": [
+        {
+          "value": "gender: male",
+          "n": 470
+        },
+        {
+          "value": "gender: female",
+          "n": 332
+        }
+      ],
+      "inclusion_ok": false,
+      "exclusion_reason": "no arm could be positively identified from the characteristics"
+    }
+  ],
+  "gate": {
+    "passed": true,
+    "n_admissible": 3,
+    "admissible": [
+      "GSE74224",
+      "GSE63042",
+      "GSE40012"
+    ],
+    "platforms": [
+      "GPL5175",
+      "GPL6947",
+      "GPL9115"
+    ],
+    "requirement": "at least 2 cohorts with a sterile (non-infectious) control arm, n_infectious >= 20 and n_sterile >= 15 each, spanning at least 2 platforms",
+    "verdict": "gate passed \u2014 the question is answerable on public data"
+  }
+}

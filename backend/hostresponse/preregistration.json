@@ -1,0 +1,149 @@
+{
+  "protocol": "host-response-v1",
+  "frozen": "2026-09-12",
+  "status": "FROZEN BEFORE ANY MODEL WAS FITTED. run_study.py hashes this file and refuses the locked phase if the digest changed after the discovery phase ran, so moving a bar after seeing a result is a diff, not a decision.",
+  "clinical_question": "Does a host-response blood expression signature separate INFECTIOUS sepsis from STERILE (non-infectious) systemic inflammation, and does that separation survive a change of cohort and sequencing/array platform?",
+  "why_it_matters_here": "The production detector reads hourly vitals and labs and is therefore structurally blind to this axis: trauma, major surgery and pancreatitis derange the same channels infection does. backend/ml/alarm_policy.py has already established that no post-processing of that score recovers a separation the input channels do not carry. This tests a DIFFERENT measurement, not a better reading of the same one.",
+  "what_this_study_cannot_show": "That any of this reduces THIS product's false-alarm rate. No bed in the CinC cohort carries transcriptomics, so there is no per-patient input to fuse and no such claim is available from this design. The artifact is asserted to contain no per-patient field.",
+  "primary_endpoint": {
+    "metric": "mean leave-one-cohort-out (LOCO) AUROC for infectious vs sterile",
+    "count": 1,
+    "note": "Exactly one primary. No co-primary, and no endpoint may be swapped for another after the fact."
+  },
+  "acceptance_bar": {
+    "mean_loco_auroc_min": 0.75,
+    "ci95_lower_bound_min": 0.7,
+    "cohort_identity_auroc_max": 0.9,
+    "label_permutation_auroc_range": [
+      0.42,
+      0.58
+    ],
+    "all_four_required": true,
+    "alpha": 0.05,
+    "ci_method": "cluster bootstrap over samples (one sample = one patient), stratified by cohort, via backend.ml.eval.metrics.bootstrap_ci"
+  },
+  "why_0_75_and_not_higher": "SeptiCyte RAPID (a 2-transcript sepsis-vs-SIRS assay) and IMX-BVN / TriVerity (29-mRNA bacterial/viral panels) report AUROC in the region of 0.83-0.91 in their own validation cohorts. Beating — or missing — a published number on different cohorts, different platforms and different case definitions is NOT a like-for-like comparison and this study will not claim it is. The bar is set deliberately below the commercial range because cross-platform archival data is a harder and different problem. Clearing 0.75 here says the signal survives a platform change; it says nothing about matching a cleared assay.",
+  "cohorts": {
+    "source": "artifacts/hostresponse/cohort_manifest.json (gate passed 2026-09-12)",
+    "admissible": [
+      {
+        "accession": "GSE74224",
+        "platform": "GPL5175",
+        "technology": "array",
+        "n_infectious": 74,
+        "n_sterile": 31,
+        "role": "discovery",
+        "control_arm": "post-surgical, infection-negative systemic inflammation"
+      },
+      {
+        "accession": "GSE63042",
+        "platform": "GPL9115",
+        "technology": "RNA-seq",
+        "n_infectious": 106,
+        "n_sterile": 23,
+        "role": "WITHDRAWN — see amendment 1",
+        "control_arm": "SIRS without infection",
+        "withdrawn_reason": "GEO holds no usable expression table for this cohort. Kept in this list rather than deleted so the cohort set that was frozen stays visible, but it contributes nothing and must not be read as locked."
+      },
+      {
+        "accession": "GSE40012",
+        "platform": "GPL6947",
+        "technology": "array",
+        "n_infectious": 114,
+        "n_sterile": 40,
+        "role": "locked",
+        "control_arm": "non-infective systemic inflammatory response"
+      }
+    ],
+    "excluded": [
+      {
+        "accession": "GSE28750",
+        "reason": "only 10 infectious samples (minimum 20)"
+      },
+      {
+        "accession": "GSE65682",
+        "reason": "no characteristics key identifies an infectious vs sterile arm; its arms are CAP/HAP, ICU-acquired infection and abdominal-sepsis-vs-GI-control. Its GEO summary implies a non-infectious comparator, which is exactly why the decision was made from per-sample characteristics rather than from the summary."
+      }
+    ],
+    "role_meaning": "DISCOVERY is the only cohort that may be iterated on. LOCKED cohorts are parsed and scored ONCE, at the end. LOCO still rotates every admissible cohort through the held-out position; the roles govern what may be looked at while choices are still being made."
+  },
+  "class_definitions": {
+    "infectious": "any documented infection, bacterial or viral — the axis under test is infection vs sterile inflammation, and influenza pneumonia is an infection.",
+    "sterile": "systemic inflammation with no infection: SIRS, post-surgical, trauma, pancreatitis.",
+    "healthy_excluded": "HEALTHY samples (36 in GSE40012) are EXCLUDED from the primary endpoint. Infection-vs-healthy is a trivially easier question and including those samples would inflate the result while answering something nobody asked.",
+    "bacterial_only_sensitivity": "Descriptive only, reported without a hypothesis test and spending no alpha."
+  },
+  "normalisation": "Within each sample independently: rank the genes, then z-score the ranks. No mean, variance, quantile or gene list is computed across samples or pooled across cohorts, so no cross-cohort statistic can reach a feature. Features are restricted to the gene-symbol intersection of all included platforms; the size of that intersection is itself a reported result.",
+  "negative_controls": {
+    "cohort_identity": "Train the identical pipeline on the identical features to predict WHICH COHORT a sample came from. If that AUROC is >= 0.90 the primary endpoint is reported CONFOUNDED and is not published at any value — the features would be encoding which lab ran the assay.",
+    "label_permutation": "Shuffle infectious/sterile labels WITHIN cohort and re-run LOCO. Must land in [0.42, 0.58], the same band verify_integrity.py check 1 asserts. Outside it means leakage and the study is void.",
+    "easiness_calibrator": "Infectious vs HEALTHY AUROC, reported only to show how much easier the trivial task is. It is not an endpoint and may never be quoted as the result."
+  },
+  "refusal_rule": "If any one of the four acceptance conditions fails, nothing is published: no site block, published=false in the artifact, and the outcome is written up as docs/HOST_RESPONSE_NULL.md. A documented negative is the expected and acceptable outcome of this study.",
+  "what_had_been_seen_before_freezing": "Only cohort admissibility: per-class sample counts and the verbatim characteristics strings, needed to decide which cohorts exist at all. No expression value has been read, no model has been fitted, and no outcome has been computed for any cohort.",
+  "amendments": [
+    {
+      "n": 1,
+      "date": "2026-09-12",
+      "supersedes_digest": "391e9e612a4c6975",
+      "change": "GSE63042 is withdrawn from the cohort set. The admissible set becomes GSE74224 (discovery) and GSE40012 (locked): two cohorts, two array platforms.",
+      "reason": "Data availability, discovered while building the loader and BEFORE any expression value was read or any model fitted. GEO holds no expression table for GSE63042: its series matrix is metadata-only (12 KB), its series family SOFT is empty (0 MB), and its sole supplementary file is GSE63042_capsod_seq_rel_RPM_060314.xlsx.gz — relative RPM in a spreadsheet. Using it would require adding an Excel dependency (neither openpyxl nor xlrd is installed, and backend/requirements.txt states no extra deps are required) AND a name-join from spreadsheet columns to GSM accessions via patient ids. A fragile join on a LOCKED cohort is precisely the kind of silent error this protocol exists to prevent.",
+      "what_this_costs": "The study loses its only RNA-seq cohort, so the platform-transfer claim is now array-to-array only. LOCO over two cohorts is the two directions A->B and B->A — the same design this repo already uses for cross-hospital transfer (setA <-> setB), and both directions must still be reported, never only their mean.",
+      "what_was_NOT_changed": "The endpoint, the bar, the alpha, the negative controls, the normalisation and the refusal rule are untouched. No outcome had been computed when this was written.",
+      "alternative_left_open": "If an Excel dependency is later accepted, GSE63042 can be re-admitted — but as a NEW pre-registration, not by reopening this one.",
+      "digest_note": "Canonical lab_registry.change_key form. An earlier revision recorded '391e9e612a4c', an ad-hoc 12-character hash that is this value's prefix."
+    },
+    {
+      "n": 2,
+      "date": "2026-09-12",
+      "change": "Records the probe-to-gene-symbol route per platform, which the frozen normalisation section assumed without naming.",
+      "reason": "GPL6947 has a curated 7.0 MB GPL6947.annot.gz with an explicit 'Gene symbol' column. GPL5175 has NO curated annot at all; its only platform-level annotation is a 4.5 GB family SOFT (identically sized in miniml form). The series-level GSE74224_family.soft.gz is 25.6 MB and embeds the GPL5175 platform table as that series uses it, with a 'gene_assignment' column from which the symbol is the second '//'-delimited field. The 25.6 MB route is used. This is a mechanical detail with no bearing on the endpoint, recorded because a feature space that cannot be reproduced is not a feature space.",
+      "note": "An earlier check reported GPL570 as having no curated annotation. That was a wrong FTP shard in the checking script, not a fact about GEO: GPL570.annot.gz exists and is 8.5 MB. Recorded so the error is not inherited by anyone reading this file.",
+      "supersedes_digest": "391e9e612a4c6975"
+    },
+    {
+      "n": 3,
+      "date": "2026-09-12",
+      "change": "The 95% interval clusters on PATIENT, not on sample. The acceptance_bar.ci_method line said 'one sample = one patient'; that is false for GSE40012 and the code asserting it has been corrected.",
+      "reason": "GSE40012 contributes 190 samples from 58 patients — its characteristics carry an `id` key with 58 distinct values and a `day` key of 1/2/3/5, i.e. repeated timepoints per person. Resampling samples would treat repeated measurements of one patient as independent evidence and report an interval narrower than the data supports, on the headline number this study is judged by. Caught while testing pipeline mechanics on the DISCOVERY cohort; the locked cohort had not been scored.",
+      "what_this_costs": "The effective sample size is far smaller than the sample count suggests, and the reported CI will be correspondingly wider. That is the honest width.",
+      "also_changed": "The label-permutation control now averages MANY draws rather than one. A single permutation at this sample size has sd ~0.066, so a lone draw falls outside the pre-registered [0.42, 0.58] band roughly one time in twenty by construction — an alarm that fires on nothing. The band now applies to the mean of the null, and its spread is reported. This was found when a single draw returned 0.626 and a 20-draw null centred at 0.484.",
+      "what_was_NOT_changed": "The endpoint, the 0.75/0.70 bar, the alpha, the cohort-identity threshold, the normalisation and the refusal rule are untouched.",
+      "supersedes_digest": "29b9f47fe6f8c084"
+    },
+    {
+      "n": 4,
+      "date": "2026-09-12",
+      "supersedes_digest": "cd321faa421a8b70",
+      "changes": [
+        "BASE LEARNER fixed: L2-regularised logistic regression, no feature scaling, C = 0.01.",
+        "PRIMARY INTERVAL: patients are resampled within each held-out cohort, each direction's AUROC is computed on its own cohort, and directions are averaged per draw. Nothing is pooled across cohorts.",
+        "COHORT-IDENTITY is retained, computed in the same run and reported, but no longer VOIDS the primary.",
+        "ADDED, and stricter than anything removed: each direction's point AUROC must be >= 0.70 on its own.",
+        "The artifact reports the verdict under the FROZEN rules and under these AMENDED rules, side by side."
+      ],
+      "why_the_learner": "Chosen on the DISCOVERY cohort only, by a rule stated before looking: the most regularised C within 0.005 of the best 5-fold x 3-seed CV AUROC (grid 1e-4..1: 0.950, 0.991, 0.999, 0.999, 1.000 -> C = 0.01). GBMDetector, the plan's reuse target, is unusable here: on 13,785 features and 52 training rows it emits ONE distinct prediction. A StandardScaler was rejected on principle rather than performance — it fits per-gene statistics on the training cohort and applies them to the held-out cohort, re-introducing a cross-cohort statistic immediately after the normalisation was built to exclude one. Both candidate arms had clean permutation nulls (below), so the null did not decide this.",
+      "why_the_interval": "A per-cohort AUROC is invariant to any cohort-level score offset, because the offset is constant within the cohort it is added to; a pooled AUROC is not. Verified, not assumed: with a +3.0 offset on one synthetic cohort the per-direction mean was identical (0.8446) while the pooled AUROC on the same data fell 0.834 -> 0.714. In simulation at this study's real cluster counts, a +1.5 platform-style offset dragged the pooled interval's expected lower bound below the per-direction design's at every true AUROC tested.",
+      "why_cohort_identity_no_longer_voids": "Taken literally, the frozen rule would declare the study CONFOUNDED on platform differences alone. Rank features from an Affymetrix exon array and an Illumina array will make cohort identity learnable whatever the biology, and under a per-direction endpoint a cohort signal carries no information about ranking infectious against sterile patients inside one cohort — so the rule cannot detect a threat to the endpoint it guards, only void it. A guard that fires on nothing is a defect in this repository. The real cross-cohort risk is ONE-WAY transfer, which is what the added per-direction floor targets. This amendment was written BEFORE cohort identity was computed.",
+      "acceptance_bar_in_force": {
+        "primary": "mean of per-direction leave-one-cohort-out AUROCs",
+        "mean_loco_auroc_min": 0.75,
+        "ci95_lower_bound_min": 0.7,
+        "each_direction_auroc_min": 0.7,
+        "label_permutation_null_mean_range": [
+          0.42,
+          0.58
+        ],
+        "label_permutation_min_draws": 20,
+        "cohort_identity_role": "reported diagnostic; not a void condition",
+        "all_required": true,
+        "alpha": 0.05,
+        "ci_method": "patient-cluster bootstrap within each held-out cohort, directions averaged per draw (expression.mean_direction_ci)"
+      },
+      "power_stated_before_any_outcome": "Simulated from cluster counts alone (27 infectious / 13 sterile patients in the locked cohort, 74 / 31 in discovery), 20 replicate datasets per level: the interval's lower bound clears 0.70 in 2/20 replicates at a true transfer AUROC of 0.75, 6/20 at 0.80, 18/20 at 0.85 and 20/20 at 0.90. The study is powered to detect transfer at or above roughly 0.85 and NOT below it. A miss is therefore reported as 'transfer at or above ~0.85 not detected', never as 'no transfer'.",
+      "correction_to_amendment_3": "Amendment 3 quoted a per-draw permutation sd of ~0.066. A properly designed null — 20 draws, each with a fresh label shuffle AND a fresh fold split — gives sd 0.100 (mean 0.476, no scaler) and 0.107 (mean 0.481, scaler). The earlier 5-draw check that returned 0.592 had reused ONE fold split for every draw, so its draws were correlated and its mean carried far less information than five draws implies. That is the second thin null in this study to produce a false alarm; both vindicate the many-draw rule.",
+      "what_was_NOT_changed": "The endpoint, the 0.75 mean bar, the 0.70 lower-bound bar, alpha, the permutation band, the normalisation, the class definitions and the refusal rule.",
+      "what_had_been_seen": "No infection outcome on the locked cohort, and no cohort-identity AUROC. Seen: discovery-only in-cohort CV AUROCs (0.95-1.00, which measure memorisation at p >> n and are not a result), discovery-only permutation nulls, and simulations that use cluster counts but no expression values."
+    }
+  ]
+}

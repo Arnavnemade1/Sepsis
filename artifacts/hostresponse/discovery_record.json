@@ -1,0 +1,11 @@
+{
+  "prereg_digest": "b79eacd703210ad8",
+  "protocol": "host-response-v1",
+  "discovery_cohort": "GSE74224",
+  "n_shared_symbols": 13785,
+  "learner": "LogisticRegression(L2, no scaling)",
+  "C": 0.01,
+  "in_cohort_cv_auroc": 0.9889,
+  "in_cohort_permutation_null_mean": 0.4931,
+  "note": "in-cohort figures measure memorisation at p >> n and are not a result"
+}

@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-09-02",
+ "syncedAt": "2026-09-12",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -2602,8 +2602,8 @@
   }
  },
  "alarmPolicy": {
-  "shipped": "plain(threshold=0.0725)",
-  "challenger": "plain(threshold=0.0857843)",
+  "shipped": "plain(threshold=0.03)",
+  "challenger": "plain(threshold=0.0308043)",
   "promoted": false,
   "reason": "refused: detection gain is not separable from zero (95% CI +0.000 to +0.000)",
   "deltaDetection": 0,
@@ -2616,8 +2616,16 @@
    "plain threshold",
    "K consecutive hours",
    "leaky exceedance integrator",
-   "per-patient z-score"
-  ]
+   "per-patient z-score",
+   "re-notification schedule (episode layer)"
+  ],
+  "burden": {
+   "promoted": false,
+   "championBurden": 1.6003,
+   "challengerBurden": 1.3093,
+   "championSilentHigh": 11.0792,
+   "challengerSilentHigh": 14.5125
+  }
  },
  "selfImprove": {
   "baselineAuroc": 0.7314,

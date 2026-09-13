@@ -1,0 +1,116 @@
+{
+  "study": "host-response gene expression: infectious vs sterile systemic inflammation",
+  "protocol": "host-response-v1",
+  "phase": "locked",
+  "prereg_digest": "b79eacd703210ad8",
+  "link_tested": "A \u2014 expression separates infection from sterile inflammation across cohort and platform",
+  "link_not_tested": "B \u2014 any effect on this product's false-alarm rate; no bed carries transcriptomics",
+  "fit": {
+    "learner": "LogisticRegression (L2, no feature scaling)",
+    "C": 0.01,
+    "features": "per-sample rank-z of gene symbols, probes collapsed on ranks",
+    "cohorts": [
+      "GSE74224",
+      "GSE40012"
+    ]
+  },
+  "data": {
+    "n_samples": 259,
+    "n_patients": 145,
+    "n_symbols": 13785,
+    "n_infectious_samples": 188,
+    "n_sterile_samples": 71,
+    "per_cohort": {
+      "GSE40012": {
+        "n_samples": 154,
+        "n_patients": 40
+      },
+      "GSE74224": {
+        "n_samples": 105,
+        "n_patients": 105
+      }
+    }
+  },
+  "primary": {
+    "metric": "mean of per-direction leave-one-cohort-out AUROCs",
+    "mean_auroc": 0.7271831360222702,
+    "per_direction_auroc_by_held_out_cohort": {
+      "GSE40012": 0.7725877192982457,
+      "GSE74224": 0.6817785527462947
+    },
+    "ci95": [
+      0.635928341957552,
+      0.8096080159513945
+    ],
+    "ci_unit": "patient, resampled within each held-out cohort",
+    "n_boot_used": 2000
+  },
+  "controls": {
+    "label_permutation_null": {
+      "mean": 0.49490442267394724,
+      "sd": 0.049581930923046774,
+      "min": 0.3962161015004818,
+      "max": 0.5717852827360468,
+      "n_draws": 20
+    },
+    "cohort_identity_auroc": 1.0,
+    "easiness_calibrator": {
+      "cohort": "GSE40012",
+      "question": "infectious vs HEALTHY (the trivial task)",
+      "in_cohort_patient_grouped_cv_auroc": 1.0,
+      "note": "reported only to show how much easier the trivial task is; never the result"
+    }
+  },
+  "verdict": {
+    "in_force": {
+      "verdict": "BAR MISSED",
+      "checks": {
+        "mean_auroc": false,
+        "ci_lower_bound": false,
+        "each_direction": false,
+        "permutation_null": true
+      },
+      "bar": {
+        "primary": "mean of per-direction leave-one-cohort-out AUROCs",
+        "mean_loco_auroc_min": 0.75,
+        "ci95_lower_bound_min": 0.7,
+        "each_direction_auroc_min": 0.7,
+        "label_permutation_null_mean_range": [
+          0.42,
+          0.58
+        ],
+        "label_permutation_min_draws": 20,
+        "cohort_identity_role": "reported diagnostic; not a void condition",
+        "all_required": true,
+        "alpha": 0.05,
+        "ci_method": "patient-cluster bootstrap within each held-out cohort, directions averaged per draw (expression.mean_direction_ci)"
+      }
+    },
+    "under_frozen_conditions": {
+      "verdict": "CONFOUNDED",
+      "checks": {
+        "mean_auroc": false,
+        "ci_lower_bound": false,
+        "cohort_identity_below_void": false,
+        "permutation_null": true
+      },
+      "bar": {
+        "mean_loco_auroc_min": 0.75,
+        "ci95_lower_bound_min": 0.7,
+        "cohort_identity_auroc_max": 0.9,
+        "label_permutation_auroc_range": [
+          0.42,
+          0.58
+        ],
+        "all_four_required": true,
+        "alpha": 0.05,
+        "ci_method": "cluster bootstrap over samples (one sample = one patient), stratified by cohort, via backend.ml.eval.metrics.bootstrap_ci"
+      }
+    },
+    "amendment_changed_the_outcome": true,
+    "published": false
+  },
+  "published": false,
+  "reading": "Bar missed (held-out GSE40012 0.773, held-out GSE74224 0.682; mean 0.727, 95% patient-cluster interval 0.636-0.810). Read this with the power statement recorded before the run: the study can detect transfer at or above a true AUROC of about 0.85 and not below it. So this is 'transfer at or above ~0.85 not detected' \u2014 not 'no transfer'.",
+  "power_stated_before_run": "Simulated from cluster counts alone (27 infectious / 13 sterile patients in the locked cohort, 74 / 31 in discovery), 20 replicate datasets per level: the interval's lower bound clears 0.70 in 2/20 replicates at a true transfer AUROC of 0.75, 6/20 at 0.80, 18/20 at 0.85 and 20/20 at 0.90. The study is powered to detect transfer at or above roughly 0.85 and NOT below it. A miss is therefore reported as 'transfer at or above ~0.85 not detected', never as 'no transfer'."
+}

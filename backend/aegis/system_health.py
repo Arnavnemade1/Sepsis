@@ -254,10 +254,15 @@ def _ladder(rig: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _alarm_policy() -> Optional[Dict[str, Any]]:
     """The alarm-policy search result. This exists so the false-alarm gap on this
-    page is not just a complaint: it records that four policy families were
-    searched against a locked holdout and none beat a plain threshold, which
-    redirects the reader from "tune the alarm" to "the score needs to separate
-    better"."""
+    page is not just a complaint: it records which policy families were searched
+    against a locked holdout and what the gate decided, which redirects the reader
+    from "tune the alarm" to "the score needs to separate better".
+
+    The family list and the verdict sentence are READ FROM THE ARTIFACT, not
+    re-declared here. They used to be hardcoded, which meant adding a family to the
+    search silently falsified this block — and this block is rendered in the live
+    console and quoted on the public site. The literals below are a fallback for
+    artifacts written before those keys existed, nothing more."""
     d = _load("alarm_policy.json")
     if not d:
         return None
@@ -272,12 +277,17 @@ def _alarm_policy() -> Optional[Dict[str, Any]]:
         "champion_detection": v.get("champion_detection"),
         "challenger_detection": v.get("challenger_detection"),
         "ci": [v.get("ci_low"), v.get("ci_high")],
-        "families": ["plain threshold", "K consecutive hours",
-                     "leaky exceedance integrator", "per-patient z-score"],
-        "verdict": ("No alarm policy beat a plain threshold. At a fixed detection "
-                    "rate the false-alarm rate is set by how well the score "
-                    "separates, and no post-processing recovers separation the "
-                    "score does not have."),
+        "families": d.get("families") or [
+            "plain threshold", "K consecutive hours",
+            "leaky exceedance integrator", "per-patient z-score"],
+        "verdict": d.get("verdict_note") or (
+            "No alarm policy beat a plain threshold. At a fixed detection "
+            "rate the false-alarm rate is set by how well the score "
+            "separates, and no post-processing recovers separation the "
+            "score does not have."),
+        "operating_point": d.get("operating_point"),
+        "episode_metrics": d.get("episode_metrics"),
+        "burden_verdict": d.get("burden_verdict"),
     }
 
 

@@ -16,6 +16,7 @@ backend/.env
 backend/sepsis_twin.db
 
 # Clinical dataset cache (PhysioNet/CinC 2019 — redistribute via PhysioNet only)
+data/geo/
 data/cinc2019/
 data/models/
 data/bidmc/

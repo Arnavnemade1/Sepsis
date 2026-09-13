@@ -334,3 +334,39 @@ def load(path: str = DEFAULT_PATH) -> Optional[OperatingPoint]:
         return OperatingPoint(**d)
     except (OSError, TypeError, ValueError):
         return None
+
+
+def detector_key(roster: Sequence[str], objective: str) -> str:
+    """The identity string an operating point records: ``"objective:a+b+c"``."""
+    return "%s:%s" % (objective, "+".join(roster))
+
+
+def require_shipped_detector(op: Optional[OperatingPoint],
+                             roster: Sequence[str], objective: str) -> str:
+    """Fatal unless ``op`` was derived on the detector that actually shipped.
+
+    A threshold is a cut point on ONE model's score distribution, so a study that
+    measures policy behaviour at the shipped threshold must build the shipped model
+    — and must prove it did, rather than assume it. The alarm-policy search got this
+    wrong for a month: it hardcoded 0.0725 and constructed the stack's *constructor
+    defaults*, while the system shipped 0.03 on a five-member roster. Its published
+    conclusion was therefore measured against a model nobody was running.
+
+    ``SystemExit`` rather than a return value: every caller is a study script whose
+    entire output would be mislabelled, so there is no sensible way to continue. A
+    missing artifact is equally fatal here — the question this study asks is "how
+    does the policy behave AT THE SHIPPED POINT", which cannot be asked without one.
+    """
+    expect = detector_key(roster, objective)
+    if op is None:
+        raise SystemExit(
+            "no operating point on disk (%s). Run `make operating-point` first; this "
+            "study measures policy behaviour AT the shipped threshold and must not "
+            "invent one." % DEFAULT_PATH)
+    if op.detector != expect:
+        raise SystemExit(
+            "operating-point/detector MISMATCH: the artifact was derived on %r but the "
+            "promoted detector is %r. A threshold does not transfer between fits — "
+            "re-derive the operating point (`make operating-point`) before measuring "
+            "any policy at it." % (op.detector, expect))
+    return expect

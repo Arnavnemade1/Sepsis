@@ -287,7 +287,20 @@ const out = {
     deltaDetection: r(alarm.verdict.delta_detection),
     ci: [r(alarm.verdict.ci_low), r(alarm.verdict.ci_high)],
     nBoot: alarm.verdict.n_boot,
-    familiesSearched: ["plain threshold", "K consecutive hours", "leaky exceedance integrator", "per-patient z-score"],
+    // Read from the artifact, never re-declared here: this list used to be four
+    // hardcoded strings, so adding a family to the search silently made the
+    // research page state something the search had not done.
+    familiesSearched: alarm.families ?? [],
+    /** The EPISODE layer's verdict is a different claim from the first-alarm one.
+     *  A notification schedule cannot move the first crossing, so it is judged on
+     *  interruption burden — and on what that burden costs in silence. */
+    burden: alarm.burden_verdict ? {
+      promoted: alarm.burden_verdict.promoted,
+      championBurden: r(alarm.burden_verdict.champion_burden),
+      challengerBurden: r(alarm.burden_verdict.challenger_burden),
+      championSilentHigh: r(alarm.burden_verdict.champion_silent_high),
+      challengerSilentHigh: r(alarm.burden_verdict.challenger_silent_high),
+    } : null,
   },
 
   selfImprove: {
