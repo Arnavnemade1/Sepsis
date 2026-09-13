@@ -110,8 +110,10 @@ decision is visible in the result itself.
 
 ## Traps found on the way
 
-Each of these would have produced a confident wrong answer, and each is now a guard in
-`make verify-hostresponse` (28/28):
+Each of these would have produced a confident wrong answer. The first two, and the
+healthy-control and underscore cases of the fourth, are now guards in
+`make verify-hostresponse` (28/28). The others were one-off facts about this data and
+about GEO — recorded here so nobody has to rediscover them, not because a test holds them:
 
 - **A sample is not a patient.** GSE40012 is 190 samples from 58 people at days
   1/2/3/5. Resampling samples would have narrowed the headline interval; in the
