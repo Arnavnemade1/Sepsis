@@ -1,8 +1,15 @@
 """The live Aegis-eBPF device layer — the verifier + supervisor, running.
 
 Slices 1–3 built and unit-proved the pieces (static verifier, ring-bound driver,
-fault-isolating supervisor). This module stands them up as a *live subsystem* the
-server ticks every cluster cycle and the console can drive:
+fault-isolating supervisor).
+
+STATUS, HONESTLY: the server does NOT tick this fleet. It constructs one and uses
+only ``verify_named``/``verify_source`` and the counters — the live eBPF data path
+that actually feeds patients is the one ``CohortCluster`` mounts for three real
+beds (``ebpf_optical=3``). So the drivers below never produce a sample in
+production, and this module is, today, the operator-facing verifier plus a
+catalogue of programs that trip each obligation. It reads as if it were:
+
 
   * a small fleet of supervised, verified eBPF drivers, each feeding a real
     Layer-2 ring through the Layer-1 ``/dev/bio`` stack;

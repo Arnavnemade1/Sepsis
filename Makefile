@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache
+.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -48,6 +48,8 @@ help:
 	@echo "  make verify-pk-api  Treatment-projection REST contract (in-process, no server)"
 	@echo "  make verify-opts  Treatment options: reasons traceable to numbers, cage refusals shown"
 	@echo "  make verify-z3    Z3 concurrency: every entry point guarded, no context corruption"
+	@echo "  make verify-os    The OS layer: kernel package + apps, aegisd, pkg, RBAC, proofs, DSL"
+	@echo "  make verify-os-fast  As above without the slow HDSched benchmark (what CI runs)"
 	@echo "  make verify-doctor AI-doctor consult: grounding, provenance, scale firewall, failover"
 	@echo "  make verify-agent  Agent plane: catalogue, read confinement, gated writes"
 	@echo "  make verify-llm    LLM transport: fallback chain, cooldown, cache, budget"
@@ -214,6 +216,25 @@ verify-llm:
 # the previously-unguarded paths from 8 threads to prove the context survives.
 verify-z3:
 	$(PY) -m backend.aegis.verify_z3_safety
+
+# The OS layer's gate. Every one of these suites existed already; 40 of the 52
+# under backend/aegis had no Makefile target, so nothing ran them together and
+# the kernel's own aggregate skipped five of its siblings while printing "ALL
+# LAYERS VERIFIED". make stops at the first failing line, so a red suite here
+# fails the whole target.
+verify-os:
+	$(PY) -m backend.aegis.kernel.verify_kernel
+	$(PY) -m backend.aegis.verify_apps
+	$(PY) -m backend.aegis.verify_initd
+	$(PY) -m backend.aegis.verify_pkg
+	$(PY) -m backend.aegis.verify_rbac
+	$(PY) -m backend.aegis.verify_proofexport
+	$(PY) -m backend.aegis.verify_clinical_dsl
+	$(PY) -m backend.aegis.verify_predictive_sched
+
+# Same suites, minus the multi-minute HDSched surrogate search — what CI runs.
+verify-os-fast:
+	AEGIS_KERNEL_FAST=1 $(MAKE) verify-os
 
 serve:
 	$(PY) -m uvicorn backend.aegis.server:app --host $(HOST) --port $(PORT)

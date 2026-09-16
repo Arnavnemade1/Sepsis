@@ -20,11 +20,20 @@ Three kinds of tool, and the distinction is the whole design:
              The agent operates the same OS the clinician does — not a shadow
              copy of it.
 
-  ``write``  Mutate the running system. These go through
+  ``write``  Mutate the running system. CLINICAL orders go through
              :class:`~backend.aegis.syscalls.SyscallTable` — the enumerated,
              Z3-gated, append-only-audited trap gate — exactly as the console
              does. The agent may *invoke* every syscall in the table; the prover
              decides which ones take effect.
+
+             Everything else does NOT, and pretending otherwise would be the
+             wrong kind of comfortable: ``os_write`` resolves any ``/aegis`` POST
+             route and calls its endpoint function directly, so chaos injection,
+             package installs, service control, driver faults, ML training and
+             the rest reach the system with no certificate, no capability check
+             and no audit row. Four syscalls are gated; roughly forty other
+             actuation routes are not. One reference monitor that every caller
+             crosses — human, console or agent — is what closes that gap.
 
 That last point is deliberate and it is not a limitation on what the agent can
 reach. Routing writes around the gate would not make the agent more capable, it

@@ -408,9 +408,20 @@ class Orchestrator:
                      ) -> Dict[str, Any]:
         """Induce a sepsis cascade in ``bed`` and walk the governed response down
         the hierarchy, ending in a signed, certified, immutably-logged order."""
+        from backend.aegis.kernel.executor import EXEC
         from backend.aegis.z3lock import Z3_LOCK
-        with Z3_LOCK:                       # cluster ticks + consensus + govern + proof: all Z3
-            return self._run_scenario(bed, warmup, crisis_ticks)
+
+        def _guarded() -> Dict[str, Any]:
+            with Z3_LOCK:                   # cluster ticks + consensus + govern + proof: all Z3
+                return self._run_scenario(bed, warmup, crisis_ticks)
+
+        # This used to tick the cluster straight from the threadpool worker while
+        # the live cluster loop ticked it too — two writers into one ring. It now
+        # runs ON the writer thread, which also serialises it against the loop.
+        # Lock order is executor -> Z3 (never the reverse): the writer thread only
+        # ever takes Z3 non-blockingly, so nothing it holds can block a thread that
+        # is itself waiting for the writer.
+        return EXEC.call(_guarded)
 
     def _run_scenario(self, bed: str, warmup: int, crisis_ticks: int) -> Dict[str, Any]:
         timeline: List[Dict[str, Any]] = []

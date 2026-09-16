@@ -22,9 +22,15 @@ The design mirrors a real OS trap gate, with three non-negotiable properties:
 
   3. **Audited.** Every invocation — allowed or denied — is appended to a
      monotonic, append-only audit log carrying the syscall number, caller,
-     arguments, the resulting Z3 status, and the certificate message. The log is
-     the system of record for "who told the OS to do what, and did the prover
-     agree."
+     arguments, the resulting Z3 status, and the certificate message.
+
+     Two limits on that, stated because the word "audit" invites the assumption
+     that neither applies. The log is an in-memory list capped at the last 256
+     entries and is gone on restart, so it is a live view, not a system of
+     record. And ``caller`` is whatever string the request body supplied — the
+     gate authenticates nothing, so the log answers "what was ordered and did the
+     prover agree", not "who ordered it". The persistent hash-chained journal and
+     the authenticated caller are what turn this into a record.
 
 The actual mutations are real: ``escalate`` writes a clinician priority *pin*
 onto the cognitive scheduler (so certified escalations genuinely shift compute
@@ -242,7 +248,10 @@ class SyscallTable:
         ok, cert = self.cage.dispatch(ACTUATOR, {
             "channel": "crisis_drill", "value": intensity, "min": 0.0, "max": 1.0}, {})
         if ok:
-            self.cluster.inject_crisis(bed, intensity=intensity)
+            # Through the writer thread: this mutates the bed's driver bias, which
+            # lands in the rings on the next tick (kernel/executor.py).
+            from backend.aegis.kernel.executor import EXEC
+            EXEC.call(self.cluster.inject_crisis, bed, intensity=intensity)
         return SyscallResult(
             sid, "crisis", bed, prof.name, EOK if ok else EINVAL, ok,
             cert.z3_status,
@@ -258,7 +267,8 @@ class SyscallTable:
         ok, cert = self.cage.dispatch(ACTUATOR, {
             "channel": "recover", "value": 0.0, "min": 0.0, "max": 1.0}, {})
         if ok:
-            self.cluster.clear_crisis(bed)
+            from backend.aegis.kernel.executor import EXEC
+            EXEC.call(self.cluster.clear_crisis, bed)
             self._apply_pin(bed, 1.0)
             self.interventions.pop(bed, None)
         return SyscallResult(
@@ -270,8 +280,12 @@ class SyscallTable:
 
     # ------------------------------------------------------------------ #
     def _apply_pin(self, bed: str, pin: float) -> float:
+        # A pin changes the next allocation the scheduler computes, so it is a
+        # write to wing state and belongs on the writer thread with the ticks it
+        # competes with — otherwise a pin can land halfway through one.
+        from backend.aegis.kernel.executor import EXEC
         try:
-            return self.cluster.sched.set_pin(bed, pin)
+            return EXEC.call(self.cluster.sched.set_pin, bed, pin)
         except Exception:
             return pin
 

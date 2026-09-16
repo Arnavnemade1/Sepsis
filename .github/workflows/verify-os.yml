@@ -1,0 +1,51 @@
+# The repo had no CI that ran anything: the only workflow was a keep-warm curl
+# against the Render instance. Every verification suite was run by hand, which is
+# how five kernel suites ended up excluded from their own aggregate without
+# anyone noticing.
+#
+# This runs the OS layer's suites and parses every hand-written webui module on
+# each push. It deliberately does NOT run `make verify` (the 24-test end-to-end
+# suite): that one loads the CinC corpus and fits models, which is minutes of
+# work and needs data that is gitignored.
+name: verify-os
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'webui/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - 'requirements.txt'
+      - '.github/workflows/verify-os.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify-os:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # Matches render.yaml's PYTHON_VERSION, not the 3.9 dev venv — so CI
+          # fails on anything that only works on the newer interpreter.
+          python-version: '3.11.9'
+          cache: pip
+
+      - name: Install pinned dependencies
+        run: pip install -r requirements.txt
+
+      - name: OS layer verification
+        run: make PY=python verify-os-fast
+
+      - name: Parse every webui module
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: make check-webui

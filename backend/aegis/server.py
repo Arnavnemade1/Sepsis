@@ -380,7 +380,15 @@ def _resolve_ebpf_bed(q: str) -> Optional[str]:
 _bundle = {"bed": None, "ts": 0.0, "data": None}
 CLUSTER_TICK_SECONDS = 2.0   # was 0.6 — full cluster payload per tick; throttled to bound egress
 _cluster_clients: List[WebSocket] = []
-cluster.run(12)                                   # warm the rings before serving
+# The wing has exactly ONE writer thread from here on. Everything that mutates
+# `cluster` (the loop's tick, chaos injection, driver fault/recover, the
+# orchestrator's scenario) goes through it — see kernel/executor.py for why and
+# for the executor -> Z3 lock order. Started before the warm-up so even the warm
+# ticks run as the writer.
+from backend.aegis.kernel.executor import EXEC
+
+EXEC.start()
+EXEC.call(cluster.run, 12)                        # warm the rings before serving
 
 # --- Real-data persistence (Supabase). The simulator demo is NEVER written; only
 #     real ingested readings are, and they are throttled + tagged so the database
@@ -1192,7 +1200,14 @@ def dsl_verify_endpoint(p: DslVerifyIn) -> Dict[str, Any]:
 from backend.aegis.rbac import (RBAC, RBACGate, GRANTS, RING, CAP_MIN_RING,
                                 prove_policy_sound)
 rbac = RBAC()
-rbac_gate = RBACGate(rbac, syscalls.invoke)      # gates the live write-syscall trap
+# NOT WIRED. This object is constructed and never called: /aegis/syscall invokes
+# syscalls.invoke directly, no route reads a session token, and the frontend never
+# sends one. So the RBAC surface below is a live, working demonstration of the
+# policy — login, capability matrix, audited authorize decisions — that nothing
+# actually enforces. Leaving the old comment ("gates the live write-syscall trap")
+# in place was the most misleading line in this file. The gate becomes real when
+# every route crosses one reference monitor.
+rbac_gate = RBACGate(rbac, syscalls.invoke)
 
 
 class RbacLoginIn(BaseModel):
@@ -1537,10 +1552,14 @@ async def ingest(payload: TelemetryIn) -> Dict[str, Any]:
     simulator demo, is broadcast to all WS clients, and is persisted (throttled)
     to Supabase off the realtime path."""
     global _last_real_ingest
-    snap = session.tick(payload.telemetry, source=payload.source,
-                        camera_vitals=payload.camera_vitals,
-                        signal_quality=payload.signal_quality,
-                        evidence_capabilities=payload.evidence_capabilities)
+    # session.tick runs a Z3-guarded assessment. This handler is async, so calling
+    # it inline put a blocking solve on the event loop — which z3lock.py:123-126
+    # explicitly forbids, and which stalls every other client for its duration.
+    snap = await asyncio.to_thread(
+        session.tick, payload.telemetry, source=payload.source,
+        camera_vitals=payload.camera_vitals,
+        signal_quality=payload.signal_quality,
+        evidence_capabilities=payload.evidence_capabilities)
     _last_real_ingest = time.time()
     session.os.register_source(payload.source)
     _apply_treatment_from(snap)
@@ -1653,7 +1672,14 @@ async def _cluster_loop() -> None:
     print("[aegis] ICU-wing cluster loop started (Tactical Sphere telemetry).")
     while True:
         try:
-            decision = cluster.tick()              # ticks the cohort incl. its eBPF beds
+            decision = EXEC.try_call(cluster.tick)  # ticks the cohort incl. its eBPF beds
+            if decision is EXEC.BUSY:
+                # A long write already owns the wing (a scenario run). Drop this
+                # tick instead of queueing it: at a 2 s cadence a queued tick would
+                # run late and stale, and a burst of them would land at once. The
+                # drop is counted in EXEC.status()["skipped_ticks"].
+                await asyncio.sleep(CLUSTER_TICK_SECONDS)
+                continue
             if SERVICE_BED is not None:            # tick the managed app/service plane
                 aegisd.tick(cluster.frame_for(SERVICE_BED))
             if ppg_monitor is not None:
@@ -2120,7 +2146,7 @@ async def kernel_fault(payload: KernelFaultIn) -> Dict[str, Any]:
         return {"status": "error",
                 "detail": f"{payload.slot!r} is not an eBPF-driven bed "
                           f"(verified beds: {', '.join(getattr(cluster, 'ebpf_beds', {}))})"}
-    res = cluster.inject_driver_fault(bid, payload.reason)
+    res = EXEC.call(cluster.inject_driver_fault, bid, payload.reason)
     res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
     await _broadcast_cluster(_cluster_payload())
     return res
@@ -3706,7 +3732,7 @@ async def kernel_recover(payload: KernelFaultIn) -> Dict[str, Any]:
     bid = _resolve_ebpf_bed(payload.slot)
     if bid is None:
         return {"status": "error", "detail": f"{payload.slot!r} is not an eBPF-driven bed"}
-    res = cluster.recover_driver(bid)
+    res = EXEC.call(cluster.recover_driver, bid)
     res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
     await _broadcast_cluster(_cluster_payload())
     return res
@@ -3720,11 +3746,11 @@ async def cluster_chaos(payload: ChaosIn) -> Dict[str, Any]:
         return {"status": "error", "detail": f"unknown node '{payload.node}'"}
     act = payload.action.lower()
     if act == "crisis":
-        cluster.inject_crisis(payload.node, intensity=payload.intensity)
+        EXEC.call(cluster.inject_crisis, payload.node, intensity=payload.intensity)
     elif act == "clear":
-        cluster.clear_crisis(payload.node)
+        EXEC.call(cluster.clear_crisis, payload.node)
     elif act == "noise":
-        cluster.inject_noise_surge(payload.node)
+        EXEC.call(cluster.inject_noise_surge, payload.node)
     else:
         return {"status": "error", "detail": f"unknown action '{payload.action}'"}
     return {"status": "ok", "node": payload.node, "action": act}

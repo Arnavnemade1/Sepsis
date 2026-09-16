@@ -69,12 +69,19 @@ class SafetyCertificate:
     proof: Optional[str] = None
     model: Dict[str, Any] = field(default_factory=dict)
     ts: float = field(default_factory=time.time)
+    # Which machinery produced this verdict. NOT every egress class runs a solver:
+    # NOTE is decidable field consistency in plain Python, and it was reporting
+    # z3_status "unsat" — the string this codebase uses to mean "the prover proved
+    # it" — with no prover in the call. Readers that want to know whether a solver
+    # was involved read this, not the message.
+    verifier: str = "z3"                 # "z3" | "structural"
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "ok": self.ok, "egress": self.egress, "z3_status": self.z3_status,
             "message": self.message, "violations": self.violations,
             "proof": self.proof, "model": self.model, "ts": round(self.ts, 3),
+            "verifier": self.verifier,
         }
 
 
@@ -273,12 +280,18 @@ class NeuroSymbolicRuntime:
                      "without citing a certified protocol.")
         if not str(payload.get("text", "")).strip():
             v.append("Note_Empty: refusing to emit an empty clinical note.")
+        # No solver runs in this class: the obligations are three decidable field
+        # comparisons, checked above in Python. Reporting them as z3_status
+        # "unsat"/"sat" claimed a proof that was never attempted, so the status is
+        # "n/a" and ``verifier`` says which machinery actually spoke. The checks
+        # themselves are unchanged — only the claim about them is.
         if v:
-            return SafetyCertificate(False, NOTE, "sat",
-                f"VERIFICATION REJECTED: {' '.join(v)}", v)
-        return SafetyCertificate(True, NOTE, "unsat",
-            "FORMALLY VERIFIED: note consistent with assessment + certified chain.",
-            proof=f"risk={ctx_risk} ∧ (treatment ⇒ certified_protocol) ∧ non-empty")
+            return SafetyCertificate(False, NOTE, "n/a",
+                f"VERIFICATION REJECTED: {' '.join(v)}", v, verifier="structural")
+        return SafetyCertificate(True, NOTE, "n/a",
+            "STRUCTURALLY VERIFIED (no solver): note consistent with assessment + certified chain.",
+            proof=f"risk={ctx_risk} ∧ (treatment ⇒ certified_protocol) ∧ non-empty",
+            verifier="structural")
 
     # ------------------------------------------------------------------ #
     def status(self) -> Dict[str, Any]:

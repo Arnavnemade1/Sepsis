@@ -23,9 +23,11 @@ What makes this a real OS layer and not a naming gimmick:
     mirrors the frontend SHAL (``webui/shal.js``) but lives in the kernel so the
     rest of the OS only ever sees clean, stabilized state.
 
-  * **Hardware-counter telemetry.** Each read records its conditioning latency
-    in microseconds (``time.perf_counter_ns``); the bus keeps p50/p95/max so the
-    Performance Diagnostics dashboard can prove determinism under load.
+  * **Conditioning-latency telemetry.** Each read records how long its filtering
+    took, in microseconds, from ``time.perf_counter_ns`` — the platform's
+    monotonic software clock, not a CPU performance counter (no PMU, no cycle
+    counter, no rdtsc). The bus keeps p50/p95/max, which measures this process's
+    own work under load and is reported as such.
 
 Drivers are pluggable: subclass :class:`BioDevice`, implement ``_produce()``,
 and you can mount anything — a synthetic generator for the ICU demo, a replay of

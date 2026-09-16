@@ -153,7 +153,14 @@ class ScheduleDecision:
     priorities: Dict[str, float]
     budget: int
     interrupt: Optional[Dict[str, Any]] = None
+    # ``verified`` is True ONLY when a solver proved THIS decision. It used to be
+    # set True on ticks that were never verified (throttled, or deferred because
+    # Z3 was busy), which reported a proof that had not been attempted.
+    # ``verification_state`` says which of those happened and ``proof_age_ticks``
+    # says how stale the standing proof is.
     verified: bool = False
+    verification_state: str = "unverified"   # proven | throttled | deferred | violated
+    proof_age_ticks: int = -1                # ticks since a decision was last proven (-1 = never)
     verification_msg: str = ""
 
     def node_total(self, node_id: str) -> int:
@@ -168,6 +175,8 @@ class ScheduleDecision:
                                                 for k, v in self.priorities.items()},
             "interrupt": self.interrupt,
             "verified": self.verified,
+            "verification_state": self.verification_state,
+            "proof_age_ticks": self.proof_age_ticks,
             "verification_msg": self.verification_msg,
         }
 
@@ -197,6 +206,7 @@ class CognitiveScheduler:
         self.predictive = bool(predictive)              # fold foresight into priority
         self.nodes: Dict[str, NodeState] = {}
         self.tick_no = 0
+        self._last_proof_tick = -1                      # tick of the last real proof
         self.events: List[Dict[str, Any]] = []         # hard-interrupt log
         self.last: Optional[ScheduleDecision] = None
 
@@ -221,8 +231,11 @@ class CognitiveScheduler:
         return self.nodes[node_id].pin
 
     # -- the scheduling tick --------------------------------------------- #
-    def verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
-        """Formally verify scheduler liveness and prioritization properties on the decision using Z3."""
+    def verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[str, str]:
+        """Formally verify scheduler liveness and prioritization properties on the
+        decision using Z3. Returns ("proven" | "violated" | "deferred", message) —
+        a tri-state, because "we did not run the prover this tick" is not the same
+        claim as "the prover proved it" and must not be reported as one."""
         from backend.aegis.z3lock import Z3_LOCK
 
         # Z3's global context is not thread-safe. This verify runs every tick on the
@@ -233,13 +246,13 @@ class CognitiveScheduler:
         # tick → here) still verifies. Deferral is safe — the allocation is produced
         # by the same deterministic policy and is re-verified on the next tick.
         if not Z3_LOCK.acquire(blocking=False):
-            return True, "verification deferred — Z3 busy on another thread (re-checked next tick)"
+            return "deferred", "verification deferred — Z3 busy on another thread (re-checked next tick)"
         try:
             return self._verify_decision_z3(decision)
         finally:
             Z3_LOCK.release()
 
-    def _verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[bool, str]:
+    def _verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[str, str]:
         from z3 import Solver, Int, Or, Sum, BoolVal, unsat
 
         s = Solver()
@@ -288,9 +301,9 @@ class CognitiveScheduler:
         s.add(violation)
         
         if s.check() == unsat:
-            return True, "FORMALLY VERIFIED: All scheduler liveness, budget, and preemption invariants hold."
+            return "proven", "FORMALLY VERIFIED: All scheduler liveness, budget, and preemption invariants hold."
         else:
-            return False, f"SCHEDULER VIOLATION: Invariants failed under solver check (model: {s.model()})"
+            return "violated", f"SCHEDULER VIOLATION: Invariants failed under solver check (model: {s.model()})"
 
     def schedule(self) -> ScheduleDecision:
         self.tick_no += 1
@@ -315,12 +328,17 @@ class CognitiveScheduler:
         # deterministic policy and inherit the last proof. Default 1 (always) for
         # tests; the server dials it up.
         if self.tick_no % VERIFY_EVERY == 0:
-            ok, msg = self.verify_decision_z3(decision)
-            decision.verified = ok
-            decision.verification_msg = msg
+            state, msg = self.verify_decision_z3(decision)
         else:
-            decision.verified = True
-            decision.verification_msg = "verification throttled (deterministic policy, last proof holds)"
+            state, msg = ("throttled",
+                          "verification throttled (deterministic policy, last proof holds)")
+        if state == "proven":
+            self._last_proof_tick = self.tick_no
+        decision.verification_state = state
+        decision.verified = (state == "proven")
+        decision.proof_age_ticks = (-1 if self._last_proof_tick < 0
+                                    else self.tick_no - self._last_proof_tick)
+        decision.verification_msg = msg
 
         # Edge-trigger the hard interrupt only on NORMAL->PREEMPT transitions or
         # when ownership of the cluster changes hands.

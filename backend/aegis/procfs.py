@@ -5,8 +5,14 @@ A real OS exposes its live state through one read-only filesystem (``/proc``,
 kernel and the service manager register *providers* at paths, and every consumer —
 the console (`ps`, `kstat`, `dmesg`), the UI, and one service reading another's
 output — goes through this single source of truth. Providers are pull-based
-(evaluated on read) so the namespace never holds stale state, and reads are
-side-effect free.
+(evaluated on read) so the namespace never holds stale state.
+
+Reads are side-effect free with ONE current exception, and it is not a small one:
+``/proc/kthreads`` and ``/proc/ksched`` seed and run an HDKernel demo workload the
+first time they are read (server.py), so reading the process table creates the
+processes it then reports. Nothing else in the namespace behaves that way. It is
+listed here rather than quietly tolerated because a `/proc` that fabricates its
+own contents is worse than no `/proc`; the real process table replaces it.
 """
 from __future__ import annotations
 

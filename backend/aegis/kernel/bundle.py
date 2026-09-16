@@ -134,7 +134,10 @@ class SepsisBundleEngine:
                 "violations": p_cert.violations, "proof": p_cert.proof,
             },
             "checklist": checklist,
-            "note": {"text": note_text, "certified": n_ok, "z3": n_cert.z3_status},
+            # ``verifier`` travels with the note because its verdict is the one in
+            # this bundle that no solver produced — see neurosym._certify_note.
+            "note": {"text": note_text, "certified": n_ok, "z3": n_cert.z3_status,
+                     "verifier": n_cert.verifier},
             "all_verified": bool(a_ok and p_ok and n_ok),
         }
 

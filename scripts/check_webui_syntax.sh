@@ -16,8 +16,11 @@ command -v node >/dev/null 2>&1 || { echo "node not found — skipping webui syn
 tmp="${TMPDIR:-/tmp}/_webui_syntax.mjs"
 fail=0
 n=0
-for f in webui/*.js; do
-  case "$f" in *vendor*) continue;; esac
+# Recursive on purpose. The glob used to be `webui/*.js`, which silently never
+# parsed webui/oskit/ — the whole OS shell layer (window manager, terminal,
+# palette, session) was exempt from the one check that catches a module which
+# fails to load. Anything under webui/os/ would have been exempt too.
+for f in $(find webui -name '*.js' -not -path '*/vendor/*' | sort); do
   n=$((n + 1))
   # No import stripping. `node --check` PARSES without resolving, so a bare
   # specifier like "three" is fine — and a first attempt that commented out

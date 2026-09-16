@@ -37,7 +37,13 @@ def test_critical_certified() -> None:
     b = SepsisBundleEngine().generate(_profile(), {})
     assert len(b["checklist"]) == 5
     assert b["protocol"]["antibiotic"] != "None"
-    assert b["alert"]["z3"] == "unsat" and b["protocol"]["z3"] == "unsat" and b["note"]["z3"] == "unsat"
+    # Alert and protocol are real solver verdicts. The note is NOT: it is three
+    # decidable field checks in Python, and it used to report "unsat" — the string
+    # this codebase uses for "the prover proved it" — so this assertion was
+    # checking a claim nothing had made. It now asserts what actually holds.
+    assert b["alert"]["z3"] == "unsat" and b["protocol"]["z3"] == "unsat"
+    assert b["note"]["certified"] and b["note"]["verifier"] == "structural" \
+        and b["note"]["z3"] == "n/a", b["note"]
     assert b["all_verified"] is True
     _ok(f"5 items; {b['protocol']['antibiotic']}; all UNSAT; all_verified")
 

@@ -24,10 +24,17 @@ WHAT IS ACTUALLY PROVEN (and the honest limits — SOFT judges are systems peopl
     enforced by static analysis of the bytecode, precisely the eBPF threat model.
     The verifier tracks an integer interval for every register through every path
     (with branch-condition narrowing) and proves that every load/store lands
-    inside the driver's own memory window ``[0, win_len)`` — i.e. its own ring in
-    the shared arena. An access it cannot prove in-bounds is rejected. Because
-    each driver's window is a distinct region of the Layer-2 arena, "provably
-    in-window" == "provably cannot touch another patient's data."
+    inside the driver's own memory window ``[0, win_len)``. An access it cannot
+    prove in-bounds is rejected.
+
+    What that window IS, precisely: today ``EbpfDevice`` gives each driver a
+    private ``np.zeros`` scratch buffer (ebpfdrv.py), NOT a carved region of the
+    Layer-2 arena. So the proven property is "a driver cannot read or write
+    outside its own buffer" — which is what stops a driver reaching another
+    patient's samples, because it never holds a pointer into shared storage in
+    the first place. The stronger phrasing this comment used to carry ("its own
+    region of the shared arena") would only be accurate if the window were
+    arena-backed, and it is not.
 
   * **Capability confinement.** A driver may only call whitelisted kernel helpers
     and may only read registers it has initialized; uninitialized reads, unknown

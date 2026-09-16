@@ -41,6 +41,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from backend.aegis.kernel.devbio import BioBlock, DevBio
+from backend.aegis.kernel.executor import assert_writer
 
 
 def _now_us() -> float:
@@ -191,7 +192,14 @@ class LocklessRing:
 
     # -- writer (single) ------------------------------------------------- #
     def push(self, t_us: float, row: Dict[str, float]) -> int:
-        """Append one sample. O(1), no heap allocation. Returns the slot index."""
+        """Append one sample. O(1), no heap allocation. Returns the slot index.
+
+        The single-writer premise in this module's header is now CHECKED here
+        rather than assumed: two threads were in fact writing these rings (the
+        cluster loop and the orchestrator's scenario handler). One global load and
+        one integer compare; no-op until a writer thread is bound.
+        """
+        assert_writer("ring write (%s)" % self.name)
         slot = self.write_index % self.capacity
         if self.seq[slot] >= 0:
             self.overwrites += 1
