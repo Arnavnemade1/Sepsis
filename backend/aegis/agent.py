@@ -49,12 +49,61 @@ so this module stays free of a circular import back into the app.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 KIND_READ, KIND_UI, KIND_WRITE = "read", "ui", "write"
+
+#: The capability each tool needs, checked by the kernel gate against Dr. Aegis's
+#: EFFECTIVE credential (the clinician it acts for, minus rbac.AGENT_DENY). A tool
+#: with no entry here refuses to register — an agent capability nobody classified
+#: is exactly the door the gate exists to close. Three tools are resolved per call
+#: instead (DYNAMIC_CAP_TOOLS): os_read/os_write by the syscall table entry for the
+#: path they target, and syscall by the trap they invoke.
+TOOL_CAPS: Dict[str, str] = {
+    # reads
+    "list_surfaces": "view:public", "list_actions": "view:public",
+    "list_patients": "view:public", "get_patient": "view:public",
+    "get_case_dossier": "view:public", "get_patient_history": "view:public",
+    "list_record_sources": "view:public", "get_vitals_trend": "view:public",
+    "get_causal_graph": "view:public", "trace_incident": "view:public",
+    "scenario_vocabulary": "view:public", "list_scenarios": "view:public",
+    "get_scenario": "view:public", "get_validation": "view:public",
+    "get_orchestrator": "view:public", "get_kernel": "view:public",
+    "get_audit": "view:audit", "get_activity": "view:audit",
+    # analyses that change nothing
+    "run_consensus": "compute:analyze", "run_whatif": "compute:analyze",
+    "project_treatment": "compute:analyze", "screen_drugs": "compute:analyze",
+    "hyperscan": "compute:analyze", "show_treatment_options": "compute:analyze",
+    "counterfactual_replay": "compute:analyze", "certify_proof": "compute:analyze",
+    "verify_proof": "compute:analyze", "verify_driver": "compute:analyze",
+    "verify_rules": "compute:analyze", "check_identity": "compute:analyze",
+    # the cockpit (display only)
+    "open_panel": "view:public", "close_panel": "view:public",
+    "select_patient": "view:public", "enable_camera": "view:public",
+    "focus_organ": "view:public", "highlight": "view:public",
+    "play_treatment_twin": "view:public", "set_camera_sensitivity": "view:public",
+    "note": "view:public",
+    # writes
+    "create_scenario": "sim:control", "run_lab_scenario": "sim:control",
+    "run_scenario_suite": "sim:control", "reset_scenarios": "sim:control",
+    "run_kernel_workload": "sim:control", "simulate_stage": "sim:control",
+    "set_tracking": "annotate", "service_control": "svc:control",
+    "govern": "order:escalate", "run_scenario": "drill:crisis",
+    "run_chaos": "drill:crisis", "train_model": "ml:train",
+    "inject_fault": "drill:device", "recover_device": "drill:device",
+    "manage_package": "pkg:install", "import_history": "record:import",
+    "device_action": "device:manage",
+}
+DYNAMIC_CAP_TOOLS = ("os_read", "os_write", "syscall")
+
+#: Who Dr. Aegis is acting for in the CURRENT tool call, so a tool whose handler
+#: invokes further tools (hyperscan runs a sweep of them) keeps the same principal.
+ON_BEHALF: "contextvars.ContextVar[Any]" = contextvars.ContextVar("aegis_on_behalf",
+                                                                 default=None)
 
 # The cockpit surfaces the agent can pull up. Names match the frontend modules;
 # webui/doctor.js maps each to the real shell call.
@@ -119,6 +168,17 @@ class ToolCallError(Exception):
     pass
 
 
+def _assert_capped(tools: List[Tool]) -> List[Tool]:
+    """Refuse a catalogue with a tool the gate cannot classify."""
+    missing = sorted(t.name for t in tools
+                     if t.name not in TOOL_CAPS and t.name not in DYNAMIC_CAP_TOOLS)
+    if missing:
+        raise ValueError(
+            f"agent tool(s) with no capability in TOOL_CAPS: {missing}. Every tool "
+            "Dr. Aegis can call must say what it needs, or the gate cannot decide it.")
+    return tools
+
+
 def _assert_unique(tools: List[Tool]) -> List[Tool]:
     """Refuse a catalogue with two tools of the same name.
 
@@ -150,8 +210,16 @@ class ToolRegistry:
         # _assert_unique, not a dict comprehension: building the dict silently
         # keeps the last of any duplicate pair, which is precisely the failure we
         # want to be loud about.
-        for t in _assert_unique(_catalogue()):
+        for t in _assert_capped(_assert_unique(_catalogue())):
             self._tools[t.name] = t
+        # Installed by the server: authorizer(tool, args, on_behalf_of) returns None
+        # to allow, or a refusal dict to return instead of running the tool.
+        self.authorizer: Optional[Callable[[Tool, Dict[str, Any], Any],
+                                           Optional[Dict[str, Any]]]] = None
+        # Installed by the server: principal(on_behalf_of) -> a context manager that
+        # publishes Dr. Aegis's credential while the tool runs, so an endpoint the
+        # tool calls sees (and audits) the agent, not the human it acts for.
+        self.principal: Optional[Callable[[Any], Any]] = None
 
     # -- wiring ----------------------------------------------------------- #
     def bind(self, name: str, handler: Callable[..., Any]) -> None:
@@ -187,9 +255,11 @@ class ToolRegistry:
                 for t in self._tools.values()]
 
     # -- dispatch --------------------------------------------------------- #
-    def invoke(self, name: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Run a tool. Never raises — a failure is a result the agent must read
-        and account for out loud, not an exception that silently ends its turn."""
+    def invoke(self, name: str, args: Optional[Dict[str, Any]] = None,
+               on_behalf_of: Any = None) -> Dict[str, Any]:
+        """Run a tool as Dr. Aegis acting for ``on_behalf_of`` (a kernel Credential;
+        None → whoever the enclosing tool call was for, else a guest). Never raises
+        — a failure or a refusal is a result the agent must read and say out loud."""
         args = dict(args or {})
         self._seq += 1
         started = time.time()
@@ -198,6 +268,23 @@ class ToolRegistry:
             return self._record(name, args, started,
                                 {"ok": False, "error": f"unknown tool {name!r}",
                                  "available": sorted(self._tools)[:40]}, "unknown")
+        if on_behalf_of is None:
+            on_behalf_of = ON_BEHALF.get()
+        if self.authorizer is not None:
+            refusal = self.authorizer(tool, args, on_behalf_of)
+            if refusal is not None:
+                return self._record(name, args, started, refusal, tool.kind)
+        token = ON_BEHALF.set(on_behalf_of)
+        try:
+            if self.principal is not None:
+                with self.principal(on_behalf_of):
+                    return self._invoke(tool, name, args, started)
+            return self._invoke(tool, name, args, started)
+        finally:
+            ON_BEHALF.reset(token)
+
+    def _invoke(self, tool: Tool, name: str, args: Dict[str, Any],
+                started: float) -> Dict[str, Any]:
         if tool.kind == KIND_UI:
             # Handed to the browser, which drives the shell — but a UI tool may
             # also carry a COMPANION READ.

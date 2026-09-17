@@ -53,6 +53,13 @@ from backend.llm.assistant import AegisAssistant as _AegisAssistant
 from backend.core.simulator import PatientTelemetrySimulator
 
 app = FastAPI(title="AegisOS API", version="1.0.0")
+# The kernel gate: one reference monitor for every /aegis call (kernel/gate.py).
+# Added BEFORE CORS so CORS stays outermost — a 403 from the gate must still carry
+# the Access-Control headers, or the browser reports it as a CORS failure and the
+# page never sees the EPERM. It passes everything through until the kernel
+# configures it later in this module.
+from backend.aegis.kernel.gate import GateMiddleware as _GateMiddleware
+app.add_middleware(_GateMiddleware)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
@@ -1429,17 +1436,48 @@ def dsl_verify_endpoint(p: DslVerifyIn) -> Dict[str, Any]:
 
 # --- Clinical RBAC: privilege-ring access control over the OS (MEGA-UPGRADE L3) -- #
 BOOT.checkpoint("rbac", "role and capability policy")
-from backend.aegis.rbac import (RBAC, RBACGate, GRANTS, RING, CAP_MIN_RING,
+from backend.aegis.rbac import (RBAC, GRANTS, RING, CAP_MIN_RING, SYSCALL_CAP,
                                 prove_policy_sound)
 rbac = RBAC()
-# NOT WIRED. This object is constructed and never called: /aegis/syscall invokes
-# syscalls.invoke directly, no route reads a session token, and the frontend never
-# sends one. So the RBAC surface below is a live, working demonstration of the
-# policy — login, capability matrix, audited authorize decisions — that nothing
-# actually enforces. Leaving the old comment ("gates the live write-syscall trap")
-# in place was the most misleading line in this file. The gate becomes real when
-# every route crosses one reference monitor.
-rbac_gate = RBACGate(rbac, syscalls.invoke)
+
+# --- Identity and the gate --------------------------------------------------- #
+# The RBAC policy used to be a demonstration beside an unguarded API (its gate
+# object was constructed here and never called). It is now what the kernel gate
+# enforces on every /aegis call: accounts own their roles, sessions are tracked,
+# every route has a syscall-table entry, and Dr. Aegis is a user acting for a
+# clinician. Ships in AEGIS_GATE_MODE=audit: refusals are counted and journalled
+# but served, until the desktop sends session tokens.
+BOOT.checkpoint("gate", "accounts, sessions, the syscall table and the gate")
+from backend.aegis.kernel import gate as _gate_mod
+from backend.aegis.kernel.abi import ABI as _ABI, live_routes as _live_routes
+from backend.aegis.kernel.users import (GUEST as _GUEST, AuthError as _AuthError,
+                                        PermissionDenied as _PermissionDenied,
+                                        CURRENT as _CURRENT_CRED, UserDB as _UserDB,
+                                        current_credential as _cred)
+USERS = _UserDB(rbac)
+ABI_TABLE = _ABI.load()
+GATE = _gate_mod.configure(ABI_TABLE, USERS, KJOURNAL)
+BOOT.note(mode=GATE.mode, syscalls=len(ABI_TABLE.entries), accounts=len(USERS.accounts),
+          demo_login=USERS.demo_login)
+GATE_COVERAGE: Optional[Dict[str, Any]] = None   # set once the route table is final
+print(f"[aegis] gate: {GATE.mode} mode, {len(ABI_TABLE.entries)} syscalls, "
+      f"{len(USERS.accounts)} accounts (demo sign-in {'on' if USERS.demo_login else 'off'})")
+
+
+def _prove_policy() -> None:
+    from backend.aegis.kernel.policy import prove_kernel_policy
+    res = prove_kernel_policy(ABI_TABLE)
+    GATE.policy_proof = res
+    KJOURNAL.append("policy", "proof", severity=6 if res.get("sound") else 2,
+                    sound=res.get("sound"), ms=res.get("ms"),
+                    failed=[p["property"] for p in res.get("properties", []) if not p["proven"]])
+    print(f"[aegis] kernel policy {'PROVEN' if res.get('sound') else 'HAS HOLES'} "
+          f"({len(res.get('properties', []))} properties, {res.get('ms')} ms)")
+
+
+_threading.Thread(target=_kthread("policy-prover", _prove_policy, delay=4.0,
+                                  purpose="prove the access policy over the syscall table"),
+                  name="policy-prover", daemon=True).start()
 BOOT.checkpoint("routes-3", "access-control and consult REST surface")
 
 
@@ -1457,11 +1495,15 @@ class RbacAuthIn(BaseModel):
 def rbac_login(p: RbacLoginIn) -> Dict[str, Any]:
     """Mint a signed, expiring session token for a role + return that role's shell
     capability contract (what the role's UI may render and do)."""
+    # The role picks a DEMO ACCOUNT; the account carries the role. This route used
+    # to mint a token for any role the request named, with no credential at all.
     try:
-        s = rbac.login(p.user, p.role)
-    except ValueError as e:
-        return {"status": "error", "detail": str(e)}
-    return {"session": s.to_dict(), "token": s.token, "shell": rbac.shell_capabilities(p.role)}
+        token, state, cred = USERS.login_role(p.role, client="rbac-overlay")
+    except _AuthError as e:
+        return {"status": "error", "errno": "EAUTH", "detail": str(e)}
+    s = rbac.verify_token(token)
+    return {"session": s.to_dict() if s else {}, "token": token,
+            "shell": rbac.shell_capabilities(cred.role), "account": cred.to_dict()}
 
 
 @app.get("/aegis/rbac/policy")
@@ -2327,7 +2369,21 @@ async def aegis_syscall(payload: SyscallIn) -> Dict[str, Any]:
     here; the mutation is applied to the running kernel ONLY if the Z3 egress cage
     certifies it. Every call — allowed or denied — is appended to the audit log.
     A denied write returns EPERM and changes nothing; the certificate explains why."""
-    res = syscalls.invoke(payload.syscall, payload.bed, payload.args, caller=payload.caller)
+    cred = _cred()
+    name = (payload.syscall or "").lower().strip()
+    cap = SYSCALL_CAP.get(name)
+    if cap is not None:
+        # The route let anyone holding order:escalate in; THIS trap needs its own
+        # capability (treat needs order:treat — the chief holds escalate, not treat).
+        try:
+            GATE.require(cap, cred, what=f"syscall {name}")
+        except _PermissionDenied as exc:
+            return {"sid": None, "syscall": name, "bed": payload.bed, "allowed": False,
+                    "errno": 1, "errno_name": "EPERM", "z3_status": "n/a",
+                    "message": f"EPERM — {exc}", "capability": cap, "uid": cred.username}
+    # The caller is WHO THE SESSION IS. The body's free-text `caller` is ignored:
+    # an audit record whose author is whatever the request typed is not a record.
+    res = syscalls.invoke(payload.syscall, payload.bed, payload.args, caller=cred.username)
     # push the post-write state to all cockpits immediately so the grid reacts.
     if res.allowed:
         await _broadcast_cluster(_cluster_payload())
@@ -2761,16 +2817,15 @@ from backend.aegis.hyperscan import (Hyperscan as _Hyperscan, STAGES as _HYPERSC
 _hyperscan_engine: Optional[_Hyperscan] = None
 
 
-def _run_hyperscan(bed: Optional[str],
-                   emit: Optional[Any] = None) -> Dict[str, Any]:
-    # Built on first use: this block sits above the agent plane in the module, so
-    # binding the tool registry at import time would depend on statement order.
-    global _hyperscan_engine
-    if _hyperscan_engine is None:
-        _hyperscan_engine = _Hyperscan(_tools.invoke, _llm_client)
+def _run_hyperscan(bed: Optional[str], emit: Optional[Any] = None,
+                   on_behalf_of: Any = None) -> Dict[str, Any]:
+    # One engine per sweep, bound to whoever asked: the sweep invokes tools, and
+    # each must cross the gate as Dr. Aegis acting for THAT person. (A shared
+    # engine held one invoke function for every caller.)
+    engine = _Hyperscan(_invoke_for(on_behalf_of), _llm_client)
     dossier = _doctor_dossier(bed)
-    collected = _hyperscan_engine.collect(bed, emit)
-    return _hyperscan_engine.synthesize(bed, collected, dossier, emit)
+    collected = engine.collect(bed, emit)
+    return engine.synthesize(bed, collected, dossier, emit)
 
 
 from backend.llm import speech as _speech
@@ -2806,7 +2861,7 @@ def speak(payload: SpeakIn) -> Dict[str, Any]:
 @app.get("/aegis/hyperscan")
 def hyperscan(bed: Optional[str] = None) -> Dict[str, Any]:
     """Full-subsystem sweep + situation report for one patient (blocking)."""
-    return _run_hyperscan(bed)
+    return _run_hyperscan(bed, on_behalf_of=_cred())
 
 
 @app.post("/aegis/hyperscan/stream")
@@ -2821,11 +2876,12 @@ def hyperscan_stream(payload: DoctorConsultIn):
     import queue as _queue
 
     q: "_queue.Queue" = _queue.Queue()
+    asker = _cred()
 
     def work() -> None:
         try:
             q.put({"type": "begin", "stages": len(_HYPERSCAN_STAGES) + 1})
-            rep = _run_hyperscan(payload.bed, q.put)
+            rep = _run_hyperscan(payload.bed, q.put, on_behalf_of=asker)
             # Report first, THEN the voice. Rendering speech takes ~12 s; holding
             # the finished report back for it would trade a fast read for a slow
             # listen. This way the report is on screen immediately and the audio
@@ -2869,6 +2925,7 @@ def doctor_consult_stream(payload: DoctorConsultIn):
     import queue as _queue
 
     q: "_queue.Queue" = _queue.Queue()
+    asker = _cred()             # captured here: the worker thread has no request context
 
     def work() -> None:
         try:
@@ -2876,7 +2933,7 @@ def doctor_consult_stream(payload: DoctorConsultIn):
             q.put({"type": "grounded", "bed": dossier.get("bed"),
                    "headline": dossier.get("headline"), "facts": dossier.get("facts")})
             res = _doctor.act(payload.question, dossier, _tools.declarations(),
-                              _tools.invoke, history=payload.history,
+                              _invoke_for(asker), history=payload.history,
                               budgets={t.name: t.budget for t in _tools._tools.values()
                                        if t.budget},
                               on_event=q.put)
@@ -2910,7 +2967,7 @@ def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
     dossier = _doctor_dossier(payload.bed)
     if payload.agentic:
         res = _doctor.act(payload.question, dossier, _tools.declarations(),
-                          _tools.invoke, history=payload.history,
+                          _invoke_for(_cred()), history=payload.history,
                           budgets={t.name: t.budget for t in _tools._tools.values()
                                    if t.budget})
     else:
@@ -2927,7 +2984,59 @@ def doctor_consult(payload: DoctorConsultIn) -> Dict[str, Any]:
 # table, and the prover decides which ones take effect. UI tools have no server
 # handler; they are forwarded to the cockpit over the consult socket.
 # ---------------------------------------------------------------------- #
-from backend.aegis.agent import registry as _tools, summarize as _tool_summarize
+from backend.aegis.agent import (registry as _tools, summarize as _tool_summarize,
+                                 TOOL_CAPS as _TOOL_CAPS)
+
+
+def _invoke_for(on_behalf_of: Any):
+    """A tool invoker bound to the person Dr. Aegis is acting for."""
+    return lambda name, args=None: _tools.invoke(name, args, on_behalf_of=on_behalf_of)
+
+
+def _agent_authorize(tool: Any, args: Dict[str, Any], on_behalf_of: Any) -> Optional[Dict[str, Any]]:
+    """The agent's calls cross the SAME gate as a person's: as dr-aegis, holding the
+    clinician's capabilities minus the few no model may hold. os_read/os_write are
+    decided by the syscall-table entry of the path they target — the generic
+    primitive used to reach every endpoint without any identity at all."""
+    human = on_behalf_of if on_behalf_of is not None else _GUEST
+    agent = USERS.agent_credential(human)
+    try:
+        if tool.name in ("os_read", "os_write"):
+            raw = "/" + str(args.get("path") or "").split("?")[0].strip().lstrip("/")
+            GATE.enter(agent, "GET" if tool.name == "os_read" else "POST", raw.rstrip("/"))
+        elif tool.name == "syscall":
+            GATE.enter(agent, "POST", "/aegis/syscall")
+            cap = SYSCALL_CAP.get(str(args.get("syscall") or "").lower().strip())
+            if cap is not None:
+                GATE.require(cap, agent, what=f"agent syscall {args.get('syscall')}")
+        else:
+            GATE.require(_TOOL_CAPS[tool.name], agent, what=f"agent tool {tool.name}")
+    except _PermissionDenied as exc:
+        return {"ok": False, "errno": "EPERM",
+                "error": f"refused by the kernel gate: {exc}",
+                "capability": exc.capability, "acting_for": human.username,
+                "note": "Say plainly that this was refused and why; do not retry it "
+                        "another way."}
+    return None
+
+
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def _agent_principal(on_behalf_of: Any):
+    """While a tool runs, the credential in context is Dr. Aegis's — so an endpoint
+    it calls audits the agent (acting for the clinician), not the clinician."""
+    token = _CURRENT_CRED.set(USERS.agent_credential(
+        on_behalf_of if on_behalf_of is not None else _GUEST))
+    try:
+        yield
+    finally:
+        _CURRENT_CRED.reset(token)
+
+
+_tools.authorizer = _agent_authorize
+_tools.principal = _agent_principal
 
 # The read primitive is confined to this app's own GET routes. It is genuinely
 # unrestricted over AegisOS state — and it is a *read*: it cannot leave the
@@ -3163,7 +3272,7 @@ def _agent_list_surfaces() -> Dict[str, Any]:
 
 def _agent_syscall(syscall: str, bed: str, args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Every agent write lands here — the same trap gate the console uses."""
-    res = syscalls.invoke(syscall, bed, args or {}, caller="dr-aegis")
+    res = syscalls.invoke(syscall, bed, args or {}, caller=_cred().username)
     return res.to_dict()
 
 
@@ -3527,7 +3636,7 @@ def agent_activity(limit: int = 50) -> Dict[str, Any]:
 @app.post("/aegis/agent/invoke")
 def agent_invoke(payload: AgentInvokeIn) -> Dict[str, Any]:
     """Invoke one tool directly (the text consult and the console use this)."""
-    return _tools.invoke(payload.tool, payload.args)
+    return _tools.invoke(payload.tool, payload.args, on_behalf_of=_cred())
 
 
 # Uplink ceiling for one call. A stuck browser that streams microphone audio
@@ -3558,6 +3667,9 @@ async def doctor_live(ws: WebSocket) -> None:
     interrupted · case_update · error · closed."""
     await ws.accept()
     bed = ws.query_params.get("bed") or None
+    # Who opened the call. Tools run in an executor, which does not inherit context
+    # variables, so the credential is captured now and bound to every tool call.
+    live_caller = _cred()
     session_live: Optional[_LiveConsult] = None
     try:
         dossier = _doctor_dossier(bed)
@@ -3626,8 +3738,11 @@ async def doctor_live(ws: WebSocket) -> None:
             # kernel workload, a training launch), and the ones that wrap async
             # endpoints have to be able to schedule back onto THIS loop and wait.
             # Running them inline would block the audio relay and deadlock those.
+            # run_in_executor does not carry context variables, so the caller's
+            # credential is bound explicitly (captured when the socket opened).
             out = await loop.run_in_executor(
-                None, _tools.invoke, name, call.get("args") or {})
+                None, lambda n=name, a=(call.get("args") or {}): _tools.invoke(
+                    n, a, on_behalf_of=live_caller))
             ui = out.get("ui")
             if ui:
                 await ws.send_json({"type": "ui", "action": ui.get("action"),
@@ -4018,9 +4133,19 @@ def sys_proc(pid: int) -> Dict[str, Any]:
 @app.post("/aegis/sys/kill")
 def sys_kill(payload: KillIn) -> Dict[str, Any]:
     """Signal a process. A kind that cannot honour the signal returns EINVAL
-    rather than accepting it and doing nothing."""
+    rather than accepting it and doing nothing. You may signal your OWN processes
+    (sign out your session, cancel your job); anyone else's needs proc:signal."""
+    cred = _cred()
     try:
-        return {"status": "ok", **PROCS.signal(payload.pid, payload.signal, uid="operator")}
+        target = PROCS.get(payload.pid)
+        if target.uid != cred.username and not cred.has("proc:signal"):
+            GATE.require("proc:signal", cred, what=f"signal pid {payload.pid} ({target.uid})")
+    except _PermissionDenied as exc:
+        return {"status": "error", "errno": "EPERM", "detail": str(exc)}
+    except NoSuchProcess as exc:
+        return {"status": "error", "errno": "ESRCH", "detail": str(exc)}
+    try:
+        return {"status": "ok", **PROCS.signal(payload.pid, payload.signal, uid=cred.username)}
     except SignalUnsupported as exc:
         return {"status": "error", "errno": "EINVAL", "detail": str(exc)}
     except SignalFailed as exc:
@@ -4042,6 +4167,159 @@ def sys_journal(limit: int = 80, facility: str = "", severity: int = 7,
 def sys_boot() -> Dict[str, Any]:
     """What happened while this kernel came up, with measured durations."""
     return BOOT.summary()
+
+
+# --- identity: sign-in, sessions, break-glass --------------------------------- #
+class LoginIn(BaseModel):
+    username: str
+    passphrase: Optional[str] = None
+
+
+class UnlockIn(BaseModel):
+    passphrase: Optional[str] = None
+
+
+class BreakGlassIn(BaseModel):
+    reason: str
+    minutes: float = 10.0
+
+
+class BreakGlassReviewIn(BaseModel):
+    id: str
+    verdict: str
+    note: str = ""
+
+
+class RevokeIn(BaseModel):
+    sid: str
+
+
+class GateModeIn(BaseModel):
+    mode: str
+
+
+def _session_payload(token: Optional[str], cred) -> Dict[str, Any]:
+    return {"status": "ok", "token": token, "credential": cred.to_dict(),
+            "gate": GATE.mode}
+
+
+@app.get("/aegis/sys/accounts")
+def sys_accounts() -> Dict[str, Any]:
+    """Who can sign in at this workstation (no secrets)."""
+    return {"accounts": USERS.public_accounts(), "demo_login": USERS.demo_login,
+            "note": ("Demo staff sign in without a passphrase while AEGIS_DEMO_LOGIN is "
+                     "on. This is demo-grade authentication, not a hospital IdP.")}
+
+
+@app.post("/aegis/sys/login")
+def sys_login(p: LoginIn) -> Dict[str, Any]:
+    try:
+        token, state, cred = USERS.login(p.username, p.passphrase, client="desktop")
+    except _AuthError as exc:
+        return {"status": "error", "errno": "EAUTH", "detail": str(exc)}
+    return _session_payload(token, cred)
+
+
+@app.post("/aegis/sys/logout")
+def sys_logout() -> Dict[str, Any]:
+    cred = _cred()
+    return {"status": "ok", "signed_out": USERS.logout(cred), "uid": cred.username}
+
+
+@app.post("/aegis/sys/lock")
+def sys_lock() -> Dict[str, Any]:
+    return {"status": "ok", "locked": USERS.lock(_cred())}
+
+
+@app.post("/aegis/sys/unlock")
+def sys_unlock(p: UnlockIn) -> Dict[str, Any]:
+    try:
+        return _session_payload(None, USERS.unlock(_cred(), p.passphrase))
+    except _AuthError as exc:
+        return {"status": "error", "errno": "EAUTH", "detail": str(exc)}
+
+
+@app.get("/aegis/sys/whoami")
+def sys_whoami() -> Dict[str, Any]:
+    return {"credential": _cred().to_dict(), "gate": GATE.mode}
+
+
+@app.get("/aegis/sys/who")
+def sys_who() -> Dict[str, Any]:
+    return {"sessions": USERS.who(), "status": USERS.status()}
+
+
+@app.post("/aegis/sys/revoke")
+def sys_revoke(p: RevokeIn) -> Dict[str, Any]:
+    try:
+        return {"status": "ok", "revoked": USERS.revoke(_cred(), p.sid)}
+    except _PermissionDenied as exc:
+        return {"status": "error", "errno": "EPERM", "detail": str(exc)}
+
+
+@app.get("/aegis/sys/breakglass")
+def sys_breakglass_log() -> Dict[str, Any]:
+    return {"records": [b.to_dict() for b in USERS.breakglass_log][-50:],
+            "unreviewed": sum(1 for b in USERS.breakglass_log if not b.reviewed)}
+
+
+@app.post("/aegis/sys/breakglass")
+def sys_breakglass(p: BreakGlassIn) -> Dict[str, Any]:
+    """Emergency elevation: a stated reason, ≤ 15 minutes, a fixed set of added
+    capabilities that never includes prescribing, policy or administration."""
+    try:
+        bg = USERS.breakglass(_cred(), p.reason, p.minutes)
+    except _PermissionDenied as exc:
+        return {"status": "error", "errno": "EPERM", "detail": str(exc)}
+    except ValueError as exc:
+        return {"status": "error", "errno": "EINVAL", "detail": str(exc)}
+    return {"status": "ok", "breakglass": bg.to_dict()}
+
+
+@app.post("/aegis/sys/breakglass/review")
+def sys_breakglass_review(p: BreakGlassReviewIn) -> Dict[str, Any]:
+    try:
+        return {"status": "ok",
+                "breakglass": USERS.review_breakglass(_cred(), p.id, p.verdict, p.note).to_dict()}
+    except _PermissionDenied as exc:
+        return {"status": "error", "errno": "EPERM", "detail": str(exc)}
+    except (KeyError, ValueError) as exc:
+        return {"status": "error", "errno": "EINVAL", "detail": str(exc)}
+
+
+@app.get("/aegis/sys/gate")
+def sys_gate() -> Dict[str, Any]:
+    """The reference monitor: mode, measured overhead, refusals, table coverage,
+    and the boot-time proof of the policy it enforces."""
+    return {**GATE.status(), "coverage": GATE_COVERAGE, "users": USERS.status()}
+
+
+@app.post("/aegis/sys/gate/mode")
+def sys_gate_mode(p: GateModeIn) -> Dict[str, Any]:
+    """Switch audit <-> enforce. Checked strictly, in every mode: in audit mode the
+    gate serves what it would refuse, and a gate that let anyone switch itself off
+    would audit its own removal. 'off' is not reachable from the API."""
+    cred = _cred()
+    if not cred.has("session:admin"):
+        return {"status": "error", "errno": "EPERM",
+                "detail": f"{cred.username} lacks session:admin"}
+    if p.mode not in ("audit", "enforce"):
+        return {"status": "error", "errno": "EINVAL", "detail": "mode must be audit or enforce"}
+    prev, GATE.mode = GATE.mode, p.mode
+    KJOURNAL.append("policy", "gate.mode", severity=4, uid=cred.username, frm=prev, to=p.mode)
+    return {"status": "ok", "mode": GATE.mode, "was": prev}
+
+
+@app.get("/aegis/sys/abi")
+def sys_abi(cls: str = "") -> Dict[str, Any]:
+    rows = [e.to_json() for e in ABI_TABLE.entries if not cls or e.klass == cls]
+    return {**ABI_TABLE.summary(), "coverage": GATE_COVERAGE, "syscalls": rows}
+
+
+@app.get("/aegis/sys/policy")
+def sys_policy() -> Dict[str, Any]:
+    return GATE.policy_proof or {"status": "pending",
+                                 "detail": "the policy prover runs shortly after boot"}
 
 
 @app.post("/aegis/cluster/chaos")
@@ -4139,6 +4417,16 @@ _index_read_routes()
 print(f"[aegis] agent plane: {len(_tools.bound())} tools bound"
       + (f", UNBOUND: {_tools.unbound()}" if _tools.unbound() else ""))
 BOOT.note(tools=len(_tools.bound()), routes=len(app.routes))
+# The syscall table must describe EVERY route the kernel serves. A route without an
+# entry is a door the gate cannot decide about; say so loudly at boot (verify_abi
+# fails the build on it).
+GATE_COVERAGE = ABI_TABLE.coverage(_live_routes(app))
+if not GATE_COVERAGE["complete"]:
+    print(f"[aegis] GATE COVERAGE INCOMPLETE — missing {GATE_COVERAGE['missing']} "
+          f"stale {GATE_COVERAGE['stale']}; run python -m backend.aegis.kernel.abi --sync")
+    KJOURNAL.append("policy", "abi.incomplete", severity=2,
+                    missing=[f"{m} {p}" for m, p in GATE_COVERAGE["missing"]],
+                    stale=[f"{m} {p}" for m, p in GATE_COVERAGE["stale"]])
 
 # Import-time construction is finished: THIS is when the kernel is up. (It used to
 # be declared up before the pharmacopoeia, RBAC and the agent plane were built, so

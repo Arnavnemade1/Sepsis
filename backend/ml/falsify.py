@@ -118,6 +118,17 @@ RESET_MODULES = [
     "backend.ml.operating_point",
     "backend.ml.models.minirocket",
     "backend.ml.fitid",
+    # The kernel's modules, in dependency order (a module is reloaded after what it
+    # imports, so it rebinds to the clean copies).
+    "backend.aegis.kernel.journal",
+    "backend.aegis.kernel.proc",
+    "backend.aegis.kernel.boot",
+    "backend.aegis.kernel.executor",
+    "backend.aegis.kernel.memfabric",
+    "backend.aegis.kernel.users",
+    "backend.aegis.kernel.abi",
+    "backend.aegis.kernel.gate",
+    "backend.aegis.kernel.policy",
 ]
 
 

@@ -1,0 +1,1088 @@
+{
+ "schema": 1,
+ "about": "AegisOS syscall ABI. Every /aegis route, its class and required capability. Enforced by kernel/gate.py; completeness checked by verify_abi.py. Regenerate with: python -m backend.aegis.kernel.abi --sync",
+ "syscalls": [
+  {
+   "nr": 1,
+   "name": "agent.activity",
+   "method": "GET",
+   "path": "/aegis/agent/activity",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 2,
+   "name": "agent.tools",
+   "method": "GET",
+   "path": "/aegis/agent/tools",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 3,
+   "name": "audit",
+   "method": "GET",
+   "path": "/aegis/audit",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 4,
+   "name": "causal",
+   "method": "GET",
+   "path": "/aegis/causal",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 5,
+   "name": "causal.incident[node_id]",
+   "method": "GET",
+   "path": "/aegis/causal/incident/{node_id}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 6,
+   "name": "causal.patterns",
+   "method": "GET",
+   "path": "/aegis/causal/patterns",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 7,
+   "name": "cluster.snapshot",
+   "method": "GET",
+   "path": "/aegis/cluster/snapshot",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 8,
+   "name": "cohort",
+   "method": "GET",
+   "path": "/aegis/cohort",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 9,
+   "name": "cohort.validation",
+   "method": "GET",
+   "path": "/aegis/cohort/validation",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 10,
+   "name": "cohort[bed_id].bundle",
+   "method": "GET",
+   "path": "/aegis/cohort/{bed_id}/bundle",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 11,
+   "name": "cohort[bed_id].chart",
+   "method": "GET",
+   "path": "/aegis/cohort/{bed_id}/chart",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 12,
+   "name": "consensus",
+   "method": "GET",
+   "path": "/aegis/consensus",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 13,
+   "name": "decision",
+   "method": "GET",
+   "path": "/aegis/decision",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 14,
+   "name": "devices",
+   "method": "GET",
+   "path": "/aegis/devices",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 15,
+   "name": "devices.audit",
+   "method": "GET",
+   "path": "/aegis/devices/audit",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 16,
+   "name": "devices.discover",
+   "method": "GET",
+   "path": "/aegis/devices/discover",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 17,
+   "name": "devices[device_id]",
+   "method": "GET",
+   "path": "/aegis/devices/{device_id}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 18,
+   "name": "doctor.brief",
+   "method": "GET",
+   "path": "/aegis/doctor/brief",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 19,
+   "name": "doctor.status",
+   "method": "GET",
+   "path": "/aegis/doctor/status",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 20,
+   "name": "dsl.default",
+   "method": "GET",
+   "path": "/aegis/dsl/default",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 21,
+   "name": "fedlearn",
+   "method": "GET",
+   "path": "/aegis/fedlearn",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 22,
+   "name": "hdkernel",
+   "method": "GET",
+   "path": "/aegis/hdkernel",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 23,
+   "name": "health",
+   "method": "GET",
+   "path": "/aegis/health",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 24,
+   "name": "health.prover",
+   "method": "GET",
+   "path": "/aegis/health/prover",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 25,
+   "name": "health.system",
+   "method": "GET",
+   "path": "/aegis/health/system",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 26,
+   "name": "hyperscan",
+   "method": "GET",
+   "path": "/aegis/hyperscan",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 27,
+   "name": "identity",
+   "method": "GET",
+   "path": "/aegis/identity",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 28,
+   "name": "kernel.devices",
+   "method": "GET",
+   "path": "/aegis/kernel/devices",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 29,
+   "name": "lab",
+   "method": "GET",
+   "path": "/aegis/lab",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 30,
+   "name": "llm",
+   "method": "GET",
+   "path": "/aegis/llm",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 31,
+   "name": "ml",
+   "method": "GET",
+   "path": "/aegis/ml",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 32,
+   "name": "ml.job[job_id]",
+   "method": "GET",
+   "path": "/aegis/ml/job/{job_id}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 33,
+   "name": "orchestrator",
+   "method": "GET",
+   "path": "/aegis/orchestrator",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 34,
+   "name": "orchestrator.attest",
+   "method": "GET",
+   "path": "/aegis/orchestrator/attest",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 35,
+   "name": "orchestrator.proof",
+   "method": "GET",
+   "path": "/aegis/orchestrator/proof",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 36,
+   "name": "orchestrator.proof[seq]",
+   "method": "GET",
+   "path": "/aegis/orchestrator/proof/{seq}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 37,
+   "name": "orchestrator.proof[seq].bundle",
+   "method": "GET",
+   "path": "/aegis/orchestrator/proof/{seq}/bundle",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 38,
+   "name": "patient.snapshot",
+   "method": "GET",
+   "path": "/aegis/patient/snapshot",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 39,
+   "name": "patient[bed].history",
+   "method": "GET",
+   "path": "/aegis/patient/{bed}/history",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 40,
+   "name": "patient[bed].synthesis",
+   "method": "GET",
+   "path": "/aegis/patient/{bed}/synthesis",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 41,
+   "name": "patient[bed].tracking",
+   "method": "GET",
+   "path": "/aegis/patient/{bed}/tracking",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 42,
+   "name": "patients",
+   "method": "GET",
+   "path": "/aegis/patients",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 43,
+   "name": "pharmacopoeia",
+   "method": "GET",
+   "path": "/aegis/pharmacopoeia",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 44,
+   "name": "pk.bed[bed_id]",
+   "method": "GET",
+   "path": "/aegis/pk/bed/{bed_id}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 45,
+   "name": "pk.drugs",
+   "method": "GET",
+   "path": "/aegis/pk/drugs",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 46,
+   "name": "pk.options",
+   "method": "GET",
+   "path": "/aegis/pk/options",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 47,
+   "name": "pk.session",
+   "method": "GET",
+   "path": "/aegis/pk/session",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 48,
+   "name": "pkg",
+   "method": "GET",
+   "path": "/aegis/pkg",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 49,
+   "name": "ppg.morphology",
+   "method": "GET",
+   "path": "/aegis/ppg/morphology",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 50,
+   "name": "proc",
+   "method": "GET",
+   "path": "/aegis/proc",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 51,
+   "name": "proc[path]",
+   "method": "GET",
+   "path": "/aegis/proc/{path:path}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 52,
+   "name": "proof.core.latest",
+   "method": "GET",
+   "path": "/aegis/proof/core/latest",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 53,
+   "name": "proof.core.latest.bundle",
+   "method": "GET",
+   "path": "/aegis/proof/core/latest/bundle",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 54,
+   "name": "rbac.audit",
+   "method": "GET",
+   "path": "/aegis/rbac/audit",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 55,
+   "name": "rbac.policy",
+   "method": "GET",
+   "path": "/aegis/rbac/policy",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 56,
+   "name": "records.sources",
+   "method": "GET",
+   "path": "/aegis/records/sources",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 57,
+   "name": "scenarios",
+   "method": "GET",
+   "path": "/aegis/scenarios",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 58,
+   "name": "scenarios.vocabulary",
+   "method": "GET",
+   "path": "/aegis/scenarios/vocabulary",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 59,
+   "name": "scenarios[bed]",
+   "method": "GET",
+   "path": "/aegis/scenarios/{bed}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 60,
+   "name": "services",
+   "method": "GET",
+   "path": "/aegis/services",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 61,
+   "name": "snapshot",
+   "method": "GET",
+   "path": "/aegis/snapshot",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 62,
+   "name": "speech",
+   "method": "GET",
+   "path": "/aegis/speech",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 63,
+   "name": "sys.boot",
+   "method": "GET",
+   "path": "/aegis/sys/boot",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 64,
+   "name": "sys.journal",
+   "method": "GET",
+   "path": "/aegis/sys/journal",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 65,
+   "name": "sys.proc[pid]",
+   "method": "GET",
+   "path": "/aegis/sys/proc/{pid}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 66,
+   "name": "sys.ps",
+   "method": "GET",
+   "path": "/aegis/sys/ps",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 67,
+   "name": "syscall.audit",
+   "method": "GET",
+   "path": "/aegis/syscall/audit",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 68,
+   "name": "system",
+   "method": "GET",
+   "path": "/aegis/system",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 69,
+   "name": "timeline",
+   "method": "GET",
+   "path": "/aegis/timeline",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 70,
+   "name": "agent.invoke",
+   "method": "POST",
+   "path": "/aegis/agent/invoke",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 71,
+   "name": "causal.replay",
+   "method": "POST",
+   "path": "/aegis/causal/replay",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 72,
+   "name": "cluster.chaos",
+   "method": "POST",
+   "path": "/aegis/cluster/chaos",
+   "cap": "drill:crisis",
+   "class": "write"
+  },
+  {
+   "nr": 73,
+   "name": "devices[device_id].action",
+   "method": "POST",
+   "path": "/aegis/devices/{device_id}/action",
+   "cap": "device:manage",
+   "class": "write"
+  },
+  {
+   "nr": 74,
+   "name": "devices[device_id].assign",
+   "method": "POST",
+   "path": "/aegis/devices/{device_id}/assign",
+   "cap": "device:manage",
+   "class": "write"
+  },
+  {
+   "nr": 75,
+   "name": "devices[device_id].pair",
+   "method": "POST",
+   "path": "/aegis/devices/{device_id}/pair",
+   "cap": "device:manage",
+   "class": "write"
+  },
+  {
+   "nr": 76,
+   "name": "devices[device_id].unassign",
+   "method": "POST",
+   "path": "/aegis/devices/{device_id}/unassign",
+   "cap": "device:manage",
+   "class": "write"
+  },
+  {
+   "nr": 77,
+   "name": "doctor.consult",
+   "method": "POST",
+   "path": "/aegis/doctor/consult",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 78,
+   "name": "doctor.consult.stream",
+   "method": "POST",
+   "path": "/aegis/doctor/consult/stream",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 79,
+   "name": "dsl.verify",
+   "method": "POST",
+   "path": "/aegis/dsl/verify",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 80,
+   "name": "hdkernel.run",
+   "method": "POST",
+   "path": "/aegis/hdkernel/run",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 81,
+   "name": "hyperscan.stream",
+   "method": "POST",
+   "path": "/aegis/hyperscan/stream",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 82,
+   "name": "identity.self_check",
+   "method": "POST",
+   "path": "/aegis/identity/self_check",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 83,
+   "name": "identity.swap",
+   "method": "POST",
+   "path": "/aegis/identity/swap",
+   "cap": "drill:crisis",
+   "class": "write"
+  },
+  {
+   "nr": 84,
+   "name": "ingest",
+   "method": "POST",
+   "path": "/aegis/ingest",
+   "cap": "telemetry:ingest",
+   "class": "write"
+  },
+  {
+   "nr": 85,
+   "name": "kernel.fault",
+   "method": "POST",
+   "path": "/aegis/kernel/fault",
+   "cap": "drill:device",
+   "class": "write"
+  },
+  {
+   "nr": 86,
+   "name": "kernel.recover",
+   "method": "POST",
+   "path": "/aegis/kernel/recover",
+   "cap": "drill:device",
+   "class": "write"
+  },
+  {
+   "nr": 87,
+   "name": "kernel.verify",
+   "method": "POST",
+   "path": "/aegis/kernel/verify",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 88,
+   "name": "llm.ask",
+   "method": "POST",
+   "path": "/aegis/llm/ask",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 89,
+   "name": "llm.brief",
+   "method": "POST",
+   "path": "/aegis/llm/brief",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 90,
+   "name": "ml.train",
+   "method": "POST",
+   "path": "/aegis/ml/train",
+   "cap": "ml:train",
+   "class": "write"
+  },
+  {
+   "nr": 91,
+   "name": "ml.use",
+   "method": "POST",
+   "path": "/aegis/ml/use",
+   "cap": "ml:train",
+   "class": "write"
+  },
+  {
+   "nr": 92,
+   "name": "orchestrator.govern",
+   "method": "POST",
+   "path": "/aegis/orchestrator/govern",
+   "cap": "order:escalate",
+   "class": "egress"
+  },
+  {
+   "nr": 93,
+   "name": "orchestrator.scenario",
+   "method": "POST",
+   "path": "/aegis/orchestrator/scenario",
+   "cap": "drill:crisis",
+   "class": "write"
+  },
+  {
+   "nr": 94,
+   "name": "patient[bed].history.set",
+   "method": "POST",
+   "path": "/aegis/patient/{bed}/history",
+   "cap": "record:import",
+   "class": "write"
+  },
+  {
+   "nr": 95,
+   "name": "patient[bed].history.link",
+   "method": "POST",
+   "path": "/aegis/patient/{bed}/history/link",
+   "cap": "record:import",
+   "class": "write"
+  },
+  {
+   "nr": 96,
+   "name": "patient[bed].synthesis.set",
+   "method": "POST",
+   "path": "/aegis/patient/{bed}/synthesis",
+   "cap": "annotate",
+   "class": "write"
+  },
+  {
+   "nr": 97,
+   "name": "patient[bed].track",
+   "method": "POST",
+   "path": "/aegis/patient/{bed}/track",
+   "cap": "annotate",
+   "class": "write"
+  },
+  {
+   "nr": 98,
+   "name": "pharmacopoeia.screen",
+   "method": "POST",
+   "path": "/aegis/pharmacopoeia/screen",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 99,
+   "name": "pk.project",
+   "method": "POST",
+   "path": "/aegis/pk/project",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 100,
+   "name": "pkg.install",
+   "method": "POST",
+   "path": "/aegis/pkg/install",
+   "cap": "pkg:install",
+   "class": "write"
+  },
+  {
+   "nr": 101,
+   "name": "pkg.uninstall",
+   "method": "POST",
+   "path": "/aegis/pkg/uninstall",
+   "cap": "pkg:install",
+   "class": "write"
+  },
+  {
+   "nr": 102,
+   "name": "ppg.vasodilation",
+   "method": "POST",
+   "path": "/aegis/ppg/vasodilation",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 103,
+   "name": "proof.core",
+   "method": "POST",
+   "path": "/aegis/proof/core",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 104,
+   "name": "proof.verify",
+   "method": "POST",
+   "path": "/aegis/proof/verify",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 105,
+   "name": "rbac.authorize",
+   "method": "POST",
+   "path": "/aegis/rbac/authorize",
+   "cap": "view:public",
+   "class": "compute"
+  },
+  {
+   "nr": 106,
+   "name": "rbac.login",
+   "method": "POST",
+   "path": "/aegis/rbac/login",
+   "cap": "view:public",
+   "class": "auth"
+  },
+  {
+   "nr": 107,
+   "name": "scenarios.create",
+   "method": "POST",
+   "path": "/aegis/scenarios/create",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 108,
+   "name": "scenarios.reset",
+   "method": "POST",
+   "path": "/aegis/scenarios/reset",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 109,
+   "name": "scenarios.run_all",
+   "method": "POST",
+   "path": "/aegis/scenarios/run_all",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 110,
+   "name": "scenarios.suite",
+   "method": "POST",
+   "path": "/aegis/scenarios/suite",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 111,
+   "name": "scenarios[bed].run",
+   "method": "POST",
+   "path": "/aegis/scenarios/{bed}/run",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 112,
+   "name": "services[name][action]",
+   "method": "POST",
+   "path": "/aegis/services/{name}/{action}",
+   "cap": "svc:control",
+   "class": "write"
+  },
+  {
+   "nr": 113,
+   "name": "simulate[stage]",
+   "method": "POST",
+   "path": "/aegis/simulate/{stage}",
+   "cap": "sim:control",
+   "class": "write"
+  },
+  {
+   "nr": 114,
+   "name": "speech.set",
+   "method": "POST",
+   "path": "/aegis/speech",
+   "cap": "compute:ask",
+   "class": "compute"
+  },
+  {
+   "nr": 115,
+   "name": "sys.kill",
+   "method": "POST",
+   "path": "/aegis/sys/kill",
+   "cap": "view:public",
+   "refine": "signal",
+   "class": "write"
+  },
+  {
+   "nr": 116,
+   "name": "syscall",
+   "method": "POST",
+   "path": "/aegis/syscall",
+   "cap": "order:escalate",
+   "refine": "syscall",
+   "class": "egress"
+  },
+  {
+   "nr": 117,
+   "name": "whatif",
+   "method": "POST",
+   "path": "/aegis/whatif",
+   "cap": "compute:analyze",
+   "class": "compute"
+  },
+  {
+   "nr": 118,
+   "name": "cluster.stream",
+   "method": "WS",
+   "path": "/aegis/cluster/stream",
+   "cap": "view:public",
+   "class": "stream"
+  },
+  {
+   "nr": 119,
+   "name": "doctor.live.stream",
+   "method": "WS",
+   "path": "/aegis/doctor/live",
+   "cap": "compute:ask",
+   "class": "stream"
+  },
+  {
+   "nr": 120,
+   "name": "stream",
+   "method": "WS",
+   "path": "/aegis/stream",
+   "cap": "view:public",
+   "class": "stream"
+  },
+  {
+   "nr": 121,
+   "name": "sys.abi",
+   "method": "GET",
+   "path": "/aegis/sys/abi",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 122,
+   "name": "sys.accounts",
+   "method": "GET",
+   "path": "/aegis/sys/accounts",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 123,
+   "name": "sys.breakglass",
+   "method": "GET",
+   "path": "/aegis/sys/breakglass",
+   "cap": "view:audit",
+   "class": "read"
+  },
+  {
+   "nr": 124,
+   "name": "sys.gate",
+   "method": "GET",
+   "path": "/aegis/sys/gate",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 125,
+   "name": "sys.policy",
+   "method": "GET",
+   "path": "/aegis/sys/policy",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 126,
+   "name": "sys.who",
+   "method": "GET",
+   "path": "/aegis/sys/who",
+   "cap": "view:sessions",
+   "class": "read"
+  },
+  {
+   "nr": 127,
+   "name": "sys.whoami",
+   "method": "GET",
+   "path": "/aegis/sys/whoami",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 128,
+   "name": "sys.breakglass.set",
+   "method": "POST",
+   "path": "/aegis/sys/breakglass",
+   "cap": "breakglass:invoke",
+   "class": "write"
+  },
+  {
+   "nr": 129,
+   "name": "sys.breakglass.review",
+   "method": "POST",
+   "path": "/aegis/sys/breakglass/review",
+   "cap": "breakglass:review",
+   "class": "write"
+  },
+  {
+   "nr": 130,
+   "name": "sys.gate.mode",
+   "method": "POST",
+   "path": "/aegis/sys/gate/mode",
+   "cap": "session:admin",
+   "class": "write"
+  },
+  {
+   "nr": 131,
+   "name": "sys.lock",
+   "method": "POST",
+   "path": "/aegis/sys/lock",
+   "cap": "view:public",
+   "class": "auth"
+  },
+  {
+   "nr": 132,
+   "name": "sys.login",
+   "method": "POST",
+   "path": "/aegis/sys/login",
+   "cap": "view:public",
+   "class": "auth"
+  },
+  {
+   "nr": 133,
+   "name": "sys.logout",
+   "method": "POST",
+   "path": "/aegis/sys/logout",
+   "cap": "view:public",
+   "class": "auth"
+  },
+  {
+   "nr": 134,
+   "name": "sys.revoke",
+   "method": "POST",
+   "path": "/aegis/sys/revoke",
+   "cap": "session:admin",
+   "class": "write"
+  },
+  {
+   "nr": 135,
+   "name": "sys.unlock",
+   "method": "POST",
+   "path": "/aegis/sys/unlock",
+   "cap": "view:public",
+   "class": "auth"
+  }
+ ]
+}

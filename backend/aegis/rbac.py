@@ -27,6 +27,17 @@ Three guarantees, each real and asserted by measurement (see verify_rbac.py):
 Honest scope: this is demonstrable RBAC with HMAC tokens — NOT a production identity
 provider (no real SSO/IAM, no key management). The contribution is the model + the
 formal soundness proof + the tamper-evident audit, not enterprise auth.
+
+KERNEL ROLE (AegisOS 1.0). This module is now the POLICY TABLE the kernel gate
+enforces on every route (kernel/gate.py, kernel/abi_table.json), not a demonstration
+beside an unguarded API. Three changes came with that:
+
+  * Ring 0 exists: ``guest`` may view the de-identified demo ward, run analyses and
+    stream their own camera, and may change nothing.
+  * The capability vocabulary covers every route family (simulation, devices,
+    records, models, services, packages, signals, audit, sessions, break-glass).
+  * The HMAC secret is ``AEGIS_SESSION_SECRET`` or random per boot. It used to be a
+    constant string in this file, so anyone reading the repo could mint a token.
 """
 from __future__ import annotations
 
@@ -47,33 +58,87 @@ from backend.aegis.z3lock import z3_guarded as _z3_guarded
 # --------------------------------------------------------------------------- #
 # capability -> minimum privilege ring required to ever hold it
 CAP_MIN_RING: Dict[str, int] = {
+    # ring 0 — what a view-only guest may do (de-identified demo data, analyses
+    # that change nothing, and streaming their OWN camera)
+    "view:public": 0, "compute:ask": 0, "compute:analyze": 0, "telemetry:ingest": 0,
+    # ring 1 — bedside
     "view:vitals": 1, "view:twin": 1, "view:narrative": 1, "ack:alarm": 1, "annotate": 1,
+    "sim:control": 1, "device:manage": 1, "breakglass:invoke": 1,
+    # ring 2 — pharmacy
     "view:meds": 2, "view:interactions": 2, "pharm:countersign": 2, "pharm:veto": 2,
+    # ring 3 — attending
     "order:treat": 3, "order:escalate": 3, "order:clear": 3,
     "order:approve_protocol": 3, "drill:crisis": 3, "override:alarm": 3,
-    "view:cohort": 4,
+    "drill:device": 3, "record:import": 3, "ml:train": 3,
+    "view:audit": 3, "view:sessions": 3,
+    # ring 4 — chief / system administration
+    "view:cohort": 4, "svc:control": 4, "pkg:install": 4, "proc:signal": 4,
+    "session:admin": 4, "breakglass:review": 4, "policy:write": 4,
 }
 CAPABILITIES = frozenset(CAP_MIN_RING)
 
 RING: Dict[str, int] = {
+    "guest": 0,
     "nurse": 1, "remote_specialist": 1, "pharmacist": 2, "attending": 3, "chief": 4,
 }
 
 # Explicit grants (need-to-know). Rings are necessary, not sufficient — a role only
 # gets what policy lists. (Chief outranks attending but is NOT granted order:treat:
 # treatment is the attending's clinical responsibility — RBAC separation of duties.)
+#: Everyone signed in or not gets ring 0.
+PUBLIC_CAPS = frozenset({"view:public", "compute:ask", "compute:analyze", "telemetry:ingest"})
+
 GRANTS: Dict[str, frozenset] = {
-    "nurse": frozenset({"view:vitals", "view:twin", "view:narrative", "ack:alarm"}),
-    "remote_specialist": frozenset({"view:vitals", "view:twin", "view:narrative", "annotate"}),
-    "pharmacist": frozenset({"view:meds", "view:interactions", "view:narrative",
-                             "pharm:countersign", "pharm:veto"}),
-    "attending": frozenset({"view:vitals", "view:twin", "view:narrative", "view:meds",
-                            "view:interactions", "ack:alarm", "order:treat",
-                            "order:escalate", "order:clear", "order:approve_protocol",
-                            "drill:crisis", "override:alarm"}),
-    "chief": frozenset({"view:cohort", "view:vitals", "view:twin", "view:narrative",
-                        "view:meds", "ack:alarm", "order:escalate", "override:alarm"}),
+    "guest": PUBLIC_CAPS,
+    "nurse": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
+                                      "ack:alarm", "annotate", "sim:control",
+                                      "device:manage", "breakglass:invoke"}),
+    "remote_specialist": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin",
+                                                  "view:narrative", "annotate",
+                                                  "breakglass:invoke"}),
+    "pharmacist": PUBLIC_CAPS | frozenset({"view:meds", "view:interactions",
+                                           "view:narrative", "pharm:countersign",
+                                           "pharm:veto", "annotate", "breakglass:invoke"}),
+    "attending": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
+                                          "view:meds", "view:interactions", "ack:alarm",
+                                          "order:treat", "order:escalate", "order:clear",
+                                          "order:approve_protocol", "drill:crisis",
+                                          "override:alarm", "annotate", "sim:control",
+                                          "device:manage", "drill:device", "record:import",
+                                          "ml:train", "view:audit", "view:sessions"}),
+    # The chief administers the system and oversees the whole ICU but does NOT
+    # prescribe (order:treat) or rewrite a patient's order (order:clear): separation
+    # of duties. The one who can change the safety policy cannot also be the one
+    # who writes the order that policy is supposed to constrain.
+    "chief": PUBLIC_CAPS | frozenset({"view:cohort", "view:vitals", "view:twin",
+                                      "view:narrative", "view:meds", "ack:alarm",
+                                      "order:escalate", "override:alarm", "sim:control",
+                                      "record:import", "ml:train", "view:audit",
+                                      "view:sessions", "svc:control", "pkg:install",
+                                      "proc:signal", "session:admin", "breakglass:review",
+                                      "policy:write"}),
 }
+
+#: Break-glass: what an emergency elevation ADDS for its duration — read access to
+#: what is normally need-to-know, plus escalation and acknowledgement.
+BREAKGLASS_CAPS = frozenset({"view:vitals", "view:twin", "view:narrative", "view:meds",
+                             "view:interactions", "view:cohort", "view:audit",
+                             "ack:alarm", "order:escalate"})
+
+#: What no emergency elevation may ever confer. Proven disjoint from BREAKGLASS_CAPS
+#: at boot (kernel/policy.py) — an emergency lets you see and escalate, it does not
+#: let you prescribe, rewrite policy, install software or administer sessions.
+FORBIDDEN_ELEVATION = frozenset({"order:treat", "order:clear", "order:approve_protocol",
+                                 "drill:crisis", "drill:device", "policy:write",
+                                 "pkg:install", "svc:control", "proc:signal",
+                                 "session:admin", "breakglass:review", "ml:train",
+                                 "override:alarm", "record:import"})
+
+#: Capabilities the AI agent never holds, whoever it acts for. Everything else it
+#: may use only if the clinician it acts on behalf of holds it too (euid ∩ ruid).
+#: Break-glass needs a human's stated reason; reviewing it and administering
+#: sessions are accountability functions a model cannot carry.
+AGENT_DENY = frozenset({"breakglass:invoke", "breakglass:review", "session:admin"})
 
 # write-syscall name -> capability it requires (gates the existing trap gate)
 SYSCALL_CAP: Dict[str, str] = {
@@ -93,6 +158,7 @@ class Session:
     exp: float
     nonce: str
     token: str
+    sid: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {"user": self.user, "role": self.role, "ring": RING.get(self.role, 0),
@@ -166,19 +232,37 @@ class AuditLedger:
 # --------------------------------------------------------------------------- #
 # The RBAC authority.
 # --------------------------------------------------------------------------- #
+def session_secret() -> bytes:
+    """``AEGIS_SESSION_SECRET`` when set (so sessions survive a restart), otherwise
+    random per process — a restart then signs everyone out, which is the honest
+    failure. Never a constant: a constant in a public repository is a master key."""
+    import os as _os
+    env = _os.getenv("AEGIS_SESSION_SECRET")
+    return env.encode() if env else _os.urandom(32)
+
+
 class RBAC:
     def __init__(self, secret: Optional[bytes] = None, token_ttl_s: float = 3600.0):
-        self.secret = secret or b"aegis-rbac-demo-secret"
+        self.secret = secret or session_secret()
         self.ttl = token_ttl_s
         self.audit = AuditLedger()
 
     # -- sessions -------------------------------------------------------- #
-    def login(self, user: str, role: str) -> Session:
+    def login(self, user: str, role: str, sid: str = "", ttl_s: Optional[float] = None) -> Session:
+        """MINT a signed token for an already-authenticated principal.
+
+        This does not authenticate anyone — it trusts ``role``. The HTTP surface
+        must never call it with a caller-chosen role; kernel/users.py authenticates
+        an account and passes the account's own role. (/aegis/rbac/login used to
+        call this directly with whatever role the request named.)
+        """
         if role not in RING:
             raise ValueError(f"unknown role {role!r}")
         now = time.time()
-        payload = {"user": user, "role": role, "iat": now, "exp": now + self.ttl,
-                   "nonce": _b64(hashlib.sha256(f"{user}{now}".encode()).digest()[:9])}
+        payload = {"user": user, "role": role, "iat": now,
+                   "exp": now + (self.ttl if ttl_s is None else ttl_s),
+                   "sid": sid,
+                   "nonce": _b64(hashlib.sha256(f"{user}{now}{sid}".encode()).digest()[:9])}
         raw = json.dumps(payload, sort_keys=True).encode()
         sig = hmac.new(self.secret, raw, hashlib.sha256).hexdigest()
         token = f"{_b64(raw)}.{sig}"
@@ -194,7 +278,9 @@ class RBAC:
             p = json.loads(raw)
             if time.time() > p["exp"]:
                 return None                                   # expired
-            return Session(p["user"], p["role"], p["iat"], p["exp"], p["nonce"], token)
+            s = Session(p["user"], p["role"], p["iat"], p["exp"], p["nonce"], token)
+            s.sid = p.get("sid", "")
+            return s
         except Exception:
             return None
 

@@ -468,3 +468,137 @@ def agent_write_route_indexed_as_read(mod):
         raise RuntimeError("no write-only route to smuggle in")
     rw[victim] = ww[victim]
     mod.srv = srv
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+# THE KERNEL (AegisOS 1.0). Each mutation below is a failure this OS either
+# actually shipped (process-global writer ownership refused the boot warm-up's own
+# writes for a whole phase; the unlocked journal verify reported concurrent
+# appends as tampering) or is the precise way its central claims would be false:
+# a gate that lets everything through, a sign-out that does not end the session,
+# an emergency elevation that lets a nurse prescribe, a prover that is always
+# green, a process table that accepts a kill it never delivers.
+# ═══════════════════════════════════════════════════════════════════════════ #
+K_GATE = "backend.aegis.kernel.verify_gate"
+K_USERS = "backend.aegis.kernel.verify_users"
+K_POLICY = "backend.aegis.kernel.verify_policy"
+K_JOURNAL = "backend.aegis.kernel.verify_journal"
+K_PROC = "backend.aegis.kernel.verify_proc"
+K_EXEC = "backend.aegis.kernel.verify_executor"
+K_BOOT = "backend.aegis.kernel.verify_boot"
+
+
+@mutation("access-control", K_GATE, ["a guest write is refused with 403 EPERM",
+                                     "the refused handler never ran"],
+          note="the reference monitor decides 'allow' for every call")
+def gate_allows_everything(mod):
+    import backend.aegis.kernel.gate as G
+
+    def decide(self, cred, entry):
+        return G.Decision(True, True, entry, cred)
+    G.Gate.decide = decide
+
+
+@mutation("access-control", K_USERS, ["after sign-out the same token no longer works"],
+          note="sign-out drops the session but forgets the revocation: the still-valid "
+               "signature re-materialises it on the next call, as if after a restart")
+def logout_forgets_revocation(mod):
+    import backend.aegis.kernel.users as U
+    orig = U.UserDB._end
+
+    def _end(self, sid, reason):
+        out = orig(self, sid, reason)
+        self.revoked.discard(sid)
+        return out
+    U.UserDB._end = _end
+
+
+@mutation("access-control", K_USERS, ["still cannot prescribe, change policy or install software"],
+          note="break-glass adds order:treat — an emergency lets a nurse prescribe")
+def breakglass_confers_prescribing(mod):
+    import backend.aegis.kernel.users as U
+    U.elevated_caps = lambda role: frozenset(U.GRANTS.get(role, frozenset())
+                                             | U.BREAKGLASS_CAPS | {"order:treat"})
+
+
+@mutation("access-control", K_POLICY, ["a guest granted pkg:install is caught"],
+          note="the prover reports every property proven whatever the tables say")
+def policy_proof_always_green(mod):
+    import backend.aegis.kernel.policy as P
+    orig = P.prove_kernel_policy
+
+    def fake(*a, **k):
+        r = orig(*a, **k)
+        for prop in r["properties"]:
+            prop["proven"] = True
+            prop.pop("counterexample", None)
+        r["sound"] = True
+        return r
+    P.prove_kernel_policy = fake
+
+
+@mutation("tamper-evidence", K_JOURNAL, ["an altered entry breaks the chain"],
+          note="verify() reports the window intact without recomputing a hash")
+def journal_verify_blind(mod):
+    import backend.aegis.kernel.journal as J
+
+    def verify(self):
+        ents, head = self._snapshot()
+        return {"ok": True, "window": len(ents),
+                "from_seq": ents[0].seq if ents else None,
+                "to_seq": ents[-1].seq if ents else None}
+    J.Journal.verify = verify
+
+
+@mutation("lifecycle", K_PROC, ["a patient's monitor refuses SIGSTOP"],
+          note="every process claims to honour every signal — a kill accepted and "
+               "never delivered")
+def signals_never_refused(mod):
+    import backend.aegis.kernel.proc as P
+    P.Process.supported_signals = lambda self: P.SIGNALS
+
+
+@mutation("concurrency", K_EXEC, ["a private arena is still writable from another thread"],
+          note="the shipped Phase 0 design: one writer thread for the whole process, so "
+               "the boot warm-up's writes into its OWN private cluster were refused")
+def ownership_process_global(mod):
+    import threading
+    import backend.aegis.kernel.executor as E
+    import backend.aegis.kernel.memfabric as M
+    bound = {"ident": None}
+    orig_own = E.KernelExecutor.own
+    orig_push = M.LocklessRing.push
+
+    def own(self, arena):
+        bound["ident"] = self._ident
+        return orig_own(self, arena)
+
+    def push(self, t_us, row):
+        if bound["ident"] is not None and threading.get_ident() != bound["ident"]:
+            E.refuse_write("ring write (%s)" % self.name)
+        saved, self._arena.writer_ident = self._arena.writer_ident, None
+        try:
+            return orig_push(self, t_us, row)
+        finally:
+            self._arena.writer_ident = saved
+    E.KernelExecutor.own = own
+    M.LocklessRing.push = push
+
+
+@mutation("lifecycle", K_BOOT, ["a failing phase propagates"],
+          note="the boot recorder notes a failure and swallows it — a broken deploy "
+               "becomes a silently degraded one")
+def boot_swallows_failures(mod):
+    import contextlib
+    import time as _time
+    import backend.aegis.kernel.boot as B
+
+    @contextlib.contextmanager
+    def phase(self, name, summary=""):
+        p = B.Phase(name=name, summary=summary, started_at=_time.time())
+        self.phases.append(p)
+        try:
+            yield p
+        except BaseException as exc:                 # recorded, and swallowed
+            p.ok, p.error = False, str(exc)
+    B.BootSequencer.phase = phase
