@@ -231,6 +231,9 @@ verify-os:
 	$(PY) -m backend.aegis.verify_proofexport
 	$(PY) -m backend.aegis.verify_clinical_dsl
 	$(PY) -m backend.aegis.verify_predictive_sched
+	$(PY) -m backend.aegis.verify_orchestrator
+	$(PY) -m backend.aegis.verify_consensus
+	$(PY) -m backend.aegis.verify_z3_safety
 
 # Same suites, minus the multi-minute HDSched surrogate search — what CI runs.
 verify-os-fast:

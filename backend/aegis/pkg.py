@@ -200,6 +200,9 @@ class PackageRegistry:
 
     def _record(self, res: InstallResult) -> None:
         self.audit = (self.audit + [{**res.to_dict(), "ts": round(time.time(), 3)}])[-128:]
+        from backend.aegis.kernel.journal import KJOURNAL, NOTICE, WARN
+        KJOURNAL.append("pkg", res.stage, severity=NOTICE if res.ok else WARN,
+                        package=res.name, ok=res.ok, reason=res.reason)
 
     # ------------------------------------------------------------------ #
     def list(self) -> Dict[str, Any]:

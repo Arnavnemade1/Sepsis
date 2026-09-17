@@ -21,18 +21,21 @@ import time
 import traceback
 from typing import Callable, List, Tuple
 
-from backend.aegis.kernel import (verify_bundle, verify_causal_graph, verify_devbio,
-                                  verify_ebpf, verify_ebpfdrv, verify_executor,
-                                  verify_fusion, verify_hdkernel, verify_hdsched,
-                                  verify_memfabric, verify_neurosym,
-                                  verify_scheduler, verify_scheduler_invariants,
-                                  verify_supervisor)
+from backend.aegis.kernel import (verify_boot, verify_bundle, verify_causal_graph,
+                                  verify_devbio, verify_ebpf, verify_ebpfdrv,
+                                  verify_executor, verify_fusion, verify_hdkernel,
+                                  verify_hdsched, verify_journal, verify_memfabric,
+                                  verify_neurosym, verify_proc, verify_scheduler,
+                                  verify_scheduler_invariants, verify_supervisor)
 
 # (label, callable, returns_exit_code)
 SUITES: List[Tuple[str, Callable[[], object], bool]] = [
     ("L1  /dev/bio device-driver bus",        verify_devbio.main, False),
     ("L2  zero-copy memory fabric",           verify_memfabric.main, False),
     ("L2w single-writer kernel executor",     verify_executor.main, True),
+    ("L2j kernel journal (one record)",       verify_journal.main, True),
+    ("L3p process table (one pid space)",     verify_proc.main, True),
+    ("L0  boot sequencer (the real log)",     verify_boot.main, True),
     ("L3  multi-tenant cognitive scheduler",  verify_scheduler.main, False),
     ("L3  scheduler invariants (Z3)",         verify_scheduler_invariants.run_invariant_proofs, True),
     ("L3b HDSched CPU-scheduler benchmark",   verify_hdsched.main, False),

@@ -25,6 +25,7 @@ the fusion engine anyway).
 """
 from __future__ import annotations
 
+import contextlib
 import glob
 import os
 from dataclasses import dataclass, field
@@ -328,6 +329,12 @@ from backend.aegis.kernel.ebpfdrv import EbpfDevice, scatter_program
 from backend.aegis.kernel.supervisor import DriverSupervisor
 from backend.aegis.learner import CohortLearner, PatientBaselineLearner, personalized_risk
 
+
+@contextlib.contextmanager
+def _nullslice():
+    """No-op stand-in when no kernel process table is attached (standalone runs)."""
+    yield
+
 # The verified optical driver uses the SAME channel specs as the trusted optical
 # driver, so the ring fields + inline-Kalman behaviour are identical — only the
 # data plane (verified bytecode vs. trusted Python) differs.
@@ -415,6 +422,11 @@ class CohortCluster:
         self.sched = CognitiveScheduler(lane_budget=lane_budget)
         self.fusion = FusionEngine()
         self.learner = CohortLearner()                # per-patient behavioural baselines
+        # Optional per-bed accounting hook, set by the server to the kernel
+        # process table's slice() so each bed's monitoring pipeline reports the
+        # CPU time it actually consumed. Left None here so the cluster keeps
+        # running standalone (verify suites, the load harness) with no kernel.
+        self.proc_slice = None                        # Callable[[str], ContextManager]
         self.personalized: Dict[str, Dict[str, Any]] = {}
         self.profiles: Dict[str, BedProfile] = {}
         self.node_ids: List[str] = []
@@ -569,32 +581,33 @@ class CohortCluster:
             p.advance(self.HOURS_PER_TICK)
         self.pump.step()
         for nid in self.node_ids:
-            vit = self._sample_vitals(nid)
-            edge = {k: vit[k] for k in self.EDGE_KEYS if k in vit}
-            ent = {k: vit[k] for k in self.ENTERPRISE_KEYS if k in vit}
-            prof = self.fusion.update(nid, self.names[nid], edge, ent)
-            self.profiles[nid] = prof
-            # per-patient behavioural learning: deviation from the patient's OWN baseline
-            lz = self.learner.get(nid)
-            scored = {ch: vit[ch] for ch in CHANNELS if ch in vit}
-            lz.observe(scored)
-            snap = lz.snapshot(scored)
-            risk = personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"])
-            self.personalized[nid] = {"risk": risk, **snap}
-            # PREDICTIVE foresight: the Critical-Slowing-Down resilience radar +
-            # personal deviation, so the kernel pours compute into a destabilising
-            # patient BEFORE risk crosses the alarm (anticipatory scheduling).
-            pp = self._by[nid]
-            ef = getattr(self, "ews_full", {}).get(nid)
-            # foresight = the INDEPENDENT resilience-loss signal only (deviation is
-            # already inside `risk`, so we don't double-count it here).
-            foresight = float(ef["ews"][min(pp.icu_hour, pp.los_total - 1)]) if ef is not None else 0.0
-            # the system acts on the PERSONALIZED risk; foresight reprioritises compute
-            self.sched.observe(nid, risk, vit, foresight)
-            # Cross-modal resonance — assessed on the same enriched state as the HDC
-            # query (so it matches the gate's calibration), with an optional injected
-            # camera artifact so the gate can be seen rejecting an uncorroborated spike.
-            self._resonance_query(nid)
+            with (self.proc_slice(nid) if self.proc_slice else _nullslice()):
+                vit = self._sample_vitals(nid)
+                edge = {k: vit[k] for k in self.EDGE_KEYS if k in vit}
+                ent = {k: vit[k] for k in self.ENTERPRISE_KEYS if k in vit}
+                prof = self.fusion.update(nid, self.names[nid], edge, ent)
+                self.profiles[nid] = prof
+                # per-patient behavioural learning: deviation from the patient's OWN baseline
+                lz = self.learner.get(nid)
+                scored = {ch: vit[ch] for ch in CHANNELS if ch in vit}
+                lz.observe(scored)
+                snap = lz.snapshot(scored)
+                risk = personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"])
+                self.personalized[nid] = {"risk": risk, **snap}
+                # PREDICTIVE foresight: the Critical-Slowing-Down resilience radar +
+                # personal deviation, so the kernel pours compute into a destabilising
+                # patient BEFORE risk crosses the alarm (anticipatory scheduling).
+                pp = self._by[nid]
+                ef = getattr(self, "ews_full", {}).get(nid)
+                # foresight = the INDEPENDENT resilience-loss signal only (deviation is
+                # already inside `risk`, so we don't double-count it here).
+                foresight = float(ef["ews"][min(pp.icu_hour, pp.los_total - 1)]) if ef is not None else 0.0
+                # the system acts on the PERSONALIZED risk; foresight reprioritises compute
+                self.sched.observe(nid, risk, vit, foresight)
+                # Cross-modal resonance — assessed on the same enriched state as the HDC
+                # query (so it matches the gate's calibration), with an optional injected
+                # camera artifact so the gate can be seen rejecting an uncorroborated spike.
+                self._resonance_query(nid)
         # HDC associative retrieval for the WHOLE ward in one matrix multiply. Done
         # after the per-bed loop rather than inside it because every bed scores against
         # the same case matrix on this tick: one GEMM reads it once, where B matvecs

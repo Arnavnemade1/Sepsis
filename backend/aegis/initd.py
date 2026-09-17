@@ -109,7 +109,12 @@ class ServiceManager:
         try:
             svc.app.on_start(AppContext(svc.app.manifest, self.cage, {}, self.procfs))
         except Exception as exc:                      # a bad on_start can't crash boot
+            # A service whose start raised is NOT running. It used to be marked
+            # RUNNING anyway, so `service` and /proc reported a healthy service
+            # that had never initialised.
+            svc.state = QUARANTINED
             self._emit("START_FAIL", name, f"{type(exc).__name__}: {exc}")
+            return
         svc.state = RUNNING
         self.procfs.register(f"/proc/{name}", lambda s=svc: s.output or {})
         self._emit("START", name, f"v{svc.app.manifest.version}")
@@ -123,6 +128,9 @@ class ServiceManager:
         except Exception:
             pass
         svc.state = STOPPED
+        # A stopped service publishes nothing; leaving its /proc path mounted made
+        # the last output look live.
+        self.procfs.unregister(f"/proc/{name}")
         self._emit("STOP", name, "operator stop")
         return True
 
@@ -174,6 +182,9 @@ class ServiceManager:
         self.events = (self.events + [{"tick": self.tick_no, "kind": kind,
                                        "svc": svc, "detail": detail,
                                        "ts": round(time.time(), 3)}])[-128:]
+        from backend.aegis.kernel.journal import KJOURNAL, INFO, WARN, ERR
+        sev = {"FAULT": WARN, "START_FAIL": ERR, "QUARANTINE": ERR}.get(kind, INFO)
+        KJOURNAL.append("svc", kind.lower(), severity=sev, svc=svc, detail=detail)
 
     def status(self) -> Dict[str, Any]:
         svcs = [s.status() for s in self.services.values()]

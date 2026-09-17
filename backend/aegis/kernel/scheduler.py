@@ -356,7 +356,11 @@ class CognitiveScheduler:
                 "ts": time.time(),
             }
             self.events.append(evt)
+            del self.events[:-512]                    # was unbounded
             decision.interrupt = evt
+            from backend.aegis.kernel.journal import KJOURNAL, WARN
+            KJOURNAL.append("sched", "hard_preempt", severity=WARN, owner=evt["owner"],
+                            reason=evt["reason"], p=evt["p"], slope=evt["slope"])
         self.last = decision
         return decision
 

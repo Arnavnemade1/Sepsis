@@ -123,11 +123,16 @@ class IdentityMonitor:
         self.events.append({"type": PATIENT_IDENTITY_FAULT, "distance": round(d, 3),
                             "threshold": round(self.fp.threshold, 3),
                             "action": "feeds suspended · dispensing locked · nurse alerted"})
+        from backend.aegis.kernel.journal import KJOURNAL, CRIT
+        KJOURNAL.append("clinical", "identity_fault", severity=CRIT,
+                        distance=round(d, 3), threshold=round(self.fp.threshold, 3))
 
     def clear_fault(self, reason: str = "manual re-verification") -> None:
         self.fault = False
         self.feeds_suspended = False
         self.events.append({"type": "FAULT_CLEARED", "reason": reason})
+        from backend.aegis.kernel.journal import KJOURNAL, NOTICE
+        KJOURNAL.append("clinical", "identity_fault_cleared", severity=NOTICE, reason=reason)
 
     # -- Z3: prove no drug can be dispensed during an active identity fault -- #
     @_z3_guarded

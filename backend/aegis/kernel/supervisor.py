@@ -185,6 +185,10 @@ class DriverSupervisor:
 
     def record(self, rec: FaultRecord) -> None:
         self.events = (self.events + [rec])[-256:]
+        from backend.aegis.kernel.journal import KJOURNAL, NOTICE, WARN
+        KJOURNAL.append("driver", rec.kind.lower(),
+                        severity=NOTICE if rec.kind.upper() in ("RECOVER", "RESTORE") else WARN,
+                        slot=rec.slot, driver=rec.driver, detail=rec.detail)
 
     def status(self) -> Dict[str, Any]:
         degraded = sum(1 for d in self.slots.values() if d.state != RUNNING)

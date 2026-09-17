@@ -141,6 +141,10 @@ class AuditLedger:
         e = AuditEntry(seq, user, role, capability, decision, reason, self._head, h)
         self.entries.append(e)
         self._head = h
+        from backend.aegis.kernel.journal import KJOURNAL, INFO, WARN
+        KJOURNAL.append("auth", "authorize", severity=INFO if decision == "GRANT" else WARN,
+                        uid=str(user), role=role, capability=capability,
+                        decision=decision, reason=reason)
         return e
 
     def verify(self) -> bool:

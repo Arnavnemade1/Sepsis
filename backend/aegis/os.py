@@ -17,6 +17,15 @@ Layers (mapped to the architecture spec):
 
 It composes (does not duplicate) AegisCore: `os.core` is the runtime; AegisOS adds
 the OS framing + the predictive what-if scheduler on top.
+
+THE KERNEL IS ATTACHED, NOT OWNED A SECOND TIME. This object used to construct its
+own DevBio bus, MemFabric arena, HDKernel and egress cage. Nothing ever mounted a
+device on them, so every snapshot's ``system.kernel`` reported an empty bus, an
+empty arena and a zero-process table while the real ones — the ICU wing's — ran
+elsewhere. The server now calls :meth:`attach_kernel` with the live wing, the one
+process table, the journal, the boot record and the executor, and
+:meth:`kernel_status` reports those. Standalone (tests, notebooks) it says it has no
+kernel attached rather than presenting empty structures as a running kernel.
 """
 from __future__ import annotations
 
@@ -25,12 +34,8 @@ from typing import Any, Dict, List, Optional
 
 from backend.aegis.core import AegisCore, AegisAssessment
 from backend.aegis.scheduler import WhatIfScheduler
-from backend.aegis.kernel.devbio import BioDevice, DevBio
-from backend.aegis.kernel.hdkernel import HDKernel, TaskFn
-from backend.aegis.kernel.memfabric import FabricPump, MemFabric, ReadCursor
-from backend.aegis.kernel.neurosym import NeuroSymbolicRuntime, SafetyCertificate
 
-AEGIS_OS_VERSION = "0.8.0"
+AEGIS_OS_VERSION = "1.0.0-dev"
 
 
 @dataclass
@@ -70,10 +75,9 @@ class AegisOS:
         self.scheduler = WhatIfScheduler(                 # Layer 3 (predictive)
             self.core.hdc, self.core.neuro, horizon=whatif_horizon)
         self._sources: List[str] = []                     # Layer 1 (legacy source tags)
-        self.devbio = DevBio()                            # Layer 1 (/dev/bio bus)
-        self.fabric = MemFabric()                         # Layer 2 (memory fabric)
-        self.procplane = HDKernel(policy="HDSched")       # Layer 3c (live process plane)
-        self.safety = NeuroSymbolicRuntime()              # Layer 4 (egress cage)
+        # The live kernel, attached by the server (see attach_kernel). None when
+        # this OS object runs standalone.
+        self._kernel: Dict[str, Any] = {}
         self._db = None
         if enable_persistence:
             try:
@@ -95,71 +99,50 @@ class AegisOS:
         if name not in self._sources:
             self._sources.append(name)
 
-    def mount_sensor(self, node: str, name: str, device: BioDevice,
-                     ring_capacity: int = 1024) -> int:
-        """Mount a sensor on the /dev/bio bus (L1) and carve its ring in the
-        shared memory fabric (L2). Returns the file descriptor.
+    # -- the live kernel ------------------------------------------------- #
+    def attach_kernel(self, cluster: Any = None, procs: Any = None, journal: Any = None,
+                      boot: Any = None, executor: Any = None) -> "AegisOS":
+        """Bind the running kernel: the ICU wing (its /dev/bio bus, memory fabric
+        and cognitive scheduler), the process table, the journal, the boot record
+        and the single-writer executor."""
+        self._kernel = {k: v for k, v in (("cluster", cluster), ("procs", procs),
+                                          ("journal", journal), ("boot", boot),
+                                          ("executor", executor)) if v is not None}
+        return self
 
-        This is the honest ingress path: a driver only appears once something is
-        streaming through it, and its conditioned samples flow into a zero-copy
-        ring rather than ad-hoc copies.
-        """
-        path = self.devbio.mount(node, name, device)
-        fd = self.devbio.open(path)
-        self.fabric.map_descriptor(fd, path, device.channel_keys(), ring_capacity)
-        return fd
-
-    def subscribe(self, fd: int, replay: bool = False) -> ReadCursor:
-        """L2: get an independent zero-copy read cursor over a sensor's ring."""
-        return self.fabric.subscribe(fd, replay=replay)
-
-    def pump(self, fds: Optional[List[int]] = None) -> FabricPump:
-        """Build the L1->L2 pump for the given fds (default: all open fds)."""
-        if fds is None:
-            fds = self.devbio.open_fds()
-        return FabricPump(self.devbio, self.fabric, fds)
-
-    def safe_dispatch(self, egress: str, payload: Dict[str, Any],
-                      context: Optional[Dict[str, Any]] = None
-                      ) -> tuple[bool, SafetyCertificate]:
-        """L4: route an automated output through the formal egress cage. Nothing
-        reaches an external channel without a Z3 certificate (default-deny)."""
-        return self.safety.dispatch(egress, payload, context or {})
-
-    # -- L3c process plane: spawn/run/introspect real kernel tasks --------- #
-    def spawn(self, fn: TaskFn, name: str = "task", priority: int = 1,
-              weight: float = 1.0, deadline_in: Optional[int] = None,
-              args: tuple = ()) -> int:
-        """Create a process on the live cooperative kernel; returns its PID.
-        The task is a coroutine that makes syscalls (Compute/Sleep/Spawn/IPC)."""
-        return self.procplane.spawn(fn, name=name, priority=priority, weight=weight,
-                                    deadline_in=deadline_in, args=args)
-
-    def run_procs(self, max_dispatches: int = 200_000) -> Dict[str, Any]:
-        """Run the process plane to completion (cooperative, CPU-time clock)."""
-        return self.procplane.run(max_dispatches=max_dispatches)
+    @property
+    def kernel_attached(self) -> bool:
+        return "cluster" in self._kernel
 
     def ps(self) -> List[Dict[str, Any]]:
-        """The process table (pid/state/cpu/ctx/turnaround)."""
-        return self.procplane.ps()
+        """The process table — the kernel's, or empty when none is attached."""
+        procs = self._kernel.get("procs")
+        return procs.ps() if procs is not None else []
 
     def ktop(self) -> Dict[str, Any]:
-        """Kernel top: policy, utilization, context switches, CPU shares."""
-        return self.procplane.top()
+        procs = self._kernel.get("procs")
+        return procs.top() if procs is not None else {"processes": 0, "attached": False}
 
     def kproc(self, pid: int) -> Optional[Dict[str, Any]]:
-        """Per-process detail (waiting time, first-run, accounting)."""
-        return self.procplane.proc(pid)
+        procs = self._kernel.get("procs")
+        if procs is None:
+            return None
+        try:
+            return procs.proc(pid)
+        except KeyError:
+            return None
 
     def layers(self) -> List[LayerStatus]:
         c = self.core
-        bus = self.devbio.status()
-        if bus["mounted"]:
-            lat = bus["latency"]
+        cluster = self._kernel.get("cluster")
+        bus = cluster.bus.status() if cluster is not None and hasattr(cluster, "bus") else None
+        if bus and bus.get("mounted"):
+            lat = bus.get("latency") or {}
             hal_detail = (f"/dev/bio: {bus['mounted']} dev / {bus['open_fds']} fd "
-                          f"on {bus['nodes']}; cond p50={lat['p50_us']:.1f}µs")
+                          f"on {bus['nodes']} beds; cond p50={lat.get('p50_us', 0):.1f}µs")
         else:
-            hal_detail = f"/dev/bio ready; legacy sources={self._sources or ['(none)']}"
+            hal_detail = ("standalone (no kernel attached); legacy sources="
+                          f"{self._sources or ['(none)']}")
         return [
             LayerStatus(1, "Stochastic Hardware Abstraction Layer",
                         "/dev/bio device-driver bus + inline Kalman", True, hal_detail),
@@ -190,15 +173,35 @@ class AegisOS:
         }
 
     def kernel_status(self) -> Dict[str, Any]:
-        """The bare-metal substrate (backend/aegis/kernel): L1 /dev/bio bus +
-        L2 zero-copy memory fabric. Reported separately from the clinical layer
-        list so the Performance Diagnostics dashboard has one source of truth."""
-        return {
-            "devbio": self.devbio.status(),          # L1
-            "memfabric": self.fabric.address_matrix(),  # L2
-            "procplane": self.procplane.top(),       # L3c live process plane
-            "neurosym": self.safety.status(),        # L4 egress cage
-        }
+        """The running kernel, reported from the live objects — or an explicit
+        ``attached: False`` rather than empty structures dressed as a kernel.
+
+        Kept light: this rides every session snapshot. The arena's full address
+        matrix is NOT included (it is per-ring and large); its summary is."""
+        if not self._kernel:
+            return {"attached": False}
+        out: Dict[str, Any] = {"attached": True}
+        cluster = self._kernel.get("cluster")
+        if cluster is not None:
+            if hasattr(cluster, "bus"):
+                out["devbio"] = cluster.bus.status()
+            if hasattr(cluster, "fabric"):
+                try:
+                    out["memfabric"] = cluster.fabric.address_matrix().get("arena")
+                except Exception:
+                    out["memfabric"] = None
+            if hasattr(cluster, "sched"):
+                out["sched"] = cluster.sched.kstat()
+        for name in ("procs", "journal", "executor"):
+            obj = self._kernel.get(name)
+            if obj is not None:
+                out[name] = obj.status()
+        boot = self._kernel.get("boot")
+        if boot is not None:
+            summ = boot.summary()
+            out["boot"] = {k: summ[k] for k in ("booted", "boot_seconds", "phases",
+                                                "failed", "slowest")}
+        return out
 
     # ------------------------------------------------------------------ #
     def assess(

@@ -95,6 +95,36 @@ def _band(p: float) -> int:
     return 0
 
 
+#: Identical denials within this window collapse into one journal row with a
+#: ``repeats`` count. The headline alert is re-certified every tick, so a standing
+#: refusal would otherwise write ~43,000 identical rows a day.
+DENIAL_DEDUP_S = 300.0
+_DENIAL_SEEN: Dict[tuple, list] = {}
+
+
+def _journal_denial(cert) -> None:
+    """A refused egress is a denial and belongs in the record — once per change."""
+    import time as _time
+    from backend.aegis.kernel.journal import KJOURNAL, WARN
+    violations = tuple(getattr(cert, "violations", []) or [])[:6]
+    key = (getattr(cert, "egress", "?"), violations,
+           str(getattr(cert, "message", ""))[:80])
+    now = _time.time()
+    seen = _DENIAL_SEEN.get(key)
+    if seen is not None and now - seen[0] < DENIAL_DEDUP_S:
+        seen[1] += 1                                   # suppressed, but counted
+        return
+    repeats = seen[1] if seen is not None else 0
+    _DENIAL_SEEN[key] = [now, 0]
+    if len(_DENIAL_SEEN) > 512:                        # bounded memory
+        for k in sorted(_DENIAL_SEEN, key=lambda k: _DENIAL_SEEN[k][0])[:256]:
+            _DENIAL_SEEN.pop(k, None)
+    KJOURNAL.append("egress", "quarantine", severity=WARN,
+                    egress=key[0], z3=getattr(cert, "z3_status", "?"),
+                    message=str(getattr(cert, "message", ""))[:200],
+                    violations=list(violations), repeats_suppressed=repeats)
+
+
 class NeuroSymbolicRuntime:
     """The isolated egress plane. Default-deny: an output ships only if certified."""
 
@@ -151,12 +181,14 @@ class NeuroSymbolicRuntime:
             self.blocked += 1
             self.quarantine = (self.quarantine + [cert])[-128:]
             self.recent = (self.recent + [cert])[-64:]
+            _journal_denial(cert)
             return False, cert
         if cert.ok:
             self.certified += 1
         else:
             self.blocked += 1
             self.quarantine = (self.quarantine + [cert])[-128:]
+            _journal_denial(cert)
         return cert.ok, cert
 
     # ------------------------------------------------------------------ #

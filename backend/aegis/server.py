@@ -58,6 +58,38 @@ app.add_middleware(
     allow_methods=["*"], allow_headers=["*"],
 )
 
+# --- Kernel bring-up: the journal, the process table, the boot record ------- #
+# These come first so everything below can be recorded AS IT HAPPENS. The journal
+# is the one ordered record (replacing nineteen disconnected logs), PROCS is the
+# one process table, and BOOT times the phases this module runs at import — which
+# is what the boot screen will show instead of eight hardcoded lines on timers.
+from backend.aegis.kernel.boot import BOOT
+from backend.aegis.kernel.journal import BOOT_ID, KJOURNAL, JournalStore
+from backend.aegis.kernel.proc import (PROCS, BLOCKED, DRIVER, KTHREAD, MONITOR,
+                                       RUNNING, SERVICE, SLEEPING,
+                                       SIGCONT, SIGHUP, SIGSTOP, SIGTERM, SIGUSR1,
+                                       NoSuchProcess, SignalFailed, SignalUnsupported)
+
+try:
+    # SQLite DDL is local and fast; create_client opens no connection. Persistence
+    # failing must never stop the kernel — it degrades to the in-memory ring.
+    KJOURNAL.store = JournalStore().start()
+    _jhead = KJOURNAL.rehydrate()
+    print("[aegis] journal: %s (%s)" % (
+        ("resumed at seq %d" % _jhead["seq"]) if _jhead else "new chain",
+        "supabase" if KJOURNAL.store.use_supabase else "sqlite"))
+except Exception as _exc:                          # pragma: no cover
+    print(f"[aegis] journal persistence unavailable ({_exc}); in-memory only")
+KJOURNAL.append("kern", "boot.start", pid=0, boot_id=BOOT_ID, version=app.version)
+if KJOURNAL.store is not None:
+    # journald is a real thread; it is listed, and it honours no signal (stopping
+    # the record while the kernel runs is not an operation this kernel offers).
+    PROCS.spawn("journald", KTHREAD, uid="kernel", state=SLEEPING,
+                sink="batched SQLite / Supabase writer", thread="journald")
+
+BOOT.checkpoint("session", "load the calibrated detector and the live patient twin")
+
+
 # --- Single live session (one monitored patient per process for now) -------- #
 session = AegisSession(
     patient_id="aegis-demo-patient",
@@ -68,6 +100,7 @@ session = AegisSession(
     use_llm=False,
 )
 simulator = PatientTelemetrySimulator()
+BOOT.note(detector_loaded=session.core.model is not None, patient=session.patient_id)
 DRIVE_FROM_SIMULATOR = True
 # Stream cadence — kept modest to bound WebSocket egress (Render free-tier
 # bandwidth). Each tick pushes a full snapshot per open client; clients also
@@ -84,6 +117,7 @@ _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.
 #     threshold near their true onset). The corpus is gitignored (PhysioNet
 #     redistribution terms), so when it is absent — e.g. on a fresh deploy — we
 #     fall back to the synthetic wing, which exercises the identical kernel. ---- #
+BOOT.checkpoint("wing", "mount the ICU wing on /dev/bio")
 try:
     cluster = CohortCluster(n=12, lane_budget=160, seed=7, ebpf_optical=3)
     if not cluster.node_ids:
@@ -97,6 +131,9 @@ except Exception as exc:  # pragma: no cover
         names=["Okafor, A.", "Bauer, M.", "Reyes, L.", "Nguyen, T.",
                "Castellano, R.", "Yusuf, D."])
     DATA_MODE = "synthetic"
+BOOT.note(beds=len(getattr(cluster, "node_ids", [])), mode=DATA_MODE,
+          ebpf_drivers=len(getattr(cluster, "ebpf_beds", {})))
+BOOT.checkpoint("cage", "egress cages, syscall table, orchestrator")
 # On the throttled free-tier CPU a Z3 solve every scheduler tick starves the box;
 # verify every ~30th tick instead (deterministic policy, last proof holds between).
 import backend.aegis.kernel.scheduler as _sched_mod
@@ -131,7 +168,6 @@ def _warm_orchestrator() -> None:
     time (including after each free-tier spin-down)."""
     import time as _t
     try:
-        _t.sleep(2.0)                                  # let the rest of boot settle
         from backend.aegis.kernel.scheduler import BioCluster as _BioCluster
         from backend.aegis.orchestrator import Orchestrator as _Orch
         from backend.aegis.z3lock import Z3_LOCK
@@ -164,7 +200,6 @@ def _warm_pk() -> None:
     pay for it. Uses only the reference patient — the live wing is untouched."""
     import time as _t
     try:
-        _t.sleep(3.0)                                  # after the orchestrator warmup
         t0 = _t.perf_counter()
         from backend.aegis.adverse import (AdverseEventEngine, REFERENCE_PATIENT,
                                            reference_projection)
@@ -182,9 +217,45 @@ def _warm_pk() -> None:
         print(f"[aegis] treatment-projection warmup skipped: {exc}")
 
 
+BOOT.checkpoint("kthreads", "warm-up and keep-alive kernel threads")
 import threading as _threading
-_threading.Thread(target=_warm_orchestrator, name="orch-warmup", daemon=True).start()
-_threading.Thread(target=_warm_pk, name="pk-warmup", daemon=True).start()
+
+
+def _kthread(name: str, fn, delay: float = 0.0, measure: bool = True, **detail):
+    """Run ``fn`` as a listed kernel thread.
+
+    The startup delay is spent SLEEPING, outside the measured slice — the warmups
+    used to sleep inside their own bodies, which would have booked two and three
+    seconds of idle time as work. ``measure=False`` is for loops that mostly sleep
+    (keep-alive): wall time around a sleeping loop is not a cost."""
+    def run() -> None:
+        import time as _t
+        pid = PROCS.spawn(name, KTHREAD, uid="kernel",
+                          state=SLEEPING if delay else RUNNING, thread=name, **detail).pid
+        if delay:
+            _t.sleep(delay)
+        code = 0
+        try:
+            if measure:
+                with PROCS.slice(pid):
+                    fn()
+            else:
+                PROCS.set_state(pid, SLEEPING)
+                fn()
+        except BaseException:
+            code = 1
+            raise
+        finally:
+            PROCS.exit(pid, code=code)
+    return run
+
+
+_threading.Thread(target=_kthread("orch-warmup", _warm_orchestrator, delay=2.0,
+                                  purpose="pay the first synthesis cost off the request path"),
+                  name="orch-warmup", daemon=True).start()
+_threading.Thread(target=_kthread("pk-warmup", _warm_pk, delay=3.0,
+                                  purpose="cache the reference drug projections"),
+                  name="pk-warmup", daemon=True).start()
 
 
 def _keep_alive() -> None:
@@ -212,7 +283,10 @@ def _keep_alive() -> None:
         _t.sleep(600)                            # 10 min < the 15-min spin-down window
 
 
-_threading.Thread(target=_keep_alive, name="keep-alive", daemon=True).start()
+_threading.Thread(target=_kthread("keep-alive", _keep_alive, measure=False,
+                                  purpose="free-tier anti-sleep self-ping"),
+                  name="keep-alive", daemon=True).start()
+BOOT.checkpoint("devices", "eBPF verifier service, PPG morphology monitor")
 # The input-safety verifier service: holds the live Aegis-eBPF static verifier +
 # the driver catalogue used by `verify`. The verified-driver DATA PLANE itself is
 # the cohort's own beds (those with `ebpf_optical` enabled) — real patients whose
@@ -246,6 +320,7 @@ from backend.aegis.kernel.ebpfdrv import DEFAULT_HELPERS as _HELPERS
 from backend.aegis.pkg import AppPackage, PackageRegistry
 from backend.aegis.procfs import ProcFS
 
+BOOT.checkpoint("aegisd", "service manager, /proc namespace, package registry")
 apps_cage = NeuroSymbolicRuntime()                 # egress cage for app outputs
 procfs = ProcFS()
 aegisd = ServiceManager(apps_cage, procfs)
@@ -284,8 +359,18 @@ def _hdk_last() -> Dict[str, Any]:
     return _hdk_state["last"]
 
 
-procfs.register("/proc/kthreads", lambda: _hdk_last()["ps"])           # the process table
-procfs.register("/proc/ksched", lambda: _hdk_last()["top"])            # scheduler/top summary
+# The REAL process table and scheduler view. These used to return the HDKernel
+# demo workload, which the read itself created — a /proc that fabricated its own
+# contents. The demo still runs on demand via POST /aegis/hdkernel/run.
+procfs.register("/proc/kthreads", lambda: PROCS.ps())
+procfs.register("/proc/ksched", lambda: PROCS.top())
+procfs.register("/proc/journal", lambda: KJOURNAL.status())
+procfs.register("/proc/boot", lambda: BOOT.summary())
+procfs.register("/proc/executor", lambda: EXEC.status())
+# /proc/<pid> for every live process, resolved on read (no stale providers).
+procfs.register_dynamic(r"/proc/(\d+)", lambda m: PROCS.proc(int(m.group(1))),
+                        lambda: ["/proc/%d" % p["pid"] for p in PROCS.ps()])
+BOOT.checkpoint("llm", "language-model provider, model control plane, patient terminals")
 # The resilient LLM layer (shared, budgeted, multi-model, multi-VENDOR: Gemini
 # primary → Nemotron backup). On-demand only — the realtime loop never calls it;
 # operators drive it via `ask`/`brief` and the consult call. Telemetry is
@@ -335,6 +420,7 @@ def _llm_state() -> Dict[str, Any]:
     except Exception:
         pass
     return st
+BOOT.checkpoint("services", "start aegisd services in dependency order")
 try:
     if hasattr(cluster, "resonance"):              # real cohort only (fitted gate)
         aegisd.register(ResonanceApp(cluster.resonance))
@@ -385,10 +471,122 @@ _cluster_clients: List[WebSocket] = []
 # orchestrator's scenario) goes through it — see kernel/executor.py for why and
 # for the executor -> Z3 lock order. Started before the warm-up so even the warm
 # ticks run as the writer.
+BOOT.checkpoint("executor", "start the single writer and warm the rings")
 from backend.aegis.kernel.executor import EXEC
 
 EXEC.start()
+if hasattr(cluster, "fabric"):
+    EXEC.own(cluster.fabric.arena)                # the live wing, and only it
 EXEC.call(cluster.run, 12)                        # warm the rings before serving
+
+# --- What is actually running, in the one process table --------------------- #
+# Before this, `ps` returned an HDKernel demo workload that the read itself
+# created, while the twelve beds, the supervised drivers, the services and the
+# loops — the things genuinely executing — appeared nowhere.
+_KPROC: Dict[str, int] = {}
+
+
+def _bed_slice(nid: str):
+    """Per-bed accounting hook handed to the cluster (see cohort.tick)."""
+    pid = _KPROC.get("bed:" + nid)
+    return PROCS.slice(pid) if pid is not None else _nullctx()
+
+
+def _nullctx():
+    # Local import: this module's aliasing convention (os as _os, threading as
+    # _threading) makes a module-level contextlib import easy to get wrong, and a
+    # NameError here would break boot rather than one bed's accounting.
+    from contextlib import nullcontext
+    return nullcontext()
+
+
+def _driver_signal(bid: str):
+    def handle(sig: str):
+        if sig == SIGHUP:                            # re-verify the bytecode and re-arm
+            return EXEC.call(cluster.recover_driver, bid)
+        if sig == SIGUSR1:                           # the operator's fault injection
+            return EXEC.call(cluster.inject_driver_fault, bid, "SIGUSR1 from operator")
+        raise ValueError(sig)
+    return handle
+
+
+def _service_signal(name: str):
+    def handle(sig: str):
+        if sig == SIGTERM:
+            return aegisd.stop(name)
+        if sig == SIGHUP:
+            return aegisd.restart(name)
+        raise ValueError(sig)
+    return handle
+
+
+def _register_processes() -> None:
+    # Each bed's monitoring pipeline: sample -> fuse -> learn -> schedule ->
+    # resonance. Its CPU time is measured around that body, not estimated. It
+    # honours no signal: a patient's monitoring is not paused from `kill`.
+    for nid in getattr(cluster, "node_ids", []):
+        p = PROCS.spawn(cluster.names.get(nid, nid) if hasattr(cluster, "names") else nid,
+                        MONITOR, uid="kernel", bed=nid,
+                        sched_class="LANE (cognitive lane governor)")
+        _KPROC["bed:" + nid] = p.pid
+    cluster.proc_slice = _bed_slice
+
+    # Supervised verified drivers: SIGHUP re-verifies and re-arms, SIGUSR1 is the
+    # operator fault injection the console already exposes.
+    for bid in getattr(cluster, "ebpf_beds", {}):
+        p = PROCS.spawn("%s optical (eBPF)" % cluster.names.get(bid, bid), DRIVER,
+                        uid="kernel", bed=bid, on_signal=_driver_signal(bid),
+                        signals=(SIGHUP, SIGUSR1),
+                        verified="Aegis-eBPF static verifier")
+        _KPROC["drv:" + bid] = p.pid
+
+    # The single writer thread for the wing. Listed, and protected: it honours no
+    # signal, because stopping it stops every bed's monitoring at once.
+    PROCS.spawn("kexec", KTHREAD, uid="kernel", state=SLEEPING, thread="aegis-kexec",
+                role="single writer for every mutation of the ICU wing")
+    _reconcile_kernel()                              # services + drivers, first pass
+
+
+def _reconcile_kernel() -> None:
+    """Keep the process table true to what the subsystems themselves report.
+
+    A service can be stopped, restarted, faulted into quarantine or uninstalled
+    through aegisd's routes, the package manager or the agent plane — not only
+    through a signal. Trusting every one of those paths to remember the process
+    table is how a table goes stale, so it is reconciled every tick instead."""
+    services = getattr(aegisd, "services", {})
+    for name, svc in list(services.items()):
+        live = PROCS.find(kind=SERVICE, svc=name)
+        if svc.state == "RUNNING" and live is None:
+            PROCS.spawn(name, SERVICE, uid="kernel", svc=name, bed=SERVICE_BED,
+                        on_signal=_service_signal(name), signals=(SIGTERM, SIGHUP))
+        elif svc.state != "RUNNING" and live is not None:
+            PROCS.exit(live.pid, code=0 if svc.state == "STOPPED" else 1)
+    for p in PROCS.ps(kind=SERVICE):                  # uninstalled packages
+        if p["state"] not in ("ZOMBIE", "EXITED") and p["detail"].get("svc") not in services:
+            PROCS.exit(p["pid"], code=0)
+    if hasattr(cluster, "driver_plane_status"):
+        for d in cluster.driver_plane_status():
+            pid = _KPROC.get("drv:" + d["key"])
+            if pid is not None:
+                PROCS.set_state(pid, BLOCKED if d.get("state") == "DOWN" else RUNNING,
+                                driver_state=d.get("state"), active=d.get("active"),
+                                faults=d.get("faults"), failovers=d.get("failovers"))
+    PROCS.reap()
+
+
+BOOT.checkpoint("proc", "register the running subsystems in the process table")
+try:
+    _register_processes()
+    print("[aegis] process table: %d processes registered" % len(PROCS.procs))
+except Exception as _exc:                          # pragma: no cover
+    print(f"[aegis] process registration failed: {_exc}")
+BOOT.note(**{k: v for k, v in PROCS.status()["by_kind"].items() if v})
+
+# The session's AegisOS object reports THIS kernel — not idle copies of its own.
+session.os.attach_kernel(cluster=cluster, procs=PROCS, journal=KJOURNAL,
+                         boot=BOOT, executor=EXEC)
+BOOT.checkpoint("routes", "persistence hooks and the REST / WebSocket surface")
 
 # --- Real-data persistence (Supabase). The simulator demo is NEVER written; only
 #     real ingested readings are, and they are throttled + tagged so the database
@@ -491,13 +689,32 @@ def _apply_treatment_from(snapshot: Dict[str, Any]) -> None:
         _active_treatment = dict(proto["protocol"])
 
 
+_DRIVE_PAUSED = {"paused": False}
+
+
+def _drive_signal(sig: str) -> str:
+    # SIGSTOP/SIGCONT really pause the DEMO simulator: the loop checks this flag
+    # each tick. (The ward loop has no equivalent — see _cluster_loop.)
+    if sig == SIGSTOP:
+        _DRIVE_PAUSED["paused"] = True
+        return "demo simulator paused"
+    if sig == SIGCONT:
+        _DRIVE_PAUSED["paused"] = False
+        return "demo simulator resumed"
+    raise ValueError(sig)
+
+
 async def _drive_loop() -> None:
     print("[aegis] simulator drive loop started (demo mode; yields to real data).")
+    _pid = PROCS.spawn("drive-loop", KTHREAD, uid="kernel",
+                       cadence_s=TICK_SECONDS, drives="live session snapshot (demo)",
+                       on_signal=_drive_signal, signals=(SIGSTOP, SIGCONT)).pid
     while True:
         try:
             # The simulator only drives the stream as a DEMO — the moment real
             # telemetry arrives it stands down so the camera owns the live feed.
-            if DRIVE_FROM_SIMULATOR and not _live_mode():
+            if DRIVE_FROM_SIMULATOR and not _live_mode() and not _DRIVE_PAUSED["paused"]:
+              with PROCS.slice(_pid):
                 vitals = simulator.next_tick(_active_treatment)
                 # session.tick can run Z3 (protocol synth + consensus on HIGH). Run it
                 # OFF the event loop so a request thread holding the Z3 lock can never
@@ -551,7 +768,19 @@ async def _startup() -> None:
             print("[aegis] real-data persistence layer ready.")
         except Exception as exc:  # pragma: no cover
             print(f"[aegis] persistence unavailable ({exc}); running without it.")
-    _threading.Thread(target=_init_persistence, name="persist-init", daemon=True).start()
+    _threading.Thread(target=_kthread("persist-init", _init_persistence,
+                                      purpose="connect the telemetry database"),
+                      name="persist-init", daemon=True).start()
+
+
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    # A clean stop leaves the record complete: the journal's queue is flushed
+    # rather than lost with the process.
+    KJOURNAL.append("kern", "shutdown", boot_id=BOOT_ID,
+                    uptime_s=round(PROCS.status()["uptime_s"], 1))
+    if KJOURNAL.store is not None:
+        await asyncio.to_thread(KJOURNAL.store.stop)
 
 
 # --- REST ------------------------------------------------------------------- #
@@ -1136,8 +1365,10 @@ def identity_self_check(p: IdentitySwapIn) -> Dict[str, Any]:
 
 
 # --- Living Pharmacopoeia: drug-interaction graph → dynamic Z3 (MEGA-UPGRADE L4) -- #
+BOOT.checkpoint("pharmacopoeia", "load the fused drug-interaction knowledge base")
 from backend.aegis.pharmacopoeia import Pharmacopoeia
 pharmacopoeia = Pharmacopoeia()                   # loads the fused DDInter+curated KB
+BOOT.checkpoint("routes-2", "clinical REST surface")
 
 
 class PharmaScreenIn(BaseModel):
@@ -1197,6 +1428,7 @@ def dsl_verify_endpoint(p: DslVerifyIn) -> Dict[str, Any]:
 
 
 # --- Clinical RBAC: privilege-ring access control over the OS (MEGA-UPGRADE L3) -- #
+BOOT.checkpoint("rbac", "role and capability policy")
 from backend.aegis.rbac import (RBAC, RBACGate, GRANTS, RING, CAP_MIN_RING,
                                 prove_policy_sound)
 rbac = RBAC()
@@ -1208,6 +1440,7 @@ rbac = RBAC()
 # in place was the most misleading line in this file. The gate becomes real when
 # every route crosses one reference monitor.
 rbac_gate = RBACGate(rbac, syscalls.invoke)
+BOOT.checkpoint("routes-3", "access-control and consult REST surface")
 
 
 class RbacLoginIn(BaseModel):
@@ -1670,6 +1903,16 @@ async def _broadcast_cluster(payload: Dict[str, Any]) -> None:
 
 async def _cluster_loop() -> None:
     print("[aegis] ICU-wing cluster loop started (Tactical Sphere telemetry).")
+    # The loop's OWN cost is the part not already charged to a bed: the service
+    # plane tick, the headline certificate, the payload build and the broadcast.
+    # Per-bed work is accounted to each bed's monitor process inside cluster.tick,
+    # so wrapping the whole body here would count it twice.
+    # Protected: honours no signal. Pausing this loop pauses every patient's
+    # monitoring on the ward at once, which is not an administrative action.
+    _pid = PROCS.spawn("cluster-loop", KTHREAD, uid="kernel",
+                       cadence_s=CLUSTER_TICK_SECONDS,
+                       drives="ward telemetry + service plane",
+                       protected="the ward monitoring loop honours no signal").pid
     while True:
         try:
             decision = EXEC.try_call(cluster.tick)  # ticks the cohort incl. its eBPF beds
@@ -1680,12 +1923,15 @@ async def _cluster_loop() -> None:
                 # drop is counted in EXEC.status()["skipped_ticks"].
                 await asyncio.sleep(CLUSTER_TICK_SECONDS)
                 continue
-            if SERVICE_BED is not None:            # tick the managed app/service plane
-                aegisd.tick(cluster.frame_for(SERVICE_BED))
-            if ppg_monitor is not None:
-                ppg_monitor.tick(CLUSTER_TICK_SECONDS)   # advance the live PPG waveform
-            _certify_cluster_headline(decision)
-            await _broadcast_cluster(_cluster_payload())
+            with PROCS.slice(_pid):
+                if SERVICE_BED is not None:        # tick the managed app/service plane
+                    aegisd.tick(cluster.frame_for(SERVICE_BED))
+                if ppg_monitor is not None:
+                    ppg_monitor.tick(CLUSTER_TICK_SECONDS)  # advance the live PPG waveform
+                _certify_cluster_headline(decision)
+                _reconcile_kernel()
+                payload = _cluster_payload()
+            await _broadcast_cluster(payload)
         except Exception as exc:  # pragma: no cover
             print(f"[aegis] cluster loop error: {exc}")
         await asyncio.sleep(CLUSTER_TICK_SECONDS)
@@ -2399,7 +2645,10 @@ def hdkernel_run(payload: HDKernelRunIn) -> Dict[str, Any]:
     it'. Swapping ``policy`` visibly changes turnaround / context switches."""
     wl = payload.workload if payload.workload in _KWORKLOADS else "mixed"
     pol = payload.policy if payload.policy in _KPOLICIES else "HDSched"
-    _hdk_state["last"] = _run_kworkload(wl, pol)
+    # A bounded program run as a JOB in the real process table; the synthetic
+    # tasks it schedules live inside its own HDKernel, not in this table.
+    with PROCS.job(f"hdkernel {wl} ({pol})", uid="operator", workload=wl, policy=pol):
+        _hdk_state["last"] = _run_kworkload(wl, pol)
     return {**_hdk_state["last"],
             "workloads": list(_KWORKLOADS), "policies": list(_KPOLICIES)}
 
@@ -2443,6 +2692,7 @@ def llm_brief() -> Dict[str, Any]:
 # tokens are rejected by the Live socket on this account, so a browser-direct
 # design would have to ship the API key to a static page. It does not.
 # ====================================================================== #
+BOOT.checkpoint("doctor", "AI consult relay and the rest of the surface")
 from backend.llm.doctor import AIDoctor as _AIDoctor
 from backend.llm.live import LiveConsult as _LiveConsult, LiveUnavailable as _LiveUnavailable
 
@@ -3690,13 +3940,19 @@ async def scenarios_create(payload: ScenarioIn) -> Dict[str, Any]:
             "synthetic": True}
 
 
+async def _lab_job(name: str, fn, *args, **detail):
+    """Run Scenario Lab work as a JOB, OFF the event loop (it runs the detector)."""
+    with PROCS.job(name, uid="operator", **detail):
+        return await asyncio.to_thread(fn, *args)
+
+
 @app.post("/aegis/scenarios/{bed}/run")
 async def scenarios_run(bed: str) -> Dict[str, Any]:
     """Run one scenario against the SHIPPED detector and grade its expectations."""
     from dataclasses import asdict
     from backend.aegis.scenarios import LAB
     try:
-        return asdict(LAB.run(bed))
+        return asdict(await _lab_job(f"scenario {bed}", LAB.run, bed, scenario=bed))
     except KeyError as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -3707,7 +3963,7 @@ async def scenarios_suite() -> Dict[str, Any]:
     confounders it must ignore. Replaces whatever is in the sandbox."""
     from backend.aegis.scenarios import LAB
     LAB.load_suite()
-    LAB.run_all()
+    await _lab_job("scenario suite", LAB.run_all)
     return LAB.report()
 
 
@@ -3715,7 +3971,7 @@ async def scenarios_suite() -> Dict[str, Any]:
 async def scenarios_run_all() -> Dict[str, Any]:
     """Run every scenario currently in the sandbox."""
     from backend.aegis.scenarios import LAB
-    LAB.run_all()
+    await _lab_job("scenario run_all", LAB.run_all)
     return LAB.report()
 
 
@@ -3736,6 +3992,56 @@ async def kernel_recover(payload: KernelFaultIn) -> Dict[str, Any]:
     res = {"status": "ok", "bed": bid, "name": cluster.names.get(bid, bid), **(res or {})}
     await _broadcast_cluster(_cluster_payload())
     return res
+
+
+class KillIn(BaseModel):
+    pid: int
+    signal: str = "SIGTERM"
+
+
+@app.get("/aegis/sys/ps")
+def sys_ps(kind: str = "", uid: str = "") -> Dict[str, Any]:
+    """The process table: everything this kernel is actually running."""
+    return {"processes": PROCS.ps(kind=kind or None, uid=uid or None),
+            "status": PROCS.status()}
+
+
+@app.get("/aegis/sys/proc/{pid}")
+def sys_proc(pid: int) -> Dict[str, Any]:
+    """One process in full — /proc/<pid>."""
+    try:
+        return PROCS.proc(pid)
+    except Exception as exc:
+        return {"status": "error", "errno": "ESRCH", "detail": str(exc)}
+
+
+@app.post("/aegis/sys/kill")
+def sys_kill(payload: KillIn) -> Dict[str, Any]:
+    """Signal a process. A kind that cannot honour the signal returns EINVAL
+    rather than accepting it and doing nothing."""
+    try:
+        return {"status": "ok", **PROCS.signal(payload.pid, payload.signal, uid="operator")}
+    except SignalUnsupported as exc:
+        return {"status": "error", "errno": "EINVAL", "detail": str(exc)}
+    except SignalFailed as exc:
+        return {"status": "error", "errno": "EIO", "detail": str(exc)}
+    except NoSuchProcess as exc:
+        return {"status": "error", "errno": "ESRCH", "detail": str(exc)}
+
+
+@app.get("/aegis/sys/journal")
+def sys_journal(limit: int = 80, facility: str = "", severity: int = 7,
+                full: bool = False) -> Dict[str, Any]:
+    """The one ordered record, plus the chain's integrity verdict."""
+    return {"status": KJOURNAL.status(),
+            "entries": KJOURNAL.tail(limit=limit, facility=facility or None,
+                                     min_severity=severity, full=full)}
+
+
+@app.get("/aegis/sys/boot")
+def sys_boot() -> Dict[str, Any]:
+    """What happened while this kernel came up, with measured durations."""
+    return BOOT.summary()
 
 
 @app.post("/aegis/cluster/chaos")
@@ -3820,16 +4126,25 @@ class _SmartStatic(StaticFiles):
         return resp
 
 
+BOOT.checkpoint("shell", "mount the web shell")
 if _os.path.isdir(_WEBUI):
     app.mount("/", _SmartStatic(directory=_WEBUI, html=True), name="aegisos-shell")
 
 
 # Bind the agent's tools LAST: the handlers close over endpoint functions defined
 # throughout this module, and the read primitive indexes the finished route table.
+BOOT.checkpoint("agent", "bind the agent plane to the finished route table")
 _bind_agent_tools()
 _index_read_routes()
 print(f"[aegis] agent plane: {len(_tools.bound())} tools bound"
       + (f", UNBOUND: {_tools.unbound()}" if _tools.unbound() else ""))
+BOOT.note(tools=len(_tools.bound()), routes=len(app.routes))
+
+# Import-time construction is finished: THIS is when the kernel is up. (It used to
+# be declared up before the pharmacopoeia, RBAC and the agent plane were built, so
+# the reported cold start was shorter than the real one.)
+print("[aegis] kernel up in %.1fs (%d boot phases, boot %s)"
+      % (BOOT.ready(), len(BOOT.phases), BOOT_ID))
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -263,6 +263,12 @@ class ToolRegistry:
             entry["error"] = out.get("error")
         self._log.append(entry)
         del self._log[:-200]
+        if kind in (KIND_WRITE, KIND_UI) or not entry["ok"]:
+            from backend.aegis.kernel.journal import KJOURNAL, INFO, WARN
+            KJOURNAL.append("agent", name, severity=INFO if entry["ok"] else WARN,
+                            uid="dr-aegis", kind=kind, ok=entry["ok"], ms=entry["ms"],
+                            **{k: entry[k] for k in ("errno", "z3_status", "allowed", "error")
+                               if k in entry})
         return out
 
     def activity(self, limit: int = 50) -> List[Dict[str, Any]]:

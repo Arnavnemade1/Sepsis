@@ -128,6 +128,10 @@ class AttestationLedger:
                                          message, violations, seq, self._head, h)
         self.entries.append(cert)
         self._head = h
+        from backend.aegis.kernel.journal import KJOURNAL, NOTICE, WARN
+        KJOURNAL.append("clinical", "govern", severity=NOTICE if ok else WARN,
+                        layer=layer, action=action, target=target, ok=bool(ok),
+                        z3=z3_status, attestation=h[:12])
         return cert
 
     def verify(self) -> bool:
@@ -421,7 +425,16 @@ class Orchestrator:
         # Lock order is executor -> Z3 (never the reverse): the writer thread only
         # ever takes Z3 non-blockingly, so nothing it holds can block a thread that
         # is itself waiting for the writer.
-        return EXEC.call(_guarded)
+        #
+        # Only a cluster whose arena the executor OWNS goes through it. A private
+        # cluster (the boot warm-up's throwaway wing) has no other writer to be
+        # serialised against — and routing it through the executor would deadlock
+        # a caller that already holds Z3: it would wait on the writer while the
+        # writer waits on Z3.
+        arena = getattr(getattr(self.cluster, "fabric", None), "arena", None)
+        if EXEC.owns(arena):
+            return EXEC.call(_guarded)
+        return _guarded()
 
     def _run_scenario(self, bed: str, warmup: int, crisis_ticks: int) -> Dict[str, Any]:
         timeline: List[Dict[str, Any]] = []

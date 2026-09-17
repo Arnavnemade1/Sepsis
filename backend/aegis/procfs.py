@@ -7,16 +7,19 @@ the console (`ps`, `kstat`, `dmesg`), the UI, and one service reading another's
 output — goes through this single source of truth. Providers are pull-based
 (evaluated on read) so the namespace never holds stale state.
 
-Reads are side-effect free with ONE current exception, and it is not a small one:
-``/proc/kthreads`` and ``/proc/ksched`` seed and run an HDKernel demo workload the
-first time they are read (server.py), so reading the process table creates the
-processes it then reports. Nothing else in the namespace behaves that way. It is
-listed here rather than quietly tolerated because a `/proc` that fabricates its
-own contents is worse than no `/proc`; the real process table replaces it.
+Reads are side-effect free. (Until the kernel process table existed,
+``/proc/kthreads`` seeded and ran an HDKernel demo workload on first read, so
+reading the process table created the processes it reported. It now reads the
+real table; the demo workload runs only when asked, via ``/aegis/hdkernel/run``.)
+
+Besides fixed paths, a *dynamic* mount resolves a family of paths on demand —
+``/proc/<pid>`` for every live process — without registering one provider per
+process and leaving stale ones behind when processes exit.
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List
+import re
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 Provider = Callable[[], Any]
 
@@ -24,6 +27,20 @@ Provider = Callable[[], Any]
 class ProcFS:
     def __init__(self) -> None:
         self._providers: Dict[str, Provider] = {}
+        # (compiled pattern, resolve(match) -> value, list() -> paths)
+        self._dynamic: List[Tuple[Any, Callable[[Any], Any], Callable[[], List[str]]]] = []
+
+    def register_dynamic(self, pattern: str, resolve: Callable[[Any], Any],
+                         listing: Callable[[], List[str]]) -> None:
+        """Mount a family of paths, e.g. ``r"/proc/(\\d+)"`` → one process."""
+        self._dynamic.append((re.compile("^" + pattern + "$"), resolve, listing))
+
+    def _resolve_dynamic(self, path: str) -> Optional[Tuple[Callable[[Any], Any], Any]]:
+        for pat, resolve, _ in self._dynamic:
+            m = pat.match(path)
+            if m:
+                return resolve, m
+        return None
 
     def register(self, path: str, provider: Provider) -> None:
         """Mount a live state provider at ``path`` (e.g. ``/proc/services``)."""
@@ -38,15 +55,35 @@ class ProcFS:
         if not path.startswith("/"):
             path = "/" + path
         prov = self._providers.get(path)
-        if prov is None:
+        if prov is not None:
+            return prov()
+        dyn = self._resolve_dynamic(path)
+        if dyn is None:
             raise KeyError(f"no such proc path: {path}")
-        return prov()
+        resolve, m = dyn
+        return resolve(m)
 
     def exists(self, path: str) -> bool:
-        return (path if path.startswith("/") else "/" + path) in self._providers
+        path = path if path.startswith("/") else "/" + path
+        if path in self._providers:
+            return True
+        dyn = self._resolve_dynamic(path)
+        if dyn is None:
+            return False
+        try:
+            dyn[0](dyn[1])
+            return True
+        except KeyError:
+            return False
 
     def list(self, prefix: str = "/") -> List[str]:
-        return sorted(p for p in self._providers if p.startswith(prefix))
+        paths = set(self._providers)
+        for _, _, listing in self._dynamic:
+            try:
+                paths.update(listing())
+            except Exception:
+                pass
+        return sorted(p for p in paths if p.startswith(prefix))
 
     def tree(self) -> Dict[str, Any]:
         """Snapshot every path (used by the UI / `proc` console command)."""

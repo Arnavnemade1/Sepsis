@@ -24,9 +24,18 @@ happens to be running. They are funnelled onto one owner thread.
     busy. The live cluster loop uses this: if a 30 s scenario owns the writer, the
     loop drops its tick and says so, instead of building a backlog of stale ticks
     that would all execute in a burst afterwards.
-  * :func:`assert_writer` is the enforcement. ``LocklessRing.push`` calls it, so a
-    second writer now raises :class:`WriterViolation` instead of silently tearing
-    a sample.
+  * Ownership is PER ARENA. :meth:`KernelExecutor.own` binds one memory arena (the
+    live wing's) to the writer thread; ``LocklessRing.push`` checks its own arena's
+    owner, so a second writer into the wing raises :class:`WriterViolation`
+    instead of silently tearing a sample — while a throwaway cluster somewhere else
+    in the process (the orchestrator warm-up, a verify suite, the load harness)
+    has an unowned arena and writes freely, because nothing else can reach it.
+
+    The first version bound ONE thread for the whole process. That refused the
+    warm-up's writes into its own private 2-bed cluster, so the synthesis warm-up
+    silently skipped on every boot after it shipped and the first clinician click
+    paid the full cold-start cost again. It also made every suite that started an
+    executor responsible for un-binding the whole interpreter afterwards.
 
 LOCK ORDER (there are exactly two locks in the write path, and this is the rule):
 **executor → Z3, never the reverse.** A caller wanting both takes the executor
@@ -52,29 +61,19 @@ class WriterViolation(RuntimeError):
     """Raised when a thread that does not own the write path tries to write."""
 
 
-# The identity of the bound writer thread. ``None`` means no executor has been
-# started (unit tests, verify suites, offline tools) and enforcement is off — a
-# single-threaded caller is trivially a single writer.
-_WRITER_IDENT: Optional[int] = None
 _VIOLATIONS: list = []
 
 
-def assert_writer(what: str = "ring write") -> None:
-    """Fail loudly if the calling thread is not the bound writer.
-
-    Deliberately a module-level function with a module-level global rather than a
-    method: this sits in ``LocklessRing.push``, the hottest path in the fabric, so
-    it must cost one global load and one integer compare (~100 ns) and must not
-    require the ring to hold a reference to anything.
-    """
-    ident = _WRITER_IDENT
-    if ident is not None and threading.get_ident() != ident:
-        cur = threading.current_thread().name
-        _VIOLATIONS.append({"what": what, "thread": cur, "ts": time.time()})
-        raise WriterViolation(
-            "%s attempted from thread %r, which does not own the write path. "
-            "Route it through KernelExecutor.call() — see kernel/executor.py."
-            % (what, cur))
+def refuse_write(what: str) -> None:
+    """Record and raise a refused write. Only reached on an actual violation — the
+    hot path in ``LocklessRing.push`` is one attribute load and one compare, and
+    formats nothing unless the check fails."""
+    cur = threading.current_thread().name
+    _VIOLATIONS.append({"what": what, "thread": cur, "ts": time.time()})
+    raise WriterViolation(
+        "%s attempted from thread %r, which does not own this arena's write path. "
+        "Route it through KernelExecutor.call() — see kernel/executor.py."
+        % (what, cur))
 
 
 def violations() -> list:
@@ -95,10 +94,25 @@ class KernelExecutor:
         self.skipped = 0
         self.max_wait_ms = 0.0
         self.max_run_ms = 0.0
+        self._ident: Optional[int] = None
+        self._owned: list = []
+
+    # -- ownership -------------------------------------------------------- #
+    def own(self, arena: Any) -> "KernelExecutor":
+        """Make this executor's thread the only writer into ``arena``."""
+        if not self._started:
+            raise RuntimeError("start() the executor before it can own an arena")
+        arena.writer_ident = self._ident
+        if arena not in self._owned:
+            self._owned.append(arena)
+        return self
+
+    def owns(self, arena: Any) -> bool:
+        return (arena is not None and self._started
+                and getattr(arena, "writer_ident", None) == self._ident)
 
     # -- lifecycle -------------------------------------------------------- #
     def start(self) -> "KernelExecutor":
-        global _WRITER_IDENT
         if self._started:
             return self
         self._thread.start()
@@ -112,25 +126,19 @@ class KernelExecutor:
         return self
 
     def stop(self) -> None:
-        """Stop the writer thread and UNBIND enforcement.
-
-        The bound identity is process-global, so a test that starts an executor
-        and walks away leaves every later ring write in that process looking like
-        a foreign writer. That is not hypothetical — it broke five kernel suites
-        the first time this ran inside the aggregate runner. Anything that starts
-        an executor outside the server must stop it in a ``finally``.
-        """
-        global _WRITER_IDENT
+        """Stop the writer thread and release every arena it owned."""
         if not self._started:
             return
         self._q.put(None)
         self._thread.join(5.0)
         self._started = False
-        _WRITER_IDENT = None
+        for arena in self._owned:
+            if getattr(arena, "writer_ident", None) == self._ident:
+                arena.writer_ident = None
+        self._owned = []
 
     def _run(self) -> None:
-        global _WRITER_IDENT
-        _WRITER_IDENT = threading.get_ident()
+        self._ident = threading.get_ident()
         self._ready.set()
         while True:
             job = self._q.get()
@@ -151,7 +159,7 @@ class KernelExecutor:
 
     # -- submission ------------------------------------------------------- #
     def is_writer(self) -> bool:
-        return _WRITER_IDENT is not None and threading.get_ident() == _WRITER_IDENT
+        return self._ident is not None and threading.get_ident() == self._ident
 
     @property
     def busy(self) -> bool:
@@ -198,6 +206,7 @@ class KernelExecutor:
             "skipped_ticks": self.skipped,
             "max_wait_ms": round(self.max_wait_ms, 2),
             "max_run_ms": round(self.max_run_ms, 2),
+            "owned_arenas": len(self._owned),
             "violations": len(_VIOLATIONS),
         }
 

@@ -129,8 +129,16 @@ class SyscallTable:
         self._sid += 1
         return self._sid
 
-    def _record(self, res: SyscallResult) -> SyscallResult:
+    def _record(self, res: SyscallResult, caller: str = "console") -> SyscallResult:
         self.audit = (self.audit + [res])[-256:]
+        # The capped list above is the console's recent view; the journal is the
+        # record — ordered with everything else, chained, and persisted.
+        from backend.aegis.kernel.journal import KJOURNAL, NOTICE, WARN
+        KJOURNAL.append("syscall", res.syscall, severity=NOTICE if res.allowed else WARN,
+                        uid=str(caller or "console"), sid=res.sid, bed=res.bed,
+                        errno=ERRNO_NAME.get(res.errno, str(res.errno)),
+                        allowed=res.allowed, z3=res.z3_status,
+                        violations=list(res.violations)[:6])
         return res
 
     def _iv(self, bed: str) -> Intervention:
@@ -152,17 +160,17 @@ class SyscallTable:
         if name not in SYSCALLS:
             return self._record(SyscallResult(
                 sid, name or "?", bed, None, EINVAL, False, "n/a",
-                f"unknown syscall {syscall!r} — table: {', '.join(SYSCALLS)}"))
+                f"unknown syscall {syscall!r} — table: {', '.join(SYSCALLS)}"), caller)
 
         prof = self._profile(bed) if bed else None
         if bed is None or prof is None:
             return self._record(SyscallResult(
                 sid, name, bed, None, ENOENT, False, "n/a",
-                f"no such bed {bed!r}"))
+                f"no such bed {bed!r}"), caller)
 
         handler = getattr(self, f"_sys_{name}")
         res = handler(sid, bed, prof, args, caller)
-        return self._record(res)
+        return self._record(res, caller)
 
     # ------------------------------------------------------------------ #
     # sys_treat — order the certified Hour-1 bundle (PROTOCOL egress gate).

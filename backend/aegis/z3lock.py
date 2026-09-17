@@ -77,6 +77,14 @@ class _ProverHealth:
             self.log = (self.log + [{"at": round(time.time(), 3), "where": where,
                                      "error": msg}])[-16:]
             n = self.failures
+        try:
+            from backend.aegis.kernel.journal import KJOURNAL, CRIT
+            KJOURNAL.append("kern", "prover_corrupted", severity=CRIT,
+                            where=where or "?", error=msg, failures=n)
+            if _EXIT_ENABLED and n >= _EXIT_AFTER and KJOURNAL.store is not None:
+                KJOURNAL.store.flush()                 # os._exit skips atexit
+        except Exception:
+            pass
         print(f"[aegis] Z3 PROVER CORRUPTED ({n}/{_EXIT_AFTER}) in {where or '?'}: {msg}\n"
               f"[aegis] the shared Z3 context cannot be repaired in-process — the "
               f"safety cage is now FAILING CLOSED (nothing will be certified).",

@@ -142,6 +142,11 @@ class DeviceRegistry:
         self.audit.append({"ts": time.time(), "event": event, "device": device,
                            "detail": detail, "actor": actor})
         self.audit = self.audit[-200:]
+        from backend.aegis.kernel.journal import KJOURNAL, INFO
+        # The fleet is SIMULATED (see the module docstring) and says so in the
+        # record, so a reader never mistakes a modelled dropout for a real one.
+        KJOURNAL.append("device", event, severity=INFO, uid=str(actor),
+                        device=device, detail=detail, simulated=True)
 
     # ---- liveness simulation ------------------------------------------- #
     def tick(self) -> None:

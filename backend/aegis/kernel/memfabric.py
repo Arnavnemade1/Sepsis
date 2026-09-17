@@ -34,6 +34,8 @@ read/write pointers, not decoration.
 """
 from __future__ import annotations
 
+import threading
+
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
@@ -41,7 +43,7 @@ from typing import Any, Dict, List, Optional, Sequence
 import numpy as np
 
 from backend.aegis.kernel.devbio import BioBlock, DevBio
-from backend.aegis.kernel.executor import assert_writer
+from backend.aegis.kernel.executor import refuse_write
 
 
 def _now_us() -> float:
@@ -73,6 +75,9 @@ class MemoryArena:
     def __init__(self, capacity_cells: int):
         self.buffer = np.zeros(int(capacity_cells), dtype=np.float64)
         self._base_ptr = self.buffer.ctypes.data          # invariant for life
+        # The one thread allowed to write rings in this arena (see
+        # kernel/executor.py). None = unowned: a private arena nothing else reaches.
+        self.writer_ident: Optional[int] = None
         self._top = 0
         self.regions: Dict[str, Region] = {}
 
@@ -132,6 +137,7 @@ class LocklessRing:
     def __init__(self, arena: MemoryArena, name: str, capacity: int,
                  fields: Sequence[str]):
         self.name = name
+        self._arena = arena
         self.fields = list(fields)
         self.n = len(self.fields)
         self.capacity = int(capacity)
@@ -196,10 +202,13 @@ class LocklessRing:
 
         The single-writer premise in this module's header is now CHECKED here
         rather than assumed: two threads were in fact writing these rings (the
-        cluster loop and the orchestrator's scenario handler). One global load and
-        one integer compare; no-op until a writer thread is bound.
+        cluster loop and the orchestrator's scenario handler). One attribute load
+        and one compare against THIS ring's arena owner; unowned arenas (private
+        clusters, tests) are unchecked because nothing else can reach them.
         """
-        assert_writer("ring write (%s)" % self.name)
+        owner = self._arena.writer_ident
+        if owner is not None and threading.get_ident() != owner:
+            refuse_write("ring write (%s)" % self.name)
         slot = self.write_index % self.capacity
         if self.seq[slot] >= 0:
             self.overwrites += 1

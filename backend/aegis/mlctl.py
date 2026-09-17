@@ -108,9 +108,23 @@ class ModelControlPlane:
         job = TrainJob(id=uuid.uuid4().hex[:8], name=name, spec=spec)
         with self._lock:
             self.jobs[job.id] = job
-        threading.Thread(target=self._run, args=(job,), name=f"train-{job.id}",
-                         daemon=True).start()
+        # A listed JOB process for the kernel's table. It honours no signal: a
+        # scikit-learn fit cannot be interrupted part-way, so `kill` says EINVAL
+        # rather than pretending to cancel a fold that keeps running.
+        from backend.aegis.kernel.proc import JOB, PROCS
+        pid = PROCS.spawn(f"train {name}", JOB, uid="operator", job_id=job.id,
+                          kind=spec["kind"], feature_set=feature_set).pid
+        threading.Thread(target=self._run_as_process, args=(job, pid),
+                         name=f"train-{job.id}", daemon=True).start()
         return job
+
+    def _run_as_process(self, job: "TrainJob", pid: int) -> None:
+        from backend.aegis.kernel.proc import PROCS
+        try:
+            with PROCS.slice(pid):
+                self._run(job)
+        finally:
+            PROCS.exit(pid, code=0 if job.status == "DONE" else 1)
 
     def specialize(self, name: str, horizon: int, feature_set: str = "wearable",
                    limit: int = 1000) -> TrainJob:

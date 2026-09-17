@@ -137,7 +137,17 @@ def main() -> int:
     # ---- 6. PORTABLE PROOF (the (decision, signed_cert) pair) ----------- #
     _hr("6. PORTABLE PROOF (third-party-checkable certificate for the order)")
     pc = res.get("proof_certificate")
-    audit = res.get("proof_audit")
+    # The scenario no longer re-checks its own proof inline (orchestrator.py: it is
+    # seconds of fresh Z3 solves on the free tier, and redundant with the cert it
+    # just produced). The independent audit is run ON DEMAND — exactly as the
+    # frontend's "re-verify independently" button does via /aegis/proof/verify.
+    # This suite used to read an inline `proof_audit` that no longer exists, so
+    # these two checks had been failing since that change; they now test the audit
+    # path that actually ships.
+    audit = None
+    if pc is not None:
+        from backend.aegis.proofexport import verify_certificate as _audit
+        audit = _audit(pc).to_dict()
     print(f"    proof emitted: {pc is not None}; audit trusted: "
           f"{(audit or {}).get('trusted')}")
     if pc:
