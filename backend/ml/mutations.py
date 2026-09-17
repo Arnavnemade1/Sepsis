@@ -602,3 +602,71 @@ def boot_swallows_failures(mod):
         except BaseException as exc:                 # recorded, and swallowed
             p.ok, p.error = False, str(exc)
     B.BootSequencer.phase = phase
+
+
+K_VFS = "backend.aegis.kernel.verify_vfs"
+K_STREAM = "backend.aegis.kernel.verify_osstream"
+
+
+@mutation("access-control", K_VFS, ["a guest cannot read a view:audit file"],
+          note="the filesystem forgets to check a node's read capability")
+def vfs_read_ignores_capability(mod):
+    import backend.aegis.kernel.vfs as V
+
+    class Everyone:
+        def __init__(self, cred):
+            self.__dict__.update(cred.__dict__)
+
+        def has(self, cap):
+            return True
+    orig = V.VFS.read
+
+    def read(self, cred, path, cwd="/"):
+        return orig(self, Everyone(cred), path, cwd)
+    V.VFS.read = read
+
+
+@mutation("access-control", K_VFS, ["another user cannot read it"],
+          note="a home directory that does not check its owner")
+def home_ignores_owner(mod):
+    import backend.aegis.kernel.vfs as V
+    V.HomeFS._check_owner = lambda self, user, cred, write: None
+
+
+@mutation("policy", K_VFS, ["a self-contradictory policy is refused"],
+          note="the consistency check always reports consistent — a policy no order "
+               "could satisfy becomes the law")
+def policy_consistency_skipped(mod):
+    import backend.aegis.kernel.policyfile as P
+    P.PolicyStore.consistency = lambda self, rules: {"consistent": True, "profiles_checked": 0}
+
+
+@mutation("policy", K_VFS, ["a Ciprofloxacin ban does NOT catch Levofloxacin"],
+          note="the browser's old codebook translation: Levofloxacin proven as "
+               "Ciprofloxacin, so a rule about one drug silently governs another")
+def levofloxacin_substituted(mod):
+    import backend.aegis.kernel.policyfile as P
+    from backend.aegis import clinical_dsl as dsl
+    P.CAGE_TO_DSL[5] = dsl.ENUMS["antibiotic"]["Ciprofloxacin"]
+
+
+@mutation("policy", K_VFS, ["a policy forbidding the bundle's own drug makes it NOT all_verified"],
+          note="the bundle carries the policy certificate but all_verified ignores it — "
+               "a file that is shown and not enforced")
+def bundle_ignores_policy(mod):
+    import backend.aegis.kernel.bundle as B
+    orig = B.SepsisBundleEngine.generate
+
+    def generate(self, prof, hist=None):
+        out = orig(self, prof, hist)
+        out["all_verified"] = bool(out["alert"]["certified"] and out["protocol"]["certified"]
+                                   and out["note"]["certified"])
+        return out
+    B.SepsisBundleEngine.generate = generate
+
+
+@mutation("access-control", K_STREAM, ["a guest's journal feed excludes auth, syscall and clinical"],
+          note="the stream sends every facility to every viewer")
+def stream_journal_unfiltered(mod):
+    import backend.aegis.kernel.osstream as O
+    O.SENSITIVE_FACILITIES = frozenset()

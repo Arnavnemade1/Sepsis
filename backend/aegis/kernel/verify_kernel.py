@@ -28,7 +28,7 @@ from backend.aegis.kernel import (verify_boot, verify_bundle, verify_causal_grap
                                   verify_memfabric, verify_neurosym, verify_policy,
                                   verify_proc, verify_scheduler,
                                   verify_scheduler_invariants, verify_supervisor,
-                                  verify_users)
+                                  verify_users, verify_vfs, verify_osstream)
 
 # (label, callable, returns_exit_code)
 SUITES: List[Tuple[str, Callable[[], object], bool]] = [
@@ -41,6 +41,8 @@ SUITES: List[Tuple[str, Callable[[], object], bool]] = [
     ("L5u users, sessions, break-glass",      verify_users.main, True),
     ("L5g the gate (one reference monitor)",  verify_gate.main, True),
     ("L5p policy proofs over the syscall table", verify_policy.main, True),
+    ("L6f the filesystem + /etc/policy.dsl",  verify_vfs.main, True),
+    ("L6s the OS stream (one socket)",        verify_osstream.main, True),
     ("L3  multi-tenant cognitive scheduler",  verify_scheduler.main, False),
     ("L3  scheduler invariants (Z3)",         verify_scheduler_invariants.run_invariant_proofs, True),
     ("L3b HDSched CPU-scheduler benchmark",   verify_hdsched.main, False),

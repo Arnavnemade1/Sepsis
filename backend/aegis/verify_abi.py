@@ -24,6 +24,10 @@ import sys
 import time
 from typing import List, Tuple
 
+os.environ["SUPABASE_URL"] = ""                   # never the production database
+os.environ.setdefault("AEGIS_JOURNAL_DB", os.path.join(__import__("tempfile").mkdtemp(),
+                                                       "verify_abi.db"))
+
 #: (name, ok, detail) — the container the falsification engine reads.
 _results: List[Tuple[str, bool, str]] = []
 

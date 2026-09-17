@@ -129,6 +129,10 @@ RESET_MODULES = [
     "backend.aegis.kernel.abi",
     "backend.aegis.kernel.gate",
     "backend.aegis.kernel.policy",
+    "backend.aegis.kernel.vfs",
+    "backend.aegis.kernel.policyfile",
+    "backend.aegis.kernel.osstream",
+    "backend.aegis.kernel.bundle",
 ]
 
 

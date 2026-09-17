@@ -1083,6 +1083,73 @@
    "path": "/aegis/sys/unlock",
    "cap": "view:public",
    "class": "auth"
+  },
+  {
+   "nr": 136,
+   "name": "fs.ls",
+   "method": "GET",
+   "path": "/aegis/fs/ls",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 137,
+   "name": "fs.read",
+   "method": "GET",
+   "path": "/aegis/fs/read",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 138,
+   "name": "fs.stat",
+   "method": "GET",
+   "path": "/aegis/fs/stat",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 139,
+   "name": "sys.streams",
+   "method": "GET",
+   "path": "/aegis/sys/streams",
+   "cap": "view:sessions",
+   "class": "read"
+  },
+  {
+   "nr": 140,
+   "name": "fs.mkdir",
+   "method": "POST",
+   "path": "/aegis/fs/mkdir",
+   "cap": "view:public",
+   "refine": "vfs",
+   "class": "write"
+  },
+  {
+   "nr": 141,
+   "name": "fs.rm",
+   "method": "POST",
+   "path": "/aegis/fs/rm",
+   "cap": "view:public",
+   "refine": "vfs",
+   "class": "write"
+  },
+  {
+   "nr": 142,
+   "name": "fs.write",
+   "method": "POST",
+   "path": "/aegis/fs/write",
+   "cap": "view:public",
+   "refine": "vfs",
+   "class": "write"
+  },
+  {
+   "nr": 143,
+   "name": "os.stream",
+   "method": "WS",
+   "path": "/aegis/os/stream",
+   "cap": "view:public",
+   "class": "stream"
   }
  ]
 }

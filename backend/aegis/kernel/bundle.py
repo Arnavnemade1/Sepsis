@@ -35,8 +35,11 @@ SEV_NAME = {0: "NONE", 1: "LOW", 2: "MEDIUM", 3: "CRITICAL"}
 
 
 class SepsisBundleEngine:
-    def __init__(self):
+    def __init__(self, policy: Any = None):
         self.cage = NeuroSymbolicRuntime()
+        # The active /etc/policy.dsl (kernel/policyfile.PolicyStore). When set, a
+        # bundle is only all_verified if the hospital's own rules hold as well.
+        self.policy = policy
 
     # -- transparent, patient-specific protocol derivation -------------- #
     def _derive_protocol(self, prof: BedProfile, hist: Dict[str, Any]) -> Dict[str, Any]:
@@ -122,6 +125,14 @@ class SepsisBundleEngine:
             "risk_level": risk_level, "text": note_text,
             "recommends_treatment": True, "protocol_certified": p_ok}, {"risk_level": risk_level})
 
+        policy = None
+        if self.policy is not None:
+            try:
+                policy = self.policy.certify(proto, risk_level, hist)
+            except Exception as exc:                  # a prover failure is not a pass
+                policy = {"ok": False, "error": f"{type(exc).__name__}: {exc}",
+                          "path": "/etc/policy.dsl"}
+
         return {
             "bed_id": prof.bed_id, "name": prof.name, "fused_risk": round(risk, 3),
             "severity": sev, "severity_name": SEV_NAME[sev], "risk_level": risk_level,
@@ -138,7 +149,8 @@ class SepsisBundleEngine:
             # this bundle that no solver produced — see neurosym._certify_note.
             "note": {"text": note_text, "certified": n_ok, "z3": n_cert.z3_status,
                      "verifier": n_cert.verifier},
-            "all_verified": bool(a_ok and p_ok and n_ok),
+            "policy": policy,
+            "all_verified": bool(a_ok and p_ok and n_ok and (policy is None or policy.get("ok"))),
         }
 
 

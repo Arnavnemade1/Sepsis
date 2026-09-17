@@ -50,6 +50,10 @@ PUBLIC_WRITES = {
     "POST /aegis/ingest": "a visitor streaming their OWN camera; nothing else is changed",
     "POST /aegis/sys/kill": "route open so owners can signal their own processes; the "
                             "handler refuses anyone else's unless they hold proc:signal",
+    "POST /aegis/fs/write": "the filesystem checks each node's own write capability in "
+                            "every gate mode; a guest can write only /tmp scratch",
+    "POST /aegis/fs/mkdir": "as fs/write — only /home (owner-only) accepts a directory",
+    "POST /aegis/fs/rm": "as fs/write — owners remove their own /home files and /tmp files",
 }
 
 

@@ -235,6 +235,7 @@ verify-os:
 	$(PY) -m backend.aegis.verify_consensus
 	$(PY) -m backend.aegis.verify_z3_safety
 	$(PY) -m backend.aegis.verify_abi
+	$(PY) -m backend.aegis.verify_os_surface
 
 # Same suites, minus the multi-minute HDSched surrogate search — what CI runs.
 verify-os-fast:

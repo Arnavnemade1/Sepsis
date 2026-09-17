@@ -677,6 +677,7 @@ class TelemetryIn(BaseModel):
 
 
 async def _broadcast(snapshot: Dict[str, Any]) -> None:
+    OS_HUB.publish("snapshot", snapshot)
     dead = []
     for ws in _clients:
         try:
@@ -758,6 +759,7 @@ async def _startup() -> None:
     _MAIN_LOOP = asyncio.get_event_loop()
     asyncio.create_task(_drive_loop())
     asyncio.create_task(_cluster_loop())
+    asyncio.create_task(OS_HUB.run())
 
     # The persistence init makes BLOCKING Supabase calls — never run them on the
     # event loop during startup: a slow/cold DB would stall the startup event,
@@ -1478,6 +1480,260 @@ def _prove_policy() -> None:
 _threading.Thread(target=_kthread("policy-prover", _prove_policy, delay=4.0,
                                   purpose="prove the access policy over the syscall table"),
                   name="policy-prover", daemon=True).start()
+
+
+# --- The filesystem: the kernel's objects as one namespace ------------------ #
+BOOT.checkpoint("vfs", "mount /proc /dev /patients /proofs /var/log /etc /models /apps "
+                       "/artifacts /home /tmp")
+import json as _json
+from backend.aegis.kernel.vfs import (VFS as _VFSClass, VirtualFS as _VirtualFS,
+                                      Leaf as _Leaf, HomeFS as _HomeFS, TmpFS as _TmpFS,
+                                      FileStore as _FileStore, VFSError as _VFSError)
+from backend.aegis.kernel.policyfile import (PolicyStore as _PolicyStore,
+                                             PolicyRejected as _PolicyRejected)
+from backend.aegis.kernel.osstream import OSHub as _OSHub, fingerprint as _vfs_fingerprint
+
+FILES = _FileStore()
+# The active /etc/policy.dsl. Starts from the default rules; a persisted policy is
+# loaded on a kernel thread after boot (a network read at import time is exactly
+# what once stalled a deploy), and every certified bundle is proven against it.
+POLICY = _PolicyStore(store=None)
+POLICY.store = FILES
+bundle_engine.policy = POLICY
+KVFS = _VFSClass()
+
+
+def _load_policy() -> None:
+    text = POLICY._load_persisted()
+    if text and text != POLICY.text:
+        try:
+            from backend.aegis.kernel.users import KERNEL as _K
+            POLICY.write(_K, text)
+            print(f"[aegis] /etc/policy.dsl restored (version {POLICY.version})")
+        except _PolicyRejected as exc:
+            KJOURNAL.append("policy", "policy.restore_refused", severity=3, reason=str(exc))
+
+
+_threading.Thread(target=_kthread("policy-load", _load_policy, delay=2.0,
+                                  purpose="restore /etc/policy.dsl from the file store"),
+                  name="policy-load", daemon=True).start()
+
+
+def _ring_sample(fd: int) -> Dict[str, Any]:
+    """The latest conditioned sample in a live ring, read with the seqlock check the
+    fabric was designed around: re-read the slot's sequence stamp after copying and
+    retry if the writer overtook the read."""
+    ring = cluster.fabric.rings.get(fd)
+    if ring is None:
+        return {"error": "no such ring"}
+    for _ in range(3):
+        w = ring.write_index
+        if w == 0:
+            return {"ring": ring.name, "writes": 0}
+        slot = (w - 1) % ring.capacity
+        seq = int(ring.seq[slot])
+        vals = {f: float(ring.values[slot, j]) for f, j in ring._fidx.items()}
+        t_us = float(ring.t_us[slot])
+        if int(ring.seq[slot]) == seq and ring.write_index == w:
+            return {"ring": ring.name, "seq": seq, "t_us": t_us, "writes": w,
+                    "overwrites": ring.overwrites,
+                    "values": {k: (None if v != v else round(v, 4)) for k, v in vals.items()}}
+    return {"ring": ring.name, "torn": True,
+            "note": "the writer overtook this read three times; try again"}
+
+
+def _log_lines(facility: Optional[str] = None, limit: int = 400) -> str:
+    rows = KJOURNAL.tail(limit=limit, facility=facility)
+    return "\n".join(
+        "%s %6d %s.%s %s: %s %s" % (time.strftime("%H:%M:%S", time.localtime(r["ts"])), r["seq"],
+                                   r["facility"], r["severity_name"], r["uid"], r["event"],
+                                   _json.dumps(r["detail"], default=str)[:200])
+        for r in rows) or "(empty)"
+
+
+def _tree_proc() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for p in procfs.list("/proc/"):
+        name = p[len("/proc/"):]
+        if name and "/" not in name:
+            out[name] = _Leaf(lambda c, _p=p: procfs.read(_p))
+    return out
+
+
+def _tree_dev() -> Dict[str, Any]:
+    bio: Dict[str, Any] = {}
+    for bed, kinds in (getattr(cluster, "_fds", {}) or {}).items():
+        bio[bed] = {f"{k}_feed": _Leaf(lambda c, _fd=fd: _ring_sample(_fd), kind="dev",
+                                       note="latest conditioned sample from the live ring")
+                    for k, fd in kinds.items()}
+    drivers = {d["key"]: _Leaf(lambda c, _k=d["key"]: next(
+                   (x for x in cluster.driver_plane_status() if x["key"] == _k), {}), kind="dev")
+               for d in (cluster.driver_plane_status() if hasattr(cluster, "driver_plane_status") else [])}
+    fleet = device_registry.fleet()
+    devices = {d["id"]: _Leaf(lambda c, _d=d["id"]: (device_registry.get(_d).to_dict()
+                                                     if device_registry.get(_d) else {}),
+                              kind="dev", note="SIMULATED device fleet")
+               for d in fleet.get("devices", [])}
+    return {"bio": bio, "drivers": drivers, "devices": devices,
+            "null": _Leaf(lambda c: "", write=lambda c, d, a: None, cap_write="view:public",
+                          kind="dev"),
+            "random": _Leaf(lambda c: _os.urandom(16).hex(), kind="dev")}
+
+
+def _roster_entry(bed: str) -> Dict[str, Any]:
+    return next((p for p in cohort_roster().get("patients", []) if p.get("bed_id") == bed
+                 or p.get("id") == bed), {"bed": bed})
+
+
+def _tree_patients() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for bed in getattr(cluster, "node_ids", []):
+        out[bed] = {
+            "record": _Leaf(lambda c, b=bed: _roster_entry(b)),
+            "vitals": _Leaf(lambda c, b=bed: cluster.profiles[b].to_dict()
+                            if b in cluster.profiles else {}),
+            "chart": _Leaf(lambda c, b=bed: cohort_chart(b)),
+            "bundle": _Leaf(lambda c, b=bed: cohort_bundle(b),
+                            note="certified by the Z3 cage AND /etc/policy.dsl"),
+            "causal": _Leaf(lambda c, b=bed: causal_graph(b)),
+            "history": _Leaf(read=lambda c, b=bed: patient_terminal.get_history(b)
+                             or "no imported record",
+                             write=lambda c, d, a, b=bed: patient_terminal.import_history(
+                                 b, d, source="vfs:" + c.username),
+                             cap_write="record:import",
+                             note="write free text to import a prior record"),
+            "tracking": _Leaf(read=lambda c, b=bed: patient_terminal.profile(b).to_dict(),
+                              write=lambda c, d, a, b=bed: [
+                                  patient_terminal.exec(b, ln, context=_patient_ctx(b))
+                                  for ln in d.splitlines() if ln.strip()],
+                              cap_write="annotate",
+                              note="one monitoring command per line: focus lungs · watch lactate > 3"),
+            "notes": _Leaf(read=lambda c, b=bed: patient_terminal.get_annotations(b),
+                           write=lambda c, d, a, b=bed: patient_terminal.add_synthesis(
+                               b, d, context=_patient_ctx(b)),
+                           cap_write="annotate", append_only=True,
+                           note="append-only clinician notes (>>)"),
+        }
+    return out
+
+
+def _tree_proofs() -> Dict[str, Any]:
+    out: Dict[str, Any] = {f"{seq}.json": _Leaf(lambda c, _s=seq: orchestrator.proof_for(_s),
+                                                note="Ed25519-signed SMT-LIB2 certificate")
+                           for seq in sorted(getattr(orchestrator, "proofs", {}))}
+    out["core-latest.json"] = _Leaf(lambda c: proof_core_latest())
+    return out
+
+
+_LOG_FACILITIES = ("kern", "boot", "proc", "auth", "syscall", "agent", "egress", "clinical",
+                   "policy", "vfs", "sched", "driver", "svc", "pkg", "net", "irq", "cron")
+
+
+def _tree_log() -> Dict[str, Any]:
+    out: Dict[str, Any] = {"journal": _Leaf(lambda c: _log_lines(), cap_read="view:audit",
+                                            note="the whole hash-chained journal (tail)")}
+    for f in _LOG_FACILITIES:
+        public = f in ("kern", "boot", "proc", "sched", "driver", "svc", "pkg", "policy")
+        out[f] = _Leaf(lambda c, _f=f: _log_lines(_f),
+                       cap_read="view:public" if public else "view:audit")
+    return out
+
+
+def _os_release() -> str:
+    import platform as _pf
+    return "\n".join([
+        'NAME="AegisOS"', 'VERSION="1.0.0-dev"', "ID=aegisos",
+        'PRETTY_NAME="AegisOS 1.0 (Clinical Glass)"',
+        f'KERNEL="python {_pf.python_version()} · {_pf.system()} {_pf.machine()}"',
+        f"BOOT_ID={BOOT_ID}", f"DATA_MODE={DATA_MODE}", f"GATE_MODE={GATE.mode}",
+        'NOTE="A research operating system in the browser. Not a medical device."', ""])
+
+
+def _policy_write(cred, data: str, append: bool) -> Any:
+    try:
+        return POLICY.write(cred, (POLICY.text + data) if append else data)
+    except _PolicyRejected as exc:
+        raise _VFSError("EINVAL", f"{exc} {_json.dumps(exc.detail, default=str)}")
+
+
+def _tree_etc() -> Dict[str, Any]:
+    return {
+        "os-release": _Leaf(lambda c: _os_release()),
+        "hostname": _Leaf(lambda c: "aegis-icu-wing"),
+        "motd": _Leaf(lambda c: "AegisOS — one kernel, one gate, one journal. "
+                                "Every order is proven before it leaves.\n"),
+        "policy.dsl": _Leaf(lambda c: POLICY.text, write=_policy_write, cap_write="policy:write",
+                            note="the hospital safety policy every certified bundle is proven "
+                                 "against; a contradictory policy is refused"),
+        "policy.status": _Leaf(lambda c: POLICY.status()),
+        "rbac.json": _Leaf(lambda c: {"rings": RING, "cap_min_ring": CAP_MIN_RING,
+                                      "grants": {r: sorted(g) for r, g in GRANTS.items()}}),
+        "abi.json": _Leaf(lambda c: {**ABI_TABLE.summary(),
+                                     "syscalls": [e.to_json() for e in ABI_TABLE.entries]}),
+        "policy-proof.json": _Leaf(lambda c: GATE.policy_proof or {"status": "pending"}),
+        "accounts": _Leaf(lambda c: USERS.public_accounts()),
+    }
+
+
+def _tree_models() -> Dict[str, Any]:
+    out: Dict[str, Any] = {f"{m['name']}.json": _Leaf(lambda c, _m=m: _m)
+                           for m in mlctl.list_models()}
+    manifest = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+        _os.path.abspath(__file__)))), "artifacts", "detector_manifest.json")
+    if _os.path.isfile(manifest):
+        out["production.json"] = _Leaf(lambda c: _json.load(open(manifest)),
+                                       note="the certified production detector")
+    return out
+
+
+def _tree_apps() -> Dict[str, Any]:
+    listing = pkg_registry.list()
+    out = {f"{n}.json": _Leaf(lambda c, _n=n: next(
+        (p for p in pkg_registry.list().get("catalogue", []) if p.get("name") == _n), {"name": _n}))
+        for n in listing.get("installed", [])}
+    out["catalogue.json"] = _Leaf(lambda c: pkg_registry.list())
+    return out
+
+
+_ARTIFACTS_DIR = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(
+    _os.path.abspath(__file__)))), "artifacts")
+
+
+def _tree_artifacts() -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    try:
+        names = sorted(n for n in _os.listdir(_ARTIFACTS_DIR) if n.endswith(".json"))
+    except OSError:
+        names = []
+    for n in names:
+        p = _os.path.join(_ARTIFACTS_DIR, n)
+        if _os.path.getsize(p) <= 2 * 1024 * 1024:           # an allowlist, not the disk
+            out[n] = _Leaf(lambda c, _p=p: _json.load(open(_p)),
+                           note="committed validation result")
+    return out
+
+
+def _home_users() -> List[str]:
+    return sorted({a["username"] for a in USERS.public_accounts() if a["username"] != "guest"})
+
+
+KVFS.mount("/proc", _VirtualFS(_tree_proc, "/proc", note="kernel providers + /proc/<pid>"))
+KVFS.mount("/dev", _VirtualFS(_tree_dev, "/dev", note="live rings, drivers, devices"))
+KVFS.mount("/patients", _VirtualFS(_tree_patients, "/patients", note="one directory per bed"))
+KVFS.mount("/proofs", _VirtualFS(_tree_proofs, "/proofs", note="signed certificates"))
+KVFS.mount("/var/log", _VirtualFS(_tree_log, "/var/log", note="views of the one journal"))
+KVFS.mount("/etc", _VirtualFS(_tree_etc, "/etc", note="system configuration"))
+KVFS.mount("/models", _VirtualFS(_tree_models, "/models", note="trained detectors"))
+KVFS.mount("/apps", _VirtualFS(_tree_apps, "/apps", note="installed packages"))
+KVFS.mount("/artifacts", _VirtualFS(_tree_artifacts, "/artifacts", note="committed results"))
+KVFS.mount("/home", _HomeFS(FILES, _home_users))
+KVFS.mount("/tmp", _TmpFS())
+
+OS_HUB = _OSHub()
+OS_HUB.ps = lambda: PROCS.ps()
+OS_HUB.boot = lambda: BOOT.summary()
+OS_HUB.vfs_fingerprint = lambda cred, path: _vfs_fingerprint(KVFS, cred, path)
+BOOT.note(mounts=len(KVFS.mounts), policy_rules=len(POLICY.rules))
 BOOT.checkpoint("routes-3", "access-control and consult REST surface")
 
 
@@ -1932,6 +2188,7 @@ def _cluster_payload() -> Dict[str, Any]:
 
 
 async def _broadcast_cluster(payload: Dict[str, Any]) -> None:
+    OS_HUB.publish("cluster", payload)
     dead = []
     for ws in _cluster_clients:
         try:
@@ -1955,9 +2212,25 @@ async def _cluster_loop() -> None:
                        cadence_s=CLUSTER_TICK_SECONDS,
                        drives="ward telemetry + service plane",
                        protected="the ward monitoring loop honours no signal").pid
+    def side_work(decision) -> Dict[str, Any]:
+        # Services certify their outputs, the headline alert is certified and the
+        # focus bundle proven: all of it Z3, which must never run on the event loop
+        # (a request thread holding the prover for a long scenario would freeze
+        # every socket). One iteration at a time, so these stay single-threaded.
+        with PROCS.slice(_pid):
+            if SERVICE_BED is not None:            # tick the managed app/service plane
+                aegisd.tick(cluster.frame_for(SERVICE_BED))
+            if ppg_monitor is not None:
+                ppg_monitor.tick(CLUSTER_TICK_SECONDS)  # advance the live PPG waveform
+            _certify_cluster_headline(decision)
+            _reconcile_kernel()
+            return _cluster_payload()
+
     while True:
         try:
-            decision = EXEC.try_call(cluster.tick)  # ticks the cohort incl. its eBPF beds
+            # try_call from the loop thread used to BLOCK the loop while the writer
+            # ran the tick; from a worker thread it blocks only that worker.
+            decision = await asyncio.to_thread(EXEC.try_call, cluster.tick)
             if decision is EXEC.BUSY:
                 # A long write already owns the wing (a scenario run). Drop this
                 # tick instead of queueing it: at a 2 s cadence a queued tick would
@@ -1965,14 +2238,7 @@ async def _cluster_loop() -> None:
                 # drop is counted in EXEC.status()["skipped_ticks"].
                 await asyncio.sleep(CLUSTER_TICK_SECONDS)
                 continue
-            with PROCS.slice(_pid):
-                if SERVICE_BED is not None:        # tick the managed app/service plane
-                    aegisd.tick(cluster.frame_for(SERVICE_BED))
-                if ppg_monitor is not None:
-                    ppg_monitor.tick(CLUSTER_TICK_SECONDS)  # advance the live PPG waveform
-                _certify_cluster_headline(decision)
-                _reconcile_kernel()
-                payload = _cluster_payload()
+            payload = await asyncio.to_thread(side_work, decision)
             await _broadcast_cluster(payload)
         except Exception as exc:  # pragma: no cover
             print(f"[aegis] cluster loop error: {exc}")
@@ -4320,6 +4586,87 @@ def sys_abi(cls: str = "") -> Dict[str, Any]:
 def sys_policy() -> Dict[str, Any]:
     return GATE.policy_proof or {"status": "pending",
                                  "detail": "the policy prover runs shortly after boot"}
+
+
+# --- the filesystem syscalls ------------------------------------------------- #
+class FsWriteIn(BaseModel):
+    path: str
+    content: str = ""
+    append: bool = False
+
+
+class FsPathIn(BaseModel):
+    path: str
+
+
+def _fs_error(exc: Exception) -> Dict[str, Any]:
+    errno = getattr(exc, "errno", "EIO")
+    return {"status": "error", "errno": errno if isinstance(errno, str) else "EIO",
+            "detail": getattr(exc, "message", str(exc))}
+
+
+@app.get("/aegis/fs/ls")
+def fs_ls(path: str = "/") -> Dict[str, Any]:
+    try:
+        return {"path": KVFS.normalize(path),
+                "entries": [n.to_dict() for n in KVFS.ls(_cred(), path)]}
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.get("/aegis/fs/stat")
+def fs_stat(path: str = "/") -> Dict[str, Any]:
+    try:
+        return KVFS.stat(_cred(), path).to_dict()
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.get("/aegis/fs/read")
+def fs_read(path: str) -> Dict[str, Any]:
+    try:
+        return KVFS.read(_cred(), path)
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.post("/aegis/fs/write")
+def fs_write(p: FsWriteIn) -> Dict[str, Any]:
+    try:
+        return {"status": "ok", "node": KVFS.write(_cred(), p.path, p.content,
+                                                   append=p.append).to_dict()}
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.post("/aegis/fs/mkdir")
+def fs_mkdir(p: FsPathIn) -> Dict[str, Any]:
+    try:
+        return {"status": "ok", "node": KVFS.mkdir(_cred(), p.path).to_dict()}
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.post("/aegis/fs/rm")
+def fs_rm(p: FsPathIn) -> Dict[str, Any]:
+    try:
+        KVFS.rm(_cred(), p.path)
+        return {"status": "ok", "removed": KVFS.normalize(p.path)}
+    except Exception as exc:
+        return _fs_error(exc)
+
+
+@app.get("/aegis/sys/streams")
+def sys_streams() -> Dict[str, Any]:
+    return OS_HUB.status()
+
+
+@app.websocket("/aegis/os/stream")
+async def os_stream(ws: WebSocket) -> None:
+    """One socket per desktop: subscribe to snapshot, cluster, proc, journal, boot,
+    vfs watches and (with the shell) tty. Authenticated by session subprotocol."""
+    await ws.accept()
+    await OS_HUB.serve(ws, _cred())
 
 
 @app.post("/aegis/cluster/chaos")

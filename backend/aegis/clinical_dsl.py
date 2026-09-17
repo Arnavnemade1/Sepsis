@@ -49,7 +49,10 @@ from backend.aegis.z3lock import z3_guarded as _z3_guarded
 ENUMS: Dict[str, Dict[str, int]] = {
     "risk": {"LOW": 0, "MEDIUM": 1, "HIGH": 2},
     "antibiotic": {"NONE": 0, "Cefepime": 1, "PipTazo": 2, "Vancomycin": 3,
-                   "Meropenem": 4, "Ceftriaxone": 5, "Ciprofloxacin": 6},
+                   "Meropenem": 4, "Ceftriaxone": 5, "Ciprofloxacin": 6,
+                   # the cage's code 5; without it an order for Levofloxacin could only
+                   # be proven as a DIFFERENT fluoroquinolone
+                   "Levofloxacin": 7},
 }
 # name -> ("real" | "int-enum" | "bool")
 VARS: Dict[str, str] = {
@@ -271,7 +274,13 @@ def _resolve_value(varname: str, raw: Any):
     raise SyntaxError(f"cannot compare boolean variable {varname!r} to a value")
 
 
+@_z3_guarded
 def compile_node(n: Node) -> BoolRef:
+    # Guarded: building terms touches Z3's shared, non-thread-safe context. This
+    # was unguarded — compiling a policy on a request thread while the ward loop
+    # solved corrupted the context ("UNEXPECTED CODE WAS REACHED") and the prover
+    # failed closed for the rest of the process. Re-entrant, so the recursion and
+    # the guarded callers above cost only lock traffic.
     if isinstance(n, Always):
         return compile_node(n.inner)                  # bounded to the decision point
     if isinstance(n, Within):
@@ -298,10 +307,12 @@ class CompiledRule:
     text: str
     formula: BoolRef
 
+    @_z3_guarded
     def sexpr(self) -> str:
-        return self.formula.sexpr()
+        return self.formula.sexpr()                   # printing a term reads the context
 
 
+@_z3_guarded
 def compile_rules(text: str) -> List[CompiledRule]:
     return [CompiledRule(r.name, r.text, compile_node(r.body)) for r in parse(text)]
 

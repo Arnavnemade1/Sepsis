@@ -50,8 +50,16 @@ Z3_MODULES = [
     "backend/aegis/rbac.py",
     "backend/aegis/pharmacopoeia.py",
     "backend/aegis/proofexport.py",
+    "backend/aegis/kernel/policy.py",
+    "backend/aegis/kernel/policyfile.py",
 ]
-BUILDERS = {"Solver", "Optimize", "Real", "Bool", "Int", "Const", "Function"}
+BUILDERS = {"Solver", "Optimize", "Real", "Bool", "Int", "Const", "Function",
+            # Term constructors touch the shared context as much as a solver does.
+            # They were missing, so clinical_dsl.compile_node — which builds its
+            # formulas from And/Or/Not/RealVal and reaches And through a dict lookup —
+            # passed this audit while racing the ward loop's prover.
+            "And", "Or", "Not", "Implies", "If", "IntVal", "RealVal", "BoolVal",
+            "EnumSort", "Sum", "Distinct", "ForAll", "Exists"}
 
 
 def _raises(fn, exc_type) -> bool:
@@ -85,8 +93,15 @@ def _unguarded_public(path: str) -> List[str]:
             continue
         if node.name.startswith("_"):
             continue
-        builds = any(isinstance(c, ast.Call)
-                     and getattr(c.func, "id", "") in BUILDERS
+        # Any REFERENCE to a builder counts, not only a direct call: a builder
+        # reached through a table ({"and": And}[op](l, r)) builds terms all the same.
+        # Type annotations do not (``solver: Solver`` builds nothing).
+        in_annotation = set()
+        for a in ([x.annotation for x in node.args.args + node.args.kwonlyargs
+                   + node.args.posonlyargs] + [node.returns]):
+            if a is not None:
+                in_annotation.update(id(n) for n in ast.walk(a))
+        builds = any(isinstance(c, ast.Name) and c.id in BUILDERS and id(c) not in in_annotation
                      for c in ast.walk(node))
         if not builds:
             continue

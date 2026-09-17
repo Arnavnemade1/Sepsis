@@ -145,6 +145,9 @@ RULES: List[Tuple[str, str, str, str, str]] = [
     ("POST", r"^/aegis/sys/kill$", "write", "view:public", "signal"),
     ("POST", r"^/aegis/sys/gate/mode$", "write", "session:admin", ""),
     ("GET", r"^/aegis/sys/journal$", "read", "view:audit", ""),
+    ("GET", r"^/aegis/sys/streams$", "read", "view:sessions", ""),
+    # the filesystem enforces per-node capabilities itself, in every gate mode
+    ("POST", r"^/aegis/fs/(write|mkdir|rm)$", "write", "view:public", "vfs"),
     # --- the clinical egress path
     ("POST", r"^/aegis/syscall$", "egress", "order:escalate", "syscall"),
     ("POST", r"^/aegis/orchestrator/govern$", "egress", "order:escalate", ""),
