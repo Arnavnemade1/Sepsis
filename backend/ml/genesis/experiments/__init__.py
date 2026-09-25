@@ -14,4 +14,6 @@ e8_intent           clinician-intent features (null inside the product)
 e9_network_in_product   the pre-registered rule for adding the network as an expert
 e10_tune_heads      regularised boosting for the three heads (+0.0065 for direct)
 e11_direct_round2   a second regularisation round (converged: +0.0001)
+e12_ssl             self-supervised pretraining of the network (pre-registered NULL:
+                    +0.0008 [-0.00002, +0.0017]; within-septic timing +0.012)
 """

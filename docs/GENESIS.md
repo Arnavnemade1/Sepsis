@@ -27,7 +27,7 @@ and the hypothesis was that the gradient-boosting infrastructure caps out around
    measurable.** The learning curve's asymptote — the AUROC this representation would
    approach with *unlimited* patients from these two hospitals — is **0.887 ± 0.014**
    (hour-matched **0.847 ± 0.011**). The half of Sepsis-3 that sets the onset clock
-   (suspected infection = cultures + antibiotics) is not recorded in CinC 2019 at all (§7).
+   (suspected infection = cultures + antibiotics) is not recorded in CinC 2019 at all (§8).
 
 ---
 
@@ -223,7 +223,47 @@ single model): the locked models trained on 32k patients instead of 26k, which t
 learning curve prices at roughly +0.005, and the rest is the sampling variation of one
 8,067-patient draw. The comparisons that matter are the paired ones on the same patients.
 
-## 6. The ceiling, measured
+## 6. Self-supervised pretraining — a pre-registered null
+
+An outside proposal ranked self-supervised pretraining as the most promising untested
+idea, and it was the one with a mechanism: the learning curve (§7) says the model is partly
+sample-limited, and pretraining is a sample-efficiency lever. It was tested on the laptop,
+once, with the rules written into `lock_ledger.jsonl` before the run (`experiments/e12_ssl.py`,
+40 CPU-minutes, no paid compute).
+
+**Design.** The Genesis Network's encoder is first trained with no sepsis label on the
+fold's training patients: hide each channel's values for blocks of 1–6 hours (13.6% of
+values) and reconstruct the measured ones, plus the world-model forecasts. Hiding a channel
+hides every composite computed from it — shock index = HR / SBP would otherwise hand a
+hidden heart rate straight back — and `verify_genesis.py` checks that guard, including
+that the check fires when the guard is switched off. Fine-tuning is then identical to the
+from-scratch network (3 seeds, same schedule, same calibration); the from-scratch arm is
+the existing run, not recomputed.
+
+**The pretext was learned** in every fold: held-out reconstruction error 0.14–0.16 against
+0.21–0.22 for carrying the last visible value forward and 0.32 for predicting the median.
+So a null here is a statement about the idea, not about a broken run.
+
+| dev CV, 32,268 patients | pretrained | from scratch | Δ AUROC [95% CI] |
+|---|---|---|---|
+| network alone | 0.8274 | 0.8265 | +0.0009 [−0.0019, +0.0036] |
+| **GENESIS product (primary endpoint)** | **0.8492** | **0.8484** | **+0.0008 [−0.00002, +0.0017]** |
+
+**Verdict: NULL.** The primary endpoint needed a lower bound above zero and missed by
+0.00002; by the pre-registered rules the Transformer stage and a second locked look were
+not run. Had it passed, +0.0008 would not have mattered for the 0.90 question anyway.
+
+**What it did move (exploratory — the decomposition was not a named endpoint).** Pretraining
+raised the *within-septic* AUROC — is this septic patient near onset yet? — by **+0.0119
+[+0.0077, +0.0165]** for the network alone (+0.0043 [+0.0029, +0.0058] inside the product)
+while leaving between-patient discrimination flat (−0.0002 [−0.0029, +0.0025]). That is the
+decomposition's prediction playing out: learning physiological dynamics helps *when*, the
+component every model is weakest at, but *when* is 9.5% of pooled AUROC, so the headline
+cannot follow. It is the first lever in this project that moved within-stay timing, and the
+natural place to use it is the question it answers — which hour to escalate — rather than
+the pooled number.
+
+## 7. The ceiling, measured
 
 Learning curve of the direct model (training patients subsampled per fold; test folds
 unchanged; fit `AUROC(n) = a − b·n^−α`):
@@ -241,7 +281,7 @@ unchanged; fit `AUROC(n) = a − b·n^−α`):
 GENESIS's architectural gain (+0.0067) is worth roughly a doubling of the data. Even
 unlimited patients from these two hospitals do not reach 0.90 for this representation.
 
-## 7. What would actually reach 0.90
+## 8. What would actually reach 0.90
 
 The Sepsis-3 onset clock is the *earlier* of suspected infection and the SOFA rise, and
 suspected infection is defined by blood cultures and antibiotics — neither is in CinC
@@ -259,11 +299,13 @@ published criticism of the Epic Sepsis Model. So the honest options are:
 2. **Add the suspicion record** (MIMIC-IV) and report *both* numbers — with and without
    order data — so the gain from reading clinicians' decisions is visible, not hidden.
 
-A new architecture on CinC is not on the list: five architectures in this pass and ten
-before it all land within ±0.01 of a well-tuned booster on the same inputs, and the
-learning curve says the inputs, not the learner, set the ceiling.
+A new architecture on CinC is not on the list: every architecture in this pass (factorised
+experts, learned and temporal stage-2 combiners, a GRU with a Sepsis-3 AND-gate and a world
+model, self-supervised pretraining) and ten before it land within ±0.01 of a well-tuned
+booster on the same inputs, and the learning curve says the inputs, not the learner, set
+the ceiling.
 
-## 8. Reproduce
+## 9. Reproduce
 
     .venv/bin/python -m backend.ml.genesis.rawstore          # pack 40,335 patients
     .venv/bin/python verify_genesis.py                        # the audit

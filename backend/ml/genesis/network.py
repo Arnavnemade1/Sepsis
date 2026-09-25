@@ -25,6 +25,15 @@ at once:
                          the gate's two inputs mean what their names say.
 
 Every head's output is a margin that the GENESIS stage-2 meta-learner can use.
+
+SELF-SUPERVISED PRETRAINING (``GenesisNetwork.pretrain``). Before any sepsis label is
+seen, the encoder can be trained on two pretext tasks that need no labels and respect
+causality: (1) block-masked value reconstruction — hide a channel's values for 1-6
+consecutive hours and reconstruct the measured ones from everything else the network can
+see at that hour; (2) the world-model forecasts. Hiding a channel also hides every
+composite computed from it (shock index = HR / SBP would otherwise hand back a hidden HR
+exactly, and the pretext would teach arithmetic instead of physiology). Fine-tuning then
+runs exactly as training from scratch, starting from the pretrained weights.
 """
 from __future__ import annotations
 
@@ -47,14 +56,30 @@ MAIN = ["direct", "who", "when"]
 # --------------------------------------------------------------------------- #
 # Inputs
 # --------------------------------------------------------------------------- #
+CONTEXT = ["Age", "Gender", "unit_sicu", "HospAdmTime", "ICULOS", "hour",
+           "sofa_proxy", "sofa_rise24", "sirs", "qsofa_proxy", "shock_index",
+           "proc__labs6", "proc__new24", "proc__draws24"]
+
+#: Composite inputs and the channels they are computed from. When pretraining hides a
+#: channel, these are hidden with it — otherwise the pretext leaks its own answer.
+DERIVED = {
+    "sofa_proxy": ["Platelets", "Bilirubin_total", "Creatinine", "MAP", "FiO2", "SaO2", "O2Sat"],
+    "sofa_rise24": ["Platelets", "Bilirubin_total", "Creatinine", "MAP", "FiO2", "SaO2", "O2Sat"],
+    "sirs": ["Temp", "HR", "Resp", "PaCO2", "WBC"],
+    "qsofa_proxy": ["Resp", "SBP"],
+    "shock_index": ["HR", "SBP"],
+}
+N_CH = len(DYNAMIC)
+VALUE_COLS = np.arange(N_CH) * 4        # value / now / logage / ever per channel
+NOW_COLS = VALUE_COLS + 1
+
+
 def input_matrix(c: Cohort) -> Tuple[np.ndarray, List[str]]:
     """Compact per-hour input: for each of the 34 channels its last value, whether it
     was measured this hour, log-hours since measured and whether it ever was; plus
     context and a few composites. Values are left raw here; ``Standardiser`` fits
     robust scales on training rows only."""
-    ctxs = ["Age", "Gender", "unit_sicu", "HospAdmTime", "ICULOS", "hour",
-            "sofa_proxy", "sofa_rise24", "sirs", "qsofa_proxy", "shock_index",
-            "proc__labs6", "proc__new24", "proc__draws24"]
+    ctxs = CONTEXT
     need = [n for ch in DYNAMIC for n in (ch, f"{ch}__age")] + ctxs
     block = c.cols(need)
     get = {n: block[:, j] for j, n in enumerate(need)}
@@ -147,6 +172,14 @@ class NetConfig:
     wm_horizon: int = 6
     #: halve the learning rate when validation AUROC stops improving
     plateau_decay: bool = True
+    #: self-supervised pretraining (``GenesisNetwork.pretrain``): 34 mask-indicator
+    #: inputs, the fraction of (channel, hour) values hidden, block length, loss weights
+    mask_channels: bool = False
+    pretrain_epochs: int = 8
+    mvr_rate: float = 0.15
+    mvr_max_len: int = 6
+    w_mvr: float = 1.0
+    w_wm_pre: float = 1.0
     device: str = "auto"
     seed: int = 0
 
@@ -178,6 +211,8 @@ def _build(d_in: int, cfg: NetConfig, n_susp: int, n_org: int, n_ch: int = len(D
             self.org_aux = nn.Linear(d + 1, n_org)
             # physiological world model: next value (regression) + next measurement
             self.wm = nn.Linear(d, 2 * n_ch)
+            # masked-value reconstruction (pretraining pretext): the hidden values NOW
+            self.mvr = nn.Linear(d, n_ch)
 
         def forward(self, x):
             h, _ = self.gru(self.inp(x))
@@ -186,7 +221,7 @@ def _build(d_in: int, cfg: NetConfig, n_susp: int, n_org: int, n_ch: int = len(D
             aux_s = self.susp_aux(torch.cat([h, a_s], -1))
             aux_o = self.org_aux(torch.cat([h, a_o], -1))
             return (self.main(h), s3_logp.squeeze(-1), aux_s, aux_o, a_s.squeeze(-1),
-                    a_o.squeeze(-1), self.wm(h))
+                    a_o.squeeze(-1), self.wm(h), self.mvr(h))
 
     return GenesisNet()
 
@@ -235,7 +270,10 @@ class GenesisNetwork:
 
     # ------------------------------------------------------------------ #
     def _tensors(self, c: Cohort, X: np.ndarray, T: Dict[str, Tuple[np.ndarray, np.ndarray]],
-                 pts: np.ndarray, dev):
+                 pts: np.ndarray, dev, mask_rng: Optional[np.random.Generator] = None,
+                 with_world: Optional[bool] = None):
+        """Batch tensors. With ``mask_rng`` (pretraining) value blocks are hidden and the
+        reconstruction targets are returned in ``ys["mvr_t"] / ys["mvr_m"]``."""
         import torch
         starts, lens = c.raw.starts[pts], c.raw.lens[pts]
         B, Tm = len(pts), int(lens.max())
@@ -244,11 +282,21 @@ class GenesisNetwork:
             rows[b, :n] = np.arange(a, a + n)
         valid = rows >= 0
         flat = rows[valid]
-        x = np.zeros((B, Tm, X.shape[1]), dtype=np.float32)
-        x[valid] = self.std_(X[flat])
+        n_mask = N_CH if getattr(self.cfg, "mask_channels", False) else 0
+        x = np.zeros((B, Tm, X.shape[1] + n_mask), dtype=np.float32)
+        raw_block = X[flat]
+        x[valid, :X.shape[1]] = self.std_(raw_block)
         ys, ms = {}, {}
+        if mask_rng is not None:
+            now = np.zeros((B, Tm, N_CH), dtype=bool)
+            now[valid] = raw_block[:, NOW_COLS] > 0.5
+            M, tv = self._mask_values(x, valid, now, mask_rng, X.shape[1])
+            ys["mvr_t"] = torch.from_numpy(tv).to(dev)
+            ys["mvr_m"] = torch.from_numpy((M & now).astype(np.float32)).to(dev)
         W = getattr(self, "_world", None)
-        if W is not None and len(T):
+        if with_world is None:
+            with_world = bool(len(T))
+        if W is not None and with_world:
             n_ch = W["value"].shape[1]
             vcols = np.arange(n_ch) * 4                     # channel value columns of X
             vv = np.zeros((B, Tm, n_ch), dtype=np.float32)
@@ -273,10 +321,55 @@ class GenesisNetwork:
             ms[k] = torch.from_numpy(mm).to(dev)
         return torch.from_numpy(x).to(dev), ys, ms, rows, valid
 
+    def _mask_values(self, x: np.ndarray, valid: np.ndarray, now: np.ndarray,
+                     rng: np.random.Generator, n_in: int):
+        """Hide blocks of 1..``mvr_max_len`` hours per channel, IN PLACE on ``x``.
+
+        Returns the boolean mask (B, T, 34) and the standardised true values (targets are
+        read only where the channel was actually measured that hour). Every composite
+        derived from a hidden channel is hidden at the same hour."""
+        cfg = self.cfg
+        B, Tm, _ = x.shape
+        L = int(cfg.mvr_max_len)
+        p_start = float(cfg.mvr_rate) / ((1 + L) / 2.0)
+        starts = (rng.random((B, Tm, N_CH)) < p_start) & valid[..., None]
+        length = rng.integers(1, L + 1, size=(B, Tm, N_CH))
+        M = np.zeros((B, Tm, N_CH), dtype=bool)
+        for l in range(L):
+            M[:, l:, :] |= (starts & (length > l))[:, :Tm - l, :]
+        M &= valid[..., None]
+        tv = x[..., VALUE_COLS].copy()
+        x[..., VALUE_COLS] = np.where(M, 0.0, x[..., VALUE_COLS])
+        base = N_CH * 4
+        for name, chans in DERIVED.items():
+            col = base + CONTEXT.index(name)
+            dep = np.zeros((B, Tm), dtype=bool)
+            for ch in chans:
+                dep |= M[..., DYNAMIC.index(ch)]
+            x[..., col] = np.where(dep, 0.0, x[..., col])
+        x[..., n_in:n_in + N_CH] = M.astype(np.float32)
+        return M, tv
+
+    def _wm_loss(self, wm, ys):
+        import torch.nn.functional as Fn
+        n_ch = ys["wm_v"].shape[-1]
+        pv, pe = wm[..., :n_ch], wm[..., n_ch:]
+        hub = Fn.smooth_l1_loss(pv, ys["wm_v"], reduction="none")
+        lv = (hub * ys["wm_vm"]).sum() / ys["wm_vm"].sum().clamp(min=1.0)
+        be = Fn.binary_cross_entropy_with_logits(pe, ys["wm_e"], reduction="none")
+        m = ys["wm_em"].expand_as(be)
+        le = (be * m).sum() / m.sum().clamp(min=1.0)
+        return lv + le
+
+    def _mvr_loss(self, mvr, ys):
+        import torch.nn.functional as Fn
+        hub = Fn.smooth_l1_loss(mvr, ys["mvr_t"], reduction="none")
+        return (hub * ys["mvr_m"]).sum() / ys["mvr_m"].sum().clamp(min=1.0)
+
     def _loss(self, out, ys, ms, pw):
         import torch
         import torch.nn.functional as Fn
-        main, s3, aux_s, aux_o, _, _, wm = out
+        main, s3, aux_s, aux_o, _, _, wm, _ = out
         cfg = self.cfg
         L = _bce(main[..., 0], ys["direct"], ms["direct"], pw)
         L = L + cfg.w_who * _bce(main[..., 1], ys["who"], ms["who"])
@@ -287,19 +380,94 @@ class GenesisNetwork:
         for j, k in enumerate(ORGAN_AUX):
             L = L + cfg.w_aux * _bce(aux_o[..., j], ys[k], ms[k])
         if cfg.w_wm > 0 and "wm_v" in ys:
-            n_ch = ys["wm_v"].shape[-1]
-            pv, pe = wm[..., :n_ch], wm[..., n_ch:]
-            hub = Fn.smooth_l1_loss(pv, ys["wm_v"], reduction="none")
-            lv = (hub * ys["wm_vm"]).sum() / ys["wm_vm"].sum().clamp(min=1.0)
-            be = Fn.binary_cross_entropy_with_logits(pe, ys["wm_e"], reduction="none")
-            m = ys["wm_em"].expand_as(be)
-            le = (be * m).sum() / m.sum().clamp(min=1.0)
-            L = L + cfg.w_wm * (lv + le)
+            L = L + cfg.w_wm * self._wm_loss(wm, ys)
         return L
+
+    def pretrain(self, c: Cohort, X: np.ndarray, pts: np.ndarray,
+                 world: Optional[Dict[str, np.ndarray]] = None,
+                 verbose: bool = True) -> "GenesisNetwork":
+        """Self-supervised pretraining on ``pts`` — inputs only, no sepsis label.
+
+        Loss = w_mvr * masked-value reconstruction + w_wm_pre * world-model forecasts.
+        ``pretext_`` records, per epoch, the reconstruction loss on a held-out slice next
+        to two trivial baselines (predict the median; carry the last visible value
+        forward) — the pretext has been learned only if the model beats both."""
+        import torch
+        cfg = self.cfg
+        if not cfg.mask_channels:
+            raise ValueError("pretraining needs mask_channels=True")
+        torch.manual_seed(cfg.seed)
+        dev = _device(cfg.device)
+        self._world = world
+        rng = np.random.default_rng(cfg.seed + 1000)
+        mon = np.sort(rng.choice(pts, max(1, int(0.05 * len(pts))), replace=False))
+        fit_pts = np.setdiff1d(pts, mon)
+        self.std_ = Standardiser.fit(X, c.rows_of(fit_pts), seed=cfg.seed)
+        net = _build(X.shape[1] + N_CH, cfg, len(SUSPICION_AUX), len(ORGAN_AUX)).to(dev)
+        opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
+        self.pretext_ = []
+        for ep in range(cfg.pretrain_epochs):
+            t0 = time.time()
+            net.train()
+            tot, nb = 0.0, 0
+            for grp in _Batches(c, fit_pts, cfg.batch, True, cfg.seed + 100 + ep):
+                x, ys, _, _, _ = self._tensors(c, X, {}, grp, dev, mask_rng=rng,
+                                               with_world=world is not None)
+                out = net(x)
+                loss = cfg.w_mvr * self._mvr_loss(out[7], ys)
+                if world is not None:
+                    loss = loss + cfg.w_wm_pre * self._wm_loss(out[6], ys)
+                opt.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)
+                opt.step()
+                tot += float(loss.detach().cpu())
+                nb += 1
+            rep_ = self._pretext_report(c, X, mon, net, dev)
+            rep_.update({"epoch": ep, "loss": tot / max(nb, 1), "sec": time.time() - t0})
+            self.pretext_.append(rep_)
+            if verbose:
+                print(f"      pretrain epoch {ep}: loss {rep_['loss']:.4f}  held-out recon "
+                      f"{rep_['model']:.4f} vs median {rep_['median']:.4f} / carry-forward "
+                      f"{rep_['carry']:.4f}  [{rep_['sec']:.0f}s]", flush=True)
+        self.pre_state_ = {k: v.detach().cpu().clone() for k, v in net.state_dict().items()}
+        self.net_ = net
+        return self
+
+    def _pretext_report(self, c: Cohort, X: np.ndarray, mon: np.ndarray, net, dev) -> Dict[str, float]:
+        """Held-out reconstruction loss (fixed masking seed) vs two trivial baselines."""
+        import torch
+        import torch.nn.functional as Fn
+        rng = np.random.default_rng(12345)
+        net.eval()
+        acc = {"model": 0.0, "median": 0.0, "carry": 0.0, "n": 0.0}
+        with torch.no_grad():
+            for grp in _Batches(c, mon, 64, False, 0):
+                x, ys, _, _, valid = self._tensors(c, X, {}, grp, dev, mask_rng=rng, with_world=False)
+                pred = net(x)[7]
+                t, m = ys["mvr_t"], ys["mvr_m"]
+                # carry-forward: the most recent VISIBLE (unmasked) value of the channel
+                xv = x[..., VALUE_COLS].cpu().numpy()
+                hidden = x[..., X.shape[1]:X.shape[1] + N_CH].cpu().numpy() > 0.5
+                carry = np.zeros_like(xv)
+                last = np.zeros(xv[:, 0].shape, dtype=np.float32)
+                for ti in range(xv.shape[1]):
+                    last = np.where(hidden[:, ti], last, xv[:, ti])
+                    carry[:, ti] = last
+                carry = torch.from_numpy(carry).to(dev)
+                for k, p_ in (("model", pred), ("median", torch.zeros_like(t)), ("carry", carry)):
+                    acc[k] += float((Fn.smooth_l1_loss(p_, t, reduction="none") * m).sum())
+                acc["n"] += float(m.sum())
+        n = max(acc.pop("n"), 1.0)
+        return {k: v / n for k, v in acc.items()}
 
     def fit(self, c: Cohort, X: np.ndarray, T: Dict[str, Tuple[np.ndarray, np.ndarray]],
             train_pts: np.ndarray, verbose: bool = True,
-            world: Optional[Dict[str, np.ndarray]] = None) -> "GenesisNetwork":
+            world: Optional[Dict[str, np.ndarray]] = None,
+            init: Optional["GenesisNetwork"] = None) -> "GenesisNetwork":
+        """Supervised training. ``init`` — a pretrained network — supplies the starting
+        weights AND the input scaling it was pretrained with; everything else (schedule,
+        early stopping, heads, calibration) is identical to training from scratch."""
         import torch
         cfg = self.cfg
         self._world = world if cfg.w_wm > 0 else None
@@ -312,8 +480,13 @@ class GenesisNetwork:
                               rng.choice(train_pts[~sep], max(1, int(0.1 * (~sep).sum())), replace=False)])
         fit_pts = np.setdiff1d(train_pts, val)
         rows_fit = c.rows_of(fit_pts)
-        self.std_ = Standardiser.fit(X, rows_fit, seed=cfg.seed)
-        net = _build(X.shape[1], cfg, len(SUSPICION_AUX), len(ORGAN_AUX)).to(dev)
+        n_in = X.shape[1] + (N_CH if cfg.mask_channels else 0)
+        net = _build(n_in, cfg, len(SUSPICION_AUX), len(ORGAN_AUX)).to(dev)
+        if init is not None:
+            self.std_ = init.std_
+            net.load_state_dict(init.pre_state_)
+        else:
+            self.std_ = Standardiser.fit(X, rows_fit, seed=cfg.seed)
         opt = torch.optim.AdamW(net.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
         pw = torch.tensor(cfg.pos_weight, device=dev)
         sched = (torch.optim.lr_scheduler.ReduceLROnPlateau(opt, mode="max", factor=0.5, patience=1)
@@ -383,7 +556,7 @@ class GenesisNetwork:
         with torch.no_grad():
             for grp in _Batches(c, np.asarray(pts), 64, False, 0):
                 x, _, _, rows, valid = self._tensors(c, X, empty, grp, dev)
-                main, s3, aux_s, aux_o, a_s, a_o, _ = net(x)
+                main, s3, aux_s, aux_o, a_s, a_o, _, _ = net(x)
                 dest = where[rows[valid]]
                 vals = {"direct": main[..., 0], "who": main[..., 1], "when": main[..., 2],
                         "s3": s3 - torch.log(-torch.expm1(torch.clamp(s3, max=-1e-6))),

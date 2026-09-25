@@ -20,6 +20,9 @@ check that cannot fail is not evidence (see the project's vacuous-check history)
  7. LEAK TRIPWIRE — permute outcomes between patients; a real fit on the real
     features must collapse to chance. Then leak the label into a feature and assert
     the same fit does NOT stay at chance (the tripwire can trip).
+ 8. NETWORK — causal under a rewritten future; the Sepsis-3 head is an AND gate.
+ 9. SELF-SUPERVISED PRETEXT — a hidden value stays hidden: blanked and flagged, no
+    composite hands it back (checked with the guard off too), targets only where measured.
 """
 from __future__ import annotations
 
@@ -290,10 +293,66 @@ def check_network() -> None:
           f"{len(a)} output tensors")
     check("…and the rewrite reaches every output after the cut (non-vacuous)", future_moves)
     # the AND gate really is a product of the two latent halves
-    main, s3, _, _, a_s, a_o, _ = a
+    main, s3, _, _, a_s, a_o, _, _ = a
     prod = torch.sigmoid(a_s) * torch.sigmoid(a_o)
     check("the Sepsis-3 head equals sigmoid(susp) * sigmoid(organ)",
           torch.allclose(torch.exp(s3), prod, atol=1e-6))
+
+
+def check_ssl_masking(c: H.Cohort) -> None:
+    print("\n9. self-supervised pretext: a hidden value stays hidden")
+    import torch
+    from backend.ml.genesis import network as N
+    X, _ = N.input_matrix(c)
+    gn = N.GenesisNetwork(N.NetConfig(device="cpu", mask_channels=True))
+    pts = np.flatnonzero(c.folds >= 0)[:300]
+    gn.std_ = N.Standardiser.fit(X, c.rows_of(pts))
+    dev = torch.device("cpu")
+    x0, _, _, _, valid = gn._tensors(c, X, {}, pts, dev)                   # no masking
+    x1, ys, _, _, _ = gn._tensors(c, X, {}, pts, dev, mask_rng=np.random.default_rng(7),
+                                  with_world=False)
+    x0, x1 = x0.numpy(), x1.numpy()
+    n_in = X.shape[1]
+    M = x1[..., n_in:n_in + N.N_CH] > 0.5
+    frac = M[valid].mean()
+    check("the pretext hides a non-trivial share of values", 0.05 < frac < 0.30,
+          f"{frac:.3f} of (channel, hour) entries hidden")
+    vals0, vals1 = x0[..., N.VALUE_COLS], x1[..., N.VALUE_COLS]
+    check("hidden values are blanked, visible ones untouched",
+          np.all(vals1[M] == 0) and np.array_equal(vals1[~M], vals0[~M]))
+    base = N.N_CH * 4
+
+    def leaks(xm, mask):
+        bad = []
+        for name, chans in N.DERIVED.items():
+            col = base + N.CONTEXT.index(name)
+            dep = np.zeros(mask.shape[:2], dtype=bool)
+            for ch in chans:
+                dep |= mask[..., N.DYNAMIC.index(ch)]
+            moved = dep & valid & (x0[..., col] != 0)
+            if np.any(xm[..., col][moved] == x0[..., col][moved]):
+                bad.append(name)
+        return bad
+
+    bad = leaks(x1, M)
+    check("no composite reveals a hidden channel (shock index would hand back HR)", not bad,
+          f"leaking: {bad}" if bad else f"{len(N.DERIVED)} composites guarded")
+    t, m = ys["mvr_t"].numpy(), ys["mvr_m"].numpy() > 0.5
+    now = x0[..., N.NOW_COLS]
+    check("targets exist only where a hidden value was actually measured",
+          np.all(M[m]) and m.sum() > 0 and np.allclose(t[m], vals0[m]),
+          f"{int(m.sum())} targets")
+    # the leak check can fail: switch the composite guard off and it must fire
+    saved = dict(N.DERIVED)
+    N.DERIVED.clear()
+    try:
+        x2, _, _, _, _ = gn._tensors(c, X, {}, pts, dev, mask_rng=np.random.default_rng(7),
+                                     with_world=False)
+    finally:
+        N.DERIVED.update(saved)
+    M2 = x2.numpy()[..., n_in:n_in + N.N_CH] > 0.5
+    check("…and with the guard switched off the same check catches the leak",
+          len(leaks(x2.numpy(), M2)) > 0)
 
 
 def main() -> int:
@@ -308,6 +367,7 @@ def main() -> int:
     check_lock(c)
     check_tripwire(c)
     check_network()
+    check_ssl_masking(c)
     n_ok = sum(ok for _, ok, _ in _results)
     print(f"\nverify_genesis: {n_ok}/{len(_results)} passed")
     return 0 if n_ok == len(_results) else 1
