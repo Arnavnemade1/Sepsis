@@ -27,7 +27,7 @@ and the hypothesis was that the gradient-boosting infrastructure caps out around
    measurable.** The learning curve's asymptote — the AUROC this representation would
    approach with *unlimited* patients from these two hospitals — is **0.887 ± 0.014**
    (hour-matched **0.847 ± 0.011**). The half of Sepsis-3 that sets the onset clock
-   (suspected infection = cultures + antibiotics) is not recorded in CinC 2019 at all (§8).
+   (suspected infection = cultures + antibiotics) is not recorded in CinC 2019 at all (§9).
 
 ---
 
@@ -226,7 +226,7 @@ learning curve prices at roughly +0.005, and the rest is the sampling variation 
 ## 6. Self-supervised pretraining — a pre-registered null
 
 An outside proposal ranked self-supervised pretraining as the most promising untested
-idea, and it was the one with a mechanism: the learning curve (§7) says the model is partly
+idea, and it was the one with a mechanism: the learning curve (§8) says the model is partly
 sample-limited, and pretraining is a sample-efficiency lever. It was tested on the laptop,
 once, with the rules written into `lock_ledger.jsonl` before the run (`experiments/e12_ssl.py`,
 40 CPU-minutes, no paid compute).
@@ -263,7 +263,37 @@ cannot follow. It is the first lever in this project that moved within-stay timi
 natural place to use it is the question it answers — which hour to escalate — rather than
 the pooled number.
 
-## 7. The ceiling, measured
+## 7. The model has used up its inputs
+
+Two experiments after pretraining asked whether *any* reorganisation of these inputs has
+headroom left.
+
+**Sufficiency (`experiments/e14_sufficiency.py`).** If a score equals P(label | features),
+the features carry nothing further once the score is known. A second booster was given
+the 510 features *plus* the tuned model's out-of-fold score on a random sample (all
+positive hours + 10% of negative hours) and asked to beat the score alone. It could not:
+**−0.0033 [−0.0047, −0.0020]**. Adding the features back on top of the score only adds
+variance. Stacking, cascades, new learners and new architectures all draw on the same
+information, and that information is spent.
+
+A trap worth recording: the first version sampled cases *by the score* — low-scored septic
+hours against high-scored never-septic hours — and a fresh model separated them with AUROC
+0.886. That is Berkson's paradox, not signal: inside a set selected by the score, whatever
+the model reads as risky is automatically associated with the other class, so the fresh
+model scores well by learning the main model backwards. A sufficiency test must never
+select on the score it tests.
+
+**Physiological-twin features (`experiments/e13_twin_features.py`, pre-registered).** The
+self-supervised twin (§6) forecasts every channel from the stay so far; its *surprise* —
+the observed value minus the forecast made an hour earlier — is a residual a tree cannot
+compute for itself. Handed to the tuned booster as 69 features (surprise for all 34
+channels, its 6 h / 24 h averages, and 32 PCA dimensions of the twin's state), they carried
+8–9% of the booster's split gain in every fold and moved AUROC by **+0.0007 [−0.0007,
++0.0022]** — NULL on the primary endpoint (+0.0008 [+0.0001, +0.0015] inside the product,
+significant and immaterial). Used, but redundant: the surprise is still a function of the
+same 40 variables, and the sufficiency result above says those are spent.
+
+## 8. The ceiling, measured
 
 Learning curve of the direct model (training patients subsampled per fold; test folds
 unchanged; fit `AUROC(n) = a − b·n^−α`):
@@ -281,21 +311,32 @@ unchanged; fit `AUROC(n) = a − b·n^−α`):
 GENESIS's architectural gain (+0.0067) is worth roughly a doubling of the data. Even
 unlimited patients from these two hospitals do not reach 0.90 for this representation.
 
-## 8. What would actually reach 0.90
+## 9. What would actually reach 0.90
 
-The Sepsis-3 onset clock is the *earlier* of suspected infection and the SOFA rise, and
-suspected infection is defined by blood cultures and antibiotics — neither is in CinC
-2019. The trajectories in §2 show the model sees that half only indirectly, through the
-lab orders that accompany it, and only at the moment it happens. Datasets that record it
-(MIMIC-IV, eICU-CRD — credentialed PhysioNet access, typically a few weeks) put the
-missing half of the label's generating process in the input.
+§7 settles the question the brief asked: no framework over these 40 variables has
+meaningful headroom, because the tuned score is already sufficient for them. Only new
+information can move the number, and CinC 2019 is missing two kinds of it:
+
+* **Physiology that SOFA is defined on.** Three of SOFA's six organ systems cannot be scored
+  from CinC: the central nervous system (Glasgow Coma Scale), the renal urine-output
+  criterion, and the cardiovascular vasopressor criterion. The SOFA-proxy here is half a
+  score. These are measurements of the patient, not of the clinicians.
+* **The suspicion record.** The Sepsis-3 onset clock is the *earlier* of suspected
+  infection and the SOFA rise, and suspected infection is defined by blood cultures and
+  antibiotics — neither is in CinC 2019. The trajectories in §2 show the model sees that
+  half only indirectly, through the lab orders that accompany it.
+
+MIMIC-IV (and eICU-CRD) record both — credentialed PhysioNet access, typically a few weeks,
+queryable in Google BigQuery so nothing large is stored locally.
 
 That lever has a price worth stating before anyone pulls it. A model that reads antibiotic
 and culture orders partly detects that *clinicians already suspect sepsis* — the central
 published criticism of the Epic Sepsis Model. So the honest options are:
 
-1. **Keep physiology-only inputs** and report the hour-matched AUROC; on CinC this line is
-   at 0.816 locked, against an asymptote of 0.847 for this representation.
+1. **Physiology-only inputs, now complete** — add GCS, urine output and vasopressors,
+   report the hour-matched AUROC beside the standard one. This is the honest lever: on
+   CinC this line is at 0.816 hour-matched (locked) against an asymptote of 0.847 for an
+   input set missing half of SOFA.
 2. **Add the suspicion record** (MIMIC-IV) and report *both* numbers — with and without
    order data — so the gain from reading clinicians' decisions is visible, not hidden.
 
@@ -305,7 +346,7 @@ model, self-supervised pretraining) and ten before it land within ±0.01 of a we
 booster on the same inputs, and the learning curve says the inputs, not the learner, set
 the ceiling.
 
-## 9. Reproduce
+## 10. Reproduce
 
     .venv/bin/python -m backend.ml.genesis.rawstore          # pack 40,335 patients
     .venv/bin/python verify_genesis.py                        # the audit

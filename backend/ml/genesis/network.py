@@ -539,6 +539,30 @@ class GenesisNetwork:
             self.calib_[h] = platt(pv[h][keep], np.asarray(t, float)[keep])
         return self
 
+    def encode(self, c: Cohort, X: np.ndarray, pts: np.ndarray
+               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """``(rows, hidden, forecast)`` for every row of ``pts`` (in ``c.rows_of(pts)``
+        order): the last GRU layer's state (d_model) and the world model's standardised
+        next-value forecast for all 34 channels. No masking, eval mode, strictly causal —
+        row t depends on inputs at hours <= t only."""
+        import torch
+        dev = _device(self.cfg.device)
+        net = self.net_
+        net.eval()
+        rows_all = c.rows_of(pts)
+        where = np.full(len(c.y), -1, dtype=np.int64)
+        where[rows_all] = np.arange(len(rows_all))
+        hid = np.empty((len(rows_all), self.cfg.d_model), dtype=np.float32)
+        fc = np.empty((len(rows_all), N_CH), dtype=np.float32)
+        with torch.no_grad():
+            for grp in _Batches(c, np.asarray(pts), 64, False, 0):
+                x, _, _, rows, valid = self._tensors(c, X, {}, grp, dev)
+                h, _ = net.gru(net.inp(x))
+                dest = where[rows[valid]]
+                hid[dest] = h.cpu().numpy()[valid]
+                fc[dest] = net.wm(h)[..., :N_CH].cpu().numpy()[valid]
+        return rows_all, hid, fc
+
     def predict(self, c: Cohort, X: np.ndarray, pts: np.ndarray,
                 heads: Sequence[str] = ("direct", "who", "when", "s3", "a_susp", "a_organ"),
                 calibrated: bool = True) -> Dict[str, np.ndarray]:
