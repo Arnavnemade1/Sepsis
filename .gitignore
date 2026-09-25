@@ -20,8 +20,11 @@ data/geo/
 data/cinc2019/
 data/models/
 data/bidmc/
+data/mimic_demo/
 # Trained model artifacts + logs (large, regenerable)
 artifacts/feature_cache/
+# MIMIC-IV grids / features are patient-level data (even the open demo): never committed.
+artifacts/mimic_cache/
 # Raw out-of-fold prediction vectors: regenerable, and large. The result JSONs
 # beside them are committed, so the frontier tables stay reproducible from the repo.
 artifacts/frontier/*_oof.npz

@@ -1,0 +1,206 @@
+{
+ "source": "demo",
+ "scale": "demo",
+ "caveat": "demo: 99 subjects \u2014 every number below is noise; this run checks that every stage executes on real MIMIC-IV data",
+ "cohort": {
+  "stays": 137,
+  "subjects": 99,
+  "hours": 12071,
+  "features": 782,
+  "features_by_tier": {
+   "P": 650,
+   "T": 108,
+   "S": 24
+  },
+  "lock_fingerprint": "a256b3fe4590a0c1"
+ },
+ "tripwires": {
+  "clock_auroc": 0.3664518750158701,
+  "record_length_auroc": 0.7610265465291843,
+  "onset_within_4h_measured": 0.6949152542372882,
+  "onset_within_4h_rise": 0.7941176470588235,
+  "onset_within_4h_absolute": 0.9324324324324325
+ },
+ "models": {
+  "direct_P": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7064724621998597,
+   "between": 0.7333184724531598,
+   "within_septic": 0.5433117673081177,
+   "auprc": 0.13536165210077059,
+   "auroc_hourmatched": 0.6604466426858513,
+   "auroc_presusp": 0.8337278106508875
+  },
+  "genesis_P": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7310520754186288,
+   "between": 0.7861534507191226,
+   "within_septic": 0.3961651183366512,
+   "auprc": 0.09323697140924084,
+   "auroc_hourmatched": 0.6656175059952039,
+   "auroc_presusp": 0.7306706114398422
+  },
+  "direct_T": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.6803615062630746,
+   "between": 0.7046854990412458,
+   "within_septic": 0.5325287547002876,
+   "auprc": 0.09197690436913367,
+   "auroc_hourmatched": 0.6407374100719424,
+   "auroc_presusp": 0.6702662721893491
+  },
+  "genesis_T": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7029468581105497,
+   "between": 0.756151153348361,
+   "within_septic": 0.3795896925458969,
+   "auprc": 0.08314859591122174,
+   "auroc_hourmatched": 0.6434352517985612,
+   "auroc_presusp": 0.6851084812623274
+  },
+  "direct_S": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7346479962653989,
+   "between": 0.7546169191120776,
+   "within_septic": 0.6132838420703384,
+   "auprc": 0.11351931208078454,
+   "auroc_hourmatched": 0.6488309352517986,
+   "auroc_presusp": 0.6646942800788954
+  },
+  "genesis_S": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7474798278802037,
+   "between": 0.8019143239929669,
+   "within_septic": 0.4166459301039593,
+   "auprc": 0.10477347623656692,
+   "auroc_hourmatched": 0.6650179856115108,
+   "auroc_presusp": 0.6866863905325444
+  },
+  "twin_s3_P": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7078514519433794,
+   "between": 0.717612190167708,
+   "within_septic": 0.6485290864852908,
+   "auprc": 0.06991144183109332,
+   "auroc_hourmatched": 0.7311151079136691,
+   "auroc_presusp": 0.7
+  },
+  "twin_direct_P": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.6856372163158316,
+   "between": 0.6833472464532917,
+   "within_septic": 0.6995548551205486,
+   "auprc": 0.0758761999826549,
+   "auroc_hourmatched": 0.6449340527577938,
+   "auroc_presusp": 0.7870808678500986
+  },
+  "genesis_twin_P": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7659741117137951,
+   "between": 0.7971376125086151,
+   "within_septic": 0.5765732138907321,
+   "auprc": 0.13053948300122026,
+   "auroc_hourmatched": 0.7294664268585132,
+   "auroc_presusp": 0.8502958579881656
+  }
+ },
+ "comparisons": {
+  "twin_adds_to_trees_P": {
+   "d_auroc": 0.034922036295166325,
+   "ci": [
+    -0.045880709425254254,
+    0.12571041775260414
+   ],
+   "significant": false
+  },
+  "tier_T_over_P": {
+   "d_auroc": -0.028105217308079133,
+   "ci": [
+    -0.10897589082834687,
+    0.04787090454214168
+   ],
+   "significant": false
+  },
+  "tier_S_over_P": {
+   "d_auroc": 0.016427752461574907,
+   "ci": [
+    -0.061770657065410295,
+    0.07857553574364239
+   ],
+   "significant": false
+  }
+ },
+ "twin_factors": {
+  "susp6": 0.6457762533735243,
+  "organ": 0.6723453665703518
+ },
+ "information_ledger": {
+  "vitals": {
+   "auroc_without": 0.6871548863310083,
+   "auroc_lost": 0.01931757586885141
+  },
+  "gcs": {
+   "auroc_without": 0.6996986145645537,
+   "auroc_lost": 0.006773847635305974
+  },
+  "labs": {
+   "auroc_without": 0.7800101178001012,
+   "auroc_lost": -0.0735376556002415
+  },
+  "urine": {
+   "auroc_without": 0.7245536350833742,
+   "auroc_lost": -0.018081172883514518
+  },
+  "sofa": {
+   "auroc_without": 0.7267647064568362,
+   "auroc_lost": -0.02029224425697651
+  }
+ },
+ "label_sensitivity_P": {
+  "measured/min": 0.7659741117137951,
+  "measured/si": 0.8220431831542943,
+  "measured/sofa": 0.7583342188846776,
+  "rise/min": 0.6889067237381844,
+  "rise/si": 0.7591918640897756,
+  "rise/sofa": 0.7434045268469797,
+  "absolute/min": 0.6261142471067715,
+  "absolute/si": 0.7583408351858316,
+  "absolute/sofa": 0.7536550049044795
+ },
+ "temporal_validation": {
+  "train_groups": [
+   "2011 - 2013"
+  ],
+  "test_groups": [
+   "2014 - 2016"
+  ],
+  "n_rows": 2404,
+  "n_pos": 90,
+  "n_stays": 44,
+  "auroc": 0.6501944684528954,
+  "between": 0.7285975975975976,
+  "within_septic": 0.337595785440613,
+  "auprc": 0.05692414508234938,
+  "auroc_hourmatched": 0.657488527325824,
+  "auroc_presusp": 0.6234309623430963
+ },
+ "seconds": 24.898180961608887
+}

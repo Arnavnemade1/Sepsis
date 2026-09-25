@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-genesis genesis-locked verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -32,6 +32,8 @@ help:
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
 	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
+	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (33 checks)"
+	@echo "  make mimic-demo        The whole MIMIC-IV pipeline on the open demo"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
@@ -86,6 +88,16 @@ verify-frontier:
 # network's causality and AND-gate shape.
 verify-genesis:
 	$(PY) verify_genesis.py
+
+# MIMIC-IV line (backend/ml/mimic, docs/MIMIC.md), verified on the open demo: catalog vs
+# MIMIC's own dictionaries, unit recodes, antibiotic filter, binning vs raw events, Sepsis-3 on
+# synthetic stays, symmetric censoring, causality, tier firewall, subject lock, masks, design
+# weights, chunking, and the BigQuery SQL.
+verify-mimic:
+	PYTHONPATH=. $(PY) verify_mimic.py
+
+mimic-demo:
+	PYTHONPATH=. $(PY) -m backend.ml.mimic.run --source demo
 
 # The ONE locked evaluation. Reads the design frozen in artifacts/genesis/genesis_spec.json;
 # every run is appended to artifacts/genesis/lock_ledger.jsonl.

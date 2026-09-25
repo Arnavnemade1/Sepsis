@@ -43,6 +43,10 @@ class FeatureSpec:
     composites: bool = True    # SOFA-proxy, SIRS, qSOFA, shock index ...
     static: bool = True
     site: bool = False         # hospital indicator — off by default, reported separately
+    #: Dataset overrides (None = CinC 2019). ``labs``: channels counted as lab draws by the
+    #: measurement-process features; ``static_cols``: per-stay columns passed through as-is.
+    labs: Optional[List[str]] = None
+    static_cols: Optional[List[str]] = None
 
     @staticmethod
     def wearable() -> "FeatureSpec":
@@ -218,7 +222,7 @@ def build(raw: RawStore, spec: Optional[FeatureSpec] = None,
             out.add(f"{ch}__slope{w}", slope)
 
     if spec.process:
-        labs = [c for c in LABS if c in obs_of]
+        labs = [c for c in (spec.labs if spec.labs is not None else LABS) if c in obs_of]
         if labs:
             lab_now = np.sum([obs_of[c] for c in labs], axis=0).astype(np.float64)
             Cl = S.prefix(lab_now)
@@ -259,7 +263,11 @@ def build(raw: RawStore, spec: Optional[FeatureSpec] = None,
         for name, arr in _composites(last_val, S).items():
             out.add(name, arr)
 
-    if spec.static:
+    if spec.static and spec.static_cols is not None:
+        for name in spec.static_cols:
+            out.add(name, raw.col(name))
+        out.add("hour", S.hour.astype(np.float64))
+    elif spec.static:
         age = raw.col("Age").astype(np.float64)
         out.add("Age", age)
         out.add("Gender", raw.col("Gender"))
