@@ -1,0 +1,91 @@
+{
+ "name": "base_lgb_all",
+ "pooled": {
+  "auroc": 0.8367073030377835,
+  "between": 0.8668178741039866,
+  "within_septic": 0.5462676897930508,
+  "neg_share_septic": 0.0939340313621393,
+  "within_stay": 0.6938960718484327,
+  "auprc": 0.1106635814150336,
+  "patient_auroc": 0.856062740961111,
+  "patient_auroc_pre": 0.7530022645408326,
+  "detect_far5": 0.3533674339300938,
+  "detect_far15": 0.5034100596760444,
+  "utility_best": 0.4624861687064681,
+  "thr_best": 0.018705953129349445
+ },
+ "per_fold": [
+  {
+   "auroc": 0.8303655099021346,
+   "between": 0.8594714631121112,
+   "within_septic": 0.5336710545404928,
+   "neg_share_septic": 0.08933676092544987,
+   "within_stay": 0.6766255896335839,
+   "auprc": 0.10946955746449472,
+   "patient_auroc": 0.8490471024754495,
+   "patient_auroc_pre": 0.7405468183607562,
+   "detect_far5": 0.3304904051172708,
+   "detect_far15": 0.47761194029850745,
+   "utility_best": NaN,
+   "thr_best": NaN
+  },
+  {
+   "auroc": 0.8498414589192675,
+   "between": 0.884179026780991,
+   "within_septic": 0.5552936295504363,
+   "neg_share_septic": 0.10440587557510858,
+   "within_stay": 0.7199080689110317,
+   "auprc": 0.11533442141706689,
+   "patient_auroc": 0.8670138098759813,
+   "patient_auroc_pre": 0.7707987256798271,
+   "detect_far5": 0.4127659574468085,
+   "detect_far15": 0.5340425531914894,
+   "utility_best": NaN,
+   "thr_best": NaN
+  },
+  {
+   "auroc": 0.8395088459301658,
+   "between": 0.8660392696717809,
+   "within_septic": 0.5628116373792942,
+   "neg_share_septic": 0.0874934238052038,
+   "within_stay": 0.6806679815019575,
+   "auprc": 0.10918816593445925,
+   "patient_auroc": 0.8535543363863921,
+   "patient_auroc_pre": 0.7562978225622938,
+   "detect_far5": 0.3170212765957447,
+   "detect_far15": 0.4851063829787234,
+   "utility_best": NaN,
+   "thr_best": NaN
+  },
+  {
+   "auroc": 0.8389074320298446,
+   "between": 0.8689963473472712,
+   "within_septic": 0.5468692016739143,
+   "neg_share_septic": 0.09340695350132713,
+   "within_stay": 0.6807505214853712,
+   "auprc": 0.12059514541630839,
+   "patient_auroc": 0.8568370713107555,
+   "patient_auroc_pre": 0.7542194160615213,
+   "detect_far5": 0.35683760683760685,
+   "detect_far15": 0.5106837606837606,
+   "utility_best": NaN,
+   "thr_best": NaN
+  },
+  {
+   "auroc": 0.8338732841218572,
+   "between": 0.8647249332010752,
+   "within_septic": 0.5391568078351037,
+   "neg_share_septic": 0.09476249876899846,
+   "within_stay": 0.7106814931367341,
+   "auprc": 0.10169031784061214,
+   "patient_auroc": 0.8543375796723031,
+   "patient_auroc_pre": 0.7445369599671618,
+   "detect_far5": 0.34754797441364604,
+   "detect_far15": 0.5159914712153518,
+   "utility_best": NaN,
+   "thr_best": NaN
+  }
+ ],
+ "seconds": 490.3196699619293,
+ "meta": {}
+}

@@ -1,0 +1,64 @@
+{
+ "version": "genesis-1.0",
+ "frozen": "2026-09-24T19:54:27",
+ "description": "product of calibrated experts: log sig(who) + log sig(when) + log sig(direct) + log sig(network direct)",
+ "features": "510 causal features over all 40 CinC variables (backend/ml/genesis/features.py, default FeatureSpec)",
+ "heads": {
+  "direct": {
+   "name": "direct_slow",
+   "target": "challenge",
+   "neg_rate": 1.0,
+   "params": {
+    "learning_rate": 0.02,
+    "num_leaves": 31,
+    "min_data_in_leaf": 800,
+    "feature_fraction": 0.3,
+    "bagging_fraction": 0.7,
+    "lambda_l2": 10.0
+   }
+  },
+  "who": {
+   "name": "who",
+   "target": "patient",
+   "neg_rate": 0.5,
+   "params": {}
+  },
+  "when": {
+   "name": "when",
+   "target": "timing",
+   "neg_rate": 1.0,
+   "params": {}
+  }
+ },
+ "network": {
+  "expert": "direct",
+  "seeds": [
+   0,
+   1,
+   2
+  ],
+  "epochs": 25,
+  "patience": 4,
+  "notes": "GenesisNetwork defaults otherwise: GRU d128x2, AND-gate + world model, Platt per head"
+ },
+ "dev_cv": {
+  "auroc": 0.8484,
+  "hour_matched": 0.8018,
+  "between": 0.8805,
+  "within_septic": 0.5384,
+  "vs_tuned_single": "+0.0034 [+0.0016, +0.0052]",
+  "tuned_single_auroc": 0.845,
+  "default_single_auroc": 0.8385,
+  "wearable_single_auroc": 0.809
+ },
+ "rejected_on_dev": [
+  "learned stage-2 (LR/GBM)",
+  "temporal meta-learner",
+  "horizon heads",
+  "label-genesis auxiliary heads",
+  "clinician-intent block",
+  "site indicator",
+  "direct lr0.01 (+0.0001 in product)",
+  "direct wide_reg (+0.0000 in product)"
+ ]
+}

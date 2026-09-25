@@ -1,0 +1,39 @@
+{
+ "name": "direct_slow",
+ "params": {
+  "learning_rate": 0.02,
+  "num_leaves": 31,
+  "min_data_in_leaf": 800,
+  "feature_fraction": 0.3,
+  "bagging_fraction": 0.7,
+  "lambda_l2": 10.0
+ },
+ "neg_rate": 1.0,
+ "folds": [
+  {
+   "k": 0,
+   "trees": 452,
+   "sec": 151.6
+  },
+  {
+   "k": 1,
+   "trees": 371,
+   "sec": 125.4
+  },
+  {
+   "k": 2,
+   "trees": 229,
+   "sec": 66.4
+  },
+  {
+   "k": 3,
+   "trees": 484,
+   "sec": 161.9
+  },
+  {
+   "k": 4,
+   "trees": 442,
+   "sec": 169.0
+  }
+ ]
+}

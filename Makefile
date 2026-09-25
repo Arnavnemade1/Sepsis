@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -30,6 +30,8 @@ help:
 	@echo "  make mimic3-windows    Fetch ECG windows for the discovered outcomes (resumable)"
 	@echo "  make recovery-outcome  Does recovery slowing precede circulatory decompensation?"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
+	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
+	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
 	@echo "  make verify-selfimprove Self-improvement acceptance rule (14 checks)"
@@ -75,6 +77,20 @@ verify:
 
 verify-frontier:
 	$(PY) verify_frontier.py
+
+# GENESIS, the all-variable line (backend/ml/genesis, docs/GENESIS.md). Causality of
+# all 532 feature columns under a rewritten AND a truncated future (plus a planted
+# backward-fill the test must catch), exact fast AUROC, the pooled = between/within
+# identity, the 6h-horizon == challenge-label identity, locked-set isolation, a
+# permuted-outcome tripwire that can trip, the Platt divergence regression, and the
+# network's causality and AND-gate shape.
+verify-genesis:
+	$(PY) verify_genesis.py
+
+# The ONE locked evaluation. Reads the design frozen in artifacts/genesis/genesis_spec.json;
+# every run is appended to artifacts/genesis/lock_ledger.jsonl.
+genesis-locked:
+	PYTHONPATH=. $(PY) -m backend.ml.genesis.run_locked
 
 # Denser supervision of septic stays raises detection at every alarm budget. The
 # load-bearing check asserts a NULL: that the TEMPORAL PLACEMENT of the extra positive

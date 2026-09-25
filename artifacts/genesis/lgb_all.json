@@ -1,0 +1,35 @@
+{
+ "name": "lgb_all",
+ "pooled": {
+  "auroc": 0.8546102416519329,
+  "between": 0.8859841126878384,
+  "within_septic": 0.5544651400079792,
+  "neg_share_septic": 0.09463672857783173,
+  "within_stay": 0.7114104325674968,
+  "auprc": 0.11423086019473466,
+  "patient_auroc": 0.8753213487821023,
+  "patient_auroc_pre": 0.7558345761480848,
+  "detect_far5": 0.3412969283276451,
+  "detect_far15": 0.5136518771331058,
+  "utility_best": 0.4957168316029648,
+  "thr_best": 0.019364499453521138
+ },
+ "per_fold": [
+  {
+   "auroc": 0.8546102416519329,
+   "between": 0.8859841126878384,
+   "within_septic": 0.5544651400079792,
+   "neg_share_septic": 0.09463672857783173,
+   "within_stay": 0.7114104325674968,
+   "auprc": 0.11423086019473466,
+   "patient_auroc": 0.8753213487821023,
+   "patient_auroc_pre": 0.7558345761480848,
+   "detect_far5": 0.3412969283276451,
+   "detect_far15": 0.5136518771331058,
+   "utility_best": NaN,
+   "thr_best": NaN
+  }
+ ],
+ "seconds": 122.89666104316711,
+ "meta": {}
+}

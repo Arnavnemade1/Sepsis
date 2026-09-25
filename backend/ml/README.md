@@ -86,6 +86,7 @@ Data lands in `data/cinc2019/` (git-ignored — redistribute via PhysioNet only)
 | `models/hdc_detector.py` | **Data-grounded HDC detector** (learned archetypes + calibrated fusion) |
 | `models/gbm_baseline.py` | Gradient-boosting benchmark (SOTA yardstick) |
 | `scripts/` | Runnable entry points |
+| `genesis/` | **GENESIS — the all-variable line.** Everything above is the *wearable* detector (7 vitals). `genesis/` asks how far hourly early warning goes when the model may read all 40 CinC variables: cohort-wide raw store, 510 vectorised causal features, a full-cohort harness with a **locked 20% test set**, the pooled = between/within decomposition, an **hour-matched AUROC** that removes the ICU-clock artifact, factorised who × when × direct heads, and the Genesis Network (causal GRU with a Sepsis-3 AND-gate head and a physiological world model). Results, nulls and the measured ceiling: `docs/GENESIS.md`. Audit: `make verify-genesis` |
 
 ---
 

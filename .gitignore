@@ -25,6 +25,10 @@ artifacts/feature_cache/
 # Raw out-of-fold prediction vectors: regenerable, and large. The result JSONs
 # beside them are committed, so the frontier tables stay reproducible from the repo.
 artifacts/frontier/*_oof.npz
+# GENESIS prediction vectors and locked-set margins: regenerable, ~260 MB. The JSON
+# results, the frozen design (genesis_spec.json) and the lock ledger ARE committed.
+artifacts/genesis/**/*.npy
+artifacts/genesis/**/*.npz
 artifacts/*.joblib
 artifacts/*.log
 # …except the production model, which must ship so the deployed backend can load it

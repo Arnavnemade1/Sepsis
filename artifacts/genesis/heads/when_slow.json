@@ -1,0 +1,39 @@
+{
+ "name": "when_slow",
+ "params": {
+  "learning_rate": 0.02,
+  "num_leaves": 31,
+  "min_data_in_leaf": 800,
+  "feature_fraction": 0.3,
+  "bagging_fraction": 0.7,
+  "lambda_l2": 10.0
+ },
+ "neg_rate": 1.0,
+ "folds": [
+  {
+   "k": 0,
+   "trees": 115,
+   "sec": 10.6
+  },
+  {
+   "k": 1,
+   "trees": 77,
+   "sec": 8.2
+  },
+  {
+   "k": 2,
+   "trees": 242,
+   "sec": 11.8
+  },
+  {
+   "k": 3,
+   "trees": 8,
+   "sec": 7.5
+  },
+  {
+   "k": 4,
+   "trees": 190,
+   "sec": 12.3
+  }
+ ]
+}

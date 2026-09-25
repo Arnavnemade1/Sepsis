@@ -1,0 +1,39 @@
+{
+ "name": "who_slow",
+ "params": {
+  "learning_rate": 0.02,
+  "num_leaves": 31,
+  "min_data_in_leaf": 800,
+  "feature_fraction": 0.3,
+  "bagging_fraction": 0.7,
+  "lambda_l2": 10.0
+ },
+ "neg_rate": 0.5,
+ "folds": [
+  {
+   "k": 0,
+   "trees": 367,
+   "sec": 62.8
+  },
+  {
+   "k": 1,
+   "trees": 281,
+   "sec": 55.3
+  },
+  {
+   "k": 2,
+   "trees": 427,
+   "sec": 59.3
+  },
+  {
+   "k": 3,
+   "trees": 673,
+   "sec": 70.4
+  },
+  {
+   "k": 4,
+   "trees": 253,
+   "sec": 49.3
+  }
+ ]
+}

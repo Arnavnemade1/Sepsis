@@ -1,0 +1,365 @@
+{
+ "spec": {
+  "version": "genesis-1.0",
+  "frozen": "2026-09-24T19:54:27",
+  "description": "product of calibrated experts: log sig(who) + log sig(when) + log sig(direct) + log sig(network direct)",
+  "features": "510 causal features over all 40 CinC variables (backend/ml/genesis/features.py, default FeatureSpec)",
+  "heads": {
+   "direct": {
+    "name": "direct_slow",
+    "target": "challenge",
+    "neg_rate": 1.0,
+    "params": {
+     "learning_rate": 0.02,
+     "num_leaves": 31,
+     "min_data_in_leaf": 800,
+     "feature_fraction": 0.3,
+     "bagging_fraction": 0.7,
+     "lambda_l2": 10.0
+    }
+   },
+   "who": {
+    "name": "who",
+    "target": "patient",
+    "neg_rate": 0.5,
+    "params": {}
+   },
+   "when": {
+    "name": "when",
+    "target": "timing",
+    "neg_rate": 1.0,
+    "params": {}
+   }
+  },
+  "network": {
+   "expert": "direct",
+   "seeds": [
+    0,
+    1,
+    2
+   ],
+   "epochs": 25,
+   "patience": 4,
+   "notes": "GenesisNetwork defaults otherwise: GRU d128x2, AND-gate + world model, Platt per head"
+  },
+  "dev_cv": {
+   "auroc": 0.8484,
+   "hour_matched": 0.8018,
+   "between": 0.8805,
+   "within_septic": 0.5384,
+   "vs_tuned_single": "+0.0034 [+0.0016, +0.0052]",
+   "tuned_single_auroc": 0.845,
+   "default_single_auroc": 0.8385,
+   "wearable_single_auroc": 0.809
+  },
+  "rejected_on_dev": [
+   "learned stage-2 (LR/GBM)",
+   "temporal meta-learner",
+   "horizon heads",
+   "label-genesis auxiliary heads",
+   "clinician-intent block",
+   "site indicator",
+   "direct lr0.01 (+0.0001 in product)",
+   "direct wide_reg (+0.0000 in product)"
+  ]
+ },
+ "p19": {
+  "p19_auroc": 0.9731260033951767,
+  "p19_auroc_without_length_features": 0.9625481253304732,
+  "n_patients": 8067,
+  "n_septic": 586
+ },
+ "lock_fingerprint": "77e793853667b28e",
+ "n_locked_patients": 8067,
+ "n_locked_rows": 309253,
+ "seconds": 1716.5552179813385,
+ "results": {
+  "genesis_trees": {
+   "score": {
+    "auroc": 0.859455608635164,
+    "between": 0.8915507205477592,
+    "within_septic": 0.5649033644013951,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.7318118491469788,
+    "auroc_lt60": 0.8272596660419184,
+    "auroc_hourmatched": 0.8147696479039138,
+    "auprc": 0.1502999146186897,
+    "patient_auroc": 0.8851200059490869,
+    "patient_auroc_pre": 0.7727245768917207,
+    "detect_far5": 0.3873720136518771,
+    "detect_far15": 0.5460750853242321,
+    "utility_best": 0.5268533448962726,
+    "thr_best": -7.562976265878901
+   },
+   "vs_shipped_stack": {
+    "d_auroc": 0.05366643405526317,
+    "auroc_ci": [
+     0.04243266853857198,
+     0.06522598812135431
+    ],
+    "auroc_sig": true,
+    "d_between": 0.052028587729903375,
+    "between_ci": [
+     0.040218831551381284,
+     0.06408708393077339
+    ],
+    "between_sig": true,
+    "d_within": 0.06869773577368549,
+    "within_ci": [
+     0.05607533263969208,
+     0.08219265368264408
+    ],
+    "within_sig": true
+   }
+  },
+  "direct_lgbm": {
+   "score": {
+    "auroc": 0.8623191294706241,
+    "between": 0.8931637750230745,
+    "within_septic": 0.5792430151136576,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.7317651967424827,
+    "auroc_lt60": 0.8311270996491066,
+    "auroc_hourmatched": 0.8163742618438181,
+    "auprc": 0.14898787128073854,
+    "patient_auroc": 0.8827801762188899,
+    "patient_auroc_pre": 0.7655400507223533,
+    "detect_far5": 0.3839590443686007,
+    "detect_far15": 0.5307167235494881,
+    "utility_best": 0.5218512445968104,
+    "thr_best": -3.833761859858204
+   },
+   "vs_shipped_stack": {
+    "d_auroc": 0.05652995489072321,
+    "auroc_ci": [
+     0.045591804500922324,
+     0.06821423358911045
+    ],
+    "auroc_sig": true,
+    "d_between": 0.05364164220521872,
+    "between_ci": [
+     0.042168784137395894,
+     0.06610682741794936
+    ],
+    "between_sig": true,
+    "d_within": 0.083037386485948,
+    "within_ci": [
+     0.06934375560251227,
+     0.0974815645250447
+    ],
+    "within_sig": true
+   }
+  },
+  "wearable_lgbm": {
+   "score": {
+    "auroc": 0.8126617173773795,
+    "between": 0.8424612212051205,
+    "within_septic": 0.5391773701840202,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.6586597380066547,
+    "auroc_lt60": 0.7562430515141982,
+    "auroc_hourmatched": 0.7401138896553314,
+    "auprc": 0.11092866766329512,
+    "patient_auroc": 0.8344119094881094,
+    "patient_auroc_pre": 0.743447678373381,
+    "detect_far5": 0.363481228668942,
+    "detect_far15": 0.49829351535836175,
+    "utility_best": 0.43452418054445197,
+    "thr_best": -3.733786488869131
+   },
+   "vs_shipped_stack": {
+    "d_auroc": 0.00687254279747862,
+    "auroc_ci": [
+     -0.002856757716220354,
+     0.016401723202517093
+    ],
+    "auroc_sig": false,
+    "d_between": 0.0029390883872646434,
+    "between_ci": [
+     -0.007013963275684018,
+     0.012971395267402588
+    ],
+    "between_sig": false,
+    "d_within": 0.042971741556310616,
+    "within_ci": [
+     0.03268920865435393,
+     0.05355134981845716
+    ],
+    "within_sig": true
+   }
+  },
+  "genesis": {
+   "score": {
+    "auroc": 0.8611011785939923,
+    "between": 0.8938382936845044,
+    "within_septic": 0.5606569631038021,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.7665129186970688,
+    "auroc_lt60": 0.8296421211504124,
+    "auroc_hourmatched": 0.8159599551396994,
+    "auprc": 0.1515015696155715,
+    "patient_auroc": 0.888493854511064,
+    "patient_auroc_pre": 0.762275238339858,
+    "detect_far5": 0.38054607508532423,
+    "detect_far15": 0.5409556313993175,
+    "utility_best": 0.5199677502405183,
+    "thr_best": -11.688437938488752
+   },
+   "vs_shipped_stack": {
+    "d_auroc": 0.05531200401409142,
+    "auroc_ci": [
+     0.044257184717356776,
+     0.0674241426950617
+    ],
+    "auroc_sig": true,
+    "d_between": 0.05431616086664859,
+    "between_ci": [
+     0.042581939512255605,
+     0.06687328080035826
+    ],
+    "between_sig": true,
+    "d_within": 0.06445133447609247,
+    "within_ci": [
+     0.05182259645961517,
+     0.07740910810290459
+    ],
+    "within_sig": true
+   },
+   "vs_direct_lgbm": {
+    "d_auroc": -0.0012179508766317904,
+    "auroc_ci": [
+     -0.0046176438920339765,
+     0.002137867795929152
+    ],
+    "auroc_sig": false,
+    "d_between": 0.0006745186614298682,
+    "between_ci": [
+     -0.0026811712141342173,
+     0.003972867135046159
+    ],
+    "between_sig": false,
+    "d_within": -0.018586052009855525,
+    "within_ci": [
+     -0.02471132118182745,
+     -0.01231354627682735
+    ],
+    "within_sig": true
+   },
+   "vs_genesis_trees": {
+    "d_auroc": 0.0016455699588282524,
+    "auroc_ci": [
+     -0.0005734738077846746,
+     0.003968453555866299
+    ],
+    "auroc_sig": false,
+    "d_between": 0.0022875731367452135,
+    "between_ci": [
+     8.431074185102933e-06,
+     0.004636409379394415
+    ],
+    "between_sig": true,
+    "d_within": -0.0042464012975930165,
+    "within_ci": [
+     -0.008144251007047337,
+     -0.0002226236707221406
+    ],
+    "within_sig": true
+   }
+  },
+  "network_alone": {
+   "score": {
+    "auroc": 0.8415366654385364,
+    "between": 0.8735533001969266,
+    "within_septic": 0.5477046437095257,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.8073000353025072,
+    "auroc_lt60": 0.8018013070138802,
+    "auroc_hourmatched": 0.785742874005736,
+    "auprc": 0.13003717512205476,
+    "patient_auroc": 0.8562622580160981,
+    "patient_auroc_pre": 0.6915489661408446,
+    "detect_far5": 0.3464163822525597,
+    "detect_far15": 0.4761092150170648,
+    "utility_best": 0.47842518191303424,
+    "thr_best": -3.836466648842762
+   },
+   "vs_shipped_stack": {
+    "d_auroc": 0.0357474908586356,
+    "auroc_ci": [
+     0.023138852208828487,
+     0.049262323070459496
+    ],
+    "auroc_sig": true,
+    "d_between": 0.03403116737907075,
+    "between_ci": [
+     0.021152275675489732,
+     0.04791189844043844
+    ],
+    "between_sig": true,
+    "d_within": 0.051499015081816035,
+    "within_ci": [
+     0.036180951339322934,
+     0.06706144730095659
+    ],
+    "within_sig": true
+   }
+  },
+  "shipped_stack": {
+   "score": {
+    "auroc": 0.8057891745799008,
+    "between": 0.8395221328178558,
+    "within_septic": 0.4962056286277096,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.7181935938523045,
+    "auroc_lt60": 0.7464047993579429,
+    "auroc_hourmatched": 0.7371097101622592,
+    "auprc": 0.1038220000698338,
+    "patient_auroc": 0.8314111334607399,
+    "patient_auroc_pre": 0.7465609122176636,
+    "detect_far5": 0.4112627986348123,
+    "detect_far15": 0.5,
+    "utility_best": 0.42391902329299874,
+    "thr_best": 0.6574491219040112
+   },
+   "vs_shipped_stack": null
+  },
+  "shipped_stack_served": {
+   "score": {
+    "auroc": 0.8051172540919351,
+    "between": 0.8386373882662558,
+    "within_septic": 0.49748689670444396,
+    "neg_share_septic": 0.09825615088772983,
+    "within_stay": 0.7099945020305878,
+    "auroc_lt60": 0.7453016491968203,
+    "auroc_hourmatched": 0.7358872093391841,
+    "auprc": 0.09684921048581623,
+    "patient_auroc": 0.8307565742201062,
+    "patient_auroc_pre": 0.746540382393075,
+    "detect_far5": 0.5221843003412969,
+    "detect_far15": 0.5221843003412969,
+    "utility_best": 0.4244535833818888,
+    "thr_best": 0.028968371268105232
+   },
+   "vs_shipped_stack": {
+    "d_auroc": -0.0006719204879657159,
+    "auroc_ci": [
+     -0.0011020588905334499,
+     -0.000247417002629811
+    ],
+    "auroc_sig": true,
+    "d_between": -0.0008847445516000363,
+    "between_ci": [
+     -0.0012909594543170672,
+     -0.0004615975813086875
+    ],
+    "between_sig": true,
+    "d_within": 0.0012812680767343432,
+    "within_ci": [
+     -0.0002099803250609114,
+     0.0026662596434312296
+    ],
+    "within_sig": false
+   }
+  }
+ }
+}
