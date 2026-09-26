@@ -8,8 +8,9 @@ systems (Glasgow Coma Scale, urine output, vasopressor doses) and the suspected-
 record (cultures, antibiotics) that sets the Sepsis-3 clock. MIMIC-IV records all of it.
 
 **Status.** Built end to end and verified on the open MIMIC-IV demo (100 patients, ODbL,
-16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 71/71, and every harness check has
-been mutation-tested (the mechanism broken on purpose, the check seen to go red). The full
+16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 79/79 (~4.5 min), and every harness and
+temporal-model check has been mutation-tested (the mechanism broken on purpose, the check
+seen to go red). The full
 run waits on credentialed PhysioNet access; the demo's numbers are noise by design (99
 subjects) and every demo report says so.
 
@@ -24,7 +25,7 @@ subjects) and every demo report says so.
 | `infoflow.py` | the information-flow audit — covert channels into treatment state; the strict tier |
 | `crossexam.py` | the cross-examination — seven questions asked of every headline model |
 | `trust.py` | the hash chain, power-gated pre-registration, confirmation, the Ladder lock |
-| `twin.py` | the Sepsis-3 Process Twin |
+| `twin.py` | the temporal model: Sepsis-3 Process Twin v2 (two input streams, a physiology twin trained on counterfactual patients, discrete-time hazards, a definition-composed organ outlook) |
 | `run.py` | the whole pipeline, one command, one JSON report |
 
 ## 1. Data: nothing large ever lands on this laptop
@@ -184,6 +185,11 @@ Three design decisions, each forced by a failure:
   one-step dynamics, so the planted world falls to 0.542.
 * **Urine moves as a rate**: the patient's causal 24-h rate times the donor's charting
   interval. Repeating the last chart would triple a patient's 24-h volume.
+* **Successor pools exclude the patient's own fold, and every draw is keyed** by hashing
+  (stay, hour, channel). A patient's counterfactual values are never drawn from their own
+  future measurements, and the transplant is reproducible and patient-local. That locality
+  is what lets a model use the transplant at inference and still pass the admission
+  audit (§5).
 
 On the demo (noise, 75 stays), the pattern the full run must test: the best tier-P model
 (`genesis_twin_P`, AUROC 0.768) keeps **0.738 on its own schedule with every value
@@ -247,18 +253,63 @@ booster's reliance is 0.010.
   written. In the verifier's boosting attack, an attacker submitting pure noise climbs a
   naive holdout to +0.107 AUROC over the truth, and the Ladder to +0.014.
 
-## 5. The Sepsis-3 Process Twin
+## 5. The temporal model — Sepsis-3 Process Twin v2 (`twin.py`)
 
-On CinC, the Genesis Network's `sigmoid(a_susp) · sigmoid(a_organ)` gate was a structural
-prior over two unobserved halves. In MIMIC both halves are observed for every patient, so
-each factor gets its own ground truth: `a_susp` learns "suspicion has begun, or begins within
-6 h" (for every stay — suspicion without organ failure is common and is what the factor must
-separate), `a_organ` learns "SOFA has risen ≥ 2 above a measured baseline in [t − 48 h,
-t + 6 h]", and their product is trained on the label. Around it: per-organ rises within
-12 h (6 heads), suspicion within 24 h, the GENESIS who / when / direct heads, and a world
-model of every input — dense supervision on every hour. Inputs are **tier P**: the
-suspicion record is a target, never an input, so the model learns to anticipate clinicians'
-suspicion from physiology rather than reading their orders.
+v1 made Sepsis-3's two halves *observed* targets. On CinC, the Genesis Network's
+`sigmoid(a_susp) · sigmoid(a_organ)` gate was a prior over two latent factors; MIMIC-IV
+records both halves. `a_susp` learns "suspicion has begun, or begins within 6 h" on every
+stay. `a_organ` learns "SOFA has risen ≥ 2 above a measured baseline in [t − 48 h, t + 6 h]".
+Their product is trained on the label, with dense supervision around it: the GENESIS
+who / when / direct heads, suspicion within 24 h, per-organ rises within 12 h, and a world
+model. v2 keeps all of that and rebuilds the rest around what the harness found:
+
+| v2 | why | verified by (`verify_mimic` §7, §20) |
+|---|---|---|
+| **raw sequence, two streams**: per channel its latest value (physiology) and whether / how long ago it was measured (process), fused through a learned gate | a recurrent model should learn its own temporal summaries, and the raw grid is what lets it train on counterfactual patients built on the fly | rewrite the future: no past output of any head moves |
+| **a step budget, not an epoch count** | v1's "8 epochs" on the demo were 24 optimiser steps (3 batches per epoch) | planted value world: a signal the booster finds at 0.85 went from 0.58 (v1) to 0.74 |
+| **a physiology twin**, trained only on transplanted patients (fresh random donor schedules, state-matched successor values, every batch), scored averaged over 4 donors | is this alert the patient, or the team? | keeps a heart-rate signal: **0.740**, vs **0.605** for a record-trained twin scored the same way; in a schedule-only world, **0.523** hour-matched while the full score reads **0.815** |
+| **per-alert process attribution**: full-score logit minus physiology-score logit, both calibrated | how much of *this* alert is the care process | passes the admission audit; the same model with a sequential random generator is refused by all four attacks |
+| **discrete-time hazards** over 8 bins out to 24 h, censoring-aware | a risk curve, F(t, H), for the clock-matched horizon lens; every at-risk hour supervises, and a discharge never counts as survival it didn't observe | targets: event / survival / censoring / not-at-risk on planted stays; the per-bin loss equals the survival likelihood (brute force, exact); F monotone in H |
+| **definition-composed organ outlook**: per organ, the measured SOFA rise 6 h ahead (0 / 1 / ≥ 2); P(total ≥ 2) composed exactly | every alert in the definition's own language | equals brute-force enumeration of all 729 organ outcomes |
+| **temporal capacity** | a sequence model should read what fixed windows cannot | a 30-h lag world: **0.925** vs the booster's **0.781** (hour-matched) |
+
+Every v2 check was mutation-tested (8 deliberate breakages, 8 caught). Examples:
+
+* a twin without memory fails the lag world;
+* a "physiology" twin that secretly trains on records fails the physiology check;
+* hazard targets that count a discharge as survival fail the survival-semantics check;
+* an organ composition missing its one-organ term fails the enumeration.
+
+**Two regimes, not one network doing both — measured.** The first version trained one
+network on recorded and transplanted patients at once. On a planted world where the care
+process carries real signal, that cost the full score AUROC **0.903 → 0.763** (d = 128).
+A learned "this record is transplanted" flag did not win it back (0.763 vs 0.752), so the flag
+was removed. The twin is now fitted twice per fold:
+* on records as they were (`regime="record"`), which gives the full score, hazard, outlook
+  and explanation;
+* on transplanted records only (`regime="transplanted"`), which gives the physiology score.
+
+**What one alert looks like** (`twin.explain`; the report carries the riskiest pre-onset
+hour of the dev folds). For example: Sepsis-3 probability; its physiology-only counterpart
+and the process attribution between them; suspicion within 6 h; each organ's chance of a
+measured SOFA rise within 6 h; the composed organ half; onset within 6 h. On the demo the
+example is an ICU-hour-4 alert 8 h before onset: 0.998 overall but 0.295 from physiology
+alone, with respiration and cardiovascular the organs expected to move. At 99 subjects that
+is an illustration of the readout, not a finding.
+
+**Accuracy is not measurable on the demo.** Every twin configuration scores 0.55–0.60 on
+the 99-subject demo, and early stopping on ~8 validation patients mostly keeps the first
+checkpoint. The same code learns every planted world built on those same demo schedules
+and labels, so this is sample size, not a broken real-data path; boosters also win on tiny
+tabular data. The twin is deliberately **not** tuned on the demo, because that is exactly
+the overfitting the harness exists to catch. Full MIMIC decides: twin vs trees (the
+`genesis_twin_P` product), the physiology twin's process reliance against the booster's,
+and the hazard curve against the clock-matched horizons, all under the §4 layers.
+
+**Cost on full MIMIC** (≈ 20k training stays per fold after design sampling, one fold at a
+time): the record twin at d = 128 should run ≈ 35 ms per step (extrapolated from ≈ 17 ms at
+d = 64 on the demo), and the physiology twin ≈ 2× with its per-batch transplant. With 2 + 1 seeds and early stopping, expect ≈ 3 h for the twins
+out of a full run of several hours. Run it overnight.
 
 ## 6. Running it on full MIMIC-IV
 
@@ -279,5 +330,5 @@ suspicion from physiology rather than reading their orders.
 ## 7. Reproduce the demo
 
     python -m backend.ml.mimic.extract          # build the demo store (under a second)
-    python -m backend.ml.mimic.run --source demo  # every stage, ~45 s
-    python verify_mimic.py                        # 71 adversarial checks
+    python -m backend.ml.mimic.run --source demo  # every stage, ~2 min
+    python verify_mimic.py                        # 79 adversarial checks, ~4.5 min

@@ -199,6 +199,11 @@ def measured_rise(parts: np.ndarray, row_start: np.ndarray, window: int = 48) ->
     """(N,) total SOFA rise at each hour against a MEASURED baseline: per component, the
     current carried-forward points minus their minimum over the preceding ``window`` hours
     of the same stay (components never measured in the window contribute nothing)."""
+    return measured_rise_parts(parts, row_start, window).sum(axis=1)
+
+
+def measured_rise_parts(parts: np.ndarray, row_start: np.ndarray, window: int = 48) -> np.ndarray:
+    """(N, 6) the measured rise of each organ component (see ``measured_rise``)."""
     n = len(parts)
     idx = np.arange(n)
     base = np.full_like(parts, np.nan)
@@ -209,7 +214,7 @@ def measured_rise(parts: np.ndarray, row_start: np.ndarray, window: int = 48) ->
         v[ok] = parts[src[ok]]
         base = np.fmin(base, v)
     ok = np.isfinite(parts) & np.isfinite(base)
-    return np.where(ok, parts - np.where(ok, base, 0.0), 0.0).sum(axis=1)
+    return np.where(ok, parts - np.where(ok, base, 0.0), 0.0)
 
 
 def _gcs_points(g: np.ndarray) -> np.ndarray:

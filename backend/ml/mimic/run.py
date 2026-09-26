@@ -5,7 +5,9 @@
 
 Stages: store -> (design subsample) -> Ledger -> INFORMATION-FLOW AUDIT (covert channels;
 the strict tier) -> tripwires -> candidates (tier-P / T / S boosters and their GENESIS
-products, a strict-P booster, the clinician-action model, the Process Twin) -> ADMISSION
+products, a strict-P booster, the clinician-action model, the Process Twin v2 in both
+regimes: records as they were -> the full score, hazard and organ outlook; transplanted
+records -> the physiology score and the per-alert process attribution) -> ADMISSION
 AUDIT (every model attacked on edited patients; a failure is refused) -> CROSS-EXAMINATION
 of the headline models -> CARE-PROCESS TRANSPLANT -> information ledger -> label
 sensitivity -> temporal validation -> trust summary (hash chain, code fingerprint, the
@@ -46,6 +48,10 @@ class Scale:
     early_stop: int = 150
     twin_epochs: int = 25
     twin_seeds: tuple = (0, 1, 2)
+    k_donors: int = 4                   # donor schedules behind the twin's physiology score
+    phys_seeds: tuple = (0,)            # seeds of the physiology twin (trained on transplanted records)
+    twin_d_model: int = 128
+    twin_min_steps: int = 400           # optimiser steps at least, whatever the cohort size
     keep_rate: float = 1.0
     chunk_stays: int = 0
     dtype: str = "float32"
@@ -58,17 +64,24 @@ class Scale:
 SCALES = {
     "demo": Scale(lgbm={"learning_rate": 0.05, "num_leaves": 15, "min_data_in_leaf": 20,
                         "feature_fraction": 0.5, "lambda_l2": 5.0},
-                  early_stop=50, twin_epochs=8, twin_seeds=(0,), keep_rate=1.0),
+                  early_stop=50, twin_epochs=8, twin_seeds=(0,), keep_rate=1.0, twin_d_model=64,
+                  twin_min_steps=200),
     # GENESIS's tuned booster (docs/GENESIS.md §4); never-septic stays kept at 25% and
     # re-weighted; features built 2,000 stays at a time into a float16 map on disk.
     "full": Scale(lgbm={"learning_rate": 0.02, "num_leaves": 31, "min_data_in_leaf": 800,
                         "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0},
-                  early_stop=150, twin_epochs=25, twin_seeds=(0, 1, 2), keep_rate=0.25,
+                  early_stop=150, twin_epochs=25, twin_seeds=(0, 1), phys_seeds=(0,), keep_rate=0.25,
                   chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300),
 }
 PHYSIO_FAMILIES = ["vitals", "gcs", "labs", "urine", "sofa"]
-HEADLINE = ["direct_P", "genesis_P", "twin_s3_P", "genesis_twin_P", "direct_Pstrict", "genesis_S"]
-TRANSPLANTED = ["direct_P", "genesis_P", "twin_s3_P", "genesis_twin_P", "direct_Pstrict"]
+HEADLINE = ["direct_P", "genesis_P", "twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_twin_P",
+            "direct_Pstrict", "genesis_S"]
+TRANSPLANTED = ["direct_P", "genesis_P", "twin_s3_P", "twin_phys_P", "genesis_twin_P", "direct_Pstrict"]
+#: the twin's outputs as harness candidates: name -> (regime of the twin, head, mode)
+TWIN_OUTPUTS = {"s3": ("record", "s3", "full"), "direct": ("record", "direct", "full"),
+                "susp6": ("record", "susp6", "full"), "organ": ("record", "organ", "full"),
+                "hazard6": ("record", "hazard6", "full"), "outlook": ("record", "outlook", "full"),
+                "phys": ("transplanted", "s3", "physiology")}
 
 
 def booster(scale: Scale, target: str = "direct"):
@@ -90,16 +103,12 @@ def booster(scale: Scale, target: str = "direct"):
     return fit
 
 
-def twin_predictor(tws, head: str, tier: str = "P"):
-    """Re-appliable Process Twin head (seed-averaged) for any ledger view."""
+def twin_predictor(tws, head: str, mode: str = "full"):
+    """Re-appliable Process Twin output (seed-averaged) for any ledger view."""
     def predict(view: LG.Ledger, rows: np.ndarray) -> np.ndarray:
-        key = ("twin_X", tier)
-        if key not in view.cache:
-            view.cache[key] = TW.twin_inputs(view, tier)[0]
-        X = view.cache[key]
         stays = np.unique(view.store.seg[rows])
-        allrows = TW.ProcessTwin._rows(view, stays)
-        acc = sum(tw.predict(view, X, stays, (head,))[head] for tw in tws) / len(tws)
+        allrows = TW._rows(view.store, stays)
+        acc = sum(tw.predict(view, stays, (head,), mode=mode)[head] for tw in tws) / len(tws)
         pos = np.full(view.store.n_rows, -1, dtype=np.int64)
         pos[allrows] = np.arange(len(allrows))
         return acc[pos[rows]]
@@ -107,26 +116,99 @@ def twin_predictor(tws, head: str, tier: str = "P"):
 
 
 def fit_twin(led: LG.Ledger, scale: Scale):
+    """The Process Twin v2, fold by fold, in both regimes (records as they were -> the full
+    score and every head; transplanted records only -> the physiology score): every output as
+    a re-appliable FoldModels, plus the twin's own diagnostics (process gate, organ outlook)."""
     T = TW.process_targets(led)
-    X, _ = TW.twin_inputs(led, "P")
-    led.cache[("twin_X", "P")] = X
     s = led.store
     stays = np.arange(s.n_patients)
-    heads = ("direct", "s3", "susp6", "organ")
-    oof = {h: np.full(s.n_rows, np.nan) for h in heads}
-    preds = {h: {} for h in heads}
+    oof = {n: np.full(s.n_rows, np.nan) for n in TWIN_OUTPUTS}
+    organ_p = np.full((s.n_rows, len(TW.ORGANS)), np.nan)
+    preds = {n: {} for n in TWIN_OUTPUTS}
+    gates, epochs, explain = [], [], {}
     for k in range(led.n_folds):
         tr, te = stays[(led.folds >= 0) & (led.folds != k)], stays[led.folds == k]
         if not len(te):
             continue
-        tws = [TW.ProcessTwin(TW.TwinConfig(epochs=scale.twin_epochs, seed=sd)).fit(led, X, T, tr)
-               for sd in scale.twin_seeds]
-        rows = TW.ProcessTwin._rows(led, te)
-        for h in heads:
-            preds[h][k] = twin_predictor(tws, h)
-            oof[h][rows] = preds[h][k](led, rows)
-    fms = {h: FoldModels(f"twin_{h}_P", "P", oof[h], preds[h]) for h in heads}
-    return fms, T
+        tws = {regime: [TW.ProcessTwin(TW.TwinConfig(
+            epochs=scale.twin_epochs, seed=sd, k_donors=scale.k_donors, d_model=scale.twin_d_model,
+            min_steps=scale.twin_min_steps, regime=regime)).fit(led, T, tr) for sd in seeds]
+            for regime, seeds in (("record", scale.twin_seeds), ("transplanted", scale.phys_seeds))}
+        rows = TW._rows(s, te)
+        full = [tw.predict(led, te, TW.HEADS) for tw in tws["record"]]
+        phys = [tw.predict(led, te, ("s3",), mode="physiology")["s3"] for tw in tws["transplanted"]]
+        for n, (regime, head, mode) in TWIN_OUTPUTS.items():
+            oof[n][rows] = (sum(phys) / len(phys)) if mode == "physiology" else sum(f[head] for f in full) / len(full)
+            preds[n][k] = twin_predictor(tws[regime], head, mode)
+        rec = tws["record"]
+        Xv, Xp = rec[0]._inputs(led)
+        organ_p[rows] = sum(tw._forward(s, Xv, Xp, te, (), organs=True)["organ_p1plus"] for tw in rec) / len(rec)
+        gates += [tw.process_gate() for tw in rec]
+        epochs += [tw.best_epoch_ for tw in rec]
+        ex = rec[0].explain(led, te, physiology=tws["transplanted"][0])
+        for key, v in ex.items():
+            explain.setdefault(key, np.full((s.n_rows,) + v.shape[1:], np.nan))[rows] = v
+    fms = {n: FoldModels(f"twin_{n}_P", "P", oof[n], preds[n]) for n in TWIN_OUTPUTS}
+    return fms, T, {"organ_p": organ_p, "gate": float(np.mean(gates)) if gates else float("nan"),
+                    "best_epochs": epochs, "explain": explain}
+
+
+def twin_diagnostics(led: LG.Ledger, fms: Dict[str, FoldModels], T, extra) -> Dict:
+    """What only the twin can report: its gate factors and hazard / outlook against their own
+    ground truth, the calibration of its 6-h risk, and the per-alert process attribution."""
+    s = led.store
+    dev = np.flatnonzero(led.folds[s.seg] >= 0)
+    sig = lambda z: 1.0 / (1.0 + np.exp(-np.clip(z, -35, 35)))
+
+    def vs_truth(score, key, cond=None):
+        y, m = T[key]
+        r = dev[(m[dev] > 0) & np.isfinite(score[dev])]
+        yy = (y[r] if cond is None else cond(y[r])).astype(float)
+        return auroc(yy, score[r]) if 0 < yy.sum() < len(yy) else float("nan")
+    out = {"process_gate": extra["gate"], "best_epochs": extra["best_epochs"],
+           "factors": {"susp6": vs_truth(fms["susp6"].oof, "susp6"), "organ": vs_truth(fms["organ"].oof, "organ")},
+           "hazard_onset6_auroc": vs_truth(fms["hazard6"].oof, "onset6"),
+           "outlook_total_auroc": vs_truth(fms["outlook"].oof, "outlook_total")}
+    cat, om = T["outlook"]
+    op = extra["organ_p"]
+    out["organ_outlook_auroc"] = {}
+    for o, name in enumerate(TW.ORGANS):
+        r = dev[(om[dev] > 0) & np.isfinite(op[dev, o])]
+        yy = (cat[r, o] >= 1).astype(float)
+        out["organ_outlook_auroc"][name] = auroc(yy, op[r, o]) if 0 < yy.sum() < len(yy) else float("nan")
+    y6, m6 = T["onset6"]
+    r = dev[(m6[dev] > 0) & np.isfinite(fms["hazard6"].oof[dev])]
+    if len(r) >= 20:
+        p = sig(fms["hazard6"].oof[r])
+        bins = np.array_split(np.argsort(p), 5)
+        out["hazard6_calibration"] = [{"predicted": float(p[b].mean()), "observed": float(y6[r][b].mean()),
+                                       "n": int(len(b))} for b in bins]
+    ev = np.flatnonzero(led.eval_mask & (led.folds[s.seg] >= 0) & np.isfinite(fms["s3"].oof)
+                        & np.isfinite(fms["phys"].oof))
+    if len(ev):
+        full, phys = fms["s3"].oof[ev], fms["phys"].oof[ev]
+        alert = full >= np.quantile(full, 0.9)
+        att = (full - phys)[alert]
+        out["alert_attribution"] = {"alerts": int(alert.sum()), "median_logit": float(np.median(att)),
+                                    "share_driven_by_process": float(np.mean(att > 0))}
+    # one alert, read in the definition's own language: the riskiest pre-onset hour of an
+    # early-warning septic stay (dev folds, out-of-fold twins)
+    ex = extra.get("explain", {})
+    if ex:
+        orow = np.floor(led.onset[s.seg])
+        pre = np.flatnonzero((led.folds[s.seg] >= 0) & (led.onset[s.seg] >= LG.ONSET_MIN) & (s.hour < orow)
+                             & np.isfinite(ex["p_sepsis3"]))
+        if len(pre):
+            r = int(pre[np.argmax(ex["p_sepsis3"][pre])])
+            out["example_alert"] = {
+                "hours_before_onset": int(orow[r] - s.hour[r]), "icu_hour": int(s.hour[r]),
+                "p_sepsis3": float(ex["p_sepsis3"][r]), "p_sepsis3_physiology": float(ex["p_sepsis3_physiology"][r]),
+                "process_attribution_logit": float(ex["process_attribution"][r]),
+                "p_suspicion_within_6h": float(ex["p_suspicion_6h"][r]),
+                "p_organ_rise_within_6h": {o: float(ex["p_organ_rise_6h"][r, i]) for i, o in enumerate(TW.ORGANS)},
+                "p_total_sofa_rise_ge2_at_6h": float(ex["p_total_rise_ge2_6h"][r]),
+                "p_onset_within_6h": float(ex["p_onset_6h"][r])}
+    return out
 
 
 def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
@@ -171,8 +253,9 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
     fms["direct_Pstrict"] = led.fit_oof(Candidate("booster direct P-strict", "P", booster(scale), strict=True))
     fms["clinician"] = led.fit_oof(Candidate("clinician actions", "S", booster(scale),
                                              columns=lambda l: l.clinician_columns()))
-    twin, T = fit_twin(led, scale)
-    fms["twin_s3_P"], fms["twin_direct_P"] = twin["s3"], twin["direct"]
+    twin, T, twin_extra = fit_twin(led, scale)
+    for n in ("s3", "direct", "phys", "hazard6"):
+        fms[f"twin_{n}_P"] = twin[n]
     fms["genesis_twin_P"] = LG.product("genesis_twin_P", [fms[f"{t}_P"] for t in TW.MAIN] + [twin["s3"]])
     for k, fm in fms.items():                     # every result is reported under its key
         fm.name = k
@@ -185,7 +268,8 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
           + (f"; REFUSED {refused}" if refused else ""), flush=True)
 
     rep["models"] = {k: led.score(fm.oof) for k, fm in fms.items() if not k.startswith(("who_", "when_"))}
-    for k in ("twin_s3_P", "genesis_P", "genesis_twin_P", "direct_Pstrict", "clinician", "genesis_S"):
+    for k in ("twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_P", "genesis_twin_P", "direct_Pstrict",
+              "clinician", "genesis_S"):
         sc = led.score(fms[k].oof)
         print(f"  {k:<16} AUROC {sc['auroc']:.4f}  hour-matched {sc['auroc_hourmatched']:.4f}  "
               f"pre-suspicion {sc['auroc_presusp']:.4f}", flush=True)
@@ -196,13 +280,14 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
         "declared_P_over_strict_P": led.compare(fms["direct_P"].oof, fms["direct_Pstrict"].oof, n_boot=500),
     }
 
-    # the gate's factors against their own ground truth
-    dev = np.flatnonzero(led.folds[store.seg] >= 0)
-    rep["twin_factors"] = {}
-    for h in ("susp6", "organ"):
-        y, m = T[h]
-        r = dev[(m[dev] > 0) & np.isfinite(twin[h].oof[dev])]
-        rep["twin_factors"][h] = auroc(y[r], twin[h].oof[r]) if 0 < y[r].sum() < len(r) else float("nan")
+    # the twin's own diagnostics: factors, hazard and outlook against their ground truth
+    rep["twin"] = twin_diagnostics(led, twin, T, twin_extra)
+    rep["comparisons"]["twin_full_over_physiology"] = led.compare(fms["twin_s3_P"].oof, fms["twin_phys_P"].oof,
+                                                                  n_boot=500)
+    print("twin: process gate {:.2f}; hazard 6-h AUROC {:.3f}; outlook AUROC {:.3f}; alerts driven by the care "
+          "process {}".format(rep["twin"]["process_gate"], rep["twin"]["hazard_onset6_auroc"],
+                              rep["twin"]["outlook_total_auroc"],
+                              rep["twin"].get("alert_attribution", {}).get("share_driven_by_process")), flush=True)
 
     # the cross-examination and the transplant
     clin = fms["clinician"].oof

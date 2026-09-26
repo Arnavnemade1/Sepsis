@@ -44,11 +44,19 @@ The harness layers (docs/MIMIC.md §4-7), each attacked with a planted failure:
     fingerprint moves with the code; the power gate refuses an unanswerable pre-registration;
     a confirmation is spent once and code drift needs a recorded deviation; the Ladder resists
     the boosting attack that climbs a naive holdout, and never writes a raw lock score.
+20. TEMPORAL MODEL (Process Twin v2) — hazard targets follow discrete-time survival
+    semantics (an event, survival, censoring, not-at-risk) and the per-bin loss IS the
+    survival likelihood; the risk curve and the composed organ outlook equal their brute-force
+    definitions; the twin reads a 30-h lag a windowed booster cannot; the physiology twin
+    keeps a physiological signal and drops a care-process one; its randomness is a pure
+    function of (stay, hour, channel), and a sequential generator in its place is refused by
+    the admission audit.
 """
 from __future__ import annotations
 
 import re
 import sys
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -204,14 +212,16 @@ def c7_causality(store) -> None:
     lac1 = pd.Series(new.col("Lactate")).groupby(new.seg).bfill().to_numpy()
     check("…and a planted backward-fill column is caught by the same test", not _same(lac[keep], lac1[keep]))
     import torch
-    net = TW._build(12, TW.TwinConfig()).eval()
-    x = torch.from_numpy(rng.normal(size=(2, 30, 12)).astype(np.float32))
-    x2 = x.clone()
-    x2[:, 11:] = torch.from_numpy(rng.normal(3, 2, size=(2, 19, 12)).astype(np.float32))
+    net = TW._build(12, 9, TW.TwinConfig()).eval()
+    xv = torch.from_numpy(rng.normal(size=(2, 30, 12)).astype(np.float32))
+    xp = torch.from_numpy(rng.normal(size=(2, 30, 9)).astype(np.float32))
+    xv2, xp2 = xv.clone(), xp.clone()
+    xv2[:, 11:] = torch.from_numpy(rng.normal(3, 2, size=(2, 19, 12)).astype(np.float32))
+    xp2[:, 11:] = torch.from_numpy(rng.normal(3, 2, size=(2, 19, 9)).astype(np.float32))
     with torch.no_grad():
-        a, b = net(x), net(x2)
-    check("no Process Twin output at or before the cut moves",
-          all(torch.equal(u[:, :11], v[:, :11]) for u, v in zip(a, b)), f"{len(a)} outputs")
+        a, b = net(xv, xp), net(xv2, xp2)
+    check("no Process Twin output at or before the cut moves (every head, both streams)",
+          all(torch.equal(a[k][:, :11], b[k][:, :11]) for k in a), f"{len(a)} outputs")
 
 
 def c8_firewall(led) -> None:
@@ -340,8 +350,8 @@ def c14_views(store, led) -> None:
           rise.max() >= 1 and rise.min() >= 0, f"max +{rise.max():.0f}")
     check("…and a grid edited WITHOUT re-deriving is caught holding a stale SOFA_P",
           _same(stale.col("SOFA_P"), sub.col("SOFA_P")) and not _same(fresh.col("SOFA_P"), stale.col("SOFA_P")))
-    donors = (stays + 3) % store.n_patients
-    cf = led.view(stays, CF.transplant(store, stays, donors, False, True, CF.reference(led)))
+    bank = CF.DonorBank.from_store(store, (stays + 3) % store.n_patients)
+    cf = led.view(stays, CF.transplant(store, stays, np.arange(len(stays)), bank, False, True, CF.reference(led)))
     check("a counterfactual patient keeps its outcome (labels, masks, onsets untouched)",
           np.array_equal(cf.y, v.y) and np.array_equal(cf.eval_mask, v.eval_mask)
           and _same(cf.onset, v.onset) and not _same(cf.store.X, v.store.X))
@@ -667,7 +677,210 @@ def c19_trust(led) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+# --------------------------------------------------------------------------- #
+# 20. The temporal model
+# --------------------------------------------------------------------------- #
+def _lag_world(n=400, L=90, lag=30, seed=3):
+    """Every stay has one 3-h heart-rate spike; in stays that become septic it comes exactly
+    ``lag`` hours before onset, elsewhere at a random time. Only the lag carries the label."""
+    rng = np.random.default_rng(seed)
+    cols = E.DYNAMIC + E.STATIC
+    j = {c: i for i, c in enumerate(cols)}
+    lens = np.full(n, L, np.int64)
+    N = n * L
+    X = np.full((N, len(cols)), np.nan, np.float32)
+    for c in E.VASO_CH + E.VENT_CH:
+        X[:, j[c]] = 0.0
+    septic = rng.random(n) < 0.4
+    onset = np.where(septic, rng.integers(42, 80, n), -1).astype(float)
+    spike = np.where(septic, onset - lag, rng.integers(8, 70, n))
+    hour = np.tile(np.arange(L), n)
+    seg = np.repeat(np.arange(n), L)
+    X[:, j["HR"]] = rng.normal(85, 6, N) + 45 * ((hour >= spike[seg]) & (hour < spike[seg] + 3))
+    X[:, j["MAP"]] = rng.normal(80, 8, N)
+    for c in E.STATIC:
+        X[:, j[c]] = 0.0 if c.startswith("Unit_") else 1.0
+    X[:, j["ICULOS"]] = hour + 1
+    E.derive_channels(X, cols, lens)
+    t = np.where(septic, onset, np.nan)
+    on = {"stay_id": np.arange(n) + 1, "first_si": t, "first_order": t}
+    for r in E.RULES:
+        for a in ("min", "si", "sofa"):
+            on[f"t_sepsis_{r}_{a}"] = t
+        on[f"t_si_{r}"], on[f"t_sofa_{r}"] = t, t
+    meta = pd.DataFrame({"subject_id": np.arange(n) + 1, "hadm_id": np.arange(n) + 1, "stay_id": np.arange(n) + 1,
+                         "first_careunit": "MICU", "anchor_year_group": "2014 - 2016", "age": 60.0,
+                         "los_hours": float(L), "n_hours": L, "hospital_expire_flag": 0,
+                         **{a: "x" for a in E.AUDIT_ATTRS if a != "anchor_year_group"}})
+    y = (np.isfinite(t[seg]) & (hour >= t[seg] - 6)).astype(np.int8)
+    return E.MimicStore(X=X, y=y, lens=lens, pid=np.arange(n) + 1, site=np.zeros(n, np.int8), columns=cols,
+                        tiers={c: E.tier_of(c) for c in E.DYNAMIC} | {c: "P" for c in E.STATIC},
+                        static_columns=list(E.STATIC), meta=meta, onsets=pd.DataFrame(on), sofa={})
+
+
+def _twin_world(store, kind, seed=11):
+    """Planted worlds on the demo's real schedules and labels. D: a care-process shortcut
+    (hourly lactate near onset) AND a physiological one (heart rate +30 near onset, a channel
+    everyone's schedule measures). A: the shortcut only; every value, urine included, noise."""
+    rng = np.random.default_rng(seed)
+    j = {c: i for i, c in enumerate(store.columns)}
+    win = _window(store)
+    X = store.X.copy()
+    for c in CF.STATE_CH + ([CF.RATE_CH] if kind == "A" else []):
+        m = np.isfinite(X[:, j[c]])
+        pl = _pool(store, c)
+        if len(pl):
+            X[m, j[c]] = rng.choice(pl, int(m.sum()))
+    X[win, j["Lactate"]] = rng.choice(_pool(store, "Lactate"), int(win.sum()))
+    if kind == "D":
+        m = np.isfinite(X[:, j["HR"]])
+        X[m & win, j["HR"]] += 30.0
+    return LG.Ledger.build(E.rederive(store, X))
+
+
+def _twin_oof(led, regime, modes=("full",), d_model=64, **kw):
+    T = TW.process_targets(led)
+    s = led.store
+    stays = np.arange(s.n_patients)
+    out = {m: np.full(s.n_rows, np.nan) for m in modes}
+    for k in range(led.n_folds):
+        tr, te = stays[(led.folds >= 0) & (led.folds != k)], stays[led.folds == k]
+        tw = TW.ProcessTwin(TW.TwinConfig(d_model=d_model, seed=0, regime=regime, **kw)).fit(led, T, tr)
+        r = TW._rows(s, te)
+        for m in modes:
+            out[m][r] = tw.predict(led, te, ("direct",), mode=m)["direct"]
+    return {m: led.score(v) for m, v in out.items()}
+
+
+def c20_temporal(store, led) -> None:
+    print("\n20. temporal model (Process Twin v2)")
+    lagled = LG.Ledger.build(_lag_world())
+    c20a_math(lagled)
+    c20b_capacity(lagled)
+    c20c_physiology(store)
+    c20d_locality(store, led)
+
+
+def c20a_math(lagled) -> None:
+    import torch
+    from backend.ml.genesis.network import _bce
+    T = TW.process_targets(lagled)
+    hy, hm = T["hazard"]
+    ls = lagled.store
+    sep = int(np.flatnonzero(np.isfinite(lagled.onset))[0])
+    non = int(np.flatnonzero(~np.isfinite(lagled.onset))[0])
+    o = int(lagled.onset[sep])
+    a, b = ls.starts[sep], ls.starts[non]
+    L = int(ls.lens[non])
+    r_event, r_far, r_after = a + o - 5, a + max(o - 30, 0), a + o + 1
+    r_cens = b + L - 1 - 3                                  # 3 h before discharge, never septic
+    ok = (hy[r_event].tolist() == [0, 0, 0, 0, 1, 0, 0, 0] and hm[r_event].tolist() == [1, 1, 1, 1, 1, 0, 0, 0]
+          and hy[r_far].sum() == 0 and hm[r_far].sum() == TW.N_BINS
+          and hy[r_cens].sum() == 0 and hm[r_cens].tolist() == [1, 1, 1, 0, 0, 0, 0, 0]
+          and hm[r_after].sum() == 0)
+    check("hazard targets follow survival semantics: onset in 5 h is an event in (4,6]; 30 h away "
+          "survives every bin; 3 h before discharge only 3 bins are observed; after onset, not at risk", ok)
+    rng = np.random.default_rng(1)
+    rows = np.array([r_event, r_far, r_cens])
+    logits = rng.normal(0, 1.5, (len(rows), TW.N_BINS))
+    h = 1 / (1 + np.exp(-logits))
+    brute = 0.0
+    for i, r in enumerate(rows):
+        for bb in range(TW.N_BINS):
+            if hm[r, bb]:
+                brute -= np.log(h[i, bb]) if hy[r, bb] else np.log(1 - h[i, bb])
+    mm = torch.from_numpy(hm[rows])
+    ours = float(_bce(torch.from_numpy(logits), torch.from_numpy(hy[rows]).double(), mm.double())) * float(mm.sum())
+    F = TW.cumulative_incidence(h, 24)
+    Fs = [TW.cumulative_incidence(h, H) for H in TW.HAZ_EDGES[1:]]
+    tm = TW._t_hazard_margin(torch.from_numpy(logits), 6).numpy()
+    F6 = TW.cumulative_incidence(h, 6)
+    check("the per-bin loss IS the discrete-time survival likelihood; the risk curve is monotone "
+          "and its 6-h margin is exactly logit F(6)",
+          abs(ours - brute) < 1e-9 and all(np.all(Fs[i + 1] >= Fs[i] - 1e-15) for i in range(len(Fs) - 1))
+          and np.allclose(F, 1 - np.prod(1 - h, axis=1)) and np.allclose(tm, np.log(F6 / (1 - F6))),
+          f"NLL {ours:.4f} vs brute force {brute:.4f}")
+
+    p = rng.dirichlet(np.ones(3), size=(5, len(TW.ORGANS)))
+    import itertools
+    brute = np.zeros(5)
+    for combo in itertools.product(range(3), repeat=len(TW.ORGANS)):
+        pr = np.prod([p[:, o, c] for o, c in enumerate(combo)], axis=0)
+        brute += pr * (sum(combo) >= 2)
+    tl = TW._t_outlook_log_le1(torch.from_numpy(np.log(p))).numpy()
+    check("the composed organ outlook equals brute-force enumeration of all 729 organ outcomes",
+          np.allclose(TW.outlook_p_ge2(p), brute, atol=1e-12) and np.allclose(1 - np.exp(tl), brute, atol=1e-9))
+
+
+
+def c20b_capacity(lagled) -> None:
+    from backend.ml.mimic.ledger import Candidate
+    bst = lagled.fit_oof(Candidate("booster", "P", _booster()), verbose=False)
+    tw = _twin_oof(lagled, "record")["full"]
+    bs = lagled.score(bst.oof)
+    check("the twin reads a 30-h lag that a windowed booster cannot (clock-matched)",
+          tw["auroc_hourmatched"] - bs["auroc_hourmatched"] >= 0.08,
+          f"hour-matched AUROC twin {tw['auroc_hourmatched']:.3f} vs booster {bs['auroc_hourmatched']:.3f}")
+
+
+
+def c20c_physiology(store) -> None:
+    wd = _twin_world(store, "D")
+    rec = _twin_oof(wd, "record", modes=("full", "physiology"))
+    phy = _twin_oof(wd, "transplanted", modes=("physiology",))
+    check("the physiology twin keeps a physiological signal (trained on transplanted patients; a "
+          "record-trained twin scored on them does not)",
+          phy["physiology"]["auroc"] >= 0.7 and phy["physiology"]["auroc"] >= rec["physiology"]["auroc"] + 0.08
+          and rec["full"]["auroc"] >= 0.78,
+          f"physiology twin {phy['physiology']['auroc']:.3f}, record twin on transplanted "
+          f"{rec['physiology']['auroc']:.3f}, record twin's full score {rec['full']['auroc']:.3f}")
+    wa = _twin_world(store, "A")
+    rec_a = _twin_oof(wa, "record")
+    phy_a = _twin_oof(wa, "transplanted", modes=("physiology",))
+    check("…and drops a care-process one: in a schedule-only world the physiology score sits near "
+          "chance (clock-matched) while the full score does not",
+          phy_a["physiology"]["auroc_hourmatched"] <= 0.62 and rec_a["full"]["auroc_hourmatched"] >= 0.7,
+          f"physiology {phy_a['physiology']['auroc_hourmatched']:.3f} vs full "
+          f"{rec_a['full']['auroc_hourmatched']:.3f} (hour-matched)")
+
+
+
+def c20d_locality(store, led) -> None:
+    u1 = CF.hash_uniform(7, np.arange(100_000), 3, 5)
+    u2 = CF.hash_uniform(7, np.arange(100_000), 3, 5)
+    u3 = CF.hash_uniform(8, np.arange(100_000), 3, 5)
+    ks = np.max(np.abs(np.sort(u1) - (np.arange(1, len(u1) + 1) / len(u1))))
+    check("counterfactual draws are a pure function of their keys (deterministic, key-sensitive, uniform)",
+          np.array_equal(u1, u2) and np.mean(u1 == u3) < 1e-3 and ks < 0.01, f"KS {ks:.4f}")
+
+    from backend.ml.mimic.run import twin_predictor
+    from backend.ml.mimic.ledger import FoldModels
+    Tl = TW.process_targets(led)
+    stays = np.arange(store.n_patients)
+    k = 0
+    tr = stays[(led.folds >= 0) & (led.folds != k)]
+    twin = TW.ProcessTwin(TW.TwinConfig(d_model=32, seed=0, regime="transplanted", min_steps=30, epochs=1)).fit(led, Tl, tr)
+    fm = FoldModels("phys", "P", np.full(store.n_rows, np.nan), {k: twin_predictor([twin], "s3", "physiology")})
+    te = TW._rows(store, stays[led.folds == k])
+    fm.oof[te] = fm.predictors[k](led, te)
+    clean = CF.audit(led, [fm])["phys"]
+    real = CF.hash_uniform
+    gen = np.random.default_rng(0)
+    CF.hash_uniform = lambda *keys: gen.random(np.broadcast_arrays(*[np.asarray(x) for x in keys])[0].shape)
+    try:
+        fm2 = FoldModels("sequential", "P", fm.oof.copy(), fm.predictors)
+        dirty = CF.audit(led, [fm2])["sequential"]
+    finally:
+        CF.hash_uniform = real
+    check("the physiology score passes the admission audit; with a sequential random generator in "
+          "place of the keyed hash it is refused (draws coupled across patients)",
+          clean["admissible"] and not dirty["admissible"],
+          f"clean max change {max(clean['max_abs_change'].values()):.1e}; sequential refused by "
+          f"{[kk for kk, v in dirty['passed'].items() if not v]}")
+
+
 def main() -> int:
+    warnings.filterwarnings("ignore", category=RuntimeWarning)       # all-NaN channels of planted worlds
     src = SRC.CsvSource(E.DEMO_ROOT)
     try:
         store = E.load("demo")
@@ -694,6 +907,7 @@ def main() -> int:
     c17_infoflow(store, led)
     c18_crossexam(led)
     c19_trust(led)
+    c20_temporal(store, led)
     ok = sum(r[1] for r in _results)
     print(f"\nverify_mimic: {ok}/{len(_results)} passed")
     return 0 if ok == len(_results) else 1

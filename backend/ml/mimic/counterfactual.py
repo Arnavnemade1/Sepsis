@@ -78,9 +78,35 @@ CONDITIONS = {"physiology_only": (False, True), "process_only": (True, False), "
 # --------------------------------------------------------------------------- #
 # The transplant
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Deterministic, patient-local randomness
+# --------------------------------------------------------------------------- #
+def _splitmix(x: np.ndarray) -> np.ndarray:
+    with np.errstate(over="ignore"):
+        x = x + np.uint64(0x9E3779B97F4A7C15)
+        x = (x ^ (x >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        x = (x ^ (x >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        return x ^ (x >> np.uint64(31))
+
+
+def hash_uniform(*keys) -> np.ndarray:
+    """U[0, 1) that is a pure function of its integer keys (splitmix64). Every counterfactual
+    draw is keyed by (seed, stay, hour, channel): a draw never depends on how many draws
+    other patients needed, or on this patient's future — so a model that uses the transplant
+    at inference is still causal and patient-local (the admission audit checks it)."""
+    arrs = np.broadcast_arrays(*[np.asarray(k).astype(np.int64).astype(np.uint64) for k in keys])
+    h = np.zeros(arrs[0].shape, dtype=np.uint64)
+    for a in arrs:
+        h = _splitmix(h ^ a)
+    return (h >> np.uint64(11)).astype(np.float64) * (1.0 / float(1 << 53))
+
+
+# --------------------------------------------------------------------------- #
+# References and donors
+# --------------------------------------------------------------------------- #
 @dataclass
 class Reference:
-    """What an uninformative or a state-matched reading looks like, from the dev stays."""
+    """What an uninformative or a state-matched reading looks like, from a set of stays."""
     neutral: Dict[str, float]                       # per channel: the median reading
     uo_rate: float                                  # the median hourly urine rate
     #: per channel: quantile-bin edges, the NEXT measured value after a measurement in each
@@ -88,15 +114,17 @@ class Reference:
     successors: Dict[str, Tuple[np.ndarray, List[np.ndarray], np.ndarray]]
 
 
-def reference(led: Ledger, n_bins: int = 20, max_pairs: int = 200_000, seed: int = 0) -> Reference:
-    s = led.store
+def reference_from(store: E.MimicStore, stays: np.ndarray, n_bins: int = 20, max_pairs: int = 200_000,
+                   seed: int = 0) -> Reference:
     rng = np.random.default_rng(seed)
-    dev = led.folds[s.seg] >= 0
+    keep = np.zeros(store.n_patients, dtype=bool)
+    keep[np.asarray(stays, dtype=np.int64)] = True
+    rowmask = keep[store.seg]
     neutral, succ = {}, {}
     for c in STATE_CH:
-        v = s.col(c).astype(np.float64)
-        idx = np.flatnonzero(np.isfinite(v) & dev)
-        vals, st = v[idx], s.seg[idx]
+        v = store.col(c).astype(np.float64)
+        idx = np.flatnonzero(np.isfinite(v) & rowmask)
+        vals, st = v[idx], store.seg[idx]
         neutral[c] = float(np.median(vals)) if len(vals) else 0.0
         same = st[1:] == st[:-1]
         prev, nxt = vals[:-1][same], vals[1:][same]
@@ -108,26 +136,52 @@ def reference(led: Ledger, n_bins: int = 20, max_pairs: int = 200_000, seed: int
             else np.zeros(0)
         b = np.searchsorted(edges, prev, side="right")
         succ[c] = (edges, [nxt[b == k] for k in range(len(edges) + 1)], marginal)
-    uo = s.col(RATE_CH)
+    uo = store.col(RATE_CH)
     rates = []
-    for k in np.flatnonzero(led.folds >= 0):
-        u = uo[s.starts[k]:s.starts[k] + s.lens[k]]
+    for k in np.flatnonzero(keep):
+        u = uo[store.starts[k]:store.starts[k] + store.lens[k]]
         f = np.flatnonzero(np.isfinite(u))
         if len(f) >= 2:
             rates.append(np.nansum(u) / (f[-1] - f[0] + 1))
     return Reference(neutral, float(np.median(rates)) if rates else 50.0, succ)
 
 
-def _donor_mask(store: E.MimicStore, d: int, L: int, cols: np.ndarray) -> np.ndarray:
-    """The donor's measured-or-not pattern over ``L`` hours, aligned on ICU admission; a
-    shorter donor is extended by repeating its last day."""
-    a, Ld = int(store.starts[d]), int(store.lens[d])
-    M = np.isfinite(store.X[a:a + Ld][:, cols])
-    if Ld >= L:
-        return M[:L]
-    period = M[max(0, Ld - 24):]
-    reps = int(np.ceil((L - Ld) / len(period)))
-    return np.concatenate([M, np.tile(period, (reps, 1))])[:L]
+def reference(led: Ledger, n_bins: int = 20, max_pairs: int = 200_000, seed: int = 0,
+              exclude_fold: Optional[int] = None) -> Reference:
+    """The reference over the dev stays — without fold ``exclude_fold``, so a patient's
+    counterfactual values are never drawn from their own (future) measurements."""
+    ok = led.folds >= 0
+    if exclude_fold is not None:
+        ok &= led.folds != exclude_fold
+    return reference_from(led.store, np.flatnonzero(ok), n_bins, max_pairs, seed)
+
+
+@dataclass
+class DonorBank:
+    """Measurement schedules to transplant (state channels, then urine), kept apart from the
+    store they came from so a fitted model can carry its training cohort's schedules."""
+    masks: List[np.ndarray]
+
+    @staticmethod
+    def from_store(store: E.MimicStore, stays: np.ndarray) -> "DonorBank":
+        j = {c: i for i, c in enumerate(store.columns)}
+        cols = np.array([j[c] for c in STATE_CH] + [j[RATE_CH]])
+        return DonorBank([np.isfinite(store.X[store.starts[k]:store.starts[k] + store.lens[k]][:, cols])
+                          for k in np.asarray(stays, dtype=np.int64)])
+
+    def __len__(self) -> int:
+        return len(self.masks)
+
+    def mask(self, d: int, L: int) -> np.ndarray:
+        """Donor ``d``'s pattern over ``L`` hours, aligned on ICU admission; a shorter donor
+        is extended by repeating its last day (the prefix never depends on ``L``)."""
+        M = self.masks[int(d)]
+        Ld = len(M)
+        if Ld >= L:
+            return M[:L]
+        period = M[max(0, Ld - 24):]
+        reps = int(np.ceil((L - Ld) / len(period)))
+        return np.concatenate([M, np.tile(period, (reps, 1))])[:L]
 
 
 def _interval(sched: np.ndarray) -> np.ndarray:
@@ -154,29 +208,32 @@ def _uo_rate(own: np.ndarray, neutral_rate: float) -> np.ndarray:
     return np.where(last >= 0, rate[np.maximum(last, 0)], neutral_rate)
 
 
-def _successor_fill(own: np.ndarray, last: np.ndarray, ref: Reference, c: str, rng) -> np.ndarray:
+def _successor_fill(own: np.ndarray, last: np.ndarray, ref: Reference, c: str, u: np.ndarray) -> np.ndarray:
     """A state-matched successor for each position (``last`` = the row of the patient's latest
-    own measurement, -1 if none yet)."""
+    own measurement, -1 if none yet), picked by the uniforms ``u``."""
     edges, pools, marginal = ref.successors[c]
+    fallback = marginal if len(marginal) else np.array([ref.neutral[c]])
+
+    def pick(pool, uu):
+        return pool[np.minimum((uu * len(pool)).astype(np.int64), len(pool) - 1)]
     out = np.empty(len(last))
     none = last < 0
-    fallback = marginal if len(marginal) else np.array([ref.neutral[c]])
-    out[none] = rng.choice(fallback, int(none.sum()))
+    out[none] = pick(fallback, u[none])
     if (~none).any():
         b = np.searchsorted(edges, own[last[~none]], side="right")
+        uu = u[~none]
         vals = np.empty(len(b))
         for k in np.unique(b):
             m = b == k
-            vals[m] = rng.choice(pools[k] if len(pools[k]) else fallback, int(m.sum()))
+            vals[m] = pick(pools[k] if len(pools[k]) else fallback, uu[m])
         out[~none] = vals
     return out
 
 
-def transplant(store: E.MimicStore, stays: np.ndarray, donors: np.ndarray, own_schedule: bool,
-               own_values: bool, ref: Reference, seed: int = 0) -> np.ndarray:
+def transplant(store: E.MimicStore, stays: np.ndarray, donors: np.ndarray, bank: DonorBank,
+               own_schedule: bool, own_values: bool, ref: Reference, seed: int = 0) -> np.ndarray:
     """The edited grid (rows of ``subset(store, stays)``; derived channels are recomputed by
-    ``Ledger.view``)."""
-    rng = np.random.default_rng(seed)
+    ``Ledger.view`` / ``transplanted_store``). ``donors`` index ``bank``."""
     j = {c: i for i, c in enumerate(store.columns)}
     sc = np.array([j[c] for c in STATE_CH])
     uo = j[RATE_CH]
@@ -190,8 +247,8 @@ def transplant(store: E.MimicStore, stays: np.ndarray, donors: np.ndarray, own_s
     X = store.X[rows].astype(np.float64)
     own = X[:, sc]
     obs = np.isfinite(own)
-    sched = obs if own_schedule else np.concatenate(
-        [_donor_mask(store, d, int(L), sc) for d, L in zip(donors, lens)])
+    full = None if own_schedule else np.concatenate([bank.mask(d, int(L)) for d, L in zip(donors, lens)])
+    sched = obs if own_schedule else full[:, :-1]
     if not own_values:
         X[:, sc] = np.where(sched, np.array([ref.neutral[c] for c in STATE_CH])[None, :], np.nan)
     elif not own_schedule:
@@ -199,18 +256,57 @@ def transplant(store: E.MimicStore, stays: np.ndarray, donors: np.ndarray, own_s
         last[last < rs[:, None]] = -1                      # never across a stay boundary
         vals = np.where(obs, own, np.nan)                  # measured this hour: the real value
         need = sched & ~obs
+        pid = np.repeat(store.pid[stays].astype(np.int64), lens)
+        hour = np.arange(len(rows)) - rs
         for ci, c in enumerate(STATE_CH):
             r = np.flatnonzero(need[:, ci])
             if len(r):
-                vals[r, ci] = _successor_fill(own[:, ci], last[r, ci], ref, c, rng)
+                u = hash_uniform(seed, pid[r], hour[r], ci)
+                vals[r, ci] = _successor_fill(own[:, ci], last[r, ci], ref, c, u)
         X[:, sc] = np.where(sched, vals, np.nan)
     if not (own_schedule and own_values):
         for k, (a, L) in enumerate(zip(sub_start, lens)):
             u = X[a:a + L, uo].copy()
-            us = np.isfinite(u) if own_schedule else _donor_mask(store, donors[k], int(L), np.array([uo]))[:, 0]
+            us = np.isfinite(u) if own_schedule else full[a:a + L, -1]
             rate = _uo_rate(u, ref.uo_rate) if own_values else ref.uo_rate
             X[a:a + L, uo] = np.where(us, rate * _interval(us), np.nan)
     return X.astype(np.float32)
+
+
+def transplanted_store(store: E.MimicStore, stays: np.ndarray, donors: np.ndarray, bank: DonorBank,
+                       ref: Reference, seed: int = 0, own_schedule: bool = False,
+                       own_values: bool = True) -> E.MimicStore:
+    """``stays`` rebuilt on donor schedules, derived channels recomputed — the counterfactual
+    patients a temporal model trains and infers on."""
+    return E.rederive(E.subset(store, stays),
+                      transplant(store, stays, donors, bank, own_schedule, own_values, ref, seed))
+
+
+def _transplant_by_fold(led: Ledger, stays: np.ndarray, donors: np.ndarray, bank: DonorBank,
+                        own_schedule: bool, own_values: bool, seed: int, refs: Dict[int, Reference]) -> np.ndarray:
+    """``transplant`` with each stay's reference built WITHOUT its own fold."""
+    s = led.store
+    lens = s.lens[stays].astype(np.int64)
+    offs = np.r_[0, np.cumsum(lens)]
+    X = np.empty((int(offs[-1]), s.X.shape[1]), dtype=np.float32)
+    for k in np.unique(led.folds[stays]):
+        pick = np.flatnonzero(led.folds[stays] == k)
+        Xk = transplant(s, stays[pick], donors[pick], bank, own_schedule, own_values, refs[int(k)], seed)
+        pos = np.concatenate([np.arange(offs[i], offs[i + 1]) for i in pick])
+        X[pos] = Xk
+    return X
+
+
+def _draw_donors(led: Ledger, stays: np.ndarray, rng) -> Tuple[np.ndarray, DonorBank]:
+    """Uniform donors from the dev stays (never the patient itself), as bank indices."""
+    pool = np.flatnonzero(led.folds >= 0)
+    bank = DonorBank.from_store(led.store, pool)
+    idx = rng.integers(0, len(pool), len(stays))
+    clash = pool[idx] == stays
+    while clash.any():
+        idx[clash] = rng.integers(0, len(pool), int(clash.sum()))
+        clash = pool[idx] == stays
+    return idx, bank
 
 
 def _dev_eval_stays(led: Ledger) -> np.ndarray:
@@ -227,17 +323,13 @@ def process_physiology(led: Ledger, models: Sequence[FoldModels], n_stays: Optio
     s = led.store
     pool = _dev_eval_stays(led)
     stays = np.sort(rng.choice(pool, n_stays, replace=False)) if n_stays and n_stays < len(pool) else pool
-    donor_pool = np.flatnonzero(led.folds >= 0)
-    donors = rng.choice(donor_pool, len(stays))
-    clash = donors == stays
-    while clash.any():                                     # a donor is never the patient
-        donors[clash] = rng.choice(donor_pool, int(clash.sum()))
-        clash = donors == stays
-    ref = reference(led, seed=seed)
+    donors, bank = _draw_donors(led, stays, rng)
+    refs = {int(k): reference(led, seed=seed, exclude_fold=int(k)) for k in np.unique(led.folds[stays])}
     factual = led.view(stays)
     preds = {fm.name: {"factual": fm.oof[factual.parent_rows]} for fm in models}
     for c, (cond, (own_sched, own_vals)) in enumerate(CONDITIONS.items()):
-        v = led.view(stays, transplant(s, stays, donors, own_sched, own_vals, ref, seed=seed + 1 + c))
+        v = led.view(stays, _transplant_by_fold(led, stays, donors, bank, own_sched, own_vals,
+                                                seed + 1 + c, refs))
         allrows = np.arange(v.store.n_rows)
         for fm in models:
             preds[fm.name][cond] = fm.predict(v, allrows)
@@ -292,16 +384,12 @@ def learnable(led: Ledger, cand, n_stays: Optional[int] = None, seed: int = 0, n
     s = led.store
     pool = np.flatnonzero(led.folds >= 0)       # every dev stay trains; early-warning rows score
     stays = np.sort(rng.choice(pool, n_stays, replace=False)) if n_stays and n_stays < len(pool) else pool
-    donors = rng.choice(pool, len(stays))
-    clash = donors == stays
-    while clash.any():
-        donors[clash] = rng.choice(pool, int(clash.sum()))
-        clash = donors == stays
-    refv = reference(led, seed=seed)
+    donors, bank = _draw_donors(led, stays, rng)
+    refs = {int(k): reference(led, seed=seed, exclude_fold=int(k)) for k in np.unique(led.folds[stays])}
     oof, ref = {}, None
     for c, cond in enumerate(("factual", "physiology_only", "process_only")):
         v = led.view(stays) if cond == "factual" else \
-            led.view(stays, transplant(s, stays, donors, *CONDITIONS[cond], refv, seed=seed + 1 + c))
+            led.view(stays, _transplant_by_fold(led, stays, donors, bank, *CONDITIONS[cond], seed + 1 + c, refs))
         oof[cond] = v.fit_oof(cand, verbose=False).oof
         if ref is None:
             ref = v
