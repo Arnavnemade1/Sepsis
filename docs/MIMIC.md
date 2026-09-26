@@ -340,7 +340,7 @@ might use — with what each one means printed beside it.
   respiratory rate and temperature. SOFA now reads the hour's lowest MAP.
 * **Infection-source detail** (tier S): culture specimen groups, and anti-MRSA / broad
   anti-pseudomonal antibiotic spectrum.
-* All 113 item IDs are verified against MIMIC's own dictionaries. D-dimer is left out on
+* All 135 item IDs are verified against MIMIC's own dictionaries. D-dimer is left out on
   purpose: its item IDs are charted in two unit systems.
 
 **The label's structure as features** (`mimicfeat.py`, each at the tier allowed to see it):
@@ -377,9 +377,9 @@ primary dev AUROC and reported under every setting:
 * patient level, every stay.
 
 The single highest number is printed as `IDEAL CIRCUMSTANCES`, always with its tier and
-setting spelled out and with the primary beside it. On the demo that line reads 0.842:
-every input, hourly, over every stay. That is noise at 99 subjects, but it shows exactly
-which knobs carry a number toward 0.9.
+setting spelled out and with the primary beside it. On the demo that line reads 0.819:
+the distilled physiology-only student, hourly, over every stay, beside a primary of 0.755.
+That is noise at 99 subjects, but it shows exactly which knobs carry a number toward 0.9.
 
 **What to expect on full MIMIC-IV** (expectations, not results):
 * **Physiology-only, early-warning, hourly** (the honest number): somewhere around

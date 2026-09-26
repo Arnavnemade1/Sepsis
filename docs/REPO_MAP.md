@@ -30,11 +30,13 @@ what is experimental, and what exists to preserve research history.
 
 | Component | Current role |
 |---|---|
-| `models/gbm_baseline.py` | Stable calibrated tree benchmark and deployment-compatible artifact path. |
-| `models/stacked.py` | Production candidate that improves on the single GBM in the current research trail. |
+| `models/stacked.py` | The production detector: hgb, hgb2, et, lr and xgb@utility, trained on the patient label. `artifacts/detector_manifest.json` records its promotion; it ships as `artifacts/gbm_wearable.joblib`. |
+| `models/gbm_baseline.py` | The calibrated single-GBM benchmark. |
 | `models/hdc_detector.py` | Data-grounded HDC detector and interpretable HDC signals; not the raw-accuracy winner. |
 | `models/augmented.py` | Documented negative result: HDC+GBM gain did not replicate under CV. |
 | `quantum/` | Verified QHDC research sandbox; not production accuracy path. |
+| `genesis/` | The all-variable research line on CinC 2019 (locked test set, hour-matched AUROC). Not on the serving path. See `docs/GENESIS.md`. |
+| `mimic/` | The MIMIC-IV line, verified on the open demo (`make verify-mimic`); the full run waits on credentialed access. See `docs/MIMIC.md`. |
 | `scripts/rigorous_eval.py` | Best judge-facing evaluation: cross-hospital, CIs, calibration, utility, decision curves. |
 
 ## Data And Artifacts
