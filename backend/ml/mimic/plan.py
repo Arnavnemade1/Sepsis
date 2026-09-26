@@ -54,7 +54,9 @@ STAGE_SETS: List[Tuple[str, Dict]] = [
     ("no tier T, one record-twin seed", {"tiers": ("P", "S"), "twin_seeds": (0,)}),
     ("lean: no soft label, fewer tuning trials", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False,
                                                   "tune_trials": 8}),
-    ("core: direct boosters + twin", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False,
+    ("lean, no distilled student", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False, "distill": False,
+                                    "tune_trials": 8}),
+    ("core: direct boosters + twin", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False, "distill": False,
                                       "products": False, "tune_trials": 6, "phys_seeds": (0,)}),
 ]
 KEEP_RATES = (0.25, 0.15, 0.10, 0.05)
@@ -81,9 +83,12 @@ def estimate(store, n_features: int, scale) -> Dict:
     fit_s = SEC_PER_ROW_COL * train_rows * cols
     folds = 5
     per_tier = 3 if scale.products else 1
-    n_fits = folds * (per_tier * len(scale.tiers) + 1 + 1 + (1 if scale.soft else 0))   # + strict + clinician
+    n_fits = folds * (per_tier * len(scale.tiers) + 1 + 1 + (1 if scale.soft else 0)
+                      + (1 if getattr(scale, "distill", False) else 0))   # + strict + clinician
     n_fits += 3 * folds * min(1.0, (scale.learn_stays or store.n_patients) / max(store.n_patients, 1))
     n_fits += 1                                           # temporal validation
+    if getattr(scale, "distill", False):
+        n_fits += 10 * 0.6                                # pairwise teachers, each on 3 of 5 dev folds
     if scale.info_ledger:
         n_fits += 7 * folds
     tune_s = scale.tune_trials * len(scale.tune_val_folds) * SEC_PER_ROW_COL * \

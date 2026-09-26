@@ -79,7 +79,7 @@ LOCK_FRACTION = 0.2
 
 #: variable families for the information ledger (channel -> family)
 FAMILIES = {
-    "vitals": E.VITAL_CH + E.HEMO_CH + ["FiO2"], "gcs": E.GCS_CH,
+    "vitals": E.VITAL_CH + E.EXT_CH + E.HEMO_CH + ["FiO2"], "gcs": E.GCS_CH, "exam": E.EXAM_CH,
     "labs": [c for c in E.LAB_CH if c not in E.NEW_LAB_CH], "inflammation": E.NEW_LAB_CH,
     "urine": ["UrineOutput"], "sofa": E.SOFA_CH, "vasopressors": E.VASO_CH,
     "ventilation": E.VENT_CH + E.VENT_SET_CH, "treatments": E.TREAT_CH, "suspicion": E.SUSP_CH,
@@ -140,6 +140,9 @@ def sources_of(feature: str) -> FrozenSet[str]:
             src |= frozenset(E.VASO_CH)
         if feature.startswith("Antibiotic__si"):
             src |= {"Culture"}
+        if "__levy_" in feature:                       # a signature cross term reads BOTH streams
+            partner = feature.split("__levy_", 1)[1].rsplit("_", 1)[0]
+            src |= frozenset({partner}) | DERIVED_SOURCES.get(partner, frozenset())
         return src
     if feature in COMPOSITE_SOURCES:
         return COMPOSITE_SOURCES[feature]

@@ -58,6 +58,11 @@ The harness layers (docs/MIMIC.md §4-7), each attacked with a planted failure:
     and never comes without the primary; the planner's estimate matches a real build and
     refuses an impossible budget; the parity check passes identical sources and flags a
     planted one-hour shift.
+24. RESEARCH LEVERS — the bedside exam's worst-of-hour coding matches the raw charting; the
+    hour's lowest MAP matches the raw readings and SOFA reads it (a transient dip scores);
+    culture specimen groups and antibiotic spectrum (oral vancomycin is not anti-MRSA);
+    signature terms equal their brute-force iterated sums; the distilled student reads tier P
+    only and no teacher that wrote its targets ever trained on the fold it is scored on.
 20. TEMPORAL MODEL (Process Twin v2) — hazard targets follow discrete-time survival
     semantics (an event, survival, censoring, not-at-risk) and the per-bin loss IS the
     survival likelihood; the risk curve and the composed organ outlook equal their brute-force
@@ -485,11 +490,13 @@ def c17_infoflow(store, led) -> None:
     # physiology SOFA (P/F respiration) with its label-structure block
     expect = {n for n in led.names if LG.channel_of(n) == "FiO2"} | \
              {n for n, src in LG.COMPOSITE_SOURCES.items() if "FiO2" in src} | \
-             {n for n in led.names if LG.channel_of(n) == "SOFA_P"}
-    check("the strict tier drops exactly the covert channel, every composite built on it and every "
-          "channel derived from it (SOFA_P)",
+             {n for n in led.names if LG.channel_of(n) == "SOFA_P"} | \
+             {n for n in led.names if "__levy_" in n and n.split("__levy_")[1].rsplit("_", 1)[0] in ("FiO2", "SOFA_P")}
+    check("the strict tier drops exactly the covert channel, every composite built on it, every channel "
+          "derived from it (SOFA_P) and every signature cross term that reads one of those",
           dropped == expect, f"{len(dropped)} columns: FiO2 {sum(n.startswith('FiO2') for n in dropped)}, "
-          f"composites {len(dropped & set(LG.COMPOSITE_SOURCES))}, SOFA_P {sum(n.startswith('SOFA_P') for n in dropped)}")
+          f"composites {len(dropped & set(LG.COMPOSITE_SOURCES))}, SOFA_P {sum(n.startswith('SOFA_P') for n in dropped)}, "
+          f"cross terms {sum('__levy_' in n and not n.startswith('SOFA_P') for n in dropped)}")
 
 
 def c18_crossexam(led) -> None:
@@ -834,12 +841,24 @@ def c20a_math(lagled) -> None:
 
 def c20b_capacity(lagled) -> None:
     from backend.ml.mimic.ledger import Candidate
-    bst = lagled.fit_oof(Candidate("booster", "P", _booster()), verbose=False)
+    # only columns that VARY in this world: LightGBM samples columns at random, and every
+    # all-empty channel a later catalog adds would otherwise change which informative ones
+    # each tree sees (the windowed booster read 0.781 on the v2 catalog, 0.818 on v4, for no
+    # reason but that) — the comparison must not drift with irrelevant columns
+    F = np.asarray(lagled.F, dtype=np.float64)
+    live = [j for j in lagled.columns("P") if np.nanstd(F[:, j]) > 0]
+    windowed = np.array([j for j in live if "__qv" not in lagled.names[j] and "__levy_" not in lagled.names[j]])
+    with_sig = np.array(live)
+    bst = lagled.fit_oof(Candidate("booster", "P", _booster(), columns=lambda l: windowed), verbose=False)
+    sig = lagled.fit_oof(Candidate("booster+signatures", "P", _booster(), columns=lambda l: with_sig), verbose=False)
     tw = _twin_oof(lagled, "record")["full"]
-    bs = lagled.score(bst.oof)
+    bs, bg = lagled.score(bst.oof), lagled.score(sig.oof)
+    # the claim is about WINDOWED features (6 / 24 h trends, extremes, deltas); the signature
+    # block reaches part of the lag itself — reported beside it, not hidden
     check("the twin reads a 30-h lag that a windowed booster cannot (clock-matched)",
           tw["auroc_hourmatched"] - bs["auroc_hourmatched"] >= 0.08,
-          f"hour-matched AUROC twin {tw['auroc_hourmatched']:.3f} vs booster {bs['auroc_hourmatched']:.3f}")
+          f"hour-matched AUROC twin {tw['auroc_hourmatched']:.3f} vs windowed booster {bs['auroc_hourmatched']:.3f} "
+          f"(with signature features {bg['auroc_hourmatched']:.3f})")
 
 
 
@@ -1135,6 +1154,102 @@ def _booster_target(target):
     return booster(SCALES["demo"], target)
 
 
+# --------------------------------------------------------------------------- #
+# 24. The research levers
+# --------------------------------------------------------------------------- #
+def c24_levers(src, store, led) -> None:
+    print("\n24. research levers")
+    from backend.ml.mimic import mimicfeat as MF
+    ce = pd.read_csv(src._path("icu", "chartevents"), usecols=["stay_id", "charttime", "itemid", "value", "valuenum"])
+    ce["charttime"] = pd.to_datetime(ce.charttime)
+    st = src.icustays().set_index("stay_id")
+    pos = {sid: k for k, sid in enumerate(store.pid)}
+
+    def raw_hourly(itemids, how, text_map=None):
+        r = ce[ce.itemid.isin(itemids) & ce.stay_id.isin(pos)].copy()
+        r["h"] = ((r.charttime - r.stay_id.map(st.intime)).dt.total_seconds() // 3600).astype(int)
+        r = r[(r.h >= 0) & (r.h < store.lens[r.stay_id.map(pos).to_numpy()])]
+        if text_map is not None:
+            r["v"] = r.value.fillna("").astype(str).str.strip().str.upper().map(dict(text_map)).astype(float)
+        else:
+            r["v"] = r.valuenum.astype(float)
+        r = r.dropna(subset=["v"])
+        g = r.groupby(["stay_id", "h"]).v
+        return (g.max() if how == "max" else g.min()).reset_index()
+    cap = next(c for c in K.EXAM if c.name == "CapRefill")
+    ref = raw_hourly(cap.itemids, "max", cap.text_map)
+    rows = store.starts[ref.stay_id.map(pos).to_numpy()] + ref.h.to_numpy()
+    grid = store.col("CapRefill")[rows]
+    both = ce[ce.itemid.isin(cap.itemids)].groupby(["stay_id", "charttime"]).itemid.nunique().gt(1).sum()
+    check("the bedside exam is the WORST of the hour's readings (capillary refill, both sides), read from disk",
+          np.allclose(grid, ref.v.to_numpy()) and ref.v.max() == 1.0, f"{len(ref)} stay-hours, {both} with L and R charted together")
+    ref = raw_hourly([220052, 220181], "min")
+    ref = ref[ref.v.between(0, 300)]
+    rows = store.starts[ref.stay_id.map(pos).to_numpy()] + ref.h.to_numpy()
+    last = store.col("MAP")[rows]
+    check("MAP_min is the hour's lowest raw reading (never above its last)",
+          np.allclose(store.col("MAP_min")[rows], ref.v.to_numpy()) and bool(np.all(ref.v.to_numpy() <= last + 1e-6)),
+          f"{len(ref)} stay-hours, {int((ref.v.to_numpy() < last).sum())} where the minimum is below the last")
+    one = np.array([0])
+    cols = {"MAP": np.array([80.0]), "MAP_min": np.array([60.0]), "VentInvasive": np.zeros(1)}
+    col = lambda nm: cols.get(nm, np.full(1, np.nan))
+    pts = S3.component_points_now(col, one, one)
+    check("SOFA's cardiovascular point reads the hour's LOWEST MAP (a dip to 60 inside an hour that ends at 80)",
+          pts[0, 3] == 1.0, f"cardiovascular points {pts[0, 3]}")
+
+    groups = [K.specimen_group(x) for x in ("BLOOD CULTURE", "MRSA SCREEN", "SPUTUM", "URINE", "TISSUE")]
+    ev = pd.DataFrame({"stay_id": [1] * 4, "t": [1.0, 2.0, 3.0, 4.0],
+                       "drug": ["Vancomycin", "Vancomycin Oral Liquid", "Piperacillin-Tazobactam", "CeFAZolin"],
+                       "route": ["IV", "PO", "IV", "IV"]})
+    typed = SRC.typed_events(ev, "abx")
+    check("culture specimen groups (a routine MRSA screen is not an infection workup) and antibiotic spectrum "
+          "(oral vancomycin treats C. difficile, not MRSA)",
+          groups == ["CultureBlood", "CultureRoutine", "CultureResp", "CultureUrine", "CultureOther"]
+          and typed.mrsa.tolist() == [True, False, False, False] and typed.broad.tolist() == [False, False, True, False])
+
+    k = int(np.argmax(store.lens))
+    sub = E.subset(store, np.array([k]))
+    cols_, names = MF.signature_block(sub, ["HR", "MAP_min", "Resp"], (6, 24))
+    sig = dict(zip(names, cols_))
+    x = {c: MF._locf(sub.col(c).astype(float), sub.row_start) for c in ("HR", "MAP_min", "Resp")}
+    d = {c: np.r_[0.0, np.where(np.isfinite(v[1:]) & np.isfinite(v[:-1]), v[1:] - v[:-1], 0.0)] for c, v in x.items()}
+    X = {c: np.cumsum(v) for c, v in d.items()}
+    worst = 0.0
+    for t in range(0, sub.n_rows, 7):
+        for w in (6, 24):
+            lo = t - w
+            base = {c: (X[c][lo] if lo >= 0 else 0.0) for c in X}
+            rng_ = range(max(lo + 1, 1), t + 1)
+            qv = sum(d["HR"][r] ** 2 for r in range(max(lo + 1, 0), t + 1))
+            area = 0.5 * sum((X["HR"][r - 1] - base["HR"]) * d["Resp"][r] - (X["Resp"][r - 1] - base["Resp"]) * d["HR"][r]
+                             for r in rng_)
+            worst = max(worst, abs(sig[f"HR__qv{w}"][t] - qv), abs(sig[f"HR__levy_Resp_{w}"][t] - area))
+    check("signature terms (quadratic variation, Levy area) equal their brute-force iterated sums",
+          worst < 1e-6, f"largest difference {worst:.1e} over {sub.n_rows} hours, windows 6 and 24")
+
+    from backend.ml.genesis import learners as L
+    from backend.ml.mimic.ledger import Candidate
+    from backend.ml.mimic.run import SCALES, booster, pairwise_teachers
+    trained = []
+    real = L.fit_lgb
+    L.fit_lgb = lambda F, rows, *a, **kw: (trained.append(np.asarray(rows)), real(F, rows, *a, **kw))[1]
+    try:
+        teachers = pairwise_teachers(led, SCALES["demo"], np.zeros(led.store.n_rows))
+    finally:
+        L.fit_lgb = real
+    from itertools import combinations
+    f = led.folds[led.store.seg]
+    clean = all(not np.isin(f[rows], pair).any() for rows, pair in zip(trained, combinations(range(led.n_folds), 2)))
+    covers = all(np.array_equal(np.isfinite(teachers.by_fold[kk]), (f >= 0) & (f != kk) & led.train_mask)
+                 for kk in range(led.n_folds))
+    student = Candidate("distill", "P", booster(SCALES["demo"], "distill", teacher=teachers))
+    cols_p = student.cols(led)
+    check("the distilled student reads tier P only; each fold's targets come from teachers that trained on "
+          "neither that fold nor the row's own (10 pairwise teachers, not 20)",
+          clean and covers and teachers.fits == 10 and (led.ftier[cols_p] == 0).all(),
+          f"{teachers.fits} teachers, {len(cols_p)} tier-P columns")
+
+
 def main() -> int:
     warnings.filterwarnings("ignore", category=RuntimeWarning)       # all-NaN channels of planted worlds
     src = SRC.CsvSource(E.DEMO_ROOT)
@@ -1166,6 +1281,7 @@ def main() -> int:
     c21_information()
     c22_structure(store, led)
     c23_auroc(store, led)
+    c24_levers(src, store, led)
     c20_temporal(store, led)
     ok = sum(r[1] for r in _results)
     print(f"\nverify_mimic: {ok}/{len(_results)} passed")

@@ -69,7 +69,7 @@ from backend.ml.mimic.ledger import FoldModels, Ledger, build_features, stratifi
 
 #: state channels whose measurement SCHEDULE is a care decision (derived GCS / SOFA are
 #: recomputed; treatment and order channels are not tier P and are left alone)
-STATE_CH = E.VITAL_CH + E.HEMO_CH + ["FiO2", "GCS_eye", "GCS_verbal", "GCS_motor"] + E.LAB_CH
+STATE_CH = E.VITAL_CH + E.EXT_CH + E.HEMO_CH + ["FiO2", "GCS_eye", "GCS_verbal", "GCS_motor"] + E.EXAM_CH + E.LAB_CH
 RATE_CH = "UrineOutput"
 DERIVED_CH = ("GCS", "SOFA_P", "SOFA")
 CONDITIONS = {"physiology_only": (False, True), "process_only": (True, False), "neither": (False, False)}

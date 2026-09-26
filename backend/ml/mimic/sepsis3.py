@@ -121,7 +121,7 @@ def hourly_sofa(col, row_start: np.ndarray, hour: np.ndarray) -> Dict[str, np.nd
     out["sofa_resp"] = resp
     out["sofa_coag"] = _points(col("Platelets"), [150, 100, 50, 20], worse_high=False)
     out["sofa_liver"] = _points(col("Bilirubin_total"), [1.2, 2.0, 6.0, 12.0], worse_high=True)
-    mapv = col("MAP")
+    mapv = _map(col)
     dop, dob = np.nan_to_num(col("Dopamine")), np.nan_to_num(col("Dobutamine"))
     epi, nor = np.nan_to_num(col("Epinephrine")), np.nan_to_num(col("Norepinephrine"))
     cv_map = np.where(np.isfinite(mapv), np.where(mapv < 70, 1.0, 0.0), np.nan)
@@ -175,7 +175,7 @@ def component_points_now(col, row_start: np.ndarray, hour: np.ndarray,
         resp = np.where(np.isfinite(pf) & vent & (pf < 100), 4.0, resp)
     coag = _points(col("Platelets"), [150, 100, 50, 20], worse_high=False)
     liver = _points(col("Bilirubin_total"), [1.2, 2.0, 6.0, 12.0], worse_high=True)
-    mapv = col("MAP")
+    mapv = _map(col)
     cv = np.where(np.isfinite(mapv), np.where(mapv < 70, 1.0, 0.0), np.nan)
     if not physiology_only:
         dop, dob = np.nan_to_num(col("Dopamine")), np.nan_to_num(col("Dobutamine"))
@@ -215,6 +215,15 @@ def measured_rise_parts(parts: np.ndarray, row_start: np.ndarray, window: int = 
         base = np.fmin(base, v)
     ok = np.isfinite(parts) & np.isfinite(base)
     return np.where(ok, parts - np.where(ok, base, 0.0), 0.0)
+
+
+def _map(col) -> np.ndarray:
+    """The hour's LOWEST mean arterial pressure where the grid has it (v4 stores; mimic-code's
+    SOFA uses the same), else its last reading."""
+    try:
+        return col("MAP_min")
+    except (KeyError, ValueError):
+        return col("MAP")
 
 
 def _gcs_points(g: np.ndarray) -> np.ndarray:

@@ -39,14 +39,18 @@ VENT_SET_CH = [c.name for c in K.VENT_SET]        # ventilator settings (T)
 VASO_CH = [c.name for c in K.VASO]
 VENT_CH = [c.name for c in K.VENT]
 TREAT_CH = [c.name for c in K.TREAT_AMOUNT + K.TREAT_INTERVAL]   # fluids, blood, sedation, dialysis (T)
-SUSP_CH = ["Culture", "Antibiotic", "AbxAdmin"]
+EXAM_CH = [c.name for c in K.EXAM]                # the bedside exam (P)
+EXT_CH = [f"{b}_{h}" for b, h in K.EXTREMES.items()]   # within-hour extremes of the vitals (P)
+CULT_CH = list(K.SPECIMENS) + ["CultureOther"]    # which workup (S)
+ABX_CLASS_CH = ["AbxMRSA", "AbxBroad"]            # which spectrum (S)
+SUSP_CH = ["Culture", "Antibiotic", "AbxAdmin"] + CULT_CH + ABX_CLASS_CH
 SOFA_CH = ["SOFA_P", "SOFA"]                      # hourly SOFA as a causal input channel
-DYNAMIC = VITAL_CH + HEMO_CH + ["FiO2"] + GCS_CH + LAB_CH + ["UrineOutput"] + VENT_SET_CH + VASO_CH + \
-    VENT_CH + TREAT_CH + SUSP_CH + SOFA_CH
+DYNAMIC = VITAL_CH + EXT_CH + HEMO_CH + ["FiO2"] + GCS_CH + EXAM_CH + LAB_CH + ["UrineOutput"] + \
+    VENT_SET_CH + VASO_CH + VENT_CH + TREAT_CH + SUSP_CH + SOFA_CH
 #: dense channels: 0 = off / none given, never missing
 DENSE_CH = VASO_CH + VENT_CH + TREAT_CH
 #: channels whose feature set is the light one (value, age, counts, previous, change)
-LIGHT_CH = NEW_LAB_CH + HEMO_CH + VENT_SET_CH + TREAT_CH + ["AbxAdmin"]
+LIGHT_CH = NEW_LAB_CH + HEMO_CH + VENT_SET_CH + TREAT_CH + EXAM_CH + EXT_CH + ["AbxAdmin"] + CULT_CH + ABX_CLASS_CH
 UNITS = {"Medical Intensive Care Unit (MICU)": "Unit_MICU",
          "Surgical Intensive Care Unit (SICU)": "Unit_SICU",
          "Cardiac Vascular Intensive Care Unit (CVICU)": "Unit_CVICU",
@@ -63,8 +67,10 @@ YEAR_GROUPS = ["2008 - 2010", "2011 - 2013", "2014 - 2016", "2017 - 2019", "2020
 MIN_HOURS = 4
 #: Bumped whenever the grid's contents change (v2: SOFA_P without the ventilator; audit-only
 #: attributes in ``meta``), so a stale cache is rebuilt instead of silently reused.
-STORE_VERSION = 3                 # v3: inflammation labs, urinalysis, CVP, ventilator settings,
-                                  # treatments, IV antibiotic administrations, arrival context
+STORE_VERSION = 4                 # v3: inflammation labs, urinalysis, CVP, ventilator settings,
+                                  # treatments, IV antibiotic administrations, arrival context;
+                                  # v4: the bedside exam, within-hour extremes (SOFA reads the
+                                  # hour's lowest MAP), culture specimen groups, antibiotic spectrum
 #: Per-stay attributes kept for the subgroup audit ONLY. They live in ``meta``, never in the
 #: grid ``X``, so no feature — and therefore no model — can read them.
 AUDIT_ATTRS = ["sex", "age_band", "race_group", "insurance", "admission_type", "careunit",
@@ -159,8 +165,12 @@ def build_store(src, verbose: bool = True) -> MimicStore:
         if verbose:
             print(f"    {name:<6} {n:>9,} hourly values [{time.time()-ts:.1f}s]", flush=True)
     events = {k: src.event_times(stays, k) for k in ("culture", "abx", "abx_admin")}
-    for key, ch in (("culture", "Culture"), ("abx", "Antibiotic"), ("abx_admin", "AbxAdmin")):
-        ev = events[key]
+    typed = {"Culture": events["culture"], "Antibiotic": events["abx"], "AbxAdmin": events["abx_admin"]}
+    for g in CULT_CH:                                  # which workup
+        typed[g] = events["culture"][events["culture"].group == g]
+    typed["AbxMRSA"] = events["abx"][events["abx"].mrsa]
+    typed["AbxBroad"] = events["abx"][events["abx"].broad]
+    for ch, ev in typed.items():
         hr = np.maximum(np.floor(ev.t.to_numpy()), 0).astype(int)     # pre-ICU orders known at hour 0
         place(pd.DataFrame({"stay_id": ev.stay_id, "hr": hr, "name": ch, "value": 1.0}))
 
@@ -200,7 +210,7 @@ def build_store(src, verbose: bool = True) -> MimicStore:
     sofa_tot = sofa["sofa_total"]
     parts_now = S3.component_points_now(col, rs, hour)
     abx_by = {k: g.t.to_numpy() for k, g in events["abx"].groupby("stay_id")}
-    cul_by = {k: g.t.to_numpy() for k, g in events["culture"].groupby("stay_id")}
+    cul_by = {k: np.unique(g.t.to_numpy()) for k, g in events["culture"].groupby("stay_id")}
     for i, sid in enumerate(st.stay_id):
         si = S3.suspicion_times(abx_by.get(sid, []), cul_by.get(sid, []))
         a, b = starts[i], starts[i] + lens[i]

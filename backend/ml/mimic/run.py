@@ -65,6 +65,7 @@ class Scale:
     tiers: tuple = ("P", "T", "S")
     products: bool = True               # who / when boosters and the GENESIS products
     soft: bool = True                   # the soft-label booster (all 9 onset definitions)
+    distill: bool = True                # the privileged-tier distilled booster (tier P student)
     twin: bool = True
     info_ledger: bool = True
     trim_septic: bool = False           # drop septic stays' hours after every onset + 3 h (causal: exact)
@@ -84,9 +85,9 @@ SCALES = {
                         "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0},
                   early_stop=150, twin_epochs=25, twin_seeds=(0, 1), phys_seeds=(0,), keep_rate=0.25,
                   chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300,
-                  tune_trials=16, info_ledger=False, trim_septic=True),
+                  tune_trials=16, tune_val_folds=(0, 1), info_ledger=False, trim_septic=True),
 }
-PHYSIO_FAMILIES = ["vitals", "gcs", "labs", "inflammation", "urine", "sofa", "history"]
+PHYSIO_FAMILIES = ["vitals", "gcs", "exam", "labs", "inflammation", "urine", "sofa", "history"]
 HEADLINE = ["direct_P", "stack_P", "genesis_P", "twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_twin_P",
             "direct_Pstrict", "stack_S", "genesis_S"]
 TRANSPLANTED = ["direct_P", "stack_P", "twin_s3_P", "twin_phys_P", "genesis_twin_P", "direct_Pstrict"]
@@ -108,10 +109,18 @@ TWIN_OUTPUTS = {"s3": ("record", "s3", "full"), "direct": ("record", "direct", "
                 "phys": ("transplanted", "s3", "physiology")}
 
 
-def booster(scale: Scale, target: str = "direct"):
+def booster(scale: Scale, target: str = "direct", teacher: Optional[np.ndarray] = None):
     """A LightGBM candidate: ``direct`` (the label), ``who`` (ever septic), ``when`` (the
-    label, inside septic stays only) or ``soft`` (the share of the 9 onset definitions that
-    call the hour positive — the label's own uncertainty, cross-entropy on soft targets)."""
+    label, inside septic stays only), ``soft`` (the share of the 9 onset definitions that
+    call the hour positive — the label's own uncertainty, cross-entropy on soft targets), or
+    ``distill`` — PRIVILEGED-TIER DISTILLATION: the target is half the label and half the
+    out-of-fold probability of a ``teacher`` that read every tier (the orders and treatments a
+    physiology model may never see), so the student learns the physiology that PRECEDES what
+    the clinicians' actions reveal — through its training targets only; its inputs stay tier P
+    (Vapnik's learning using privileged information, as generalised distillation, Lopez-Paz
+    et al. 2016). ``teacher`` is a :class:`Teachers`: every target the fold-k student trains on
+    comes from a teacher that never saw fold k (see ``pairwise_teachers`` for why ordinary
+    cross-fitting is NOT enough here)."""
     def fit(led: LG.Ledger, cols, tr, fold):
         s = led.store
         septic = np.isfinite(led.onset[s.seg])
@@ -123,6 +132,12 @@ def booster(scale: Scale, target: str = "direct"):
         elif target == "soft":
             y, rows = CX.soft_labels(led).astype(float), tr
             params, metric = dict(scale.lgbm) | {"objective": "cross_entropy"}, "cross_entropy"
+        elif target == "distill":
+            z = teacher.for_fold(fold)
+            pt = 1.0 / (1.0 + np.exp(-np.clip(z, -30.0, 30.0)))
+            y = np.where(np.isfinite(pt), 0.5 * led.y + 0.5 * pt, led.y).astype(float)
+            rows = tr
+            params, metric = dict(scale.lgbm) | {"objective": "cross_entropy"}, "cross_entropy"
         else:
             y, rows = led.y.astype(float), tr[septic[tr]]
         f = L.fit_lgb(led.F, rows, y[rows], s.seg[rows], cols=cols, params=params,
@@ -130,6 +145,51 @@ def booster(scale: Scale, target: str = "direct"):
                       early_stop=scale.early_stop, feval_metric=metric)
         return lambda view, r: f.predict(view.F, r, raw=True)
     return fit
+
+
+@dataclass
+class Teachers:
+    """Teacher margins for a distilled student: ``by_fold[k]`` covers the rows of every dev
+    fold but k, each scored by a teacher that trained on neither fold k nor the row's own fold;
+    ``lock`` (the teacher's ordinary out-of-fold margins) serves the student fitted on every dev
+    row for the locked subjects, whom no teacher ever saw."""
+    by_fold: Dict[int, np.ndarray]
+    lock: np.ndarray
+    fits: int = 0
+
+    def for_fold(self, fold: int) -> np.ndarray:
+        return self.by_fold[fold] if fold >= 0 else self.lock
+
+
+def pairwise_teachers(led: LG.Ledger, scale: Scale, teacher_oof: np.ndarray, tier: str = "S") -> Teachers:
+    """Leak-free teacher targets for distillation, with one teacher per PAIR of dev folds.
+
+    Ordinary cross-fitting leaks here. A fold-j row's out-of-fold teacher score comes from a
+    teacher trained on every other fold — fold k included — and a high-capacity student
+    trained on fold j's targets then carries fold k's labels into its fold-k predictions. On
+    the demo that second-order leak was worth +0.048 AUROC of apparent gain (0.859 vs 0.811
+    with nested teachers; label-only 0.770). The fix: the teacher for folds {a, b} trains on
+    the OTHER folds and scores a and b — it serves the fold-a student (on b's rows) and the
+    fold-b student (on a's rows). C(5, 2) = 10 teachers instead of 5 x 4 = 20."""
+    from itertools import combinations
+    s = led.store
+    f = led.folds[s.seg]
+    cols = led.columns(tier)
+    fit = booster(scale, "direct")
+    pairs = {}
+    for a, b in combinations(range(led.n_folds), 2):
+        tr = np.flatnonzero((f >= 0) & (f != a) & (f != b) & led.train_mask)
+        if len(tr):
+            pairs[(a, b)] = fit(led, cols, tr, -1)
+    by_fold = {}
+    for k in range(led.n_folds):
+        z = np.full(s.n_rows, np.nan)
+        for j in range(led.n_folds):
+            if j != k and (min(j, k), max(j, k)) in pairs:
+                rows = np.flatnonzero((f == j) & led.train_mask)
+                z[rows] = pairs[(min(j, k), max(j, k))](led, rows)
+        by_fold[k] = z
+    return Teachers(by_fold, teacher_oof, fits=len(pairs))
 
 
 def twin_predictor(tws, head: str, mode: str = "full"):
@@ -306,6 +366,13 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
             fms[f"genesis_{tier}"] = LG.product(f"genesis_{tier}", [fms[f"{t}_{tier}"] for t in TW.MAIN])
     if scale.soft:
         fms["soft_P"] = led.fit_oof(Candidate("booster soft-label P", "P", booster(scale, "soft")))
+    tier_t = next((t for t in ("S", "T") if f"direct_{t}" in fms), None)
+    if tier_t is not None and scale.distill:
+        teachers = pairwise_teachers(led, scale, fms[f"direct_{tier_t}"].oof, tier=tier_t)
+        fms["distill_P"] = led.fit_oof(Candidate(f"booster distilled from tier {tier_t} P", "P",
+                                                 booster(scale, "distill", teacher=teachers)))
+        rep["distillation"] = {"teacher": f"direct_{tier_t}", "teacher_fits": teachers.fits,
+                               "design": "pairwise-held-out teachers (no second-order leak)"}
     fms["direct_Pstrict"] = led.fit_oof(Candidate("booster direct P-strict", "P", booster(scale), strict=True))
     fms["clinician"] = led.fit_oof(Candidate("clinician actions", "S", booster(scale),
                                              columns=lambda l: l.clinician_columns()))
@@ -317,8 +384,8 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
         if scale.products:
             fms["genesis_twin_P"] = LG.product("genesis_twin_P", [fms[f"{t}_P"] for t in TW.MAIN] + [twin["s3"]])
     # stacks: a cross-fitted logistic combination of every model a tier may use
-    p_parts = [k for k in ("direct_P", "who_P", "when_P", "soft_P", "twin_s3_P", "twin_direct_P", "twin_hazard6_P")
-               if k in fms]
+    p_parts = [k for k in ("direct_P", "who_P", "when_P", "soft_P", "distill_P", "twin_s3_P", "twin_direct_P",
+                           "twin_hazard6_P") if k in fms]
     fms["stack_P"] = LG.stack(led, "stack_P", [fms[k] for k in p_parts])
     if "S" in scale.tiers:
         s_parts = p_parts + [k for k in ("direct_S", "who_S", "when_S") if k in fms]
@@ -343,6 +410,7 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
     pairs = {"stack_over_direct_P": ("stack_P", "direct_P"), "twin_adds_to_trees_P": ("genesis_twin_P", "genesis_P"),
              "tier_T_over_P": ("genesis_T", "genesis_P"), "tier_S_over_P": ("stack_S", "stack_P"),
              "declared_P_over_strict_P": ("direct_P", "direct_Pstrict"), "soft_over_direct_P": ("soft_P", "direct_P"),
+             "distilled_over_direct_P": ("distill_P", "direct_P"),
              "twin_full_over_physiology": ("twin_s3_P", "twin_phys_P")}
     rep["comparisons"] = {name: led.compare(fms[a].oof, fms[b].oof, n_boot=500)
                           for name, (a, b) in pairs.items() if a in fms and b in fms}

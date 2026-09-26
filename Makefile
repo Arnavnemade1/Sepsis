@@ -32,7 +32,7 @@ help:
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
 	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
-	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (97 checks: harness, temporal model, v3 information, AUROC machinery)"
+	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (103 checks: harness, temporal model, information, AUROC levers)"
 	@echo "  make mimic-demo        The whole MIMIC-IV pipeline on the open demo"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"

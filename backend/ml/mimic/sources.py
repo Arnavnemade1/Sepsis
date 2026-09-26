@@ -96,6 +96,11 @@ class CsvSource:
         # intubated: "No Response-ETT" carries valuenum 1, identical to a truly unresponsive
         # patient. Recoded to 0 (unable to assess) as MIT-LCP mimic-code does.
         v = np.where((ev.itemid == 223900) & (ev.value == "No Response-ETT"), 0.0, v)
+        text = ev.value.fillna("").astype(str).str.strip().str.upper()
+        for c in K.EXAM:                               # the bedside exam: text -> ordinal
+            if c.kind == "chart_text":
+                m = (ev.name == c.name).to_numpy()
+                v[m] = text[m].map(dict(c.text_map)).astype(float).to_numpy()
         ev["value"] = v
         ev = _plausible(ev, {c.name: c for c in K.CHART_ALL})
         # units: Fahrenheit -> Celsius; FiO2 percent -> fraction
@@ -106,7 +111,12 @@ class CsvSource:
         ev.loc[fi, "value"] = np.where(ev.loc[fi, "value"] > 1.0, ev.loc[fi, "value"] / 100.0,
                                        ev.loc[fi, "value"])
         ev = ev[~fi | (ev.value >= 0.21) & (ev.value <= 1.0)]
-        return _bin_last(ev, stays, "charttime", lo=0)
+        worst = {c.name for c in K.CHART_ALL if c.agg == "max"}
+        parts = [_bin_last(ev[~ev.name.isin(worst)], stays, "charttime", lo=0),
+                 _bin_agg(ev[ev.name.isin(worst)], stays, "charttime", "max")]
+        for base, how in K.EXTREMES.items():            # the hour's extreme beside its last value
+            parts.append(_bin_agg(ev[ev.name == base], stays, "charttime", how).assign(name=f"{base}_{how}"))
+        return pd.concat(parts, ignore_index=True)
 
     def binned_labs(self, stays: pd.DataFrame) -> pd.DataFrame:
         ids = {i: c for c in K.LAB + K.LAB_TEXT for i in c.itemids}
@@ -198,10 +208,9 @@ class CsvSource:
             ev = ev[(ev.t >= 0) & (ev.t <= np.minimum(end, K.MAX_HOURS))]
             return ev[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
         if kind == "culture":
-            ev = self._read("hosp", "microbiologyevents", ["hadm_id", "chartdate", "charttime"],
+            ev = self._read("hosp", "microbiologyevents", ["hadm_id", "chartdate", "charttime", "spec_type_desc"],
                             keep=lambda d: d.hadm_id.isin(hadm))
             ev["time"] = ev.charttime.fillna(ev.chartdate)
-            ev = ev.drop_duplicates(["hadm_id", "time"])
         else:
             ev = self._read("hosp", "prescriptions", ["hadm_id", "starttime", "drug", "route"],
                             keep=lambda d: d.hadm_id.isin(hadm))
@@ -212,7 +221,7 @@ class CsvSource:
         ev["t"] = _to_hours(ev.time, ev.intime)
         end = _to_hours(ev.outtime, ev.intime)
         ev = ev[(ev.t >= -EVENT_LOOKBACK_HOURS) & (ev.t <= np.minimum(end, K.MAX_HOURS))]
-        return ev[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
+        return typed_events(ev, kind)
 
     def first_weight(self, stays: pd.DataFrame) -> pd.Series:
         sid = set(stays.stay_id)
@@ -245,6 +254,33 @@ def _bin_last(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str, lo: int,
     g = ev.groupby(["stay_id", "hr", "name"], sort=False)
     out = g.agg(value=("value", "last"), n=("value", "size")).reset_index()
     return out
+
+
+def typed_events(ev: pd.DataFrame, kind: str) -> pd.DataFrame:
+    """``(stay_id, t)`` plus what the event WAS — the specimen group of a culture (one event per
+    specimen group and time, as the label's culture times are one per time), or the spectrum
+    of an antibiotic (oral vancomycin treats C. difficile, not MRSA) — one function for both
+    sources."""
+    if kind == "culture":
+        ev = ev.assign(group=[K.specimen_group(x) for x in ev.get("spec_type_desc", pd.Series([""] * len(ev)))])
+        ev = ev.drop_duplicates(["stay_id", "t", "group"])
+        return ev[["stay_id", "t", "group"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
+    cls = [K.abx_classes(d) for d in ev.drug]
+    oral = ev.route.fillna("").astype(str).str.upper().str.strip().isin(["PO", "NG", "PO/NG", "OG"]).to_numpy()
+    ev = ev.assign(mrsa=np.array([c[0] for c in cls], dtype=bool) & ~(oral & ev.drug.str.lower().str.contains("vanco")),
+                   broad=np.array([c[1] for c in cls], dtype=bool))
+    return ev[["stay_id", "t", "mrsa", "broad"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
+
+
+def _bin_agg(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str, how: str) -> pd.DataFrame:
+    """min / max per (stay, hour, name) — hours from ICU admission, inside the grid."""
+    if not len(ev):
+        return pd.DataFrame(columns=["stay_id", "hr", "name", "value"])
+    if "intime" not in ev.columns:
+        ev = ev.merge(stays[["stay_id", "intime"]], on="stay_id")
+    ev = ev.assign(hr=np.floor(_to_hours(ev[tcol], ev["intime"])).astype(int))
+    ev = ev[(ev.hr >= 0) & (ev.hr < K.MAX_HOURS)]
+    return ev.groupby(["stay_id", "hr", "name"], as_index=False).value.agg(how)
 
 
 def _sum_by_hour(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str = "starttime") -> pd.DataFrame:
@@ -364,6 +400,8 @@ class BigQuerySource:
         df = self._q(render_events_sql(self.hosp, self.icu, kind, self.stay_filter(stays)))
         if kind == "abx":   # the antibiotic name / route filter is applied here, identically
             df = df[[K.is_antibiotic(d, r) for d, r in zip(df.drug, df.route)]]
+        if kind in ("culture", "abx"):
+            return typed_events(df, kind)
         return df[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
 
     def first_weight(self, stays):  # pragma: no cover
@@ -385,13 +423,31 @@ def _case_name(concepts: Iterable[K.Concept], col: str = "itemid") -> str:
     return "CASE " + " ".join(whens) + " END"
 
 
+def _exam_value() -> str:
+    """The bedside exam's text -> ordinal coding (the CsvSource mapping), else valuenum."""
+    whens = []
+    for c in K.EXAM:
+        if c.kind == "chart_text":
+            cases = " ".join(f"WHEN '{t}' THEN {v}" for t, v in c.text_map)
+            whens.append(f"WHEN ce.itemid IN ({', '.join(map(str, c.itemids))}) "
+                         f"THEN CASE UPPER(TRIM(ce.value)) {cases} END")
+    return " ".join(whens)
+
+
 def render_chart_sql(icu: str, stay_filter: str = "TRUE") -> str:
     ids = ", ".join(str(i) for c in K.CHART_ALL for i in c.itemids)
     bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in K.CHART_ALL)
+    worst = ", ".join(f"'{c.name}'" for c in K.CHART_ALL if c.agg == "max")
+    extremes = "\n".join(
+        f"""UNION ALL
+SELECT stay_id, CAST(FLOOR(h) AS INT64) AS hr, '{base}_{how}' AS name, {how.upper()}(value) AS value, COUNT(*) AS n
+FROM ok WHERE name = '{base}' AND h >= 0 AND h < {K.MAX_HOURS}
+GROUP BY stay_id, hr""" for base, how in K.EXTREMES.items())
     return f"""
 WITH ev AS (
   SELECT ce.stay_id, ce.charttime, {_case_name(K.CHART_ALL, 'ce.itemid')} AS name,
          CASE WHEN ce.itemid = 223900 AND ce.value = 'No Response-ETT' THEN 0.0
+              {_exam_value()}
               ELSE ce.valuenum END AS v,
          DATETIME_DIFF(ce.charttime, s.intime, SECOND) / 3600.0 AS h
   FROM `{icu}.chartevents` ce JOIN `{icu}.icustays` s USING (stay_id)
@@ -404,10 +460,12 @@ WITH ev AS (
   FROM ev WHERE v IS NOT NULL AND ({bounds})
 )
 SELECT stay_id, CAST(FLOOR(h) AS INT64) AS hr, name,
-       ARRAY_AGG(value ORDER BY charttime DESC LIMIT 1)[OFFSET(0)] AS value, COUNT(*) AS n
+       IF(name IN ({worst}), MAX(value),
+          ARRAY_AGG(value ORDER BY charttime DESC LIMIT 1)[OFFSET(0)]) AS value, COUNT(*) AS n
 FROM ok
 WHERE h >= 0 AND h < {K.MAX_HOURS} AND (name != 'FiO2' OR value BETWEEN 0.21 AND 1.0)
 GROUP BY stay_id, hr, name
+{extremes}
 """
 
 
@@ -513,7 +571,7 @@ WHERE e.ordercategoryname = '{K.ABX_ADMIN_CATEGORY}' AND COALESCE(e.statusdescri
 """
     if kind == "culture":
         return f"""
-SELECT DISTINCT s.stay_id,
+SELECT DISTINCT s.stay_id, m.spec_type_desc,
        DATETIME_DIFF(COALESCE(m.charttime, m.chartdate), s.intime, SECOND) / 3600.0 AS t
 FROM `{hosp}.microbiologyevents` m JOIN `{icu}.icustays` s ON m.hadm_id = s.hadm_id
 WHERE ({stay_filter}) AND DATETIME_DIFF(COALESCE(m.charttime, m.chartdate), s.intime, SECOND) / 3600.0

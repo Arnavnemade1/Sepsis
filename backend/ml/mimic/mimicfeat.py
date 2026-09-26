@@ -17,6 +17,13 @@ This block computes them, strictly from the past:
     UrineOutput__mlkgh{6,12,24}    tier P: urine output per kg per hour (KDIGO oliguria)
     Neutrophils__nlr               tier P: neutrophil / lymphocyte ratio
     Norepinephrine__nee(_max24)    tier T: norepinephrine-equivalent vasopressor dose
+    {X}__qv{w}, {X}__levy_{Y}_{w}  tier P: the level-2 PATH SIGNATURE of the physiology over the
+                                   last w hours (w = 6, 24) — each stream's quadratic
+                                   variation (its lead-lag area) and each pair's Lévy area,
+                                   the signed area that says which stream moved FIRST (heart
+                                   rate before blood pressure, or after). The CinC 2019 winner
+                                   (Morrill et al.) fed order-3 lead-lag signatures to LightGBM;
+                                   the engine here had no cross-stream temporal term at all.
 
 Tier comes from the prefix (``ledger.channel_of``): the firewall and the strict tier treat
 these columns exactly like the channel they are named after. Reading the formula is what
@@ -33,6 +40,9 @@ import pandas as pd
 from backend.ml.mimic import sepsis3 as S3
 
 ORGANS = ["resp", "coag", "liver", "cardio", "cns", "renal"]
+#: the streams whose signature is taken, and the windows
+LEVY_CH = ["HR", "MAP_min", "Resp", "Temp", "O2Sat", "SOFA_P", "Lactate"]
+LEVY_WINDOWS = (6, 24)
 #: norepinephrine equivalents (Goradia et al., J Crit Care 2021): mcg/kg/min, vasopressin U/min x 2.5
 NEE = {"Norepinephrine": 1.0, "Epinephrine": 1.0, "Dopamine": 0.01, "Phenylephrine": 0.1}
 VASOPRESSIN_U_PER_H = 2.5 / 60.0
@@ -87,6 +97,54 @@ def suspicion_known(cult: np.ndarray, abx: np.ndarray, seg: np.ndarray, hour: np
     return out
 
 
+def _stay_cumsum(x: np.ndarray, seg: np.ndarray) -> np.ndarray:
+    """A running sum that RESTARTS at every stay (one cohort-wide cumsum would couple patients
+    through floating-point rounding — the GENESIS bug the admission audit exists to catch)."""
+    return pd.Series(np.asarray(x, dtype=np.float64)).groupby(seg, sort=False).cumsum().to_numpy()
+
+
+def signature_block(store, channels=None, windows=LEVY_WINDOWS) -> Tuple[List[np.ndarray], List[str]]:
+    """Level-2 path signature terms over sliding windows, EXACT for the piecewise-linear
+    path of each stream's carried-forward values (increments are 0 where either end is
+    missing). With X^ the path and d its increments, over the window (a, t]:
+
+        quadratic variation  QV = sum d^2
+        Levy area  A_ij = 1/2 sum_r [(X^_i(r-1) - X^_i(a)) d_j(r) - (X^_j(r-1) - X^_j(a)) d_i(r)]
+
+    both from stay-local prefix sums, so every term is O(N) and strictly causal."""
+    channels = [c for c in (channels or LEVY_CH) if c in store.columns]
+    rs, seg = store.row_start, store.seg
+    N = store.n_rows
+    idx = np.arange(N)
+    X, D = {}, {}
+    for c in channels:
+        lv = _locf(store.col(c).astype(np.float64), rs)
+        prev = np.full(N, np.nan)
+        ok = idx - 1 >= rs
+        prev[ok] = lv[idx[ok] - 1]
+        d = np.where(np.isfinite(lv) & np.isfinite(prev), lv - prev, 0.0)
+        D[c], X[c] = d, _stay_cumsum(d, seg)
+    Q = {c: _stay_cumsum(D[c] ** 2, seg) for c in channels}
+    S = {(i, j): _stay_cumsum((X[i] - D[i]) * D[j], seg) for i in channels for j in channels if i != j}
+
+    def at(P, w):                                  # P at the window start a = t - w (0 before the stay)
+        a = idx - w
+        return np.where(a >= rs, P[np.maximum(a, 0)], 0.0)
+    cols, names = [], []
+    for w in windows:
+        Xa = {c: at(X[c], w) for c in channels}
+        for c in channels:
+            cols.append(Q[c] - at(Q[c], w))
+            names.append(f"{c}__qv{w}")
+        for n_i, i in enumerate(channels):
+            for j in channels[n_i + 1:]:
+                sij = (S[(i, j)] - at(S[(i, j)], w)) - Xa[i] * (X[j] - Xa[j])
+                sji = (S[(j, i)] - at(S[(j, i)], w)) - Xa[j] * (X[i] - Xa[i])
+                cols.append(0.5 * (sij - sji))
+                names.append(f"{i}__levy_{j}_{w}")
+    return cols, names
+
+
 def block(store) -> Tuple[np.ndarray, List[str]]:
     """``(F, names)``: the block for every row of ``store`` (causal, stay-local)."""
     rs, hour, seg = store.row_start, store.hour, store.seg
@@ -132,4 +190,7 @@ def block(store) -> Tuple[np.ndarray, List[str]]:
         mx = np.maximum(mx, v)
     cols += [nee, mx]
     names += ["Norepinephrine__nee", "Norepinephrine__nee_max24"]
+    sc, sn = signature_block(store)
+    cols += sc
+    names += sn
     return np.stack(cols, axis=1).astype(np.float32), names

@@ -8,15 +8,15 @@ systems (Glasgow Coma Scale, urine output, vasopressor doses) and the suspected-
 record (cultures, antibiotics) that sets the Sepsis-3 clock. MIMIC-IV records all of it.
 
 **Status.** Built end to end and verified on the open MIMIC-IV demo (100 patients, ODbL,
-16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 97/97 (~5 min), and every harness,
-temporal-model and v3 check has been mutation-tested (the mechanism broken on purpose, the
-check seen to go red). The full
+16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 103/103 (~5 min), and every harness,
+temporal-model, v3 and research-lever check has been mutation-tested (the mechanism broken on
+purpose, the check seen to go red). The full
 run waits on credentialed PhysioNet access; the demo's numbers are noise by design (99
 subjects) and every demo report says so.
 
 | module (`backend/ml/mimic/`) | job |
 |---|---|
-| `concepts.py` | the variable catalog: 113 itemids, every one checked against MIMIC's own `d_items` / `d_labitems`; plausibility windows; input tier per variable |
+| `concepts.py` | the variable catalog: 135 itemids, every one checked against MIMIC's own `d_items` / `d_labitems`; plausibility windows; input tier per variable; the bedside exam's text codings |
 | `history.py` | what was known on arrival: admission source, admitting service, comorbidities from prior admissions only |
 | `mimicfeat.py` | the label's structure as causal features, each at the tier allowed to see it |
 | `sources.py` | `CsvSource` (demo / full CSVs, the reference semantics) and `BigQuerySource` (the same hourly binning as SQL, run server-side) |
@@ -323,7 +323,7 @@ variables. So the full run is built to extract every legitimate bit of informati
 holds, fit it as well as a laptop allows, and report the result in every setting a paper
 might use — with what each one means printed beside it.
 
-**More information (store v3, 130 channels, 1,038 features).**
+**More information (store v4, 155 channels, 1,244 features; §7 has the evidence for each).**
 * **Labs:** inflammation and the differential (CRP, neutrophils, lymphocytes, immature
   granulocytes, eosinophils, absolute counts, anion gap, ferritin, LDH, CK, lipase, ammonia,
   NT-proBNP), plus urinalysis coded from text (leukocytes, nitrite: a urinary source).
@@ -333,12 +333,21 @@ might use — with what each one means printed beside it.
 * **Known on arrival:** admission source, admitting service, and comorbidities from
   admissions *discharged before* this one (Charlson groups in the Quan 2005 ICD-9/10 codings,
   prior sepsis, readmission recency).
+* **The bedside exam** (tier P): capillary refill, mottling, skin temperature and moisture,
+  peripheral pulses, lung sounds by lobe, cough, urine appearance, abdominal exam, delirium
+  screen, RASS, pupils. The worst finding of each hour is kept.
+* **Within-hour extremes** (tier P): each hour's lowest MAP, SBP and SpO2, and highest HR,
+  respiratory rate and temperature. SOFA now reads the hour's lowest MAP.
+* **Infection-source detail** (tier S): culture specimen groups, and anti-MRSA / broad
+  anti-pseudomonal antibiotic spectrum.
 * All 113 item IDs are verified against MIMIC's own dictionaries. D-dimer is left out on
   purpose: its item IDs are charted in two unit systems.
 
 **The label's structure as features** (`mimicfeat.py`, each at the tier allowed to see it):
 * the per-organ SOFA points and measured rise that Sepsis-3's organ half is computed from,
   from physiology alone at tier P and with vasopressors and ventilation at tier T;
+* the level-2 path signature of seven physiology streams over 6 and 24 h: each stream's
+  quadratic variation, and each pair's Lévy area (which stream moved first);
 * whether a culture and an antibiotic have already paired into suspected infection (tier S);
 * urine per kg per hour, the neutrophil–lymphocyte ratio, norepinephrine-equivalent dose.
 
@@ -349,6 +358,9 @@ formula.
 * A budgeted hyperparameter search on dev subjects only, with the incumbent as trial 0.
   Tuning was CinC's largest single gain.
 * A soft-label booster trained on all 9 onset definitions at once.
+* A **distilled physiology student**. Its training target is half the label and half an
+  orders-aware teacher's score. Every teacher that wrote its targets was held out of the fold
+  the student is scored on (§7 has why that matters).
 * A **prior-centred stacker** per tier. It starts at the GENESIS product and learns only
   shrunken corrections, with the strength chosen per fold by nested cross-validation.
   Two free stackers were measured first and lost to the product on the demo (0.654, 0.628
@@ -378,7 +390,7 @@ which knobs carry a number toward 0.9.
   how much of it is the formula and the clinicians.
 
 Which of these to put on a poster is a pre-registration decision, made before the lock is
-read (§7).
+read (§8).
 
 **Fitting a laptop.**
 * `plan.py` estimates rows, disk, memory and hours from the extracted store before any
@@ -396,7 +408,36 @@ parity check fetches every binned table for exactly those stays through BigQuery
 compares it cell by cell with the CSV path. The SQL is trusted only where it reproduces the
 reference.
 
-## 7. Running it on full MIMIC-IV
+## 7. The research map — every lever, with its evidence
+
+What moves a sepsis AUROC, from this project's own measurements on CinC (docs/GENESIS.md,
+same folds, locked test set) and the literature. Each lever has a status. The CinC column is
+decisive where it exists: the tuned score there was sufficient for its inputs, so only new
+information moves a number, and most of the model-side ideas below were measured at zero.
+
+| lever | evidence | status here |
+|---|---|---|
+| **new information** | CinC: 7 vitals → all 40 variables, +0.03; the only lever that moved the ceiling | store v3 / v4 (below) |
+| **the bedside exam** — perfusion (capillary refill, mottling, cool clammy skin, weak pulses), infection source (lung sounds, productive cough, cloudy urine, acute abdomen), encephalopathy (delirium screen, RASS, pupils) | clinical: mottling and capillary refill predict septic-shock mortality (mottling score > 2: 6-fold, capillary refill > 4 s: 2-fold day-28 mortality in a [prehospital septic-shock cohort](https://www.sciencedirect.com/science/article/abs/pii/S0735675718305679)); charted by nurses as TEXT, so almost no ML model reads it | **new here**: 12 ordinal channels from 27 items, worst reading of the hour; 1,000–2,800 assessed hours per finding in 99 demo patients |
+| **within-hour extremes** | demo: 12.5% of MAP-hours hold several readings; 205 of 2,169 hypotensive hours (9.5%) dip and recover before the hour's last reading; mimic-code's SOFA uses the hour's lowest MAP | **new here**: 6 extreme channels; SOFA (label and inputs) reads `MAP_min` |
+| **infection-source detail** | suspicion is a class of orders: blood vs urine vs respiratory cultures, anti-MRSA vs anti-pseudomonal cover; routine MRSA screens are not a workup | **new here**: tier-S specimen and spectrum channels (oral vancomycin, a C. difficile drug, is not counted as anti-MRSA) |
+| **path signatures** | CinC 2019 winner ([Morrill et al.](https://physionet.org/files/challenge-2019/1.0.0/papers/CinC2019-014.pdf)): order-3 lead-lag signatures + LightGBM, +0.012 utility over hand-crafted features | **implemented** exactly at level 2 (quadratic variation; Lévy areas, i.e. which stream moved first) via stay-local prefix sums. Planted lag world: windowed trees 0.800 → 0.813 with signatures (the twin reads 0.899) |
+| **privileged-tier distillation** | learning using privileged information as generalised distillation (Lopez-Paz et al., 2016; [Karlsson et al.](https://arxiv.org/pdf/2110.14993) for time-series privileged information) | **new here**. A physiology-only student learns from an orders-aware teacher's scores, through training targets only. Ordinary cross-fitting LEAKED: +0.048 of apparent demo gain vanished with nested teachers (0.859 → 0.811, label-only 0.770). Pairwise-held-out teachers (10, not 20) remove it |
+| **definition choice** | Sepsis-3 onset variants move AUROC 0–6%, more than model choice (1–5%) ([Sci Rep 2024](https://www.nature.com/articles/s41598-024-51989-6)) | pre-registered primary rule; soft-label booster; 9-definition sensitivity on every model |
+| **clinical notes** (radiology reports) | multimodal notes + measurements: +2.9% AUROC on MIMIC-III ([Improving Early Sepsis Prediction with Multi Modal Learning](https://arxiv.org/pdf/2107.11094)) | **not built**: needs the separately credentialed MIMIC-IV-Note module, and there is no open demo to verify an extractor against. The strongest remaining lever |
+| **external data** (eICU, 200+ hospitals) | multi-centre training and transfer ([YAIB](https://arxiv.org/pdf/2306.05109)) | not built: a second credentialed dataset with another schema |
+| hyperparameter tuning | CinC: +0.0065, the largest model-side gain | built; dev only, 2 validation folds at full scale. On the 99-subject demo it overfits one fold: noise |
+| factorised product (who × when × direct) | CinC: +0.0019, +0.0034 with the network | built |
+| learned stage-2 stacking | CinC: always below the product; demo: free stackers lost to it too | prior-centred stacker (starts AT the product) |
+| deep sequence models | YAIB: GRU the strongest deep baseline for sepsis; CinC: the network was worth +0.0015 inside the product | Process Twin v2, in the stack |
+| temporal meta-learning (score smoothing, running max) | CinC: +0.0000 | not repeated |
+| horizon / auxiliary "future lab" heads | CinC: +0.0007 / +0.0000 as tree experts | only as dense supervision inside the twin |
+| clinician-intent features | CinC: +0.0019 alone, +0.0002 inside the product | superseded by the process features and the clinician-action model |
+| self-supervised pretraining | CinC: pre-registered null | not repeated |
+| hospital indicator | CinC: +0.0000 | not used |
+| case-control / onset-aligned evaluation | where 0.96–0.99 "AUROCs" in recent papers come from | refused by construction (symmetric censoring, clock-matched horizons) |
+
+## 8. Running it on full MIMIC-IV
 
 1. PhysioNet: complete CITI "Data or Specimens Only Research", request credentialed access,
    sign the MIMIC-IV data use agreement.
@@ -417,8 +458,8 @@ reference.
 8. `trust.lock_scores` + `trust.confirm` for each registered claim, spent once. Anything
    exploratory goes through `trust.Ladder` (8 submissions).
 
-## 8. Reproduce the demo
+## 9. Reproduce the demo
 
     python -m backend.ml.mimic.extract          # build the demo store (under a second)
-    python -m backend.ml.mimic.run --source demo  # every stage, ~2.5 min
-    python verify_mimic.py                        # 97 adversarial checks, ~5 min
+    python -m backend.ml.mimic.run --source demo  # every stage, ~3.5 min
+    python verify_mimic.py                        # 103 adversarial checks, ~5 min

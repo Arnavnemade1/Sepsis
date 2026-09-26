@@ -44,12 +44,16 @@ class Concept:
     hi: float = np.inf
     label_pattern: str = ""         # regex the dictionary label must match (verify_mimic)
     unit: str = ""
-    #: for results charted as text (urinalysis): text -> ordinal value; anything else dropped
+    #: for results charted as text (urinalysis, the bedside exam): text -> ordinal value;
+    #: matched after trimming and upper-casing; anything else is dropped
     text_map: Tuple[Tuple[str, float], ...] = ()
+    #: how several readings in one hour combine: the last one, or the WORST (max) — for an
+    #: exam charted on both sides (capillary refill L / R) or per lobe, the worst finding
+    agg: str = "last"
 
 
-def _c(name, kind, itemids, tier="P", lo=-np.inf, hi=np.inf, pat="", unit="", text_map=()):
-    return Concept(name, kind, tuple(itemids), tier, lo, hi, pat, unit, tuple(text_map))
+def _c(name, kind, itemids, tier="P", lo=-np.inf, hi=np.inf, pat="", unit="", text_map=(), agg="last"):
+    return Concept(name, kind, tuple(itemids), tier, lo, hi, pat, unit, tuple(text_map), agg)
 
 
 # --------------------------------------------------------------------------- #
@@ -147,6 +151,51 @@ VENT_SET: List[Concept] = [
     _c("MinuteVolume", "chart", [224687], "T", 0, 60, r"^Minute Volume$", "L/min"),
     _c("PeakPressure", "chart", [224695], "T", 0, 120, r"^Peak Insp. Pressure$", "cmH2O"),
 ]
+# --------------------------------------------------------------------------- #
+# chartevents (v4) — THE BEDSIDE EXAM, charted by nurses as text and read by almost no
+# sepsis model: perfusion (capillary refill, mottling, cool clammy skin, weak pulses — the
+# clinical signs of septic shock), infection sources (adventitious lung sounds, productive
+# cough, cloudy urine, an acute abdomen) and encephalopathy (delirium screen, RASS, sluggish
+# pupils). Ordinal-coded; the worst of several readings in an hour (both sides, every lobe).
+# --------------------------------------------------------------------------- #
+_W = "max"
+EXAM: List[Concept] = [
+    _c("CapRefill", "chart_text", [223951, 224308], lo=0, hi=1, pat=r"^Capillary Refill [LR]$", agg=_W,
+       text_map=(("NORMAL <3 SECONDS", 0.0), ("ABNORMAL >3 SECONDS", 1.0))),
+    _c("SkinMottled", "chart_text", [224028], lo=0, hi=3, pat=r"^Skin Color$", agg=_W,
+       text_map=(("NORMAL FOR RACE", 0.0), ("FLUSHED", 0.0), ("JAUNDICED", 0.0), ("PALE", 1.0),
+                 ("ASHEN", 2.0), ("DUSKY", 2.0), ("MOTTLED", 3.0), ("CYANOTIC", 3.0))),
+    _c("SkinCool", "chart_text", [224027], lo=0, hi=2, pat=r"^Skin Temperature$", agg=_W,
+       text_map=(("WARM", 0.0), ("HOT", 0.0), ("COOL", 1.0), ("COLD", 2.0))),
+    _c("SkinClammy", "chart_text", [224860], lo=0, hi=1, pat=r"^Skin Condition$", agg=_W,
+       text_map=(("DRY", 0.0), ("MOIST", 0.0), ("DIAPHORETIC", 1.0), ("CLAMMY", 1.0))),
+    _c("PulseWeak", "chart_text", [223934, 223943, 223935, 223947, 223936, 223948], lo=0, hi=3,
+       pat=r"(Dorsal PedPulse|PostTib\. Pulses|Radial Pulse) [LR]$", agg=_W,
+       text_map=(("STRONG/PALPABLE", 0.0), ("EASILY PALPABLE", 0.0), ("WEAK PALPABLE", 1.0),
+                 ("DIFFICULT TO PALPATE", 2.0), ("DOPPLER", 2.0), ("ABSENT", 3.0))),
+    _c("LungSounds", "chart_text", [223986, 223987, 223988, 223989], lo=0, hi=2, pat=r"^[RL][UML]L Lung Sounds$",
+       agg=_W, text_map=(("CLEAR", 0.0), ("DIMINISHED", 0.5), ("EXP WHEEZE", 0.5), ("INSP WHEEZE", 0.5),
+                         ("INSP/EXP WHEEZE", 0.5), ("INS/EXP WHEEZE", 0.5), ("RHONCHI", 1.0), ("ABSENT", 1.0),
+                         ("CRACKLES", 2.0), ("BRONCHIAL", 2.0), ("TUBULAR", 2.0))),
+    _c("CoughProductive", "chart_text", [223992], lo=0, hi=1, pat=r"^Cough Type$", agg=_W,
+       text_map=(("NON-PRODUCTIVE", 0.0), ("NON-PRODUCTIVE/CONGESTED", 0.5), ("CONGESTED", 0.5),
+                 ("PRODUCTIVE", 1.0), ("PRODUCTIVE/CONGESTED", 1.0))),
+    _c("UrineCloudy", "chart_text", [224876], lo=0, hi=1, pat=r"^Urine Appearance$", agg=_W,
+       text_map=(("CLEAR", 0.0), ("CLOTS", 0.5), ("SEDIMENT", 1.0), ("CLOUDY", 1.0), ("SLUDGE", 1.0))),
+    _c("AbdomenAcute", "chart_text", [224003], lo=0, hi=2, pat=r"^Abdominal Assessment$", agg=_W,
+       text_map=(("SOFT", 0.0), ("NON-DISTENDED", 0.0), ("OBESE", 0.0), ("SOFT DISTENDED", 1.0), ("FIRM", 1.0),
+                 ("ASCITES", 1.0), ("TENDER", 2.0), ("FIRM DISTENDED", 2.0))),
+    _c("Delirium", "chart_text", [228332], lo=0, hi=1, pat=r"^Delirium assessment$", agg=_W,
+       text_map=(("NEGATIVE", 0.0), ("POSITIVE", 1.0))),
+    _c("PupilSluggish", "chart_text", [227121, 227288], lo=0, hi=2, pat=r"^Pupil Response (Right|Left)$", agg=_W,
+       text_map=(("BRISK", 0.0), ("SLUGGISH", 1.0), ("NON-REACTIVE", 2.0))),
+    _c("RASS", "chart", [228096], lo=-5, hi=4, pat=r"^Richmond-RAS Scale$"),
+]
+#: vitals whose within-hour EXTREME is kept beside the last value: 12.5% of demo MAP-hours
+#: have several readings, and 205 of 2,169 hypotensive hours (9.5%) dip below 65 and recover
+#: before the hour's last reading — invisible to a last-value grid. mimic-code's SOFA uses
+#: the hour's lowest MAP too.
+EXTREMES: Dict[str, str] = {"MAP": "min", "SBP": "min", "O2Sat": "min", "HR": "max", "Resp": "max", "Temp": "max"}
 #: every chartevents concept the binning reads
 CHART_ALL: List[Concept] = []    # filled below, after CHART
 
@@ -247,7 +296,41 @@ ABX_EXCLUDE_WORDS: Tuple[str, ...] = ("cream", "desensitization", "ophth", "oint
 MAX_HOURS = 336
 
 
-CHART_ALL[:] = CHART + HEMO + VENT_SET
+CHART_ALL[:] = CHART + HEMO + VENT_SET + EXAM
+
+# --------------------------------------------------------------------------- #
+# suspicion detail (v4, tier S): which workup, which drugs
+# --------------------------------------------------------------------------- #
+#: microbiology specimen groups; routine MRSA screens and serology / immunology are NOT an
+#: acute infection workup, though the Sepsis-3 label (like mimic-code) counts every specimen
+SPECIMENS: Dict[str, Tuple[str, ...]] = {
+    "CultureBlood": ("BLOOD CULTURE",),
+    "CultureUrine": ("URINE",),
+    "CultureResp": ("SPUTUM", "BRONCHOALVEOLAR LAVAGE", "BRONCHIAL WASHINGS", "PLEURAL FLUID",
+                    "TRACHEAL ASPIRATE"),
+    "CultureRoutine": ("MRSA SCREEN", "SEROLOGY/BLOOD", "IMMUNOLOGY (CMV)", "BLOOD (CMV AB)"),
+}
+#: antibiotic spectrum from the drug name: anti-MRSA, and broad gram-negative / anti-pseudomonal
+ABX_MRSA = ("vancomycin", "linezolid", "zyvox", "daptomycin", "cubicin", "ceftaroline", "tedizolid",
+            "telavancin", "dalbavancin", "oritavancin")
+ABX_BROAD = ("piperacillin", "zosyn", "tazobactam", "cefepime", "maxipime", "ceftazidime", "fortaz",
+             "tazicef", "meropenem", "imipenem", "ertapenem", "aztreonam", "azactam", "cefiderocol",
+             "ceftolozane", "zerbaxa", "avycaz", "tobramycin", "amikacin", "colistin", "polymyxin")
+
+
+def abx_classes(drug: str) -> Tuple[bool, bool]:
+    """(anti-MRSA, broad anti-pseudomonal) for one systemic antibiotic order. Oral vancomycin
+    treats C. difficile, not MRSA bacteraemia — its route decides, in ``sources``."""
+    d = str(drug).lower()
+    return any(n in d for n in ABX_MRSA), any(n in d for n in ABX_BROAD)
+
+
+def specimen_group(spec: str) -> str:
+    s = str(spec).upper().strip()
+    for name, specs in SPECIMENS.items():
+        if s in specs:
+            return name
+    return "CultureOther"
 
 
 def all_concepts() -> List[Concept]:
