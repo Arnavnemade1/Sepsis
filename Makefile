@@ -32,7 +32,7 @@ help:
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
 	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
-	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (33 checks)"
+	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (71 checks, every harness layer attacked)"
 	@echo "  make mimic-demo        The whole MIMIC-IV pipeline on the open demo"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -92,7 +92,9 @@ verify-genesis:
 # MIMIC-IV line (backend/ml/mimic, docs/MIMIC.md), verified on the open demo: catalog vs
 # MIMIC's own dictionaries, unit recodes, antibiotic filter, binning vs raw events, Sepsis-3 on
 # synthetic stays, symmetric censoring, causality, tier firewall, subject lock, masks, design
-# weights, chunking, and the BigQuery SQL.
+# weights, chunking, the BigQuery SQL — and every harness layer attacked with a planted
+# failure: views, the Care-Process Transplant, the admission audit, information flow, the
+# cross-examination and the trust layer (hash chain, power gate, Ladder).
 verify-mimic:
 	PYTHONPATH=. $(PY) verify_mimic.py
 

@@ -67,8 +67,10 @@ class CsvSource:
                                                "anchor_year_group"])
 
     def admissions(self) -> pd.DataFrame:
+        # race / insurance feed the subgroup audit only (extract.AUDIT_ATTRS), never a model
         return self._read("hosp", "admissions", ["subject_id", "hadm_id", "admittime", "dischtime",
-                                                 "admission_type", "hospital_expire_flag"])
+                                                 "admission_type", "hospital_expire_flag",
+                                                 "insurance", "race"])
 
     def d_items(self) -> pd.DataFrame:
         return pd.read_csv(self._path("icu", "d_items"))
@@ -258,7 +260,7 @@ class BigQuerySource:
 
     def admissions(self):  # pragma: no cover
         return self._q(f"SELECT subject_id, hadm_id, admittime, dischtime, admission_type, "
-                       f"hospital_expire_flag FROM `{self.hosp}.admissions`")
+                       f"hospital_expire_flag, insurance, race FROM `{self.hosp}.admissions`")
 
     def d_items(self):  # pragma: no cover
         return self._q(f"SELECT * FROM `{self.icu}.d_items`")

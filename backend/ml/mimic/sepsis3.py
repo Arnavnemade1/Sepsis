@@ -141,32 +141,50 @@ def hourly_sofa(col, row_start: np.ndarray, hour: np.ndarray) -> Dict[str, np.nd
         out[k] = np.nan_to_num(_rolling_max(out[k], row_start, 24), nan=0.0)
         tot += out[k]
     out["sofa_total"] = tot
+    # physiology tier: cardiovascular from MAP alone and respiration from P/F alone. The
+    # first version kept Sepsis-3's "3-4 points only while ventilated" in SOFA_P, so the
+    # physiology score carried the ventilator (a treatment) — the information-flow audit
+    # (``infoflow``) measures exactly this kind of leak.
     cv_p = np.nan_to_num(_rolling_max(cv_map, row_start, 24), nan=0.0)
-    out["sofa_total_P"] = tot - out["sofa_cardio"] + cv_p
+    resp_p = np.nan_to_num(_rolling_max(_points(pf, [400, 300, 200, 100], worse_high=False),
+                                        row_start, 24), nan=0.0)
+    out["sofa_total_P"] = tot - out["sofa_cardio"] - out["sofa_resp"] + cv_p + resp_p
     return out
 
 
-def component_points_now(col, row_start: np.ndarray, hour: np.ndarray) -> np.ndarray:
+def component_points_now(col, row_start: np.ndarray, hour: np.ndarray,
+                         physiology_only: bool = False) -> np.ndarray:
     """(N, 6) organ points from each hour's OWN measurements, carried forward up to 24 h;
-    NaN until a component has been measured. The basis of the ``measured`` onset rule."""
+    NaN until a component has been measured. The basis of the ``measured`` onset rule.
+
+    ``physiology_only``: respiration from P/F alone and cardiovascular from MAP alone —
+    the part of the label's formula a tier-P model can compute (the definitional oracle)."""
     vent = np.nan_to_num(col("VentInvasive")) > 0
     fio2 = _ffill_limit(col("FiO2"), row_start, 4)
-    fio2 = np.where(np.isfinite(fio2), fio2, np.where(vent, np.nan, 0.21))
+    if physiology_only:
+        fio2 = np.where(np.isfinite(fio2), fio2, 0.21)
+        vent = np.zeros(len(vent), dtype=bool)
+    else:
+        fio2 = np.where(np.isfinite(fio2), fio2, np.where(vent, np.nan, 0.21))
     pf = col("PaO2") / fio2
-    resp = _points(pf, [400, 300], worse_high=False)
-    resp = np.where(np.isfinite(pf) & vent & (pf < 200), 3.0, resp)
-    resp = np.where(np.isfinite(pf) & vent & (pf < 100), 4.0, resp)
+    if physiology_only:
+        resp = _points(pf, [400, 300, 200, 100], worse_high=False)
+    else:
+        resp = _points(pf, [400, 300], worse_high=False)
+        resp = np.where(np.isfinite(pf) & vent & (pf < 200), 3.0, resp)
+        resp = np.where(np.isfinite(pf) & vent & (pf < 100), 4.0, resp)
     coag = _points(col("Platelets"), [150, 100, 50, 20], worse_high=False)
     liver = _points(col("Bilirubin_total"), [1.2, 2.0, 6.0, 12.0], worse_high=True)
     mapv = col("MAP")
-    dop, dob = np.nan_to_num(col("Dopamine")), np.nan_to_num(col("Dobutamine"))
-    epi, nor = np.nan_to_num(col("Epinephrine")), np.nan_to_num(col("Norepinephrine"))
-    on_vaso = (dop > 0) | (dob > 0) | (epi > 0) | (nor > 0)
     cv = np.where(np.isfinite(mapv), np.where(mapv < 70, 1.0, 0.0), np.nan)
-    cv = np.where((dop > 0) | (dob > 0), 2.0, cv)
-    cv = np.where((dop > 5) | (epi > 0) | (nor > 0), 3.0, cv)
-    cv = np.where((dop > 15) | (epi > 0.1) | (nor > 0.1), 4.0, cv)
-    cv = np.where(on_vaso | np.isfinite(mapv), cv, np.nan)
+    if not physiology_only:
+        dop, dob = np.nan_to_num(col("Dopamine")), np.nan_to_num(col("Dobutamine"))
+        epi, nor = np.nan_to_num(col("Epinephrine")), np.nan_to_num(col("Norepinephrine"))
+        on_vaso = (dop > 0) | (dob > 0) | (epi > 0) | (nor > 0)
+        cv = np.where((dop > 0) | (dob > 0), 2.0, cv)
+        cv = np.where((dop > 5) | (epi > 0) | (nor > 0), 3.0, cv)
+        cv = np.where((dop > 15) | (epi > 0.1) | (nor > 0.1), 4.0, cv)
+        cv = np.where(on_vaso | np.isfinite(mapv), cv, np.nan)
     cns = _gcs_points(col("GCS"))
     cr = _points(col("Creatinine"), [1.2, 2.0, 3.5, 5.0], worse_high=True)
     uo_sum, uo_n = _rolling_sum(col("UrineOutput"), row_start, 24)
@@ -175,6 +193,23 @@ def component_points_now(col, row_start: np.ndarray, hour: np.ndarray) -> np.nda
     renal = np.fmax(_ffill_limit(cr, row_start, 24), uo_pts)
     parts = [resp, coag, liver, cv, cns, renal]
     return np.stack([_ffill_limit(p, row_start, 24) for p in parts], axis=1)
+
+
+def measured_rise(parts: np.ndarray, row_start: np.ndarray, window: int = 48) -> np.ndarray:
+    """(N,) total SOFA rise at each hour against a MEASURED baseline: per component, the
+    current carried-forward points minus their minimum over the preceding ``window`` hours
+    of the same stay (components never measured in the window contribute nothing)."""
+    n = len(parts)
+    idx = np.arange(n)
+    base = np.full_like(parts, np.nan)
+    for lag in range(window + 1):
+        src = idx - lag
+        ok = src >= row_start
+        v = np.full_like(parts, np.nan)
+        v[ok] = parts[src[ok]]
+        base = np.fmin(base, v)
+    ok = np.isfinite(parts) & np.isfinite(base)
+    return np.where(ok, parts - np.where(ok, base, 0.0), 0.0).sum(axis=1)
 
 
 def _gcs_points(g: np.ndarray) -> np.ndarray:

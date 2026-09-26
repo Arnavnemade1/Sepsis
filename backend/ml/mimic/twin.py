@@ -63,16 +63,8 @@ def process_targets(led) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
     col = lambda nm: s.col(nm).astype(np.float64)
     parts = S3.component_points_now(col, rs, hour)                 # (N, 6) carried forward
     # measured rise at each hour vs the running minimum of the preceding 48 h
-    base = np.full_like(parts, np.nan)
+    hit = S3.measured_rise(parts, rs, 48) >= 2
     idx = np.arange(N)
-    for lag in range(49):
-        src = idx - lag
-        ok = src >= rs
-        v = np.full_like(parts, np.nan)
-        v[ok] = parts[src[ok]]
-        base = np.fmin(base, v)
-    rise = np.nansum(np.where(np.isfinite(parts) & np.isfinite(base), parts - base, 0.0), axis=1)
-    hit = rise >= 2
     past = _window_any(hit, rs, 48, 0, end, hour)
     fut = _window_any(hit, rs, 0, 6, end, hour)
     T["organ"] = ((past | fut).astype(np.float32), (past | (hour + 6 <= end)).astype(np.float32))

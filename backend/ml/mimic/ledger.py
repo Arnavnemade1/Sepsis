@@ -35,17 +35,29 @@ deployment question CinC could not ask.
 TRIPWIRES. Clock-only AUROC; the share of onsets in the first hours per rule (the
 data-arrival artifact); record length as a label predictor.
 
-INFORMATION LEDGER. For each variable family: the AUROC lost when it is removed, and the
-sufficiency test (features + score vs score) for the final model.
+INFORMATION LEDGER. For each variable family: the AUROC lost when it is removed.
+
+Around this core (docs/MIMIC.md §4-6):
+
+* ``counterfactual`` — every model is re-scored on EDITED patients: the Care-Process
+  Transplant (whose schedule, whose values) and the admission audit (rewrite the future,
+  truncate the stay, scramble the neighbours — nothing earlier may move);
+* ``infoflow`` — the tier firewall is MEASURED, not declared: covert channels from
+  physiology columns into treatment state are found and a strict tier drops them;
+* ``crossexam`` — the questions a skeptical intensivist would ask of any number;
+* ``trust`` — a hash-chained, code-bound ledger, power-gated pre-registration and a
+  Ladder-protected lock that can be consulted more than once without being learned.
+
+A model enters as a :class:`Candidate` — a fit function the harness calls per fold, which
+returns a predictor it can apply to ANY ledger-shaped view (the real patients or edited
+ones). That one interface is what lets every counterfactual test run on every model.
 """
 from __future__ import annotations
 
 import hashlib
-import json
 import os
-import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 import numpy as np
 from sklearn.metrics import average_precision_score
@@ -54,6 +66,7 @@ from sklearn.model_selection import StratifiedKFold
 from backend.ml import config
 from backend.ml.genesis import features as feat
 from backend.ml.genesis.harness import Ranked
+from backend.ml.genesis.features import BLOOD_GAS
 from backend.ml.genesis.rawstore import VITALS
 from backend.ml.mimic import concepts as K
 from backend.ml.mimic import extract as E
@@ -72,6 +85,20 @@ FAMILIES = {
 }
 
 
+#: features that describe WHEN a channel was measured, not what it read
+PROCESS_SUFFIXES = ("__age", "__n", "__n24", "__dtlast")
+_SOFA_PROXY = frozenset({"Platelets", "Bilirubin_total", "Creatinine", "MAP", "FiO2", "SaO2", "O2Sat"})
+_SF = frozenset({"FiO2", "SaO2", "O2Sat"})
+#: the channels each GENESIS composite is computed from (features.py ``_composites``)
+COMPOSITE_SOURCES: Dict[str, FrozenSet[str]] = {
+    "sofa_proxy": _SOFA_PROXY, "sofa_rise24": _SOFA_PROXY, "sofa_rise48": _SOFA_PROXY,
+    "sofa_rise_all": _SOFA_PROXY, "sofa_mean24": _SOFA_PROXY, "sofa_resp": _SF, "sf_ratio": _SF,
+    "sirs": frozenset({"Temp", "HR", "Resp", "PaCO2", "WBC"}), "qsofa_proxy": frozenset({"Resp", "SBP"}),
+    "shock_index": frozenset({"HR", "SBP"}), "pulse_pressure": frozenset({"SBP", "DBP"}),
+    "bun_cr": frozenset({"BUN", "Creatinine"}),
+}
+
+
 def feature_spec(channels: Sequence[str]) -> feat.FeatureSpec:
     return feat.FeatureSpec(channels=list(channels), rolling=[c for c in VITALS if c in channels],
                             labs=[c for c in E.LAB_CH if c in channels],
@@ -83,10 +110,55 @@ def channel_of(feature: str) -> Optional[str]:
     return base if base in E.DYNAMIC else None
 
 
-def weighted_hour_matched(y, p, hour, w) -> float:
-    """Pair-weighted mean of per-hour weighted AUROCs (the clock cannot contribute)."""
-    order = np.lexsort((p, hour))
-    hs, ys, ps, ws = hour[order], y[order], p[order], w[order]
+def sources_of(feature: str) -> FrozenSet[str]:
+    """Every raw channel a feature column is computed from (empty for static context)."""
+    ch = channel_of(feature)
+    if ch:
+        return frozenset({ch})
+    if feature in COMPOSITE_SOURCES:
+        return COMPOSITE_SOURCES[feature]
+    if feature.startswith("proc__gas"):
+        return frozenset(c for c in BLOOD_GAS if c in E.LAB_CH)
+    if feature.startswith("proc__vitals"):
+        return frozenset(c for c in VITALS if c in E.DYNAMIC)
+    if feature.startswith("proc__"):
+        return frozenset(E.LAB_CH)
+    return frozenset()
+
+
+def is_process_feature(feature: str) -> bool:
+    """Does the column describe the measurement PROCESS (when, how often) rather than a value?"""
+    return feature.startswith("proc__") or (channel_of(feature) is not None and
+                                            feature.endswith(PROCESS_SUFFIXES))
+
+
+def pairs_auc(s: np.ndarray, wpos: np.ndarray, wneg: np.ndarray) -> float:
+    """Tie-exact AUROC where every row carries a positive weight AND a negative weight —
+    hard labels (w*y, w*(1-y)), soft labels, or two disjoint row sets."""
+    s = np.asarray(s, dtype=np.float64)
+    order = np.argsort(s, kind="mergesort")
+    ss = s[order]
+    block = np.cumsum(np.r_[True, ss[1:] != ss[:-1]]) - 1
+    nb = int(block[-1]) + 1 if len(block) else 0
+    pos = np.bincount(block, weights=np.asarray(wpos, float)[order], minlength=nb)
+    neg = np.bincount(block, weights=np.asarray(wneg, float)[order], minlength=nb)
+    below = np.r_[0.0, np.cumsum(neg)[:-1]]
+    den = pos.sum() * neg.sum()
+    return float((pos * (below + 0.5 * neg)).sum() / den) if den > 0 else float("nan")
+
+
+def stratified_auc(y: np.ndarray, p: np.ndarray, strata: np.ndarray,
+                   w: Optional[np.ndarray] = None) -> float:
+    """P(a positive outranks a negative FROM THE SAME STRATUM) — the pair-weighted mean of
+    per-stratum AUROCs. Strata = ICU hour gives the hour-matched AUROC (the clock cannot
+    contribute); strata = bins of a clinician-action score gives the AUROC among hours
+    that clinicians' actions made look equally suspicious."""
+    y, p, strata = np.asarray(y), np.asarray(p, dtype=np.float64), np.asarray(strata)
+    w = np.ones(len(y)) if w is None else np.asarray(w, dtype=np.float64)
+    if not len(y):
+        return float("nan")
+    order = np.lexsort((p, strata))
+    hs, ys, ps, ws = strata[order], y[order], p[order], w[order]
     starts = np.flatnonzero(np.r_[True, hs[1:] != hs[:-1]])
     ends = np.r_[starts[1:], len(hs)]
     num = den = 0.0
@@ -100,6 +172,69 @@ def weighted_hour_matched(y, p, hour, w) -> float:
     return num / den if den > 0 else float("nan")
 
 
+def weighted_hour_matched(y, p, hour, w) -> float:
+    """Pair-weighted mean of per-hour weighted AUROCs (the clock cannot contribute)."""
+    return stratified_auc(y, p, hour, w)
+
+
+# --------------------------------------------------------------------------- #
+Predictor = Callable[["Ledger", np.ndarray], np.ndarray]
+
+
+@dataclass
+class Candidate:
+    """A model as the harness sees it. ``fit(ledger, cols, train_rows, fold)`` trains on
+    ``train_rows`` and returns a PREDICTOR ``(view, rows) -> margins`` that can be applied
+    to any ledger-shaped view — the real patients, or counterfactually edited ones."""
+    name: str
+    tier: str
+    fit: Callable[..., Predictor]
+    strict: bool = False            # the measured-strict tier (``infoflow`` covert channels out)
+    #: a narrower column set than the whole tier (still checked against the tier's firewall)
+    columns: Optional[Callable[["Ledger"], np.ndarray]] = None
+
+    def cols(self, led: "Ledger") -> np.ndarray:
+        cols = self.columns(led) if self.columns is not None else led.columns(self.tier, strict=self.strict)
+        led.assert_tier(np.asarray(cols), self.tier)
+        return np.asarray(cols)
+
+
+@dataclass
+class FoldModels:
+    """A candidate fitted fold by fold: its out-of-fold scores and the predictor of every
+    fold, so the harness can re-score the SAME fitted models on edited patients."""
+    name: str
+    tier: str
+    oof: np.ndarray
+    predictors: Dict[int, Predictor]
+    cols: Optional[np.ndarray] = None
+
+    def predict(self, view: "Ledger", rows: np.ndarray) -> np.ndarray:
+        """Margins for ``rows`` of ``view``, each row scored by ITS OWN fold's model (so an
+        edited patient is only ever scored by a model that never trained on them)."""
+        rows = np.asarray(rows, dtype=np.int64)
+        f = view.folds[view.store.seg[rows]]
+        out = np.full(len(rows), np.nan)
+        for k in np.unique(f):
+            if int(k) in self.predictors:
+                m = f == k
+                out[m] = self.predictors[int(k)](view, rows[m])
+        return out
+
+
+def product(name: str, parts: Sequence[FoldModels]) -> FoldModels:
+    """The GENESIS product of experts, sum of log-sigmoids, kept re-appliable."""
+    from backend.ml.genesis.stack import log_sigmoid
+    folds = set.intersection(*(set(fm.predictors) for fm in parts))
+
+    def make(k):
+        return lambda view, rows: sum(log_sigmoid(fm.predictors[k](view, rows)) for fm in parts)
+    with np.errstate(invalid="ignore"):                   # NaN = rows outside every fold
+        oof = sum(log_sigmoid(fm.oof) for fm in parts)
+    return FoldModels(name, max((fm.tier for fm in parts), key=lambda t: K.TIER_ORDER[t]),
+                      oof, {k: make(k) for k in sorted(folds)})
+
+
 # --------------------------------------------------------------------------- #
 @dataclass
 class Ledger:
@@ -111,6 +246,9 @@ class Ledger:
     rule: str = E.PRIMARY_RULE
     anchor: str = "min"
     design_w: Optional[np.ndarray] = None     # (N,) inverse sampling probability
+    covert: FrozenSet[str] = frozenset()      # channels the information-flow audit flagged
+    parent_rows: Optional[np.ndarray] = None  # a view's rows in the ledger it came from
+    cache: Dict = field(default_factory=dict, repr=False)
     y: np.ndarray = field(init=False)
     onset: np.ndarray = field(init=False)     # (P,) onset hour of the stay under the rule
     train_mask: np.ndarray = field(init=False)
@@ -153,8 +291,25 @@ class Ledger:
     def n_folds(self) -> int:
         return int(self.folds.max()) + 1
 
-    def columns(self, tier: str) -> np.ndarray:
-        return np.flatnonzero(self.ftier <= K.TIER_ORDER[tier])
+    def columns(self, tier: str, strict: bool = False) -> np.ndarray:
+        """Columns a tier may read. ``strict`` also drops every column computed from a
+        covert channel (``infoflow``): the declared tier, minus what the audit measured
+        leaking into it."""
+        ok = self.ftier <= K.TIER_ORDER[tier]
+        if strict and self.covert:
+            ok &= np.array([not (sources_of(n) & self.covert) for n in self.names])
+        return np.flatnonzero(ok)
+
+    def clinician_columns(self) -> np.ndarray:
+        """What clinicians' ACTIONS reveal: every treatment / order column, plus the
+        measurement process of the physiology channels (when things were measured and
+        how often — never what they read)."""
+        return np.flatnonzero([(self.ftier[j] > 0) or is_process_feature(n)
+                               for j, n in enumerate(self.names)])
+
+    def dev_rows(self, eval_only: bool = True) -> np.ndarray:
+        m = self.folds[self.store.seg] >= 0
+        return np.flatnonzero(m & (self.eval_mask if eval_only else self.train_mask))
 
     def assert_tier(self, cols: np.ndarray, tier: str) -> None:
         bad = cols[self.ftier[cols] > K.TIER_ORDER[tier]]
@@ -168,30 +323,54 @@ class Ledger:
         te = np.flatnonzero((f == k) & self.train_mask)
         return tr, te
 
-    def lock_rows(self, purpose: str) -> np.ndarray:
-        os.makedirs(OUT_DIR, exist_ok=True)
-        with open(os.path.join(OUT_DIR, "lock_ledger.jsonl"), "a") as fh:
-            fh.write(json.dumps({"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "purpose": purpose,
-                                 "lock": lock_fingerprint(self.store, self.folds)}) + "\n")
+    def lock_rows(self, purpose: str, chain=None) -> np.ndarray:
+        """The locked rows — every access appended to the hash chain (``trust``)."""
+        from backend.ml.mimic import trust
+        (chain or trust.Chain()).append("lock_access", {
+            "purpose": purpose, "lock": lock_fingerprint(self.store, self.folds)})
         return np.flatnonzero((self.folds[self.store.seg] < 0) & self.train_mask)
 
     # ------------------------------------------------------------------ #
-    def run(self, name: str, fit_predict: Callable, tier: str, verbose: bool = True) -> np.ndarray:
-        """OOF predictions over the dev folds. ``fit_predict(ledger, cols, tr, te) -> p``."""
-        cols = self.columns(tier)
-        self.assert_tier(cols, tier)
+    def fit_oof(self, cand: Candidate, verbose: bool = True) -> FoldModels:
+        """Fit ``cand`` on every dev fold; keep its out-of-fold scores AND its predictors."""
+        cols = cand.cols(self)
         oof = np.full(self.store.n_rows, np.nan)
+        preds: Dict[int, Predictor] = {}
         for k in range(self.n_folds):
             tr, te = self.fold_rows(k)
             if not len(te):
                 continue
-            oof[te] = fit_predict(self, cols, tr, te)
+            pr = cand.fit(self, cols, tr, k)
+            oof[te] = pr(self, te)
+            preds[k] = pr
+        fm = FoldModels(cand.name, cand.tier, oof, preds, cols)
         if verbose:
-            s = self.score(oof)
-            print(f"  {name:<28} [{tier}] AUROC {s['auroc']:.4f}  hour-matched {s['auroc_hourmatched']:.4f}  "
-                  f"pre-suspicion {s['auroc_presusp']:.4f}  between {s['between']:.4f}  "
-                  f"within {s['within_septic']:.4f}  AUPRC {s['auprc']:.4f}", flush=True)
-        return oof
+            self.report(fm)
+        return fm
+
+    def report(self, fm: FoldModels) -> None:
+        s = self.score(fm.oof)
+        print(f"  {fm.name:<28} [{fm.tier}] AUROC {s['auroc']:.4f}  hour-matched {s['auroc_hourmatched']:.4f}  "
+              f"pre-suspicion {s['auroc_presusp']:.4f}  between {s['between']:.4f}  "
+              f"within {s['within_septic']:.4f}  AUPRC {s['auprc']:.4f}", flush=True)
+
+    def view(self, stays: np.ndarray, X: Optional[np.ndarray] = None) -> "Ledger":
+        """A ledger over ``stays`` of this one — optionally with an EDITED grid ``X`` (their
+        rows, base channels) whose derived channels are recomputed. Features are rebuilt
+        from the grid; labels, masks, folds and design weights are inherited, because a
+        counterfactual changes what a model sees, never what happened to the patient."""
+        stays = np.asarray(stays, dtype=np.int64)
+        sub = E.subset(self.store, stays)
+        if X is not None:
+            sub = E.rederive(sub, X)
+        F, names = build_features(sub, dtype=self.F.dtype)
+        if names != self.names:
+            raise RuntimeError("a view's features differ from the ledger's")
+        rows = np.concatenate([np.arange(self.store.starts[k], self.store.starts[k] + self.store.lens[k])
+                               for k in stays]) if len(stays) else np.zeros(0, np.int64)
+        return Ledger(store=sub, F=F, names=names, ftier=self.ftier, folds=self.folds[stays],
+                      rule=self.rule, anchor=self.anchor, design_w=self.design_w[rows].copy(),
+                      covert=self.covert, parent_rows=rows)
 
     def score(self, p: np.ndarray, rows: Optional[np.ndarray] = None,
               y: Optional[np.ndarray] = None) -> Dict[str, float]:
@@ -241,7 +420,7 @@ class Ledger:
         for rule in E.RULES:
             for anchor in ("min", "si", "sofa"):
                 other = Ledger(self.store, self.F, self.names, self.ftier, self.folds, rule, anchor,
-                               self.design_w)
+                               self.design_w, self.covert)
                 out[f"{rule}/{anchor}"] = other.score(p)["auroc"]
         return out
 

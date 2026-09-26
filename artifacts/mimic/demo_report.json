@@ -12,7 +12,249 @@
    "T": 108,
    "S": 24
   },
-  "lock_fingerprint": "a256b3fe4590a0c1"
+  "lock_fingerprint": "a256b3fe4590a0c1",
+  "features_P_strict": 619
+ },
+ "infoflow": {
+  "threshold": 0.9,
+  "rows": 4022,
+  "prevalence": {
+   "ventilated": 0.2846842366981601,
+   "vasopressor": 0.14793635007458975,
+   "orders_begun": 0.8105420188960716
+  },
+  "table": {
+   "HR": {
+    "ventilated": 0.6199014014173546,
+    "vasopressor": 0.24147881504513097,
+    "orders_begun": 0.4279125002012785
+   },
+   "SBP": {
+    "ventilated": 0.6328247067162696,
+    "vasopressor": 0.7454620132266504,
+    "orders_begun": 0.5313954237315428
+   },
+   "DBP": {
+    "ventilated": 0.49159680829588076,
+    "vasopressor": 0.396872586209856,
+    "orders_begun": 0.6336261935816305
+   },
+   "MAP": {
+    "ventilated": 0.5955802153201191,
+    "vasopressor": 0.36311569273171773,
+    "orders_begun": 0.6176748707791894
+   },
+   "Resp": {
+    "ventilated": 0.6575680028171024,
+    "vasopressor": 0.25217195136005965,
+    "orders_begun": 0.35005011835177047
+   },
+   "O2Sat": {
+    "ventilated": 0.6717917894215985,
+    "vasopressor": 0.433785828308563,
+    "orders_begun": 0.7585440719449946
+   },
+   "Temp": {
+    "ventilated": 0.6492035159137445,
+    "vasopressor": 0.384361459786716,
+    "orders_begun": 0.7903821071445823
+   },
+   "EtCO2": {
+    "ventilated": 0.5711171116200919,
+    "vasopressor": 0.22780637203816456,
+    "orders_begun": 0.3971454680128174
+   },
+   "FiO2": {
+    "ventilated": 0.9490858836761364,
+    "vasopressor": 0.4073026117362615,
+    "orders_begun": 0.5825954462747371
+   },
+   "GCS_eye": {
+    "ventilated": 0.7447237767385665,
+    "vasopressor": 0.36164541100945774,
+    "orders_begun": 0.39869289728354507
+   },
+   "GCS_verbal": {
+    "ventilated": 0.9616025608917587,
+    "vasopressor": 0.3263029869082153,
+    "orders_begun": 0.5916894111395585
+   },
+   "GCS_motor": {
+    "ventilated": 0.8690275077295764,
+    "vasopressor": 0.34748524446253554,
+    "orders_begun": 0.5325664621676892
+   },
+   "GCS": {
+    "ventilated": 0.4730479499357197,
+    "vasopressor": 0.2687773562882988,
+    "orders_begun": 0.3262924093844098
+   },
+   "Lactate": {
+    "ventilated": 0.538720738032248,
+    "vasopressor": 0.4690147199819525,
+    "orders_begun": 0.4473849894530055
+   },
+   "WBC": {
+    "ventilated": 0.4534118661329958,
+    "vasopressor": 0.32820729108684615,
+    "orders_begun": 0.5730544418144051
+   },
+   "Platelets": {
+    "ventilated": 0.5805199496685807,
+    "vasopressor": 0.4145976219492758,
+    "orders_begun": 0.6361548556430446
+   },
+   "Creatinine": {
+    "ventilated": 0.4382251647989703,
+    "vasopressor": 0.7043953969098582,
+    "orders_begun": 0.5071890649405021
+   },
+   "Bilirubin_total": {
+    "ventilated": 0.47088032930955187,
+    "vasopressor": 0.25553256026659277,
+    "orders_begun": 0.5101494694298182
+   },
+   "BUN": {
+    "ventilated": 0.5433091542166224,
+    "vasopressor": 0.6391517680897862,
+    "orders_begun": 0.48783009677471295
+   },
+   "HCO3": {
+    "ventilated": 0.5587112363831198,
+    "vasopressor": 0.35081005264667875,
+    "orders_begun": 0.4156799993559087
+   },
+   "pH": {
+    "ventilated": 0.51941614946428,
+    "vasopressor": 0.46742722767542966,
+    "orders_begun": 0.6134774084987843
+   },
+   "PaCO2": {
+    "ventilated": 0.7481999231975326,
+    "vasopressor": 0.6319411102637729,
+    "orders_begun": 0.5887064634558717
+   },
+   "PaO2": {
+    "ventilated": 0.620794040371384,
+    "vasopressor": 0.3875514022358287,
+    "orders_begun": 0.6256992415825322
+   },
+   "SaO2": {
+    "ventilated": 0.5029039225418277,
+    "vasopressor": 0.26816236853655967,
+    "orders_begun": 0.5196423683235915
+   },
+   "BaseExcess": {
+    "ventilated": 0.5115795656866003,
+    "vasopressor": 0.45052781544482395,
+    "orders_begun": 0.5453824694459205
+   },
+   "Glucose": {
+    "ventilated": 0.5004098155374731,
+    "vasopressor": 0.3511249028353682,
+    "orders_begun": 0.7435745857688034
+   },
+   "Potassium": {
+    "ventilated": 0.4104788315096542,
+    "vasopressor": 0.5130567196239453,
+    "orders_begun": 0.40638032784245526
+   },
+   "Sodium": {
+    "ventilated": 0.6144321853944779,
+    "vasopressor": 0.42256377310188736,
+    "orders_begun": 0.5129661610550215
+   },
+   "Chloride": {
+    "ventilated": 0.6017802690514895,
+    "vasopressor": 0.5042075657225248,
+    "orders_begun": 0.6713254593175852
+   },
+   "Hgb": {
+    "ventilated": 0.4032255518469779,
+    "vasopressor": 0.4365915260180524,
+    "orders_begun": 0.4289678034877542
+   },
+   "Hct": {
+    "ventilated": 0.6383424934695135,
+    "vasopressor": 0.509207406335747,
+    "orders_begun": 0.6287210360208042
+   },
+   "INR": {
+    "ventilated": 0.5333553419455309,
+    "vasopressor": 0.6775039049760552,
+    "orders_begun": 0.5872447788351609
+   },
+   "PTT": {
+    "ventilated": 0.5039598805767167,
+    "vasopressor": 0.3626946664279952,
+    "orders_begun": 0.4917427499476676
+   },
+   "Albumin": {
+    "ventilated": 0.2651602151076221,
+    "vasopressor": 0.25776789852211673,
+    "orders_begun": 0.48088397500925883
+   },
+   "AST": {
+    "ventilated": 0.487970699706906,
+    "vasopressor": 0.22447543359333813,
+    "orders_begun": 0.5014347132988745
+   },
+   "ALT": {
+    "ventilated": 0.46048573766037826,
+    "vasopressor": 0.22607494121080005,
+    "orders_begun": 0.4819962401172246
+   },
+   "Alkalinephos": {
+    "ventilated": 0.44104454391325265,
+    "vasopressor": 0.4050689899537288,
+    "orders_begun": 0.4803662866528187
+   },
+   "TroponinT": {
+    "ventilated": 0.41691627468569425,
+    "vasopressor": 0.6583014764119829,
+    "orders_begun": 0.4670118593304671
+   },
+   "Magnesium": {
+    "ventilated": 0.42305682927236493,
+    "vasopressor": 0.42425940320686195,
+    "orders_begun": 0.5218660934254384
+   },
+   "Calcium": {
+    "ventilated": 0.45891189421294926,
+    "vasopressor": 0.4785090225176735,
+    "orders_begun": 0.5991216205336296
+   },
+   "Phosphate": {
+    "ventilated": 0.4508118142230277,
+    "vasopressor": 0.560422546608372,
+    "orders_begun": 0.5965315685232597
+   },
+   "Fibrinogen": {
+    "ventilated": 0.460134662349943,
+    "vasopressor": 0.28758426043309065,
+    "orders_begun": 0.49709313559731416
+   },
+   "Bands": {
+    "ventilated": 0.45318267299907566,
+    "vasopressor": 0.2778697589336289,
+    "orders_begun": 0.5321635025683139
+   },
+   "UrineOutput": {
+    "ventilated": 0.6559223657588493,
+    "vasopressor": 0.2845188848810607,
+    "orders_begun": 0.5166088997310919
+   },
+   "SOFA_P": {
+    "ventilated": 0.43611066840914164,
+    "vasopressor": 0.5644839669162092,
+    "orders_begun": 0.48447719916912224
+   }
+  },
+  "flagged": [
+   "FiO2",
+   "GCS_verbal"
+  ],
+  "note": "flagged = recovers a treatment state (ventilation / vasopressor) from one physiology channel alone; orders_begun is reported, never flagged"
  },
  "tripwires": {
   "clock_auroc": 0.3664518750158701,
@@ -21,169 +263,3117 @@
   "onset_within_4h_rise": 0.7941176470588235,
   "onset_within_4h_absolute": 0.9324324324324325
  },
+ "admission": {
+  "direct_P": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "genesis_P": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "direct_T": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "genesis_T": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "direct_S": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "genesis_S": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "direct_Pstrict": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "clinician": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 0.0,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "twin_s3_P": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 8.13949798672553e-08,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "twin_direct_P": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 2.1208654477078426e-07,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  },
+  "genesis_twin_P": {
+   "max_abs_change": {
+    "reproducible": 0.0,
+    "future_rewritten": 0.0,
+    "stay_truncated": 6.354239712180743e-08,
+    "neighbours_scrambled": 0.0
+   },
+   "passed": {
+    "reproducible": true,
+    "future_rewritten": true,
+    "stay_truncated": true,
+    "neighbours_scrambled": true
+   },
+   "admissible": true,
+   "stays": 8,
+   "fold": 4
+  }
+ },
  "models": {
   "direct_P": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7064724621998597,
-   "between": 0.7333184724531598,
-   "within_septic": 0.5433117673081177,
-   "auprc": 0.13536165210077059,
-   "auroc_hourmatched": 0.6604466426858513,
-   "auroc_presusp": 0.8337278106508875
+   "auroc": 0.6903152339301794,
+   "between": 0.7147325155299988,
+   "within_septic": 0.541915505419155,
+   "auprc": 0.12849454918698117,
+   "auroc_hourmatched": 0.6405875299760192,
+   "auroc_presusp": 0.7765285996055227
   },
   "genesis_P": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7310520754186288,
-   "between": 0.7861534507191226,
-   "within_septic": 0.3961651183366512,
-   "auprc": 0.09323697140924084,
-   "auroc_hourmatched": 0.6656175059952039,
-   "auroc_presusp": 0.7306706114398422
+   "auroc": 0.7345542405887856,
+   "between": 0.7901181212511345,
+   "within_septic": 0.3968563370935634,
+   "auprc": 0.09214794529381283,
+   "auroc_hourmatched": 0.667416067146283,
+   "auroc_presusp": 0.7356015779092702
   },
   "direct_T": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.6803615062630746,
-   "between": 0.7046854990412458,
-   "within_septic": 0.5325287547002876,
-   "auprc": 0.09197690436913367,
-   "auroc_hourmatched": 0.6407374100719424,
-   "auroc_presusp": 0.6702662721893491
+   "auroc": 0.6936015657197995,
+   "between": 0.7178828704851546,
+   "within_septic": 0.5460282570227826,
+   "auprc": 0.09325821882477123,
+   "auroc_hourmatched": 0.6557254196642686,
+   "auroc_presusp": 0.6790927021696253
   },
   "genesis_T": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7029468581105497,
-   "between": 0.756151153348361,
-   "within_septic": 0.3795896925458969,
-   "auprc": 0.08314859591122174,
-   "auroc_hourmatched": 0.6434352517985612,
-   "auroc_presusp": 0.6851084812623274
+   "auroc": 0.7134426107830748,
+   "between": 0.7672513209881878,
+   "within_septic": 0.3864120216766202,
+   "auprc": 0.08304698368246313,
+   "auroc_hourmatched": 0.6519784172661871,
+   "auroc_presusp": 0.7076923076923077
   },
   "direct_S": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7346479962653989,
-   "between": 0.7546169191120776,
-   "within_septic": 0.6132838420703384,
-   "auprc": 0.11351931208078454,
-   "auroc_hourmatched": 0.6488309352517986,
-   "auroc_presusp": 0.6646942800788954
+   "auroc": 0.7371618203445912,
+   "between": 0.7571781463174967,
+   "within_septic": 0.6155095664675957,
+   "auprc": 0.11366152629052752,
+   "auroc_hourmatched": 0.6531774580335732,
+   "auroc_presusp": 0.6760355029585798
   },
   "genesis_S": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7474798278802037,
-   "between": 0.8019143239929669,
-   "within_septic": 0.4166459301039593,
-   "auprc": 0.10477347623656692,
-   "auroc_hourmatched": 0.6650179856115108,
-   "auroc_presusp": 0.6866863905325444
+   "auroc": 0.7532086903699248,
+   "between": 0.8052057056681369,
+   "within_septic": 0.4371889515593895,
+   "auprc": 0.10478852598625556,
+   "auroc_hourmatched": 0.6659172661870504,
+   "auroc_presusp": 0.7000986193293885
+  },
+  "direct_Pstrict": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.6274618189773209,
+   "between": 0.636905100390553,
+   "within_septic": 0.5700688453881885,
+   "auprc": 0.10834745964725187,
+   "auroc_hourmatched": 0.604091726618705,
+   "auroc_presusp": 0.6134122287968442
+  },
+  "clinician": {
+   "n_rows": 3874,
+   "n_pos": 137,
+   "n_stays": 75,
+   "auroc": 0.7272813392998404,
+   "between": 0.7431403011147935,
+   "within_septic": 0.630896095996461,
+   "auprc": 0.08835304078887815,
+   "auroc_hourmatched": 0.7026378896882494,
+   "auroc_presusp": 0.9169625246548323
   },
   "twin_s3_P": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7078514519433794,
-   "between": 0.717612190167708,
-   "within_septic": 0.6485290864852908,
-   "auprc": 0.06991144183109332,
+   "auroc": 0.7079569270795693,
+   "between": 0.7176576826580352,
+   "within_septic": 0.6489991152399911,
+   "auprc": 0.06987160311122838,
    "auroc_hourmatched": 0.7311151079136691,
-   "auroc_presusp": 0.7
+   "auroc_presusp": 0.7003944773175542
   },
   "twin_direct_P": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.6856372163158316,
-   "between": 0.6833472464532917,
-   "within_septic": 0.6995548551205486,
-   "auprc": 0.0758761999826549,
-   "auroc_hourmatched": 0.6449340527577938,
-   "auroc_presusp": 0.7870808678500986
+   "auroc": 0.6862036568620365,
+   "between": 0.6839932398159374,
+   "within_septic": 0.699637801371378,
+   "auprc": 0.07597630724566061,
+   "auroc_hourmatched": 0.6458333333333334,
+   "auroc_presusp": 0.7874753451676528
   },
   "genesis_twin_P": {
    "n_rows": 3874,
    "n_pos": 137,
    "n_stays": 75,
-   "auroc": 0.7659741117137951,
-   "between": 0.7971376125086151,
-   "within_septic": 0.5765732138907321,
-   "auprc": 0.13053948300122026,
-   "auroc_hourmatched": 0.7294664268585132,
-   "auroc_presusp": 0.8502958579881656
+   "auroc": 0.7681070533567462,
+   "between": 0.7991392820830101,
+   "within_septic": 0.5795039814200398,
+   "auprc": 0.1306151400437743,
+   "auroc_hourmatched": 0.7279676258992805,
+   "auroc_presusp": 0.8429980276134122
   }
  },
  "comparisons": {
   "twin_adds_to_trees_P": {
-   "d_auroc": 0.034922036295166325,
+   "d_auroc": 0.03355281276796063,
    "ci": [
-    -0.045880709425254254,
-    0.12571041775260414
+    -0.05459605209512008,
+    0.12035747161622107
    ],
    "significant": false
   },
   "tier_T_over_P": {
-   "d_auroc": -0.028105217308079133,
+   "d_auroc": -0.021111629805710797,
    "ci": [
-    -0.10897589082834687,
-    0.04787090454214168
+    -0.09211923122730213,
+    0.047211869082000694
    ],
    "significant": false
   },
   "tier_S_over_P": {
-   "d_auroc": 0.016427752461574907,
+   "d_auroc": 0.01865444978113917,
    "ci": [
-    -0.061770657065410295,
-    0.07857553574364239
+    -0.03831430187679364,
+    0.06314364350299544
+   ],
+   "significant": false
+  },
+  "declared_P_over_strict_P": {
+   "d_auroc": 0.06285341495285846,
+   "ci": [
+    -0.006963453377563088,
+    0.14371403968842714
    ],
    "significant": false
   }
  },
  "twin_factors": {
-  "susp6": 0.6457762533735243,
-  "organ": 0.6723453665703518
+  "susp6": 0.645656329041909,
+  "organ": 0.6719564617597209
+ },
+ "crossexam": {
+  "direct_P": {
+   "definitional": {
+    "tier": "P",
+    "model": {
+     "all": 0.6903152339301794,
+     "prediction": 0.6851909129136852,
+     "detection": 0.6968914459013469
+    },
+    "oracle": {
+     "all": 0.509120669415531,
+     "prediction": 0.42619609451292617,
+     "detection": 0.6155405405405405
+    },
+    "margin": {
+     "all": 0.18119456451464833,
+     "prediction": 0.258994818400759,
+     "detection": 0.08135090536080636
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.4144482610562473,
+     "organ_only": 0.6126600454708627,
+     "neither": 0.709957529368619
+    },
+    "all_hours": {
+     "infection_only": 0.7219622155431515,
+     "organ_only": 0.711915640497019,
+     "neither": 0.709957529368619
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.4144482610562473
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.66,
+     0.6576168929110106,
+     0.6946107784431138,
+     0.6268656716417911,
+     0.6192592592592593,
+     0.575098814229249,
+     0.6307692307692307,
+     0.6063218390804598,
+     0.7112676056338029
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.6903152339301794,
+    "auroc_soft": 0.5815787435200821,
+    "auroc_unambiguous": 0.942723884663165,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.6903152339301794,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.5067266702744785,
+       "gap": -0.2864625751206492,
+       "ci": [
+        -0.5606981494676395,
+        0.12445507100128995
+       ],
+       "p": 0.09380451547288371,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.7931892453951277,
+       "gap": 0.2864625751206492,
+       "ci": [
+        -0.12445507100129068,
+        0.5606981494676392
+       ],
+       "p": 0.09380451547288371,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.7612908056304283,
+       "gap": 0.11562994764397538,
+       "ci": [
+        -0.27326364053400354,
+        0.3892967762638704
+       ],
+       "p": 0.45478771603187296,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.5888111888111888,
+       "gap": -0.134544605058034,
+       "ci": [
+        -0.4500133830382694,
+        0.22614198280619416
+       ],
+       "p": 0.41831233499041387,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.7082275853889943,
+       "gap": 0.18876801692761103,
+       "ci": [
+        -0.06974342204631524,
+        0.442333316812911
+       ],
+       "p": 0.15521265182145294,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.7687169312169312,
+       "gap": 0.07399316487427099,
+       "ci": [
+        -0.24051977828618462,
+        0.32102883103274726
+       ],
+       "p": 0.6189700914060601,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.7067792954708843,
+       "gap": -0.00783317235072567,
+       "ci": [
+        -0.26192342802727137,
+        0.3082525861607281
+       ],
+       "p": 0.9587036810662477,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6600803654024052,
+       "gap": -0.04386371112445275,
+       "ci": [
+        -0.39055237405430326,
+        0.23085211789337917
+       ],
+       "p": 0.7996276030587812,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.703944076526858,
+       "gap": 0.04386371112445275,
+       "ci": [
+        -0.23085211789337928,
+        0.39055237405430304
+       ],
+       "p": 0.7996276030587812,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.8879683777344596,
+       "gap": 0.24232921506286975,
+       "ci": [
+        0.028043765166907528,
+        0.4210098087520149
+       ],
+       "p": 0.020397261934673505,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6022769690182904,
+       "gap": -0.11299824717909468,
+       "ci": [
+        -0.4098439014316386,
+        0.2845609862833619
+       ],
+       "p": 0.5144412398527196,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.7543248456213274,
+       "gap": 0.1233107286521542,
+       "ci": [
+        -0.25886826915355665,
+        0.4048504522334343
+       ],
+       "p": 0.4607573190300318,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.6310141169691732,
+       "gap": -0.1233107286521542,
+       "ci": [
+        -0.40485045223343435,
+        0.25886826915355654
+       ],
+       "p": 0.4607573190300318,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Female",
+      "auroc": 0.5067266702744785
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.5888111888111888
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.7082275853889943
+     },
+     "insurance": {
+      "level": "Other",
+      "auroc": 0.7067792954708843
+     },
+     "admission_type": {
+      "level": "Elective/other",
+      "auroc": 0.6600803654024052
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.6022769690182904
+     },
+     "anchor_year_group": {
+      "level": "2014 - 2016",
+      "auroc": 0.6310141169691732
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": 0.0818976975014826,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.21683014971605577,
+      "ppv": 0.125,
+      "episodes_caught": 0.2,
+      "episodes_caught_before_onset": 0.2
+     },
+     "0.5": {
+      "threshold": -1.177317564098071,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.4274651522973671,
+      "ppv": 0.1375,
+      "episodes_caught": 0.4666666666666667,
+      "episodes_caught_before_onset": 0.4
+     },
+     "1.0": {
+      "threshold": -1.9506496286818689,
+      "alerts_per_pt_day": 0.9726381001548787,
+      "false_alerts_per_pt_day": 0.8487351574599897,
+      "ppv": 0.12738853503184713,
+      "episodes_caught": 0.8,
+      "episodes_caught_before_onset": 0.6666666666666666
+     },
+     "2.0": {
+      "threshold": -2.8438235720587612,
+      "alerts_per_pt_day": 1.994837377387713,
+      "false_alerts_per_pt_day": 1.827568404749613,
+      "ppv": 0.08385093167701864,
+      "episodes_caught": 0.9333333333333333,
+      "episodes_caught_before_onset": 0.8666666666666667
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.6903152339301794,
+    "conditional_auroc": 0.5866737911844174,
+    "n_strata": 10
+   }
+  },
+  "genesis_P": {
+   "definitional": {
+    "tier": "P",
+    "model": {
+     "all": 0.7345542405887856,
+     "prediction": 0.7468488161557468,
+     "detection": 0.7187762019445187
+    },
+    "oracle": {
+     "all": 0.509120669415531,
+     "prediction": 0.42619609451292617,
+     "detection": 0.6155405405405405
+    },
+    "margin": {
+     "all": 0.22543357117325458,
+     "prediction": 0.32065272164282066,
+     "detection": 0.10323566140397822
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.516208673250322,
+     "organ_only": 0.6701368114554664,
+     "neither": 0.7515408912917461
+    },
+    "all_hours": {
+     "infection_only": 0.8013310433662516,
+     "organ_only": 0.797983878456938,
+     "neither": 0.7515408912917461
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.516208673250322
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.7015384615384616,
+     0.7088989441930619,
+     0.7350299401197605,
+     0.691044776119403,
+     0.68,
+     0.6304347826086957,
+     0.7102564102564103,
+     0.7327586206896551,
+     0.8943661971830986
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.7345542405887856,
+    "auroc_soft": 0.6499600148901645,
+    "auroc_unambiguous": 0.8921169060436327,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.7345542405887856,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.7025833831781024,
+       "gap": -0.07261715158125581,
+       "ci": [
+        -0.29250055925244334,
+        0.22953403944581688
+       ],
+       "p": 0.6058125889956261,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.7752005347593582,
+       "gap": 0.07261715158125581,
+       "ci": [
+        -0.2295340394458169,
+        0.292500559252443
+       ],
+       "p": 0.6058125889956261,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.7467205750224618,
+       "gap": 0.026174057335898948,
+       "ci": [
+        -0.33444662187739654,
+        0.2508050964120127
+       ],
+       "p": 0.8564236248097743,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.6226173826173826,
+       "gap": -0.1241709908199421,
+       "ci": [
+        -0.3986757725676782,
+        0.17477981711472804
+       ],
+       "p": 0.4296727668923386,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.7273363377609108,
+       "gap": -0.18323030874039992,
+       "ci": [
+        -0.3253713345543666,
+        -0.03853480599662161
+       ],
+       "p": 0.014069209212601796,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.7641865079365079,
+       "gap": -0.022621355173333413,
+       "ci": [
+        -0.27105425528635513,
+        0.19056801535434026
+       ],
+       "p": 0.8508523324921895,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.7923867721063983,
+       "gap": 0.08284457493113917,
+       "ci": [
+        -0.14179971226490196,
+        0.36632305160042716
+       ],
+       "p": 0.5300755183901327,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.684117715078631,
+       "gap": -0.08768017552720664,
+       "ci": [
+        -0.42737522173552656,
+        0.17359135225523192
+       ],
+       "p": 0.5791711374913333,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.7717978906058376,
+       "gap": 0.08768017552720664,
+       "ci": [
+        -0.17359135225523198,
+        0.4273752217355265
+       ],
+       "p": 0.5791711374913333,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.7595841455490578,
+       "gap": 0.03048311228818179,
+       "ci": [
+        -0.2651849793895725,
+        0.24921541325877952
+       ],
+       "p": 0.8148268165804642,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6338393264485089,
+       "gap": -0.11507251420069797,
+       "ci": [
+        -0.35094998441313235,
+        0.19097916178274707
+       ],
+       "p": 0.4251333297851734,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.7782778367548332,
+       "gap": 0.07816739788034943,
+       "ci": [
+        -0.3231847106193049,
+        0.3387049877657409
+       ],
+       "p": 0.6227472629063178,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.7001104388744838,
+       "gap": -0.07816739788034943,
+       "ci": [
+        -0.3387049877657409,
+        0.32318471061930487
+       ],
+       "p": 0.6227472629063178,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Female",
+      "auroc": 0.7025833831781024
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.6226173826173826
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.7273363377609108
+     },
+     "insurance": {
+      "level": "Medicare",
+      "auroc": 0.7641865079365079
+     },
+     "admission_type": {
+      "level": "Elective/other",
+      "auroc": 0.684117715078631
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.6338393264485089
+     },
+     "anchor_year_group": {
+      "level": "2014 - 2016",
+      "auroc": 0.7001104388744838
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": -2.584820495242011,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.21683014971605577,
+      "ppv": 0.125,
+      "episodes_caught": 0.2,
+      "episodes_caught_before_onset": 0.2
+     },
+     "0.5": {
+      "threshold": -3.7191703918737256,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.4274651522973671,
+      "ppv": 0.1375,
+      "episodes_caught": 0.4666666666666667,
+      "episodes_caught_before_onset": 0.4
+     },
+     "1.0": {
+      "threshold": -5.072049313656734,
+      "alerts_per_pt_day": 0.9974186886938565,
+      "false_alerts_per_pt_day": 0.8611254517294786,
+      "ppv": 0.13664596273291926,
+      "episodes_caught": 0.7333333333333333,
+      "episodes_caught_before_onset": 0.6666666666666666
+     },
+     "2.0": {
+      "threshold": -6.915429570007024,
+      "alerts_per_pt_day": 1.994837377387713,
+      "false_alerts_per_pt_day": 1.8089829633453796,
+      "ppv": 0.09316770186335403,
+      "episodes_caught": 0.8666666666666667,
+      "episodes_caught_before_onset": 0.8666666666666667
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.7345542405887856,
+    "conditional_auroc": 0.6125539379763681,
+    "n_strata": 10
+   }
+  },
+  "twin_s3_P": {
+   "definitional": {
+    "tier": "P",
+    "model": {
+     "all": 0.7079569270795693,
+     "prediction": 0.7165759046947165,
+     "detection": 0.696895905806797
+    },
+    "oracle": {
+     "all": 0.509120669415531,
+     "prediction": 0.42619609451292617,
+     "detection": 0.6155405405405405
+    },
+    "margin": {
+     "all": 0.19883625766403823,
+     "prediction": 0.2903798101817904,
+     "detection": 0.08135536526625642
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.766208673250322,
+     "organ_only": 0.7042399585178094,
+     "neither": 0.8494481183972364
+    },
+    "all_hours": {
+     "infection_only": 0.6529769572062402,
+     "organ_only": 0.7078991846362438,
+     "neither": 0.8494481183972364
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.7042399585178094
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.7492307692307693,
+     0.808446455505279,
+     0.7934131736526946,
+     0.735820895522388,
+     0.7066666666666667,
+     0.7075098814229249,
+     0.7487179487179487,
+     0.5977011494252874,
+     0.852112676056338
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.7079569270795693,
+    "auroc_soft": 0.58959100876629,
+    "auroc_unambiguous": 0.7074733561449774,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.7079569270795693,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.7452505055683728,
+       "gap": 0.15254402903836684,
+       "ci": [
+        -0.19078840957254464,
+        0.3906244747931314
+       ],
+       "p": 0.3244979903744547,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.592706476530006,
+       "gap": -0.15254402903836684,
+       "ci": [
+        -0.39062447479313156,
+        0.19078840957254442
+       ],
+       "p": 0.3244979903744547,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.7385145253069781,
+       "gap": 0.03281294866520579,
+       "ci": [
+        -0.20996104528944987,
+        0.2723621054011557
+       ],
+       "p": 0.7941891517055728,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.651988011988012,
+       "gap": -0.0885971122926612,
+       "ci": [
+        -0.3983742792108457,
+        0.14765962520974266
+       ],
+       "p": 0.4772431943845892,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.654560009487666,
+       "gap": -0.1615319445353225,
+       "ci": [
+        -0.30551405762177364,
+        -0.0036593295261167502
+       ],
+       "p": 0.051552350971934446,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.572255291005291,
+       "gap": -0.17250418851397853,
+       "ci": [
+        -0.43881136820218714,
+        0.18980793217613082
+       ],
+       "p": 0.2892877842383397,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.7391085549964055,
+       "gap": 0.09934997989030381,
+       "ci": [
+        -0.2014419597315656,
+        0.36493679878358265
+       ],
+       "p": 0.5105643228802961,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6720484505087881,
+       "gap": -0.05944038932442253,
+       "ci": [
+        -0.35685549343528356,
+        0.2353699794887504
+       ],
+       "p": 0.6896247653350169,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.7314888398332107,
+       "gap": 0.05944038932442253,
+       "ci": [
+        -0.2353699794887505,
+        0.35685549343528344
+       ],
+       "p": 0.6896247653350169,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.6143599740090968,
+       "gap": -0.10403028296615857,
+       "ci": [
+        -0.3060917248914771,
+        0.20002255117610737
+       ],
+       "p": 0.4389081696803092,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6074405872838123,
+       "gap": -0.14797151976975542,
+       "ci": [
+        -0.4624166012044678,
+        0.12252555997249925
+       ],
+       "p": 0.26550156224644716,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.6400322961678204,
+       "gap": -0.11763600307351252,
+       "ci": [
+        -0.33791450357220326,
+        0.15741720457341601
+       ],
+       "p": 0.3760551668396286,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.7576682992413329,
+       "gap": 0.11763600307351252,
+       "ci": [
+        -0.15741720457341604,
+        0.33791450357220315
+       ],
+       "p": 0.3760551668396286,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Male",
+      "auroc": 0.592706476530006
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.651988011988012
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.654560009487666
+     },
+     "insurance": {
+      "level": "Medicare",
+      "auroc": 0.572255291005291
+     },
+     "admission_type": {
+      "level": "Elective/other",
+      "auroc": 0.6720484505087881
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.6074405872838123
+     },
+     "anchor_year_group": {
+      "level": "2011 - 2013",
+      "auroc": 0.6400322961678204
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": 10.052997541497128,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.21063500258131132,
+      "ppv": 0.15,
+      "episodes_caught": 0.2,
+      "episodes_caught_before_onset": 0.2
+     },
+     "0.5": {
+      "threshold": 0.015459017726993984,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.43366029943211154,
+      "ppv": 0.125,
+      "episodes_caught": 0.3333333333333333,
+      "episodes_caught_before_onset": 0.26666666666666666
+     },
+     "1.0": {
+      "threshold": -0.7844910490521053,
+      "alerts_per_pt_day": 0.9974186886938565,
+      "false_alerts_per_pt_day": 0.8982963345379453,
+      "ppv": 0.09937888198757763,
+      "episodes_caught": 0.5333333333333333,
+      "episodes_caught_before_onset": 0.4666666666666667
+     },
+     "2.0": {
+      "threshold": -1.6610377363686648,
+      "alerts_per_pt_day": 1.994837377387713,
+      "false_alerts_per_pt_day": 1.8027878162106352,
+      "ppv": 0.09627329192546584,
+      "episodes_caught": 0.9333333333333333,
+      "episodes_caught_before_onset": 0.9333333333333333
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.7079569270795693,
+    "conditional_auroc": 0.6231398959551558,
+    "n_strata": 10
+   }
+  },
+  "genesis_twin_P": {
+   "definitional": {
+    "tier": "P",
+    "model": {
+     "all": 0.7681070533567462,
+     "prediction": 0.8031061793438031,
+     "detection": 0.7231915083400232
+    },
+    "oracle": {
+     "all": 0.509120669415531,
+     "prediction": 0.42619609451292617,
+     "detection": 0.6155405405405405
+    },
+    "margin": {
+     "all": 0.2589863839412152,
+     "prediction": 0.37691008483087696,
+     "detection": 0.10765096779948269
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.6143194504079004,
+     "organ_only": 0.7101830800526505,
+     "neither": 0.8181097611470619
+    },
+    "all_hours": {
+     "infection_only": 0.7582224130528123,
+     "organ_only": 0.818242603220594,
+     "neither": 0.8181097611470619
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.6143194504079004
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.7507692307692307,
+     0.8144796380090498,
+     0.8188622754491018,
+     0.7686567164179104,
+     0.7377777777777778,
+     0.7094861660079052,
+     0.8025641025641026,
+     0.6408045977011494,
+     0.9014084507042254
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.7681070533567462,
+    "auroc_soft": 0.661541885005656,
+    "auroc_unambiguous": 0.9130178933374017,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.7681070533567462,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.7634129900215519,
+       "gap": 0.004723150449359448,
+       "ci": [
+        -0.24519736705396766,
+        0.25322726940510576
+       ],
+       "p": 0.9716066442869546,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.7586898395721925,
+       "gap": -0.004723150449359448,
+       "ci": [
+        -0.25322726940510576,
+        0.24519736705396744
+       ],
+       "p": 0.9716066442869546,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.8038185085354896,
+       "gap": 0.05926535235725383,
+       "ci": [
+        -0.22141827844609058,
+        0.24500041781478693
+       ],
+       "p": 0.617963324328475,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.6772227772227772,
+       "gap": -0.13919038160283292,
+       "ci": [
+        -0.36421326088350775,
+        0.04613298821680464
+       ],
+       "p": 0.23032676866086232,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.7608070445920304,
+       "gap": -0.05316754705951221,
+       "ci": [
+        -0.1439658667344069,
+        0.0653235094078397
+       ],
+       "p": 0.36360598396399224,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.7981371252204585,
+       "gap": 0.019863158573459994,
+       "ci": [
+        -0.18989986145566054,
+        0.22401727130394206
+       ],
+       "p": 0.8500294798199086,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.7844787922358016,
+       "gap": 0.03683564188444843,
+       "ci": [
+        -0.16538797971300476,
+        0.2578691787706099
+       ],
+       "p": 0.7473017570821798,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.7243871415356151,
+       "gap": -0.06776885552104417,
+       "ci": [
+        -0.2844272521488565,
+        0.1327544944054293
+       ],
+       "p": 0.5484554626755176,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.7921559970566593,
+       "gap": 0.06776885552104417,
+       "ci": [
+        -0.13275449440542939,
+        0.2844272521488565
+       ],
+       "p": 0.5484554626755176,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.8050682261208577,
+       "gap": 0.04130382151138268,
+       "ci": [
+        -0.18672744927810492,
+        0.23244855697011563
+       ],
+       "p": 0.7121642663007901,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6922151714984862,
+       "gap": -0.10031730934089245,
+       "ci": [
+        -0.37809321564262244,
+        0.11068604722699567
+       ],
+       "p": 0.42852454508299065,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.7917943810648764,
+       "gap": 0.05549360319106489,
+       "ci": [
+        -0.1631452237375494,
+        0.2830329647511952
+       ],
+       "p": 0.6268206155156801,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.7363007778738115,
+       "gap": -0.05549360319106489,
+       "ci": [
+        -0.28303296475119527,
+        0.1631452237375494
+       ],
+       "p": 0.6268206155156801,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Male",
+      "auroc": 0.7586898395721925
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.6772227772227772
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.7608070445920304
+     },
+     "insurance": {
+      "level": "Other",
+      "auroc": 0.7844787922358016
+     },
+     "admission_type": {
+      "level": "Elective/other",
+      "auroc": 0.7243871415356151
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.6922151714984862
+     },
+     "anchor_year_group": {
+      "level": "2014 - 2016",
+      "auroc": 0.7363007778738115
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": -4.472715684538608,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.19824470831182242,
+      "ppv": 0.2,
+      "episodes_caught": 0.3333333333333333,
+      "episodes_caught_before_onset": 0.3333333333333333
+     },
+     "0.5": {
+      "threshold": -5.615951198368158,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.39648941662364484,
+      "ppv": 0.2,
+      "episodes_caught": 0.6,
+      "episodes_caught_before_onset": 0.5333333333333333
+     },
+     "1.0": {
+      "threshold": -7.1451068680356675,
+      "alerts_per_pt_day": 0.9974186886938565,
+      "false_alerts_per_pt_day": 0.8549303045947342,
+      "ppv": 0.14285714285714285,
+      "episodes_caught": 0.7333333333333333,
+      "episodes_caught_before_onset": 0.7333333333333333
+     },
+     "2.0": {
+      "threshold": -9.321742160303573,
+      "alerts_per_pt_day": 1.994837377387713,
+      "false_alerts_per_pt_day": 1.7965926690758907,
+      "ppv": 0.09937888198757763,
+      "episodes_caught": 0.9333333333333333,
+      "episodes_caught_before_onset": 0.9333333333333333
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.7681070533567462,
+    "conditional_auroc": 0.6292091785296609,
+    "n_strata": 10
+   }
+  },
+  "direct_Pstrict": {
+   "definitional": {
+    "tier": "P",
+    "model": {
+     "all": 0.6274618189773209,
+     "prediction": 0.6357728436936357,
+     "detection": 0.6167960039247168
+    },
+    "oracle": {
+     "all": 0.509120669415531,
+     "prediction": 0.42619609451292617,
+     "detection": 0.6155405405405405
+    },
+    "margin": {
+     "all": 0.11834114956178987,
+     "prediction": 0.20957674918070957,
+     "detection": 0.0012554633841762586
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.3418849291541434,
+     "organ_only": 0.5456902397191975,
+     "neither": 0.5755716972873215
+    },
+    "all_hours": {
+     "infection_only": 0.6417131816230142,
+     "organ_only": 0.6578583235824,
+     "neither": 0.5755716972873215
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.3418849291541434
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.6261538461538462,
+     0.6033182503770739,
+     0.6803892215568862,
+     0.5895522388059702,
+     0.5733333333333334,
+     0.5098814229249012,
+     0.5717948717948718,
+     0.6120689655172413,
+     0.5563380281690141
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.6274618189773209,
+    "auroc_soft": 0.5612001492409836,
+    "auroc_unambiguous": 0.7744480526556676,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.6274618189773209,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.4240223304565781,
+       "gap": -0.3084383053128812,
+       "ci": [
+        -0.5780344255857935,
+        0.11499505965620735
+       ],
+       "p": 0.09236990381590449,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.7324606357694593,
+       "gap": 0.3084383053128812,
+       "ci": [
+        -0.11499505965620796,
+        0.5780344255857933
+       ],
+       "p": 0.09236990381590449,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.6756064690026954,
+       "gap": 0.07443701378356726,
+       "ci": [
+        -0.3093334992368045,
+        0.33549706557553294
+       ],
+       "p": 0.6748120290756621,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.6477022977022977,
+       "gap": 0.04042232324001327,
+       "ci": [
+        -0.2691853598849618,
+        0.38429755545389793
+       ],
+       "p": 0.8092485671253784,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.6611895161290322,
+       "gap": 0.12423650140832243,
+       "ci": [
+        -0.0636920906694313,
+        0.3397979457529296
+       ],
+       "p": 0.2341047073443705,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.7058090828924162,
+       "gap": 0.10528114897732033,
+       "ci": [
+        -0.24469562797857838,
+        0.38180009681904864
+       ],
+       "p": 0.5382230163049568,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.6161897915168943,
+       "gap": -0.05378168277518103,
+       "ci": [
+        -0.3567423182617073,
+        0.2615353786001054
+       ],
+       "p": 0.7477286612393439,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.7237945189639223,
+       "gap": 0.1619647421672581,
+       "ci": [
+        -0.20078431170299377,
+        0.5104806875653192
+       ],
+       "p": 0.376748102377358,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.5618297767966642,
+       "gap": -0.1619647421672581,
+       "ci": [
+        -0.5104806875653192,
+        0.20078431170299368
+       ],
+       "p": 0.376748102377358,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.7916395928091835,
+       "gap": 0.20386750574132173,
+       "ci": [
+        -0.16592773098061564,
+        0.4692236945250554
+       ],
+       "p": 0.2440311929342185,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.5706109244743063,
+       "gap": -0.0714604718943973,
+       "ci": [
+        -0.3960365308186875,
+        0.31796122139418603
+       ],
+       "p": 0.6932682533470944,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.7658976390903246,
+       "gap": 0.24150025120979068,
+       "ci": [
+        -0.10886533225052096,
+        0.5258072743623545
+       ],
+       "p": 0.1572286635752853,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.5243973878805339,
+       "gap": -0.24150025120979068,
+       "ci": [
+        -0.5258072743623545,
+        0.1088653322505209
+       ],
+       "p": 0.1572286635752853,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Female",
+      "auroc": 0.4240223304565781
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.6477022977022977
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.6611895161290322
+     },
+     "insurance": {
+      "level": "Other",
+      "auroc": 0.6161897915168943
+     },
+     "admission_type": {
+      "level": "Emergency/urgent",
+      "auroc": 0.5618297767966642
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.5706109244743063
+     },
+     "anchor_year_group": {
+      "level": "2014 - 2016",
+      "auroc": 0.5243973878805339
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": -0.1683810326440719,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.21683014971605577,
+      "ppv": 0.125,
+      "episodes_caught": 0.2,
+      "episodes_caught_before_onset": 0.2
+     },
+     "0.5": {
+      "threshold": -1.4141190096387104,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.43366029943211154,
+      "ppv": 0.125,
+      "episodes_caught": 0.4666666666666667,
+      "episodes_caught_before_onset": 0.4666666666666667
+     },
+     "1.0": {
+      "threshold": -2.4976147630773378,
+      "alerts_per_pt_day": 0.9974186886938565,
+      "false_alerts_per_pt_day": 0.8859060402684564,
+      "ppv": 0.11180124223602485,
+      "episodes_caught": 0.6666666666666666,
+      "episodes_caught_before_onset": 0.6666666666666666
+     },
+     "2.0": {
+      "threshold": -3.2991118029676354,
+      "alerts_per_pt_day": 1.9886422302529687,
+      "false_alerts_per_pt_day": 1.8337635518843574,
+      "ppv": 0.0778816199376947,
+      "episodes_caught": 0.8,
+      "episodes_caught_before_onset": 0.8
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.6274618189773209,
+    "conditional_auroc": 0.52617252086946,
+    "n_strata": 10
+   }
+  },
+  "genesis_S": {
+   "definitional": {
+    "tier": "S",
+    "model": {
+     "all": 0.7532086903699248,
+     "prediction": 0.7512988750612513,
+     "detection": 0.7556596200160557
+    },
+    "oracle": {
+     "all": 0.6550220814150857,
+     "prediction": 0.5563494573395563,
+     "detection": 0.7816519489786816
+    },
+    "margin": {
+     "all": 0.0981866089548391,
+     "prediction": 0.19494941772169494,
+     "detection": -0.025992328962625932
+    },
+    "n_pos": {
+     "prediction": 77,
+     "detection": 60
+    }
+   },
+   "contrasts": {
+    "event_aligned": {
+     "infection_only": 0.5018248175182481,
+     "organ_only": 0.702684376371106,
+     "neither": 0.7602006412000615
+    },
+    "all_hours": {
+     "infection_only": 0.7815943895806498,
+     "organ_only": 0.8381902267788488,
+     "neither": 0.7602006412000615
+    },
+    "n_stays": {
+     "septic": 15,
+     "infection_only": 18,
+     "organ_only": 20,
+     "neither": 22
+    },
+    "specificity_index": 0.5018248175182481
+   },
+   "horizon": {
+    "horizon_h": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     6,
+     8,
+     12,
+     24
+    ],
+    "auroc_clock_matched": [
+     0.74,
+     0.693815987933635,
+     0.7155688622754491,
+     0.6850746268656717,
+     0.6385185185185185,
+     0.6304347826086957,
+     0.7717948717948718,
+     0.7988505747126436,
+     0.9084507042253521
+    ],
+    "n_pos": [
+     15,
+     15,
+     15,
+     15,
+     15,
+     12,
+     10,
+     9,
+     5
+    ]
+   },
+   "ambiguity": {
+    "auroc_primary": 0.7532086903699248,
+    "auroc_soft": 0.6724400343973218,
+    "auroc_unambiguous": 0.939541878255563,
+    "ambiguous_share_pos": 0.8759124087591241,
+    "ambiguous_share_neg": 0.27776291142627774,
+    "n_definitions": 9
+   },
+   "subgroups": {
+    "overall": 0.7532086903699248,
+    "groups": {
+     "sex": {
+      "Female": {
+       "n_stays": 39,
+       "n_pos_stays": 5,
+       "auroc": 0.7549726091125732,
+       "gap": -0.005065269675305517,
+       "ci": [
+        -0.21987737855723294,
+        0.27182324561691495
+       ],
+       "p": 0.9697991004953579,
+       "flag_below": false
+      },
+      "Male": {
+       "n_stays": 36,
+       "n_pos_stays": 10,
+       "auroc": 0.7600378787878788,
+       "gap": 0.005065269675305517,
+       "ci": [
+        -0.2718232456169154,
+        0.2198773785572327
+       ],
+       "p": 0.9697991004953579,
+       "flag_below": false
+      }
+     },
+     "age_band": {
+      "18-44": {
+       "n_stays": 11,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "45-64": {
+       "n_stays": 29,
+       "n_pos_stays": 5,
+       "auroc": 0.7485849056603774,
+       "gap": -0.006181685744319765,
+       "ci": [
+        -0.3613620779486797,
+        0.2601718764569754
+       ],
+       "p": 0.9686889967009693,
+       "flag_below": false
+      },
+      "65-79": {
+       "n_stays": 21,
+       "n_pos_stays": 6,
+       "auroc": 0.7061138861138861,
+       "gap": -0.042777466436003,
+       "ci": [
+        -0.26589409834829747,
+        0.22568073991336363
+       ],
+       "p": 0.7375783818248158,
+       "flag_below": false
+      },
+      "80+": {
+       "n_stays": 14,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "race_group": {
+      "Black": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Hispanic": {
+       "n_stays": 5,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Unknown": {
+       "n_stays": 7,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "White": {
+       "n_stays": 53,
+       "n_pos_stays": 14,
+       "auroc": 0.7619144331119545,
+       "gap": -0.10096114664202815,
+       "ci": [
+        -0.23133848387398803,
+        0.05035117269367281
+       ],
+       "p": 0.15712319954635157,
+       "flag_below": false
+      }
+     },
+     "insurance": {
+      "Medicaid": {
+       "n_stays": 7,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "Medicare": {
+       "n_stays": 26,
+       "n_pos_stays": 8,
+       "auroc": 0.7767967372134039,
+       "gap": -0.02810062622251419,
+       "ci": [
+        -0.2720062685905368,
+        0.14291329575038658
+       ],
+       "p": 0.8114895491334693,
+       "flag_below": false
+      },
+      "Other": {
+       "n_stays": 42,
+       "n_pos_stays": 7,
+       "auroc": 0.8219446441409058,
+       "gap": 0.11246332500085154,
+       "ci": [
+        -0.10264433659848328,
+        0.3807554612130371
+       ],
+       "p": 0.3984746552824896,
+       "flag_below": false
+      }
+     },
+     "admission_type": {
+      "Elective/other": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.754018270120259,
+       "gap": -0.015157594486069126,
+       "ci": [
+        -0.36575214879806056,
+        0.23826998667650146
+       ],
+       "p": 0.9240122093188714,
+       "flag_below": false
+      },
+      "Emergency/urgent": {
+       "n_stays": 54,
+       "n_pos_stays": 10,
+       "auroc": 0.7691758646063281,
+       "gap": 0.015157594486069126,
+       "ci": [
+        -0.23826998667650146,
+        0.36575214879806006
+       ],
+       "p": 0.9240122093188714,
+       "flag_below": false
+      }
+     },
+     "careunit": {
+      "CCU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "CVICU": {
+       "n_stays": 8,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "MICU": {
+       "n_stays": 16,
+       "n_pos_stays": 3,
+       "auroc": 0.841374269005848,
+       "gap": 0.09588399118671331,
+       "ci": [
+        -0.15666654924063333,
+        0.25743705401684647
+       ],
+       "p": 0.39566456267600003,
+       "flag_below": false
+      },
+      "MSICU": {
+       "n_stays": 12,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      },
+      "Neuro": {
+       "n_stays": 2,
+       "n_pos_stays": 1,
+       "auroc": NaN
+      },
+      "Other": {
+       "n_stays": 2,
+       "n_pos_stays": 0,
+       "auroc": NaN
+      },
+      "SICU": {
+       "n_stays": 21,
+       "n_pos_stays": 5,
+       "auroc": 0.6670192028534694,
+       "gap": -0.11429355586615031,
+       "ci": [
+        -0.32685008457991827,
+        0.17124341585832245
+       ],
+       "p": 0.39213463555400163,
+       "flag_below": false
+      },
+      "TSICU": {
+       "n_stays": 7,
+       "n_pos_stays": 2,
+       "auroc": NaN
+      }
+     },
+     "anchor_year_group": {
+      "2011 - 2013": {
+       "n_stays": 31,
+       "n_pos_stays": 5,
+       "auroc": 0.7936484203286435,
+       "gap": 0.06395716900817872,
+       "ci": [
+        -0.2839772811064614,
+        0.29732355627380064
+       ],
+       "p": 0.664633376266101,
+       "flag_below": false
+      },
+      "2014 - 2016": {
+       "n_stays": 44,
+       "n_pos_stays": 10,
+       "auroc": 0.7296912513204648,
+       "gap": -0.06395716900817872,
+       "ci": [
+        -0.2973235562738007,
+        0.28397728110646137
+       ],
+       "p": 0.664633376266101,
+       "flag_below": false
+      }
+     }
+    },
+    "worst": {
+     "sex": {
+      "level": "Female",
+      "auroc": 0.7549726091125732
+     },
+     "age_band": {
+      "level": "65-79",
+      "auroc": 0.7061138861138861
+     },
+     "race_group": {
+      "level": "White",
+      "auroc": 0.7619144331119545
+     },
+     "insurance": {
+      "level": "Medicare",
+      "auroc": 0.7767967372134039
+     },
+     "admission_type": {
+      "level": "Elective/other",
+      "auroc": 0.754018270120259
+     },
+     "careunit": {
+      "level": "SICU",
+      "auroc": 0.6670192028534694
+     },
+     "anchor_year_group": {
+      "level": "2014 - 2016",
+      "auroc": 0.7296912513204648
+     }
+    },
+    "n_tests": 13,
+    "flagged": []
+   },
+   "alert_frontier": {
+    "snooze_h": 6,
+    "window_h": [
+     -12,
+     3
+    ],
+    "septic_episodes": 15,
+    "patient_days": 161.41666666666666,
+    "budgets": {
+     "0.25": {
+      "threshold": -2.6050821699635023,
+      "alerts_per_pt_day": 0.24780588538977802,
+      "false_alerts_per_pt_day": 0.19824470831182242,
+      "ppv": 0.2,
+      "episodes_caught": 0.3333333333333333,
+      "episodes_caught_before_onset": 0.26666666666666666
+     },
+     "0.5": {
+      "threshold": -3.7196720046866147,
+      "alerts_per_pt_day": 0.49561177077955604,
+      "false_alerts_per_pt_day": 0.4150748580278782,
+      "ppv": 0.1625,
+      "episodes_caught": 0.4666666666666667,
+      "episodes_caught_before_onset": 0.4
+     },
+     "1.0": {
+      "threshold": -4.9921945839923945,
+      "alerts_per_pt_day": 0.9974186886938565,
+      "false_alerts_per_pt_day": 0.8673205988642231,
+      "ppv": 0.13043478260869565,
+      "episodes_caught": 0.7333333333333333,
+      "episodes_caught_before_onset": 0.6666666666666666
+     },
+     "2.0": {
+      "threshold": -6.891493832587007,
+      "alerts_per_pt_day": 1.9886422302529687,
+      "false_alerts_per_pt_day": 1.790397521941146,
+      "ppv": 0.09968847352024922,
+      "episodes_caught": 0.9333333333333333,
+      "episodes_caught_before_onset": 0.9333333333333333
+     }
+    }
+   },
+   "clinician_conditional": {
+    "clinician_auroc": 0.7272813392998404,
+    "model_auroc": 0.7532086903699248,
+    "conditional_auroc": 0.6322639835463968,
+    "n_strata": 10
+   }
+  }
+ },
+ "process_physiology": {
+  "direct_P": {
+   "auroc": {
+    "factual": 0.6903152339301794,
+    "physiology_only": 0.6432899257572235,
+    "process_only": 0.6317765333447923,
+    "neither": 0.5469559680371272
+   },
+   "auroc_hourmatched": {
+    "factual": 0.6405875299760192,
+    "physiology_only": 0.5118405275779376,
+    "process_only": 0.6147332134292566,
+    "neither": 0.40272781774580335
+   },
+   "phi_process": {
+    "value": 0.06592293674031047,
+    "ci": [
+     0.0018341228314891027,
+     0.17134616529211424
+    ]
+   },
+   "phi_physiology": {
+    "value": 0.07743632915274168,
+    "ci": [
+     -0.021427767723852267,
+     0.16497129075157654
+    ]
+   },
+   "process_reliance": {
+    "value": 0.047025308172955804,
+    "ci": [
+     -0.03950715756657843,
+     0.1583306171637603
+    ]
+   },
+   "n_stays": 75,
+   "n_rows": 3874
+  },
+  "genesis_P": {
+   "auroc": {
+    "factual": 0.7345542405887856,
+    "physiology_only": 0.6342659418832,
+    "process_only": 0.6778867470491378,
+    "neither": 0.49264213262912404
+   },
+   "auroc_hourmatched": {
+    "factual": 0.667416067146283,
+    "physiology_only": 0.5010491606714629,
+    "process_only": 0.6366906474820144,
+    "neither": 0.3609112709832134
+   },
+   "phi_process": {
+    "value": 0.14276645656279968,
+    "ci": [
+     0.049394288039436164,
+     0.27584441604903415
+    ]
+   },
+   "phi_physiology": {
+    "value": 0.09914565139686188,
+    "ci": [
+     -0.009500032006141251,
+     0.21675163877806397
+    ]
+   },
+   "process_reliance": {
+    "value": 0.10028829870558564,
+    "ci": [
+     0.010114513977465303,
+     0.21828236781215918
+    ]
+   },
+   "n_stays": 75,
+   "n_rows": 3874
+  },
+  "twin_s3_P": {
+   "auroc": {
+    "factual": 0.7079569270795693,
+    "physiology_only": 0.5930163740382719,
+    "process_only": 0.7337924757163031,
+    "neither": 0.5680968964917797
+   },
+   "auroc_hourmatched": {
+    "factual": 0.7311151079136691,
+    "physiology_only": 0.555005995203837,
+    "process_only": 0.740257793764988,
+    "neither": 0.5407673860911271
+   },
+   "phi_process": {
+    "value": 0.14031806613291037,
+    "ci": [
+     -0.023725328408590953,
+     0.32155534675778646
+    ]
+   },
+   "phi_physiology": {
+    "value": -0.00045803554512086064,
+    "ci": [
+     -0.046565014391499904,
+     0.03565100342603574
+    ]
+   },
+   "process_reliance": {
+    "value": 0.11494055304129736,
+    "ci": [
+     -0.0636406054270456,
+     0.29208354094211075
+    ]
+   },
+   "n_stays": 75,
+   "n_rows": 3874
+  },
+  "genesis_twin_P": {
+   "auroc": {
+    "factual": 0.7681070533567462,
+    "physiology_only": 0.5988341090964492,
+    "process_only": 0.7378767073787671,
+    "neither": 0.5006836351419715
+   },
+   "auroc_hourmatched": {
+    "factual": 0.7279676258992805,
+    "physiology_only": 0.5013489208633094,
+    "process_only": 0.7252697841726619,
+    "neither": 0.40617505995203834
+   },
+   "phi_process": {
+    "value": 0.20323300824854634,
+    "ci": [
+     0.050926015395838624,
+     0.3464142672086755
+    ]
+   },
+   "phi_physiology": {
+    "value": 0.06419040996622843,
+    "ci": [
+     -0.005319545927941413,
+     0.13827740436136515
+    ]
+   },
+   "process_reliance": {
+    "value": 0.16927294426029704,
+    "ci": [
+     0.026838487191746887,
+     0.3087251629606803
+    ]
+   },
+   "n_stays": 75,
+   "n_rows": 3874
+  },
+  "direct_Pstrict": {
+   "auroc": {
+    "factual": 0.6274618189773209,
+    "physiology_only": 0.6169973181970002,
+    "process_only": 0.6016350599352696,
+    "neither": 0.5503956294228752
+   },
+   "auroc_hourmatched": {
+    "factual": 0.604091726618705,
+    "physiology_only": 0.4926558752997602,
+    "process_only": 0.5828836930455635,
+    "neither": 0.40242805755395683
+   },
+   "phi_process": {
+    "value": 0.030851965646357504,
+    "ci": [
+     -0.045158596967428,
+     0.11864856613293318
+    ]
+   },
+   "phi_physiology": {
+    "value": 0.04621422390808816,
+    "ci": [
+     -0.00936647607399357,
+     0.09335468293931018
+    ]
+   },
+   "process_reliance": {
+    "value": 0.010464500780320685,
+    "ci": [
+     -0.08015801811584729,
+     0.089773438161712
+    ]
+   },
+   "n_stays": 75,
+   "n_rows": 3874
+  }
+ },
+ "process_physiology_learnable": {
+  "auroc_retrained": {
+   "factual": 0.6903152339301794,
+   "physiology_only": 0.588665524670439,
+   "process_only": 0.6452617248309956
+  },
+  "learnable_process_information": {
+   "value": 0.10164970925974037,
+   "ci": [
+    -0.0227103807691868,
+    0.22936549414983518
+   ]
+  },
+  "learnable_physiology_beyond_process": {
+   "value": 0.04505350909918371,
+   "ci": [
+    -0.08346122137065451,
+    0.19150473154699024
+   ]
+  },
+  "n_stays": 109,
+  "n_rows": 3874,
+  "candidate": "booster direct P"
+ },
+ "verdicts": {
+  "direct_P": {
+   "admitted": true,
+   "auroc": 0.6903152339301794,
+   "prediction_auroc": 0.6851909129136852,
+   "detection_margin_over_oracle": 0.08135090536080636,
+   "specificity_index": 0.4144482610562473,
+   "beyond_clinicians": 0.5866737911844174,
+   "clock_matched_6h": 0.575098814229249,
+   "soft_label_auroc": 0.5815787435200821,
+   "process_reliance": 0.047025308172955804,
+   "episodes_caught_at_1_alert_per_day": 0.8
+  },
+  "genesis_P": {
+   "admitted": true,
+   "auroc": 0.7345542405887856,
+   "prediction_auroc": 0.7468488161557468,
+   "detection_margin_over_oracle": 0.10323566140397822,
+   "specificity_index": 0.516208673250322,
+   "beyond_clinicians": 0.6125539379763681,
+   "clock_matched_6h": 0.6304347826086957,
+   "soft_label_auroc": 0.6499600148901645,
+   "process_reliance": 0.10028829870558564,
+   "episodes_caught_at_1_alert_per_day": 0.7333333333333333
+  },
+  "twin_s3_P": {
+   "admitted": true,
+   "auroc": 0.7079569270795693,
+   "prediction_auroc": 0.7165759046947165,
+   "detection_margin_over_oracle": 0.08135536526625642,
+   "specificity_index": 0.7042399585178094,
+   "beyond_clinicians": 0.6231398959551558,
+   "clock_matched_6h": 0.7075098814229249,
+   "soft_label_auroc": 0.58959100876629,
+   "process_reliance": 0.11494055304129736,
+   "episodes_caught_at_1_alert_per_day": 0.5333333333333333
+  },
+  "genesis_twin_P": {
+   "admitted": true,
+   "auroc": 0.7681070533567462,
+   "prediction_auroc": 0.8031061793438031,
+   "detection_margin_over_oracle": 0.10765096779948269,
+   "specificity_index": 0.6143194504079004,
+   "beyond_clinicians": 0.6292091785296609,
+   "clock_matched_6h": 0.7094861660079052,
+   "soft_label_auroc": 0.661541885005656,
+   "process_reliance": 0.16927294426029704,
+   "episodes_caught_at_1_alert_per_day": 0.7333333333333333
+  },
+  "direct_Pstrict": {
+   "admitted": true,
+   "auroc": 0.6274618189773209,
+   "prediction_auroc": 0.6357728436936357,
+   "detection_margin_over_oracle": 0.0012554633841762586,
+   "specificity_index": 0.3418849291541434,
+   "beyond_clinicians": 0.52617252086946,
+   "clock_matched_6h": 0.5098814229249012,
+   "soft_label_auroc": 0.5612001492409836,
+   "process_reliance": 0.010464500780320685,
+   "episodes_caught_at_1_alert_per_day": 0.6666666666666666
+  },
+  "genesis_S": {
+   "admitted": true,
+   "auroc": 0.7532086903699248,
+   "prediction_auroc": 0.7512988750612513,
+   "detection_margin_over_oracle": -0.025992328962625932,
+   "specificity_index": 0.5018248175182481,
+   "beyond_clinicians": 0.6322639835463968,
+   "clock_matched_6h": 0.6304347826086957,
+   "soft_label_auroc": 0.6724400343973218,
+   "process_reliance": NaN,
+   "episodes_caught_at_1_alert_per_day": 0.7333333333333333
+  }
  },
  "information_ledger": {
   "vitals": {
-   "auroc_without": 0.6871548863310083,
-   "auroc_lost": 0.01931757586885141
+   "auroc_without": 0.687453732550213,
+   "auroc_lost": 0.0028615013799663247
   },
   "gcs": {
-   "auroc_without": 0.6996986145645537,
-   "auroc_lost": 0.006773847635305974
+   "auroc_without": 0.6997806507815902,
+   "auroc_lost": -0.00946541685141089
   },
   "labs": {
-   "auroc_without": 0.7800101178001012,
-   "auroc_lost": -0.0735376556002415
+   "auroc_without": 0.7841744324363389,
+   "auroc_lost": -0.09385919850615954
   },
   "urine": {
-   "auroc_without": 0.7245536350833742,
-   "auroc_lost": -0.018081172883514518
+   "auroc_without": 0.733384247874383,
+   "auroc_lost": -0.043069013944203705
   },
   "sofa": {
    "auroc_without": 0.7267647064568362,
-   "auroc_lost": -0.02029224425697651
+   "auroc_lost": -0.03644947252665687
   }
  },
  "label_sensitivity_P": {
-  "measured/min": 0.7659741117137951,
-  "measured/si": 0.8220431831542943,
-  "measured/sofa": 0.7583342188846776,
-  "rise/min": 0.6889067237381844,
-  "rise/si": 0.7591918640897756,
-  "rise/sofa": 0.7434045268469797,
-  "absolute/min": 0.6261142471067715,
-  "absolute/si": 0.7583408351858316,
-  "absolute/sofa": 0.7536550049044795
+  "measured/min": 0.7681070533567462,
+  "measured/si": 0.8221714499492278,
+  "measured/sofa": 0.7606531826715313,
+  "rise/min": 0.6923381487426431,
+  "rise/si": 0.7485037406483791,
+  "rise/sofa": 0.7496685974143857,
+  "absolute/min": 0.6161432338774709,
+  "absolute/si": 0.7498851757270673,
+  "absolute/sofa": 0.7492923536830305
  },
  "temporal_validation": {
   "train_groups": [
@@ -202,5 +3392,52 @@
   "auroc_hourmatched": 0.657488527325824,
   "auroc_presusp": 0.6234309623430963
  },
- "seconds": 24.898180961608887
+ "trust": {
+  "chain": {
+   "path": "artifacts/mimic/lock_ledger.jsonl",
+   "intact": true,
+   "entries": 0,
+   "first_bad": null,
+   "head": "0000000000000000000000000000000000000000000000000000000000000000",
+   "by_kind": {}
+  },
+  "code": {
+   "sha256": "9f3f174d583fd96e310a917bb89ba66df89f4d777f2c7117b78485981392b2e3",
+   "files": 18,
+   "git": "e0237a09a657f0777a7297e2b770840dc3b6cd69",
+   "dirty": true
+  },
+  "power_plan": {
+   "absolute_auroc_gt_0.80": {
+    "mode": "absolute",
+    "bar": 0.8,
+    "alpha": 0.05,
+    "power_required": 0.8,
+    "dev_value": 0.7681070533567462,
+    "se_dev": 0.050160260333222996,
+    "se_lock": 0.08541984534299064,
+    "n_dev_subjects": 58,
+    "n_lock_subjects": 20,
+    "expected_power": 0.021784147315336344,
+    "admissible": false,
+    "reason": "futile: at the dev estimate 0.768 the lock (SE 0.085) confirms AUROC > 0.8 with probability 0.02 < 0.8"
+   },
+   "twin_over_trees_by_0.01": {
+    "mode": "comparative",
+    "bar": 0.01,
+    "alpha": 0.05,
+    "power_required": 0.8,
+    "dev_value": 0.03355281276796063,
+    "se_dev": 0.04269196328039316,
+    "se_lock": 0.07270179374217578,
+    "n_dev_subjects": 58,
+    "n_lock_subjects": 20,
+    "mde": 0.1807711824549492,
+    "expected_power": 0.11833706114009845,
+    "admissible": false,
+    "reason": "underpowered: the lock's minimum detectable difference is 0.181 (SE 0.073, 20 subjects); a claimed difference of 0.01 cannot be confirmed"
+   }
+  }
+ },
+ "seconds": 43.55141592025757
 }

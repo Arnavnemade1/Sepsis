@@ -48,6 +48,13 @@ STATIC = ["Age", "Gender", "HospAdmTime", "Weight", "AdmEmergency"] + \
     sorted(set(UNITS.values())) + ["Unit_Other", "ICULOS"]
 YEAR_GROUPS = ["2008 - 2010", "2011 - 2013", "2014 - 2016", "2017 - 2019", "2020 - 2022"]
 MIN_HOURS = 4
+#: Bumped whenever the grid's contents change (v2: SOFA_P without the ventilator; audit-only
+#: attributes in ``meta``), so a stale cache is rebuilt instead of silently reused.
+STORE_VERSION = 2
+#: Per-stay attributes kept for the subgroup audit ONLY. They live in ``meta``, never in the
+#: grid ``X``, so no feature — and therefore no model — can read them.
+AUDIT_ATTRS = ["sex", "age_band", "race_group", "insurance", "admission_type", "careunit",
+               "anchor_year_group"]
 RULES = ("measured", "rise", "absolute")
 PRIMARY_RULE = "measured"
 
@@ -138,7 +145,6 @@ def build_store(src, verbose: bool = True) -> MimicStore:
 
     rs = np.repeat(starts, lens)
     hour = np.arange(N) - rs
-    X[:, j["GCS"]] = S3.gcs_total(X[:, j["GCS_eye"]], X[:, j["GCS_verbal"]], X[:, j["GCS_motor"]], rs)
 
     # static
     per = {c: np.full(len(st), np.nan) for c in STATIC if c != "ICULOS"}
@@ -156,11 +162,9 @@ def build_store(src, verbose: bool = True) -> MimicStore:
         X[:, j[c]] = v[seg]
     X[:, j["ICULOS"]] = hour + 1
 
-    # SOFA (causal, 24-h worst) — also exposed as input channels by tier
+    # GCS total and SOFA (causal, 24-h worst) — derived channels, exposed as inputs by tier
+    sofa = derive_channels(X, cols, lens)
     col = lambda nm: X[:, j[nm]].astype(np.float64)
-    sofa = S3.hourly_sofa(col, rs, hour)
-    X[:, j["SOFA_P"]] = sofa["sofa_total_P"]
-    X[:, j["SOFA"]] = sofa["sofa_total"]
 
     # onset per stay under every label variant
     rows = []
@@ -190,8 +194,7 @@ def build_store(src, verbose: bool = True) -> MimicStore:
     store = MimicStore(X=X, y=y, lens=lens, pid=st.stay_id.to_numpy(), site=site, columns=cols,
                        tiers={c: tier_of(c) for c in DYNAMIC} | {c: "P" for c in STATIC},
                        static_columns=list(STATIC),
-                       meta=st[["subject_id", "hadm_id", "stay_id", "first_careunit", "anchor_year_group",
-                                "age", "los_hours", "n_hours", "hospital_expire_flag"]].reset_index(drop=True),
+                       meta=_meta(st),
                        onsets=onsets, sofa=sofa)
     if verbose:
         sep = np.isfinite(onsets[f"t_sepsis_{PRIMARY_RULE}_min"])
@@ -199,6 +202,63 @@ def build_store(src, verbose: bool = True) -> MimicStore:
               f"{len(cols)} channels; Sepsis-3 ({PRIMARY_RULE} rule) in {int(sep.sum())} stays "
               f"({sep.mean():.1%}); label-1 hours {y.mean():.3%} [{time.time()-t0:.1f}s]", flush=True)
     return store
+
+
+def derive_channels(X: np.ndarray, columns: List[str], lens: np.ndarray) -> Dict[str, np.ndarray]:
+    """Recompute the DERIVED channels of a grid in place — total GCS from its components,
+    SOFA_P and SOFA from everything — and return the SOFA components. One function for the
+    real grid and every counterfactual one, so an edited input can never leave a stale
+    derived channel behind."""
+    j = {c: i for i, c in enumerate(columns)}
+    starts = np.r_[0, np.cumsum(lens)[:-1]].astype(np.int64)
+    rs = np.repeat(starts, lens)
+    hour = np.arange(len(rs)) - rs
+    X[:, j["GCS"]] = S3.gcs_total(X[:, j["GCS_eye"]], X[:, j["GCS_verbal"]], X[:, j["GCS_motor"]], rs)
+    sofa = S3.hourly_sofa(lambda nm: X[:, j[nm]].astype(np.float64), rs, hour)
+    X[:, j["SOFA_P"]] = sofa["sofa_total_P"]
+    X[:, j["SOFA"]] = sofa["sofa_total"]
+    return sofa
+
+
+def rederive(store: MimicStore, X: np.ndarray) -> MimicStore:
+    """The same stays with an edited grid ``X`` (base channels), derived channels recomputed.
+    Labels, onsets and metadata are the ORIGINAL ones: a counterfactual changes what a model
+    sees, never what happened."""
+    X = np.array(X, dtype=np.float32, copy=True)
+    sofa = derive_channels(X, store.columns, store.lens)
+    return MimicStore(X=X, y=store.y, lens=store.lens, pid=store.pid, site=store.site,
+                      columns=list(store.columns), tiers=dict(store.tiers),
+                      static_columns=list(store.static_columns), meta=store.meta,
+                      onsets=store.onsets, sofa=sofa)
+
+
+def _race_group(r: str) -> str:
+    r = str(r).upper()
+    if r.startswith(("WHITE", "PORTUGUESE")):
+        return "White"
+    if r.startswith("BLACK"):
+        return "Black"
+    if r.startswith(("HISPANIC", "SOUTH AMERICAN")):
+        return "Hispanic"
+    if r.startswith("ASIAN"):
+        return "Asian"
+    if r.startswith(("UNKNOWN", "UNABLE", "PATIENT DECLINED")) or r in ("NAN", ""):
+        return "Unknown"
+    return "Other"
+
+
+def _meta(st: pd.DataFrame) -> pd.DataFrame:
+    m = st[["subject_id", "hadm_id", "stay_id", "first_careunit", "anchor_year_group",
+            "age", "los_hours", "n_hours", "hospital_expire_flag"]].reset_index(drop=True).copy()
+    m["sex"] = st.gender.map({"M": "Male", "F": "Female"}).fillna("Unknown").to_numpy()
+    m["age_band"] = pd.cut(st.age.to_numpy(float), [0, 45, 65, 80, 200], right=False,
+                           labels=["18-44", "45-64", "65-79", "80+"]).astype(str)
+    m["race_group"] = [_race_group(r) for r in st.get("race", pd.Series([""] * len(st)))]
+    m["insurance"] = st.get("insurance", pd.Series(["Unknown"] * len(st))).fillna("Unknown").to_numpy()
+    m["admission_type"] = np.where(st.admission_type.fillna("").str.contains("EMER|URGENT"),
+                                   "Emergency/urgent", "Elective/other")
+    m["careunit"] = st.first_careunit.map(UNITS).fillna("Unit_Other").str.replace("Unit_", "").to_numpy()
+    return m
 
 
 def subset(store: MimicStore, stays: np.ndarray) -> MimicStore:
@@ -229,27 +289,31 @@ def sample_design(store: MimicStore, keep_rate: float, seed: int = 0):
     return sub, w_stay[sub.seg]
 
 
+def _stem(tag: str) -> str:
+    return os.path.join(CACHE_DIR, f"{tag}_v{STORE_VERSION}")
+
+
 def save(store: MimicStore, tag: str) -> str:
     os.makedirs(CACHE_DIR, exist_ok=True)
-    path = os.path.join(CACHE_DIR, f"{tag}_store.npz")
+    path = _stem(tag) + "_store.npz"
     np.savez(path, X=store.X, y=store.y, lens=store.lens, pid=store.pid, site=store.site,
              columns=np.array(store.columns), static_columns=np.array(store.static_columns),
              tier_keys=np.array(list(store.tiers)), tier_vals=np.array(list(store.tiers.values())),
              **{f"sofa__{k}": v.astype(np.float32) for k, v in store.sofa.items()})
-    store.meta.to_pickle(os.path.join(CACHE_DIR, f"{tag}_meta.pkl"))
-    store.onsets.to_pickle(os.path.join(CACHE_DIR, f"{tag}_onsets.pkl"))
+    store.meta.to_pickle(_stem(tag) + "_meta.pkl")
+    store.onsets.to_pickle(_stem(tag) + "_onsets.pkl")
     return path
 
 
 def load(tag: str) -> MimicStore:
-    path = os.path.join(CACHE_DIR, f"{tag}_store.npz")
+    path = _stem(tag) + "_store.npz"
     d = np.load(path, allow_pickle=False)
     return MimicStore(X=d["X"], y=d["y"], lens=d["lens"], pid=d["pid"], site=d["site"],
                       columns=[str(c) for c in d["columns"]],
                       tiers=dict(zip([str(k) for k in d["tier_keys"]], [str(v) for v in d["tier_vals"]])),
                       static_columns=[str(c) for c in d["static_columns"]],
-                      meta=pd.read_pickle(os.path.join(CACHE_DIR, f"{tag}_meta.pkl")),
-                      onsets=pd.read_pickle(os.path.join(CACHE_DIR, f"{tag}_onsets.pkl")),
+                      meta=pd.read_pickle(_stem(tag) + "_meta.pkl"),
+                      onsets=pd.read_pickle(_stem(tag) + "_onsets.pkl"),
                       sofa={k[6:]: d[k] for k in d.files if k.startswith("sofa__")})
 
 
