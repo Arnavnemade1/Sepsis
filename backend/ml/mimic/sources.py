@@ -20,7 +20,7 @@ import pandas as pd
 from backend.ml.mimic import concepts as K
 
 TIME_COLS = {"intime", "outtime", "admittime", "dischtime", "deathtime", "charttime",
-             "chartdate", "starttime", "endtime", "storetime"}
+             "chartdate", "starttime", "endtime", "storetime", "transfertime"}
 PRE_ICU_LAB_HOURS = 24      # labs drawn this long before ICU admission are known at hour 0
 EVENT_LOOKBACK_HOURS = 72   # cultures / antibiotics kept this far before admission (for pairing)
 
@@ -69,8 +69,15 @@ class CsvSource:
     def admissions(self) -> pd.DataFrame:
         # race / insurance feed the subgroup audit only (extract.AUDIT_ATTRS), never a model
         return self._read("hosp", "admissions", ["subject_id", "hadm_id", "admittime", "dischtime",
-                                                 "admission_type", "hospital_expire_flag",
-                                                 "insurance", "race"])
+                                                 "admission_type", "admission_location",
+                                                 "hospital_expire_flag", "insurance", "race"])
+
+    def services(self) -> pd.DataFrame:
+        return self._read("hosp", "services", ["subject_id", "hadm_id", "transfertime", "curr_service"])
+
+    def diagnoses(self) -> pd.DataFrame:
+        """Every coded diagnosis (``history`` reads only admissions discharged before the stay)."""
+        return self._read("hosp", "diagnoses_icd", ["subject_id", "hadm_id", "icd_code", "icd_version"])
 
     def d_items(self) -> pd.DataFrame:
         return pd.read_csv(self._path("icu", "d_items"))
@@ -80,7 +87,7 @@ class CsvSource:
 
     # ---------------- binned event tables ---------------- #
     def binned_chart(self, stays: pd.DataFrame) -> pd.DataFrame:
-        ids = {i: c for c in K.CHART for i in c.itemids}
+        ids = {i: c for c in K.CHART_ALL for i in c.itemids}
         sid = set(stays.stay_id)
         ev = self._read("icu", "chartevents", ["stay_id", "charttime", "itemid", "value", "valuenum"],
                         keep=lambda d: d.itemid.isin(ids) & d.stay_id.isin(sid))
@@ -90,7 +97,7 @@ class CsvSource:
         # patient. Recoded to 0 (unable to assess) as MIT-LCP mimic-code does.
         v = np.where((ev.itemid == 223900) & (ev.value == "No Response-ETT"), 0.0, v)
         ev["value"] = v
-        ev = _plausible(ev, {c.name: c for c in K.CHART})
+        ev = _plausible(ev, {c.name: c for c in K.CHART_ALL})
         # units: Fahrenheit -> Celsius; FiO2 percent -> fraction
         f = ev.name == "TempF"
         ev.loc[f, "value"] = (ev.loc[f, "value"] - 32.0) * 5.0 / 9.0
@@ -102,13 +109,18 @@ class CsvSource:
         return _bin_last(ev, stays, "charttime", lo=0)
 
     def binned_labs(self, stays: pd.DataFrame) -> pd.DataFrame:
-        ids = {i: c for c in K.LAB for i in c.itemids}
+        ids = {i: c for c in K.LAB + K.LAB_TEXT for i in c.itemids}
         hadm = set(stays.hadm_id)
-        ev = self._read("hosp", "labevents", ["hadm_id", "charttime", "itemid", "valuenum"],
+        ev = self._read("hosp", "labevents", ["hadm_id", "charttime", "itemid", "valuenum", "value"],
                         keep=lambda d: d.itemid.isin(ids) & d.hadm_id.isin(hadm))
         ev["name"] = ev.itemid.map(lambda i: ids[i].name)
-        ev["value"] = ev.valuenum.astype(float)
-        ev = _plausible(ev, {c.name: c for c in K.LAB})
+        num = ev.valuenum.astype(float).to_numpy()
+        text = ev.value.fillna("").astype(str).str.strip().str.upper()
+        for c in K.LAB_TEXT:                          # urinalysis: text -> ordinal, else dropped
+            m = (ev.name == c.name).to_numpy()
+            num[m] = text[m].map(dict(c.text_map)).astype(float).to_numpy()
+        ev["value"] = num
+        ev = _plausible(ev, {c.name: c for c in K.LAB + K.LAB_TEXT})
         # labs belong to the admission; attach to each of its ICU stays by time
         ev = ev.merge(stays[["stay_id", "hadm_id"]], on="hadm_id")
         return _bin_last(ev, stays, "charttime", lo=-PRE_ICU_LAB_HOURS, fold_pre_to_zero=True)
@@ -142,17 +154,49 @@ class CsvSource:
             ev["value"] = rate
             ev["name"] = ev.itemid.map(lambda i: cons[i].name)
             ev = _plausible(ev, {c.name: c for c in K.VASO})
+        elif kind == "sedation":
+            cons = {i: c for c in K.TREAT_INTERVAL if c.kind == "sedation" for i in c.itemids}
+            ev = self._read("icu", "inputevents", ["stay_id", "starttime", "endtime", "itemid",
+                                                   "statusdescription"],
+                            keep=lambda d: d.itemid.isin(cons) & d.stay_id.isin(sid))
+            ev = ev[ev.statusdescription.fillna("") != "Rewritten"]
+            ev["value"] = 1.0
+            ev["name"] = "Sedation"
         else:
-            cons = {i: c for c in K.VENT for i in c.itemids}
+            src = K.VENT if kind == "vent" else [c for c in K.TREAT_INTERVAL if c.kind == kind]
+            cons = {i: c for c in src for i in c.itemids}
             ev = self._read("icu", "procedureevents", ["stay_id", "starttime", "endtime", "itemid"],
                             keep=lambda d: d.itemid.isin(cons) & d.stay_id.isin(sid))
             ev["value"] = 1.0
             ev["name"] = ev.itemid.map(lambda i: cons[i].name)
         return _expand_intervals(ev, stays)
 
+    def hourly_amounts(self, stays: pd.DataFrame) -> pd.DataFrame:
+        """Volume STARTED in each hour (mL): crystalloids and blood products."""
+        sid = set(stays.stay_id)
+        cons = {i: c for c in K.TREAT_AMOUNT for i in c.itemids}
+        ev = self._read("icu", "inputevents", ["stay_id", "starttime", "itemid", "amount", "statusdescription"],
+                        keep=lambda d: d.itemid.isin(cons) & d.stay_id.isin(sid))
+        ev = ev[ev.statusdescription.fillna("") != "Rewritten"]
+        ev["value"] = ev.amount.astype(float)
+        ev["name"] = ev.itemid.map(lambda i: cons[i].name)
+        return _sum_by_hour(_plausible(ev, {c.name: c for c in K.TREAT_AMOUNT}), stays)
+
     def event_times(self, stays: pd.DataFrame, kind: str) -> pd.DataFrame:
-        """``(stay_id, t)`` hours from ICU admission of every culture / antibiotic start."""
+        """``(stay_id, t)`` hours from ICU admission of every culture / antibiotic start, or
+        (``abx_admin``) every IV antibiotic administration charted at the bedside."""
         hadm = set(stays.hadm_id)
+        if kind == "abx_admin":
+            sid = set(stays.stay_id)
+            ev = self._read("icu", "inputevents", ["stay_id", "starttime", "ordercategoryname",
+                                                   "statusdescription"],
+                            keep=lambda d: (d.ordercategoryname == K.ABX_ADMIN_CATEGORY) & d.stay_id.isin(sid))
+            ev = ev[ev.statusdescription.fillna("") != "Rewritten"]
+            ev = ev.merge(stays[["stay_id", "intime", "outtime"]], on="stay_id")
+            ev["t"] = _to_hours(ev.starttime, ev.intime)
+            end = _to_hours(ev.outtime, ev.intime)
+            ev = ev[(ev.t >= 0) & (ev.t <= np.minimum(end, K.MAX_HOURS))]
+            return ev[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
         if kind == "culture":
             ev = self._read("hosp", "microbiologyevents", ["hadm_id", "chartdate", "charttime"],
                             keep=lambda d: d.hadm_id.isin(hadm))
@@ -203,6 +247,14 @@ def _bin_last(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str, lo: int,
     return out
 
 
+def _sum_by_hour(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str = "starttime") -> pd.DataFrame:
+    ev = ev.merge(stays[["stay_id", "intime"]], on="stay_id")
+    ev["hr"] = np.floor(_to_hours(ev[tcol], ev.intime))
+    ev = ev[(ev.hr >= 0) & (ev.hr < K.MAX_HOURS)]
+    ev["hr"] = ev.hr.astype(int)
+    return ev.groupby(["stay_id", "hr", "name"], as_index=False).value.sum()
+
+
 def _expand_intervals(ev: pd.DataFrame, stays: pd.DataFrame) -> pd.DataFrame:
     ev = ev.merge(stays[["stay_id", "intime"]], on="stay_id")
     s = np.floor(_to_hours(ev.starttime, ev.intime))
@@ -243,6 +295,25 @@ class BigQuerySource:
     def query(self, sql: str) -> pd.DataFrame:  # pragma: no cover - needs credentials
         return self._client().query(sql).to_dataframe()
 
+    #: at most this many stays are named in a query (the parity check's demo cohort); a full
+    #: cohort is filtered by the joins instead
+    FILTER_MAX = 2000
+
+    @classmethod
+    def stay_filter(cls, stays) -> str:
+        """``s.stay_id IN (...)`` for a small cohort, else TRUE."""
+        if stays is None or len(stays) > cls.FILTER_MAX:
+            return "TRUE"
+        return f"s.stay_id IN ({', '.join(str(int(x)) for x in stays.stay_id)})"
+
+    def _pages(self, sql: str, page_rows: int = 2_000_000):  # pragma: no cover - needs credentials
+        """The result a page at a time: full MIMIC's hourly chart table is ~10^8 rows, too many
+        to hold as one frame on a 16 GB laptop; ``extract.build_store`` places each page."""
+        for df in self._client().query(sql).result(page_size=page_rows).to_dataframe_iterable():
+            for c in set(df.columns) & TIME_COLS:
+                df[c] = pd.to_datetime(df[c])
+            yield df
+
     # ---- the same interface as CsvSource, computed server-side (needs credentials) ---- #
     def _q(self, sql: str) -> pd.DataFrame:  # pragma: no cover
         df = self.query(sql)
@@ -259,8 +330,14 @@ class BigQuerySource:
                        f"FROM `{self.hosp}.patients`")
 
     def admissions(self):  # pragma: no cover
-        return self._q(f"SELECT subject_id, hadm_id, admittime, dischtime, admission_type, "
+        return self._q(f"SELECT subject_id, hadm_id, admittime, dischtime, admission_type, admission_location, "
                        f"hospital_expire_flag, insurance, race FROM `{self.hosp}.admissions`")
+
+    def services(self):  # pragma: no cover
+        return self._q(f"SELECT subject_id, hadm_id, transfertime, curr_service FROM `{self.hosp}.services`")
+
+    def diagnoses(self):  # pragma: no cover
+        return self._q(f"SELECT subject_id, hadm_id, icd_code, icd_version FROM `{self.hosp}.diagnoses_icd`")
 
     def d_items(self):  # pragma: no cover
         return self._q(f"SELECT * FROM `{self.icu}.d_items`")
@@ -269,19 +346,22 @@ class BigQuerySource:
         return self._q(f"SELECT * FROM `{self.hosp}.d_labitems`")
 
     def binned_chart(self, stays):  # pragma: no cover
-        return self._q(render_chart_sql(self.icu))
+        return self._pages(render_chart_sql(self.icu, self.stay_filter(stays)))
 
     def binned_labs(self, stays):  # pragma: no cover
-        return self._q(render_labs_sql(self.hosp, self.icu))
+        return self._pages(render_labs_sql(self.hosp, self.icu, self.stay_filter(stays)))
 
     def binned_uo(self, stays):  # pragma: no cover
-        return self._q(render_uo_sql(self.icu))
+        return self._pages(render_uo_sql(self.icu, self.stay_filter(stays)))
 
     def interval_hours(self, stays, kind):  # pragma: no cover
-        return self._q(render_interval_sql(self.icu, kind))
+        return self._pages(render_interval_sql(self.icu, kind, self.stay_filter(stays)))
+
+    def hourly_amounts(self, stays):  # pragma: no cover
+        return self._pages(render_amount_sql(self.icu, self.stay_filter(stays)))
 
     def event_times(self, stays, kind):  # pragma: no cover
-        df = self._q(render_events_sql(self.hosp, self.icu, kind))
+        df = self._q(render_events_sql(self.hosp, self.icu, kind, self.stay_filter(stays)))
         if kind == "abx":   # the antibiotic name / route filter is applied here, identically
             df = df[[K.is_antibiotic(d, r) for d, r in zip(df.drug, df.route)]]
         return df[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
@@ -306,11 +386,11 @@ def _case_name(concepts: Iterable[K.Concept], col: str = "itemid") -> str:
 
 
 def render_chart_sql(icu: str, stay_filter: str = "TRUE") -> str:
-    ids = ", ".join(str(i) for c in K.CHART for i in c.itemids)
-    bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in K.CHART)
+    ids = ", ".join(str(i) for c in K.CHART_ALL for i in c.itemids)
+    bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in K.CHART_ALL)
     return f"""
 WITH ev AS (
-  SELECT ce.stay_id, ce.charttime, {_case_name(K.CHART, 'ce.itemid')} AS name,
+  SELECT ce.stay_id, ce.charttime, {_case_name(K.CHART_ALL, 'ce.itemid')} AS name,
          CASE WHEN ce.itemid = 223900 AND ce.value = 'No Response-ETT' THEN 0.0
               ELSE ce.valuenum END AS v,
          DATETIME_DIFF(ce.charttime, s.intime, SECOND) / 3600.0 AS h
@@ -331,12 +411,23 @@ GROUP BY stay_id, hr, name
 """
 
 
+def _text_value(concepts) -> str:
+    """valuenum, or the ordinal of a text-coded result (urinalysis) — the CsvSource mapping."""
+    whens = []
+    for c in concepts:
+        cases = " ".join(f"WHEN '{t}' THEN {v}" for t, v in c.text_map)
+        whens.append(f"WHEN le.itemid IN ({', '.join(map(str, c.itemids))}) "
+                     f"THEN CASE UPPER(TRIM(le.value)) {cases} END")
+    return "CASE " + " ".join(whens) + " ELSE le.valuenum END"
+
+
 def render_labs_sql(hosp: str, icu: str, stay_filter: str = "TRUE") -> str:
-    ids = ", ".join(str(i) for c in K.LAB for i in c.itemids)
-    bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in K.LAB)
+    cons = K.LAB + K.LAB_TEXT
+    ids = ", ".join(str(i) for c in cons for i in c.itemids)
+    bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in cons)
     return f"""
 WITH ev AS (
-  SELECT s.stay_id, le.charttime, {_case_name(K.LAB, 'le.itemid')} AS name, le.valuenum AS v,
+  SELECT s.stay_id, le.charttime, {_case_name(cons, 'le.itemid')} AS name, {_text_value(K.LAB_TEXT)} AS v,
          DATETIME_DIFF(le.charttime, s.intime, SECOND) / 3600.0 AS h
   FROM `{hosp}.labevents` le JOIN `{icu}.icustays` s ON le.hadm_id = s.hadm_id
   WHERE le.itemid IN ({ids}) AND ({stay_filter})
@@ -348,24 +439,30 @@ FROM ok GROUP BY stay_id, hr, name
 """
 
 
-def render_uo_sql(icu: str) -> str:
+def render_uo_sql(icu: str, stay_filter: str = "TRUE") -> str:
     items = ", ".join(map(str, K.UO_ITEMS + (K.UO_IRRIGANT_IN,)))
     return f"""
 SELECT oe.stay_id, CAST(FLOOR(DATETIME_DIFF(oe.charttime, s.intime, SECOND) / 3600.0) AS INT64) AS hr,
        'UrineOutput' AS name,
        SUM(CASE WHEN oe.itemid = {K.UO_IRRIGANT_IN} THEN -oe.value ELSE oe.value END) AS value
 FROM `{icu}.outputevents` oe JOIN `{icu}.icustays` s USING (stay_id)
-WHERE oe.itemid IN ({items})
+WHERE oe.itemid IN ({items}) AND ({stay_filter})
 GROUP BY stay_id, hr, name
 HAVING hr >= 0 AND hr < {K.MAX_HOURS}
 """
 
 
-def render_interval_sql(icu: str, kind: str) -> str:
+def render_interval_sql(icu: str, kind: str, stay_filter: str = "TRUE") -> str:
     if kind == "vaso":
         cons, table = K.VASO, "inputevents"
         val = ("CASE WHEN LOWER(e.rateuom) = 'mcg/min' THEN e.rate / e.patientweight ELSE e.rate END")
         extra = "AND COALESCE(e.statusdescription, '') != 'Rewritten'"
+    elif kind == "sedation":
+        cons = [K.Concept("Sedation", "sedation", c.itemids) for c in K.TREAT_INTERVAL if c.kind == "sedation"]
+        table, val = "inputevents", "1.0"
+        extra = "AND COALESCE(e.statusdescription, '') != 'Rewritten'"
+    elif kind == "dialysis":
+        cons, table, val, extra = [c for c in K.TREAT_INTERVAL if c.kind == "dialysis"], "procedureevents", "1.0", ""
     else:
         cons, table, val, extra = K.VENT, "procedureevents", "1.0", ""
     ids = ", ".join(str(i) for c in cons for i in c.itemids)
@@ -378,7 +475,7 @@ WITH ev AS (
          LEAST(CAST(FLOOR(DATETIME_DIFF(e.endtime, s.intime, SECOND) / 3600.0 - 1e-9) AS INT64),
                {K.MAX_HOURS - 1}) AS h1
   FROM `{icu}.{table}` e JOIN `{icu}.icustays` s USING (stay_id)
-  WHERE e.itemid IN ({ids}) {extra}
+  WHERE e.itemid IN ({ids}) {extra} AND ({stay_filter})
 )
 SELECT stay_id, hr, name, MAX(value) AS value
 FROM ev, UNNEST(GENERATE_ARRAY(h0, h1)) AS hr
@@ -387,20 +484,46 @@ GROUP BY stay_id, hr, name
 """
 
 
-def render_events_sql(hosp: str, icu: str, kind: str) -> str:
+def render_amount_sql(icu: str, stay_filter: str = "TRUE") -> str:
+    """Volume started per hour — the CsvSource ``hourly_amounts`` binning."""
+    ids = ", ".join(str(i) for c in K.TREAT_AMOUNT for i in c.itemids)
+    bounds = " OR ".join(f"(name = '{c.name}' AND value BETWEEN {c.lo} AND {c.hi})" for c in K.TREAT_AMOUNT)
+    return f"""
+WITH ev AS (
+  SELECT e.stay_id, {_case_name(K.TREAT_AMOUNT, 'e.itemid')} AS name, e.amount AS value,
+         CAST(FLOOR(DATETIME_DIFF(e.starttime, s.intime, SECOND) / 3600.0) AS INT64) AS hr
+  FROM `{icu}.inputevents` e JOIN `{icu}.icustays` s USING (stay_id)
+  WHERE e.itemid IN ({ids}) AND COALESCE(e.statusdescription, '') != 'Rewritten' AND ({stay_filter})
+)
+SELECT stay_id, hr, name, SUM(value) AS value
+FROM ev WHERE value IS NOT NULL AND ({bounds}) AND hr >= 0 AND hr < {K.MAX_HOURS}
+GROUP BY stay_id, hr, name
+"""
+
+
+def render_events_sql(hosp: str, icu: str, kind: str, stay_filter: str = "TRUE") -> str:
+    if kind == "abx_admin":
+        return f"""
+SELECT e.stay_id, DATETIME_DIFF(e.starttime, s.intime, SECOND) / 3600.0 AS t
+FROM `{icu}.inputevents` e JOIN `{icu}.icustays` s USING (stay_id)
+WHERE e.ordercategoryname = '{K.ABX_ADMIN_CATEGORY}' AND COALESCE(e.statusdescription, '') != 'Rewritten'
+  AND ({stay_filter})
+  AND DATETIME_DIFF(e.starttime, s.intime, SECOND) / 3600.0
+      BETWEEN 0 AND LEAST(DATETIME_DIFF(s.outtime, s.intime, SECOND) / 3600.0, {K.MAX_HOURS})
+"""
     if kind == "culture":
         return f"""
 SELECT DISTINCT s.stay_id,
        DATETIME_DIFF(COALESCE(m.charttime, m.chartdate), s.intime, SECOND) / 3600.0 AS t
 FROM `{hosp}.microbiologyevents` m JOIN `{icu}.icustays` s ON m.hadm_id = s.hadm_id
-WHERE DATETIME_DIFF(COALESCE(m.charttime, m.chartdate), s.intime, SECOND) / 3600.0
+WHERE ({stay_filter}) AND DATETIME_DIFF(COALESCE(m.charttime, m.chartdate), s.intime, SECOND) / 3600.0
       BETWEEN -{EVENT_LOOKBACK_HOURS} AND LEAST(DATETIME_DIFF(s.outtime, s.intime, SECOND) / 3600.0, {K.MAX_HOURS})
 """
     return f"""
 SELECT s.stay_id, p.drug, p.route,
        DATETIME_DIFF(p.starttime, s.intime, SECOND) / 3600.0 AS t
 FROM `{hosp}.prescriptions` p JOIN `{icu}.icustays` s ON p.hadm_id = s.hadm_id
-WHERE p.starttime IS NOT NULL
+WHERE p.starttime IS NOT NULL AND ({stay_filter})
   AND DATETIME_DIFF(p.starttime, s.intime, SECOND) / 3600.0
       BETWEEN -{EVENT_LOOKBACK_HOURS} AND LEAST(DATETIME_DIFF(s.outtime, s.intime, SECOND) / 3600.0, {K.MAX_HOURS})
 """

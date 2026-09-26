@@ -24,7 +24,7 @@ import argparse
 import json
 import os
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Dict, Optional
 
 import numpy as np
@@ -36,7 +36,9 @@ from backend.ml.mimic import crossexam as CX
 from backend.ml.mimic import extract as E
 from backend.ml.mimic import infoflow as IF
 from backend.ml.mimic import ledger as LG
+from backend.ml.mimic import plan as PL
 from backend.ml.mimic import trust as TR
+from backend.ml.mimic import tune as TN
 from backend.ml.mimic import twin as TW
 from backend.ml.mimic.ledger import Candidate, FoldModels
 from backend.ml.mimic.sources import BigQuerySource, CsvSource
@@ -59,24 +61,46 @@ class Scale:
     cpt_stays: Optional[int] = None     # stays re-scored by the transplant (None = every dev stay)
     learn_stays: Optional[int] = None   # stays the transplant RETRAINS on (None = every dev stay)
     n_boot: int = 200
+    # what the run fits (the planner turns stages off to fit a machine)
+    tiers: tuple = ("P", "T", "S")
+    products: bool = True               # who / when boosters and the GENESIS products
+    soft: bool = True                   # the soft-label booster (all 9 onset definitions)
+    twin: bool = True
+    info_ledger: bool = True
+    trim_septic: bool = False           # drop septic stays' hours after every onset + 3 h (causal: exact)
+    tune_trials: int = 0                # hyperparameter search (0 = use ``lgbm`` as given)
+    tune_rows: int = 600_000
+    tune_val_folds: tuple = (0,)
 
 
 SCALES = {
     "demo": Scale(lgbm={"learning_rate": 0.05, "num_leaves": 15, "min_data_in_leaf": 20,
                         "feature_fraction": 0.5, "lambda_l2": 5.0},
                   early_stop=50, twin_epochs=8, twin_seeds=(0,), keep_rate=1.0, twin_d_model=64,
-                  twin_min_steps=200),
+                  twin_min_steps=200, tune_trials=4),
     # GENESIS's tuned booster (docs/GENESIS.md §4); never-septic stays kept at 25% and
     # re-weighted; features built 2,000 stays at a time into a float16 map on disk.
     "full": Scale(lgbm={"learning_rate": 0.02, "num_leaves": 31, "min_data_in_leaf": 800,
                         "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0},
                   early_stop=150, twin_epochs=25, twin_seeds=(0, 1), phys_seeds=(0,), keep_rate=0.25,
-                  chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300),
+                  chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300,
+                  tune_trials=16, info_ledger=False, trim_septic=True),
 }
-PHYSIO_FAMILIES = ["vitals", "gcs", "labs", "urine", "sofa"]
-HEADLINE = ["direct_P", "genesis_P", "twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_twin_P",
-            "direct_Pstrict", "genesis_S"]
-TRANSPLANTED = ["direct_P", "genesis_P", "twin_s3_P", "twin_phys_P", "genesis_twin_P", "direct_Pstrict"]
+PHYSIO_FAMILIES = ["vitals", "gcs", "labs", "inflammation", "urine", "sofa", "history"]
+HEADLINE = ["direct_P", "stack_P", "genesis_P", "twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_twin_P",
+            "direct_Pstrict", "stack_S", "genesis_S"]
+TRANSPLANTED = ["direct_P", "stack_P", "twin_s3_P", "twin_phys_P", "genesis_twin_P", "direct_Pstrict"]
+#: what each headline number means — reported beside it, never apart from it
+TIER_MEANING = {"P": "physiology only (no treatments, no orders)",
+                "T": "physiology and treatments",
+                "S": "every input, including the culture / antibiotic orders that make up half of the label"}
+SETTING_MEANING = {
+    "auroc": "hourly AUROC, early-warning cohort (onset >= 4 h) — the pre-registered primary setting",
+    "auroc_hourmatched": "hourly AUROC with the ICU clock matched out",
+    "auroc_all_stays": "hourly AUROC over every stay, sepsis present on arrival included",
+    "patient_auroc": "patient level: each stay's highest score vs whether it became septic (early-warning cohort)",
+    "patient_auroc_all_stays": "patient level, every stay",
+}
 #: the twin's outputs as harness candidates: name -> (regime of the twin, head, mode)
 TWIN_OUTPUTS = {"s3": ("record", "s3", "full"), "direct": ("record", "direct", "full"),
                 "susp6": ("record", "susp6", "full"), "organ": ("record", "organ", "full"),
@@ -85,20 +109,25 @@ TWIN_OUTPUTS = {"s3": ("record", "s3", "full"), "direct": ("record", "direct", "
 
 
 def booster(scale: Scale, target: str = "direct"):
-    """A LightGBM candidate: ``direct`` (the label), ``who`` (ever septic) or ``when`` (the
-    label, inside septic stays only)."""
+    """A LightGBM candidate: ``direct`` (the label), ``who`` (ever septic), ``when`` (the
+    label, inside septic stays only) or ``soft`` (the share of the 9 onset definitions that
+    call the hour positive — the label's own uncertainty, cross-entropy on soft targets)."""
     def fit(led: LG.Ledger, cols, tr, fold):
         s = led.store
         septic = np.isfinite(led.onset[s.seg])
+        params, metric = scale.lgbm, "auc"
         if target == "direct":
             y, rows = led.y.astype(float), tr
         elif target == "who":
             y, rows = septic.astype(float), tr
+        elif target == "soft":
+            y, rows = CX.soft_labels(led).astype(float), tr
+            params, metric = dict(scale.lgbm) | {"objective": "cross_entropy"}, "cross_entropy"
         else:
             y, rows = led.y.astype(float), tr[septic[tr]]
-        f = L.fit_lgb(led.F, rows, y[rows], s.seg[rows], cols=cols, params=scale.lgbm,
+        f = L.fit_lgb(led.F, rows, y[rows], s.seg[rows], cols=cols, params=params,
                       weight=led.design_w[rows], strat=septic[rows].astype(int),
-                      early_stop=scale.early_stop)
+                      early_stop=scale.early_stop, feval_metric=metric)
         return lambda view, r: f.predict(view.F, r, raw=True)
     return fit
 
@@ -211,7 +240,8 @@ def twin_diagnostics(led: LG.Ledger, fms: Dict[str, FoldModels], T, extra) -> Di
     return out
 
 
-def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
+def run(source: str, tag: str, scale_name: str, project: str = "", hours: float = 12.0,
+        plan_only: bool = False) -> Dict:
     t0 = time.time()
     scale = SCALES[scale_name]
     rep: Dict = {"source": source, "scale": scale_name,
@@ -223,9 +253,24 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
         src = CsvSource(E.DEMO_ROOT) if source == "demo" else BigQuerySource(project)
         store = E.build_store(src)
         E.save(store, tag)
+    if scale_name != "demo" or plan_only:
+        # will it fit this machine? the richest plan that does, before any feature is built
+        n_feat = len(LG.build_features(E.subset(store, np.arange(min(8, store.n_patients))))[1])
+        scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours))
+        est = rep["plan"]["estimate"]
+        print(f"plan: {rep['plan']['chosen']} | keep_rate {scale.keep_rate} | {est['rows_kept']:,} rows x "
+              f"{est['features']} features | ~{est['feature_disk_gb']:.1f} GB disk, ~{est['ram_peak_gb']:.1f} GB RAM "
+              f"peak | ~{est['hours']:.1f} h ({est['booster_fits']} booster fits, twin {est['twin_hours']:.1f} h)",
+              flush=True)
+        if plan_only:
+            return rep
     design_w = None
     if scale.keep_rate < 1.0:
         store, design_w = E.sample_design(store, scale.keep_rate)
+    if scale.trim_septic:
+        stay_w = design_w[store.starts] if design_w is not None else None
+        store = E.trim_septic(store)
+        design_w = stay_w[store.seg] if stay_w is not None else None
     mm = os.path.join(E.CACHE_DIR, f"{tag}_features.npy") if scale.chunk_stays else None
     led = LG.Ledger.build(store, chunk_stays=scale.chunk_stays or None, memmap_path=mm,
                           dtype=getattr(np, scale.dtype), design_w=design_w)
@@ -244,19 +289,41 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
     rep["tripwires"] = led.tripwires()
     print("tripwires:", {k: round(v, 3) for k, v in rep["tripwires"].items()}, flush=True)
 
+    if scale.tune_trials:                         # dev subjects only; the incumbent is trial 0
+        tn = TN.tune(led, "P", n_trials=scale.tune_trials, val_folds=scale.tune_val_folds,
+                     max_train_rows=scale.tune_rows, early_stop=scale.early_stop, base=scale.lgbm)
+        rep["tuning"] = tn
+        scale = replace(scale, lgbm=dict(tn["best"]))
+        print(f"tuning: dev AUROC {tn['incumbent_auroc']:.4f} -> {tn['best_auroc']:.4f} with {tn['best']}", flush=True)
+
     fms: Dict[str, FoldModels] = {}
-    for tier in ("P", "T", "S"):
-        for tgt in TW.MAIN:
+    targets = TW.MAIN if scale.products else ("direct",)
+    for tier in scale.tiers:
+        for tgt in targets:
             fms[f"{tgt}_{tier}"] = led.fit_oof(Candidate(f"booster {tgt} {tier}", tier, booster(scale, tgt)),
                                                verbose=tgt == "direct")
-        fms[f"genesis_{tier}"] = LG.product(f"genesis_{tier}", [fms[f"{t}_{tier}"] for t in TW.MAIN])
+        if scale.products:
+            fms[f"genesis_{tier}"] = LG.product(f"genesis_{tier}", [fms[f"{t}_{tier}"] for t in TW.MAIN])
+    if scale.soft:
+        fms["soft_P"] = led.fit_oof(Candidate("booster soft-label P", "P", booster(scale, "soft")))
     fms["direct_Pstrict"] = led.fit_oof(Candidate("booster direct P-strict", "P", booster(scale), strict=True))
     fms["clinician"] = led.fit_oof(Candidate("clinician actions", "S", booster(scale),
                                              columns=lambda l: l.clinician_columns()))
-    twin, T, twin_extra = fit_twin(led, scale)
-    for n in ("s3", "direct", "phys", "hazard6"):
-        fms[f"twin_{n}_P"] = twin[n]
-    fms["genesis_twin_P"] = LG.product("genesis_twin_P", [fms[f"{t}_P"] for t in TW.MAIN] + [twin["s3"]])
+    twin = T = twin_extra = None
+    if scale.twin:
+        twin, T, twin_extra = fit_twin(led, scale)
+        for n in ("s3", "direct", "phys", "hazard6"):
+            fms[f"twin_{n}_P"] = twin[n]
+        if scale.products:
+            fms["genesis_twin_P"] = LG.product("genesis_twin_P", [fms[f"{t}_P"] for t in TW.MAIN] + [twin["s3"]])
+    # stacks: a cross-fitted logistic combination of every model a tier may use
+    p_parts = [k for k in ("direct_P", "who_P", "when_P", "soft_P", "twin_s3_P", "twin_direct_P", "twin_hazard6_P")
+               if k in fms]
+    fms["stack_P"] = LG.stack(led, "stack_P", [fms[k] for k in p_parts])
+    if "S" in scale.tiers:
+        s_parts = p_parts + [k for k in ("direct_S", "who_S", "when_S") if k in fms]
+        fms["stack_S"] = LG.stack(led, "stack_S", [fms[k] for k in s_parts])
+    rep["stacks"] = {"stack_P": p_parts, "stack_S": s_parts if "S" in scale.tiers else []}
     for k, fm in fms.items():                     # every result is reported under its key
         fm.name = k
 
@@ -268,31 +335,38 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
           + (f"; REFUSED {refused}" if refused else ""), flush=True)
 
     rep["models"] = {k: led.score(fm.oof) for k, fm in fms.items() if not k.startswith(("who_", "when_"))}
-    for k in ("twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_P", "genesis_twin_P", "direct_Pstrict",
-              "clinician", "genesis_S"):
-        sc = led.score(fms[k].oof)
+    for k in [k for k in rep["models"] if k != "clinician"] + ["clinician"]:
+        sc = rep["models"][k]
         print(f"  {k:<16} AUROC {sc['auroc']:.4f}  hour-matched {sc['auroc_hourmatched']:.4f}  "
-              f"pre-suspicion {sc['auroc_presusp']:.4f}", flush=True)
-    rep["comparisons"] = {
-        "twin_adds_to_trees_P": led.compare(fms["genesis_twin_P"].oof, fms["genesis_P"].oof, n_boot=500),
-        "tier_T_over_P": led.compare(fms["genesis_T"].oof, fms["genesis_P"].oof, n_boot=500),
-        "tier_S_over_P": led.compare(fms["genesis_S"].oof, fms["genesis_P"].oof, n_boot=500),
-        "declared_P_over_strict_P": led.compare(fms["direct_P"].oof, fms["direct_Pstrict"].oof, n_boot=500),
-    }
+              f"all stays {sc.get('auroc_all_stays', float('nan')):.4f}  patient {sc.get('patient_auroc', float('nan')):.4f}",
+              flush=True)
+    pairs = {"stack_over_direct_P": ("stack_P", "direct_P"), "twin_adds_to_trees_P": ("genesis_twin_P", "genesis_P"),
+             "tier_T_over_P": ("genesis_T", "genesis_P"), "tier_S_over_P": ("stack_S", "stack_P"),
+             "declared_P_over_strict_P": ("direct_P", "direct_Pstrict"), "soft_over_direct_P": ("soft_P", "direct_P"),
+             "twin_full_over_physiology": ("twin_s3_P", "twin_phys_P")}
+    rep["comparisons"] = {name: led.compare(fms[a].oof, fms[b].oof, n_boot=500)
+                          for name, (a, b) in pairs.items() if a in fms and b in fms}
+    rep["headline"] = headline(led, fms, rep, n_boot=scale.n_boot)
+    for tier, row in rep["headline"].items():
+        if tier in ("P", "T", "S"):
+            print(f"  best tier {tier}: {row['model']:<14} early-warning {row['auroc']:.4f}  all stays "
+                  f"{row['auroc_all_stays']:.4f}  patient {row['patient_auroc']:.4f}", flush=True)
+    ideal = rep["headline"]["ideal_circumstances"]
+    print(f"IDEAL CIRCUMSTANCES: AUROC {ideal['value']:.4f} — {ideal['model']}, {ideal['meaning']}", flush=True)
 
-    # the twin's own diagnostics: factors, hazard and outlook against their ground truth
-    rep["twin"] = twin_diagnostics(led, twin, T, twin_extra)
-    rep["comparisons"]["twin_full_over_physiology"] = led.compare(fms["twin_s3_P"].oof, fms["twin_phys_P"].oof,
-                                                                  n_boot=500)
-    print("twin: process gate {:.2f}; hazard 6-h AUROC {:.3f}; outlook AUROC {:.3f}; alerts driven by the care "
-          "process {}".format(rep["twin"]["process_gate"], rep["twin"]["hazard_onset6_auroc"],
-                              rep["twin"]["outlook_total_auroc"],
-                              rep["twin"].get("alert_attribution", {}).get("share_driven_by_process")), flush=True)
+    if twin is not None:
+        # the twin's own diagnostics: factors, hazard and outlook against their ground truth
+        rep["twin"] = twin_diagnostics(led, twin, T, twin_extra)
+        print("twin: process gate {:.2f}; hazard 6-h AUROC {:.3f}; outlook AUROC {:.3f}; alerts driven by the care "
+              "process {}".format(rep["twin"]["process_gate"], rep["twin"]["hazard_onset6_auroc"],
+                                  rep["twin"]["outlook_total_auroc"],
+                                  rep["twin"].get("alert_attribution", {}).get("share_driven_by_process")), flush=True)
 
     # the cross-examination and the transplant
     clin = fms["clinician"].oof
-    rep["crossexam"] = {k: CX.examine(led, fms[k].oof, fms[k].tier, clin, n_boot=scale.n_boot) for k in HEADLINE}
-    rep["process_physiology"] = CF.process_physiology(led, [fms[k] for k in TRANSPLANTED],
+    heads = [k for k in HEADLINE if k in fms]
+    rep["crossexam"] = {k: CX.examine(led, fms[k].oof, fms[k].tier, clin, n_boot=scale.n_boot) for k in heads}
+    rep["process_physiology"] = CF.process_physiology(led, [fms[k] for k in TRANSPLANTED if k in fms],
                                                       n_stays=scale.cpt_stays, n_boot=scale.n_boot)
     rep["process_physiology_learnable"] = CF.learnable(
         led, Candidate("booster direct P", "P", booster(scale)), n_stays=scale.learn_stays, n_boot=scale.n_boot)
@@ -307,20 +381,25 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
                                         for kk, vv in v.items()), flush=True)
 
     # information ledger: each physiology family's marginal value (tier P)
-    base = led.score(fms["direct_P"].oof)["auroc"]
-    rep["information_ledger"] = {}
-    for fam in PHYSIO_FAMILIES:
-        drop = set(LG.FAMILIES[fam])
-        keep = np.array([j for j in led.columns("P") if (LG.channel_of(led.names[j]) or "") not in drop])
-        fm = led.fit_oof(Candidate(f"P without {fam}", "P", booster(scale), columns=lambda l, keep=keep: keep),
-                         verbose=False)
-        a = led.score(fm.oof)["auroc"]
-        rep["information_ledger"][fam] = {"auroc_without": a, "auroc_lost": base - a}
-    rep["label_sensitivity_P"] = led.label_sensitivity(fms["genesis_twin_P"].oof)
+    if scale.info_ledger:
+        base = led.score(fms["direct_P"].oof)["auroc"]
+        rep["information_ledger"] = {}
+        for fam in PHYSIO_FAMILIES:
+            if fam in LG.STATIC_FAMILIES:
+                drop_names = set(LG.STATIC_FAMILIES[fam])
+                keep = np.array([j for j in led.columns("P") if led.names[j] not in drop_names])
+            else:
+                drop = set(LG.FAMILIES[fam])
+                keep = np.array([j for j in led.columns("P") if (LG.channel_of(led.names[j]) or "") not in drop])
+            fm = led.fit_oof(Candidate(f"P without {fam}", "P", booster(scale), columns=lambda l, keep=keep: keep),
+                             verbose=False)
+            a = led.score(fm.oof)["auroc"]
+            rep["information_ledger"][fam] = {"auroc_without": a, "auroc_lost": base - a}
+    rep["label_sensitivity_P"] = led.label_sensitivity(fms["stack_P"].oof)
     rep["temporal_validation"] = temporal_validation(led, scale)
     rep["trust"] = {"chain": TR.summary(), "code": TR.code_fingerprint(), "power_plan": {
-        "absolute_auroc_gt_0.80": TR.power_plan(led, fms["genesis_twin_P"].oof, bar=0.80),
-        "twin_over_trees_by_0.01": TR.power_plan(led, fms["genesis_twin_P"].oof, fms["genesis_P"].oof, bar=0.01)}}
+        "absolute_auroc_gt_0.80": TR.power_plan(led, fms["stack_P"].oof, bar=0.80),
+        "stack_over_direct_by_0.01": TR.power_plan(led, fms["stack_P"].oof, fms["direct_P"].oof, bar=0.01)}}
     rep["seconds"] = time.time() - t0
     os.makedirs(LG.OUT_DIR, exist_ok=True)
     path = os.path.join(LG.OUT_DIR, f"{tag}_report.json")
@@ -330,10 +409,51 @@ def run(source: str, tag: str, scale_name: str, project: str = "") -> Dict:
     return rep
 
 
+def _boot_ci(led: LG.Ledger, p: np.ndarray, setting: str, n_boot: int, seed: int = 0):
+    """Subject-bootstrap 95% interval of a pooled AUROC setting (design-weighted)."""
+    from backend.ml.genesis.harness import Ranked
+    s = led.store
+    base = led.eval_mask if setting == "auroc" else led.train_mask
+    rows = np.flatnonzero(base & np.isfinite(p) & (led.folds[s.seg] >= 0))
+    if not len(rows) or led.y[rows].min() == led.y[rows].max():
+        return (float("nan"), float("nan"))
+    y, w, R = led.y[rows], led.design_w[rows], Ranked(p[rows])
+    codes, inv = np.unique(s.subject[s.seg[rows]], return_inverse=True)
+    rng = np.random.default_rng(seed)
+    d = [R.auc(y, w * np.bincount(rng.integers(0, len(codes), len(codes)), minlength=len(codes))[inv])
+         for _ in range(n_boot)]
+    return tuple(float(x) for x in np.nanpercentile(d, [2.5, 97.5]))
+
+
+def headline(led: LG.Ledger, fms: Dict[str, FoldModels], rep: Dict, n_boot: int = 200) -> Dict:
+    """Where the number stands: the best model of each tier (by the primary, early-warning
+    dev AUROC) under every setting a paper might report — and the single highest number,
+    always printed with what it means (tier and setting) and never without the primary."""
+    settings = list(SETTING_MEANING)
+    out: Dict = {}
+    for tier in ("P", "T", "S"):
+        cands = [k for k, fm in fms.items() if fm.tier == tier and k in rep["models"] and k != "clinician"]
+        if not cands:
+            continue
+        k = max(cands, key=lambda c: np.nan_to_num(rep["models"][c]["auroc"], nan=-1.0))
+        sc = rep["models"][k]
+        out[tier] = {"model": k, **{st: sc.get(st, float("nan")) for st in settings},
+                     "ci95": {st: _boot_ci(led, fms[k].oof, st, n_boot) for st in ("auroc", "auroc_all_stays")},
+                     "admitted": rep["admission"].get(k, {}).get("admissible", "n/a")}
+    best = max(((out[t][st], t, st) for t in out for st in settings if np.isfinite(out[t][st])),
+               default=(float("nan"), "", ""))
+    out["ideal_circumstances"] = {
+        "value": best[0], "tier": best[1], "setting": best[2], "model": out.get(best[1], {}).get("model", ""),
+        "meaning": f"{TIER_MEANING.get(best[1], '')}; {SETTING_MEANING.get(best[2], '')}",
+        "primary": {"value": out.get("P", {}).get("auroc", float("nan")),
+                    "meaning": f"{TIER_MEANING['P']}; {SETTING_MEANING['auroc']}"}}
+    return out
+
+
 def verdicts(rep: Dict, fms: Dict[str, FoldModels]) -> Dict[str, Dict]:
     """One row per headline model: the answer to each cross-examination question."""
     out = {}
-    for k in HEADLINE:
+    for k in [k for k in HEADLINE if k in rep["crossexam"]]:
         cx = rep["crossexam"][k]
         cpt = rep["process_physiology"].get(k, {})
         hz = cx["horizon"]
@@ -389,7 +509,10 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--project", default="")
     ap.add_argument("--scale", choices=list(SCALES), default=None)
     ap.add_argument("--tag", default=None)
+    ap.add_argument("--hours", type=float, default=12.0, help="time budget the planner fits the run into")
+    ap.add_argument("--plan-only", action="store_true", help="extract, print the plan, stop")
     a = ap.parse_args()
     import torch
     torch.set_num_threads(6)
-    run(a.source, a.tag or a.source, a.scale or ("demo" if a.source == "demo" else "full"), a.project)
+    run(a.source, a.tag or a.source, a.scale or ("demo" if a.source == "demo" else "full"), a.project,
+        a.hours, a.plan_only)

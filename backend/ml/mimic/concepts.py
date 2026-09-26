@@ -11,11 +11,15 @@ extend it.
 
 TIERS — what a model is allowed to read (the Epic-Sepsis-Model lesson):
 
-    P  physiology   vitals, labs, GCS, urine output — measurements of the patient
-    T  treatment    vasopressors, ventilation — clinicians' response to the patient
+    P  physiology   vitals, labs, GCS, urine output, CVP — measurements of the patient —
+                    and what was known about them on arrival (admission source, service,
+                    comorbidities from PRIOR admissions)
+    T  treatment    vasopressors, ventilation and its settings, fluids, blood products,
+                    sedation, dialysis — clinicians' response to the patient
                     (vasopressors also define SOFA's cardiovascular score)
-    S  suspicion    cultures and antibiotics — the orders that DEFINE Sepsis-3's
-                    suspected-infection time; a model reading them partly detects the label
+    S  suspicion    cultures and antibiotics (orders and IV administrations) — the orders
+                    that DEFINE Sepsis-3's suspected-infection time; a model reading them
+                    partly detects the label
 
 A tier-P model is the honest physiology number; T and S are reported beside it, never
 instead of it.
@@ -33,17 +37,19 @@ TIER_ORDER = {"P": 0, "T": 1, "S": 2}
 @dataclass(frozen=True)
 class Concept:
     name: str
-    kind: str                       # chart | lab | uo | vaso | vent | culture | abx
+    kind: str                       # chart | lab | lab_text | uo | vaso | vent | amount | sedation | dialysis | culture | abx | abx_admin
     itemids: Tuple[int, ...] = ()
     tier: str = "P"
     lo: float = -np.inf             # plausibility window (values outside are dropped)
     hi: float = np.inf
     label_pattern: str = ""         # regex the dictionary label must match (verify_mimic)
     unit: str = ""
+    #: for results charted as text (urinalysis): text -> ordinal value; anything else dropped
+    text_map: Tuple[Tuple[str, float], ...] = ()
 
 
-def _c(name, kind, itemids, tier="P", lo=-np.inf, hi=np.inf, pat="", unit=""):
-    return Concept(name, kind, tuple(itemids), tier, lo, hi, pat, unit)
+def _c(name, kind, itemids, tier="P", lo=-np.inf, hi=np.inf, pat="", unit="", text_map=()):
+    return Concept(name, kind, tuple(itemids), tier, lo, hi, pat, unit, tuple(text_map))
 
 
 # --------------------------------------------------------------------------- #
@@ -100,6 +106,49 @@ LAB: List[Concept] = [
     _c("Fibrinogen", "lab", [51214], lo=0, hi=2000, pat=r"Fibrinogen", unit="mg/dL"),
     _c("Bands", "lab", [51144], lo=0, hi=100, pat=r"^Bands$", unit="%"),
 ]
+#: v3: inflammation, the differential and organ injury beyond SOFA. Left out on purpose:
+#: D-dimer (itemids charted in two unit systems, ng/mL and ng/mL FEU) and one absolute
+#: lymphocyte itemid in #/uL beside the K/uL one — mixing units would be noise
+LAB_V3: List[Concept] = [
+    _c("CRP", "lab", [50889], lo=0, hi=1000, pat=r"^C-Reactive Protein$", unit="mg/L"),
+    _c("Neutrophils", "lab", [51256], lo=0, hi=100, pat=r"^Neutrophils$", unit="%"),
+    _c("Lymphocytes", "lab", [51244], lo=0, hi=100, pat=r"^Lymphocytes$", unit="%"),
+    _c("ImmGran", "lab", [52135], lo=0, hi=100, pat=r"^Immature Granulocytes$", unit="%"),
+    _c("Eosinophils", "lab", [51200], lo=0, hi=100, pat=r"^Eosinophils$", unit="%"),
+    _c("AbsNeutrophils", "lab", [52075], lo=0, hi=500, pat=r"^Absolute Neutrophil Count$", unit="K/uL"),
+    _c("AbsLymphocytes", "lab", [51133], lo=0, hi=500, pat=r"^Absolute Lymphocyte Count$", unit="K/uL"),
+    _c("AnionGap", "lab", [50868, 52500], lo=0, hi=80, pat=r"^Anion Gap$", unit="mEq/L"),
+    _c("Ferritin", "lab", [50924], lo=0, hi=200000, pat=r"^Ferritin$", unit="ng/mL"),
+    _c("LDH", "lab", [50954], lo=0, hi=50000, pat=r"^Lactate Dehydrogenase", unit="IU/L"),
+    _c("CK", "lab", [50910], lo=0, hi=500000, pat=r"^Creatine Kinase \(CK\)$", unit="IU/L"),
+    _c("Lipase", "lab", [50956], lo=0, hi=50000, pat=r"^Lipase$", unit="IU/L"),
+    _c("Ammonia", "lab", [50866], lo=0, hi=2000, pat=r"^Ammonia$", unit="umol/L"),
+    _c("NTproBNP", "lab", [50963], lo=0, hi=300000, pat=r"^NTproBNP$", unit="pg/mL"),
+]
+LAB += LAB_V3
+
+#: urinalysis — charted as text (a urinary source of infection); ordinal-coded
+LAB_TEXT: List[Concept] = [
+    _c("UrineLeuk", "lab_text", [51486], lo=0, hi=3, pat=r"^Leukocytes$",
+       text_map=(("NEG", 0.0), ("TR", 0.5), ("SM", 1.0), ("MOD", 2.0), ("LG", 3.0))),
+    _c("UrineNitrite", "lab_text", [51487], lo=0, hi=1, pat=r"^Nitrite$",
+       text_map=(("NEG", 0.0), ("POS", 1.0))),
+]
+
+# --------------------------------------------------------------------------- #
+# chartevents (v3) — central venous pressure (P); ventilator settings (T)
+# --------------------------------------------------------------------------- #
+HEMO: List[Concept] = [
+    _c("CVP", "chart", [220074], lo=-10, hi=60, pat=r"^Central Venous Pressure$", unit="mmHg"),
+]
+VENT_SET: List[Concept] = [
+    _c("PEEP", "chart", [220339, 224700], "T", 0, 40, r"PEEP", "cmH2O"),
+    _c("TidalVolume", "chart", [224685], "T", 0, 2500, r"^Tidal Volume \(observed\)$", "mL"),
+    _c("MinuteVolume", "chart", [224687], "T", 0, 60, r"^Minute Volume$", "L/min"),
+    _c("PeakPressure", "chart", [224695], "T", 0, 120, r"^Peak Insp. Pressure$", "cmH2O"),
+]
+#: every chartevents concept the binning reads
+CHART_ALL: List[Concept] = []    # filled below, after CHART
 
 # --------------------------------------------------------------------------- #
 # outputevents — urine output (mimic-code urine_output concept; GU irrigant IN subtracts)
@@ -132,10 +181,31 @@ VENT: List[Concept] = [
 ]
 
 # --------------------------------------------------------------------------- #
+# inputevents / procedureevents (v3) — the rest of the treatment (tier T)
+# --------------------------------------------------------------------------- #
+#: volume STARTED in the hour (mL): resuscitation fluids and blood products
+TREAT_AMOUNT: List[Concept] = [
+    _c("Crystalloid", "amount", [225158, 225828], "T", 0, 10000, r"^(NaCl 0.9%|LR)$", "mL"),
+    _c("BloodProducts", "amount", [225168, 225170, 220970], "T", 0, 5000,
+       r"^(Packed Red Blood Cells|Platelets|Fresh Frozen Plasma)$", "mL"),
+]
+#: 1 for every hour an administration interval covers
+TREAT_INTERVAL: List[Concept] = [
+    _c("Sedation", "sedation", [222168, 221668, 221744, 225942, 225150, 221712, 221385], "T",
+       pat=r"^(Propofol|Midazolam|Fentanyl|Dexmedetomidine|Ketamine|Lorazepam)"),
+    _c("Dialysis", "dialysis", [225802, 225441, 225805], "T",
+       pat=r"^(Dialysis - CRRT|Hemodialysis|Peritoneal Dialysis)$"),
+]
+
+# --------------------------------------------------------------------------- #
 # suspicion of infection (tier S): microbiologyevents + prescriptions
 # --------------------------------------------------------------------------- #
 CULTURE = _c("Culture", "culture", [], tier="S")
 ANTIBIOTIC = _c("Antibiotic", "abx", [], tier="S")
+#: IV antibiotics as ADMINISTERED at the bedside (inputevents), beside the pharmacy orders
+#: the Sepsis-3 label reads (prescriptions): an input channel, never part of the label
+ABX_ADMIN = _c("AbxAdmin", "abx_admin", [], tier="S")
+ABX_ADMIN_CATEGORY = "08-Antibiotics (IV)"
 
 #: Drug-name substrings of systemic antibiotics (after the MIT-LCP mimic-code
 #: ``antibiotic`` concept, plus newer agents). Matched case-insensitively.
@@ -177,8 +247,12 @@ ABX_EXCLUDE_WORDS: Tuple[str, ...] = ("cream", "desensitization", "ophth", "oint
 MAX_HOURS = 336
 
 
+CHART_ALL[:] = CHART + HEMO + VENT_SET
+
+
 def all_concepts() -> List[Concept]:
-    return CHART + LAB + [UO] + VASO + VENT + [CULTURE, ANTIBIOTIC]
+    return CHART_ALL + LAB + LAB_TEXT + [UO] + VASO + VENT + TREAT_AMOUNT + TREAT_INTERVAL + \
+        [CULTURE, ANTIBIOTIC, ABX_ADMIN]
 
 
 def is_antibiotic(drug: str, route: Optional[str]) -> bool:

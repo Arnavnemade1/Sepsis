@@ -23,20 +23,30 @@ import pandas as pd
 from backend.ml import config
 from backend.ml.genesis.rawstore import RawStore
 from backend.ml.mimic import concepts as K
+from backend.ml.mimic import history as H
 from backend.ml.mimic import sepsis3 as S3
 from backend.ml.mimic.sources import CsvSource
 
 CACHE_DIR = os.path.join(config.ARTIFACTS_DIR, "mimic_cache")
 
 VITAL_CH = ["HR", "SBP", "DBP", "MAP", "Resp", "O2Sat", "Temp", "EtCO2"]
+HEMO_CH = [c.name for c in K.HEMO]                # central venous pressure
 GCS_CH = ["GCS_eye", "GCS_verbal", "GCS_motor", "GCS"]
-LAB_CH = [c.name for c in K.LAB]
+LAB_CH = [c.name for c in K.LAB + K.LAB_TEXT]
+#: the v3 labs: sparse, so the feature engine gives them its light set (``LIGHT_CH``)
+NEW_LAB_CH = [c.name for c in K.LAB_V3 + K.LAB_TEXT]
+VENT_SET_CH = [c.name for c in K.VENT_SET]        # ventilator settings (T)
 VASO_CH = [c.name for c in K.VASO]
 VENT_CH = [c.name for c in K.VENT]
-SUSP_CH = ["Culture", "Antibiotic"]
+TREAT_CH = [c.name for c in K.TREAT_AMOUNT + K.TREAT_INTERVAL]   # fluids, blood, sedation, dialysis (T)
+SUSP_CH = ["Culture", "Antibiotic", "AbxAdmin"]
 SOFA_CH = ["SOFA_P", "SOFA"]                      # hourly SOFA as a causal input channel
-DYNAMIC = VITAL_CH + ["FiO2"] + GCS_CH + LAB_CH + ["UrineOutput"] + VASO_CH + VENT_CH + \
-    SUSP_CH + SOFA_CH
+DYNAMIC = VITAL_CH + HEMO_CH + ["FiO2"] + GCS_CH + LAB_CH + ["UrineOutput"] + VENT_SET_CH + VASO_CH + \
+    VENT_CH + TREAT_CH + SUSP_CH + SOFA_CH
+#: dense channels: 0 = off / none given, never missing
+DENSE_CH = VASO_CH + VENT_CH + TREAT_CH
+#: channels whose feature set is the light one (value, age, counts, previous, change)
+LIGHT_CH = NEW_LAB_CH + HEMO_CH + VENT_SET_CH + TREAT_CH + ["AbxAdmin"]
 UNITS = {"Medical Intensive Care Unit (MICU)": "Unit_MICU",
          "Surgical Intensive Care Unit (SICU)": "Unit_SICU",
          "Cardiac Vascular Intensive Care Unit (CVICU)": "Unit_CVICU",
@@ -44,13 +54,17 @@ UNITS = {"Medical Intensive Care Unit (MICU)": "Unit_MICU",
          "Trauma SICU (TSICU)": "Unit_TSICU",
          "Medical/Surgical Intensive Care Unit (MICU/SICU)": "Unit_MSICU",
          "Neuro Surgical Intensive Care Unit (Neuro SICU)": "Unit_Neuro"}
+#: what was known on arrival (``history``): admission source, admitting service, and
+#: comorbidities / prior-admission recency from admissions discharged BEFORE this one
+CONTEXT = H.SRC_COLS + H.SVC_COLS + H.HX_COLS
 STATIC = ["Age", "Gender", "HospAdmTime", "Weight", "AdmEmergency"] + \
-    sorted(set(UNITS.values())) + ["Unit_Other", "ICULOS"]
+    sorted(set(UNITS.values())) + ["Unit_Other"] + CONTEXT + ["ICULOS"]
 YEAR_GROUPS = ["2008 - 2010", "2011 - 2013", "2014 - 2016", "2017 - 2019", "2020 - 2022"]
 MIN_HOURS = 4
 #: Bumped whenever the grid's contents change (v2: SOFA_P without the ventilator; audit-only
 #: attributes in ``meta``), so a stale cache is rebuilt instead of silently reused.
-STORE_VERSION = 2
+STORE_VERSION = 3                 # v3: inflammation labs, urinalysis, CVP, ventilator settings,
+                                  # treatments, IV antibiotic administrations, arrival context
 #: Per-stay attributes kept for the subgroup audit ONLY. They live in ``meta``, never in the
 #: grid ``X``, so no feature — and therefore no model — can read them.
 AUDIT_ATTRS = ["sex", "age_band", "race_group", "insurance", "admission_type", "careunit",
@@ -60,7 +74,8 @@ PRIMARY_RULE = "measured"
 
 
 def tier_of(channel: str) -> str:
-    if channel in VASO_CH or channel in VENT_CH or channel == "SOFA":
+    if channel in VASO_CH or channel in VENT_CH or channel in VENT_SET_CH or channel in TREAT_CH \
+            or channel == "SOFA":
         return "T"
     if channel in SUSP_CH:
         return "S"
@@ -108,7 +123,7 @@ def build_store(src, verbose: bool = True) -> MimicStore:
     cols = DYNAMIC + STATIC
     j = {c: i for i, c in enumerate(cols)}
     X = np.full((N, len(cols)), np.nan, dtype=np.float32)
-    for c in VASO_CH + VENT_CH:
+    for c in DENSE_CH:
         X[:, j[c]] = 0.0
 
     def place(df: pd.DataFrame) -> None:
@@ -131,14 +146,20 @@ def build_store(src, verbose: bool = True) -> MimicStore:
     for name, fn in [("chart", lambda: src.binned_chart(stays)), ("labs", lambda: src.binned_labs(stays)),
                      ("uo", lambda: src.binned_uo(stays)),
                      ("vaso", lambda: src.interval_hours(stays, "vaso")),
-                     ("vent", lambda: src.interval_hours(stays, "vent"))]:
+                     ("vent", lambda: src.interval_hours(stays, "vent")),
+                     ("sedate", lambda: src.interval_hours(stays, "sedation")),
+                     ("dialys", lambda: src.interval_hours(stays, "dialysis")),
+                     ("fluids", lambda: src.hourly_amounts(stays))]:
         ts = time.time()
-        parts[name] = fn()
-        place(parts[name])
+        n = 0
+        for page in _pages(fn()):                  # BigQuery hands over pages; a CSV one frame
+            place(page)
+            n += len(page)
+        parts[name] = n
         if verbose:
-            print(f"    {name:<6} {len(parts[name]):>9,} hourly values [{time.time()-ts:.1f}s]", flush=True)
-    events = {k: src.event_times(stays, k) for k in ("culture", "abx")}
-    for key, ch in (("culture", "Culture"), ("abx", "Antibiotic")):
+            print(f"    {name:<6} {n:>9,} hourly values [{time.time()-ts:.1f}s]", flush=True)
+    events = {k: src.event_times(stays, k) for k in ("culture", "abx", "abx_admin")}
+    for key, ch in (("culture", "Culture"), ("abx", "Antibiotic"), ("abx_admin", "AbxAdmin")):
         ev = events[key]
         hr = np.maximum(np.floor(ev.t.to_numpy()), 0).astype(int)     # pre-ICU orders known at hour 0
         place(pd.DataFrame({"stay_id": ev.stay_id, "hr": hr, "name": ch, "value": 1.0}))
@@ -157,6 +178,14 @@ def build_store(src, verbose: bool = True) -> MimicStore:
     unit = st.first_careunit.map(UNITS).fillna("Unit_Other")
     for u in sorted(set(UNITS.values())) + ["Unit_Other"]:
         per[u] = (unit == u).to_numpy(float)
+    ts = time.time()
+    ctx = H.admission_context(st, src.services()).set_index("stay_id")
+    hist = H.prior_history(st, src.admissions(), src.diagnoses()).set_index("stay_id")
+    for c in CONTEXT:
+        per[c] = st.stay_id.map((ctx if c in ctx.columns else hist)[c]).to_numpy(float)
+    if verbose:
+        print(f"    context {len(ctx):>8,} stays (source, service, prior-admission history) "
+              f"[{time.time()-ts:.1f}s]", flush=True)
     seg = np.repeat(np.arange(len(st)), lens)
     for c, v in per.items():
         X[:, j[c]] = v[seg]
@@ -202,6 +231,14 @@ def build_store(src, verbose: bool = True) -> MimicStore:
               f"{len(cols)} channels; Sepsis-3 ({PRIMARY_RULE} rule) in {int(sep.sum())} stays "
               f"({sep.mean():.1%}); label-1 hours {y.mean():.3%} [{time.time()-t0:.1f}s]", flush=True)
     return store
+
+
+def _pages(result):
+    """A frame, or an iterable of frames (BigQuery's paged results), as frames."""
+    if isinstance(result, pd.DataFrame):
+        yield result
+    else:
+        yield from result
 
 
 def derive_channels(X: np.ndarray, columns: List[str], lens: np.ndarray) -> Dict[str, np.ndarray]:
@@ -272,6 +309,27 @@ def subset(store: MimicStore, stays: np.ndarray) -> MimicStore:
                       meta=store.meta.iloc[stays].reset_index(drop=True),
                       onsets=store.onsets.iloc[stays].reset_index(drop=True),
                       sofa={k: v[rows] for k, v in store.sofa.items()})
+
+
+def trim_septic(store: MimicStore, margin: int = 4) -> MimicStore:
+    """Drop the hours no model trains on and no metric scores: in a stay septic under the
+    PRIMARY rule, everything after its LATEST onset across all 9 definitions + 3 h + ``margin``
+    (so label sensitivity keeps every row it scores). Every feature and model is causal, so
+    no prediction on a kept row can change (``verify_mimic`` checks it bit for bit) — and a
+    septic stay's post-onset days are most of the full cohort's hours. Stays never septic
+    under the primary rule are untouched: all their hours are negatives. The original length
+    stays in ``meta.n_hours`` (the record-length tripwire reads it)."""
+    prim = np.isfinite(store.onsets[f"t_sepsis_{PRIMARY_RULE}_min"].to_numpy())
+    cols = [c for c in store.onsets.columns if c.startswith("t_sepsis_")]
+    latest = np.nanmax(store.onsets[cols].to_numpy(dtype=float), axis=1)
+    keep_len = store.lens.copy()
+    cut = prim & np.isfinite(latest)
+    keep_len[cut] = np.minimum(store.lens[cut], np.ceil(latest[cut]).astype(np.int64) + 3 + margin + 1)
+    keep_len = np.maximum(keep_len, 1)
+    rows = np.concatenate([np.arange(store.starts[k], store.starts[k] + keep_len[k]) for k in range(store.n_patients)])
+    return MimicStore(X=store.X[rows], y=store.y[rows], lens=keep_len, pid=store.pid, site=store.site,
+                      columns=list(store.columns), tiers=dict(store.tiers), static_columns=list(store.static_columns),
+                      meta=store.meta, onsets=store.onsets, sofa={k: v[rows] for k, v in store.sofa.items()})
 
 
 def sample_design(store: MimicStore, keep_rate: float, seed: int = 0):

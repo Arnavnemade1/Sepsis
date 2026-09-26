@@ -68,7 +68,7 @@ AUX = ["susp6", "susp24", "organ"] + [f"rise12_{o}" for o in ORGANS]
 HAZ_EDGES = (0, 1, 2, 3, 4, 6, 8, 12, 24)          # hazard bins, hours ahead: (0,1], (1,2], ...
 N_BINS = len(HAZ_EDGES) - 1
 OUTLOOK_H = 6
-DENSE = frozenset(E.VASO_CH + E.VENT_CH)           # dense channels: 0 = off, never missing
+DENSE = frozenset(E.DENSE_CH)                     # dense channels: 0 = off, never missing
 HEADS = ("direct", "who", "when", "s3", "susp6", "organ", "hazard6", "outlook")
 
 
@@ -79,8 +79,15 @@ def input_channels(store: E.MimicStore, tier: str, drop: FrozenSet[str] = frozen
     return [c for c in E.DYNAMIC if K.TIER_ORDER[store.tiers[c]] <= K.TIER_ORDER[tier] and c not in drop]
 
 
-def sequence_inputs(store: E.MimicStore, tier: str = "P", drop: FrozenSet[str] = frozenset()
-                    ) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
+#: the arrival context (source, service, comorbidities) is the TREES' job, not the twin's:
+#: on a planted world the 33 context columns let the physiology twin's early stopping lock onto
+#: between-patient signal before it learned a within-stay heart-rate pattern (0.609 with
+#: them, 0.757 without, three seeds each) — the stack combines trees and twin anyway
+TWIN_STATIC = [c for c in E.STATIC if c not in E.CONTEXT]
+
+
+def sequence_inputs(store: E.MimicStore, tier: str = "P", drop: FrozenSet[str] = frozenset(),
+                    context: bool = False) -> Tuple[np.ndarray, np.ndarray, List[str], List[str]]:
     """``(values, process, value_names, process_names)``, one row per grid hour.
 
     Values: each channel's latest reading (NaN until first measured; standardised to the
@@ -104,7 +111,7 @@ def sequence_inputs(store: E.MimicStore, tier: str = "P", drop: FrozenSet[str] =
         vn.append(c)
         procs += [obs.astype(np.float64), np.log1p(np.where(has, idx - last, 96)), has.astype(np.float64)]
         pn += [f"{c}__now", f"{c}__logage", f"{c}__ever"]
-    for c in E.STATIC:
+    for c in (E.STATIC if context else TWIN_STATIC):
         v = store.col(c).astype(np.float64)
         if c in ("ICULOS", "HospAdmTime"):
             v = np.sign(v) * np.log1p(np.abs(v))
@@ -264,6 +271,7 @@ class TwinConfig:
     w_wm: float = 0.1
     tier: str = "P"
     strict: bool = False           # drop the ledger's covert channels (``infoflow``)
+    context: bool = False          # read the arrival context too (``TWIN_STATIC`` explains the default)
     #: "record": train on records as they were (the full score); "transplanted": train only
     #: on records rebuilt on random donors' schedules (the physiology score); "both": both
     #: at once (kept for the ablation that showed it costs the full score)
@@ -329,11 +337,11 @@ class ProcessTwin:
 
     # ---------------- inputs and batches ---------------- #
     def _inputs(self, led_or_view) -> Tuple[np.ndarray, np.ndarray]:
-        key = ("twin_seq", self.cfg.tier, self.drop_)
+        key = ("twin_seq", self.cfg.tier, self.drop_, self.cfg.context)
         cache = getattr(led_or_view, "cache", None)
         if cache is not None and key in cache:
             return cache[key]
-        xv, xp, _, _ = sequence_inputs(led_or_view.store, self.cfg.tier, self.drop_)
+        xv, xp, _, _ = sequence_inputs(led_or_view.store, self.cfg.tier, self.drop_, self.cfg.context)
         if cache is not None:
             cache[key] = (xv, xp)
         return xv, xp
@@ -437,7 +445,7 @@ class ProcessTwin:
                 if cfg.regime in ("transplanted", "both"):
                     donors = rng.integers(0, len(self.bank_), len(g))
                     cst = CF.transplanted_store(s, g, donors, self.bank_, self.ref_, seed=int(rng.integers(1 << 30)))
-                    cv, cp, _, _ = sequence_inputs(cst, cfg.tier, self.drop_)
+                    cv, cp, _, _ = sequence_inputs(cst, cfg.tier, self.drop_, cfg.context)
                     xv2, xp2, ys2, _, _ = self._pad(cst, np.arange(cst.n_patients), cv, cp, dev, T,
                                                     row_map=_rows(s, g))
                     loss = loss + self._loss(net(xv2, xp2), ys2, pw)
@@ -542,7 +550,7 @@ class ProcessTwin:
                 donors = np.minimum((CF.hash_uniform(self.cfg.seed, 7919 + k, pid) * len(self.bank_)).astype(np.int64),
                                     len(self.bank_) - 1)
                 cst = CF.transplanted_store(store, stays, donors, self.bank_, self.ref_, seed=104729 + k)
-                cv, cp, _, _ = sequence_inputs(cst, self.cfg.tier, self.drop_)
+                cv, cp, _, _ = sequence_inputs(cst, self.cfg.tier, self.drop_, self.cfg.context)
                 o = self._forward(cst, cv, cp, np.arange(cst.n_patients), heads)
                 for h in heads:
                     out[h] = out[h] + o[h] / self.cfg.k_donors

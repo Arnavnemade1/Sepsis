@@ -47,6 +47,9 @@ class FeatureSpec:
     #: measurement-process features; ``static_cols``: per-stay columns passed through as-is.
     labs: Optional[List[str]] = None
     static_cols: Optional[List[str]] = None
+    #: channels that get the LIGHT set (value, age, counts, previous value and change) —
+    #: sparse labs and settings, where first / extremes / running mean are mostly empty
+    light: Optional[List[str]] = None
 
     @staticmethod
     def wearable() -> "FeatureSpec":
@@ -170,7 +173,8 @@ def build(raw: RawStore, spec: Optional[FeatureSpec] = None,
         out.add(f"{ch}__age", np.where(has, S.idx - last, np.nan))
         out.add(f"{ch}__n", n_all)
         out.add(f"{ch}__n24", S.window_sum(C, 24))
-        if spec.detail:
+        light = spec.light is not None and ch in spec.light
+        if spec.detail or light:
             # second-most-recent observation: the last observation strictly before `last`
             before = np.r_[-1, np.maximum.accumulate(np.where(obs, S.idx, -1))[:-1]]
             sl = np.where(has, before[np.maximum(last, 0)], -1)
@@ -179,6 +183,8 @@ def build(raw: RawStore, spec: Optional[FeatureSpec] = None,
             pv = np.where(has2, v[np.maximum(sl, 0)], np.nan)
             out.add(f"{ch}__prev", pv)
             out.add(f"{ch}__dlast", lv - pv)
+            if light:
+                continue
             out.add(f"{ch}__dtlast", np.where(has2, last - sl, np.nan))
             # first observed value of the stay, visible only once it has happened
             big = np.iinfo(np.int64).max

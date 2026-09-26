@@ -8,15 +8,17 @@ systems (Glasgow Coma Scale, urine output, vasopressor doses) and the suspected-
 record (cultures, antibiotics) that sets the Sepsis-3 clock. MIMIC-IV records all of it.
 
 **Status.** Built end to end and verified on the open MIMIC-IV demo (100 patients, ODbL,
-16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 79/79 (~4.5 min), and every harness and
-temporal-model check has been mutation-tested (the mechanism broken on purpose, the check
-seen to go red). The full
+16 MB, `data/mimic_demo/`, gitignored). `verify_mimic.py`: 97/97 (~5 min), and every harness,
+temporal-model and v3 check has been mutation-tested (the mechanism broken on purpose, the
+check seen to go red). The full
 run waits on credentialed PhysioNet access; the demo's numbers are noise by design (99
 subjects) and every demo report says so.
 
 | module (`backend/ml/mimic/`) | job |
 |---|---|
-| `concepts.py` | the variable catalog: 75 itemids, every one checked against MIMIC's own `d_items` / `d_labitems`; plausibility windows; input tier per variable |
+| `concepts.py` | the variable catalog: 113 itemids, every one checked against MIMIC's own `d_items` / `d_labitems`; plausibility windows; input tier per variable |
+| `history.py` | what was known on arrival: admission source, admitting service, comorbidities from prior admissions only |
+| `mimicfeat.py` | the label's structure as causal features, each at the tier allowed to see it |
 | `sources.py` | `CsvSource` (demo / full CSVs, the reference semantics) and `BigQuerySource` (the same hourly binning as SQL, run server-side) |
 | `extract.py` | events → the hourly grid, a `RawStore` the GENESIS feature engine runs on unchanged; subsetting and design sampling |
 | `sepsis3.py` | hourly SOFA with all six organ systems, suspicion of infection, onset under three rules |
@@ -25,6 +27,9 @@ subjects) and every demo report says so.
 | `infoflow.py` | the information-flow audit — covert channels into treatment state; the strict tier |
 | `crossexam.py` | the cross-examination — seven questions asked of every headline model |
 | `trust.py` | the hash chain, power-gated pre-registration, confirmation, the Ladder lock |
+| `tune.py` | budgeted hyperparameter search on dev subjects only |
+| `plan.py` | will the full run fit this laptop — rows, disk, memory, hours — before anything is built |
+| `parity.py` | day one: BigQuery must reproduce the CSV binning on the demo's 100 patients |
 | `twin.py` | the temporal model: Sepsis-3 Process Twin v2 (two input streams, a physiology twin trained on counterfactual patients, discrete-time hazards, a definition-composed organ outlook) |
 | `run.py` | the whole pipeline, one command, one JSON report |
 
@@ -311,24 +316,109 @@ time): the record twin at d = 128 should run ≈ 35 ms per step (extrapolated fr
 d = 64 on the demo), and the physiology twin ≈ 2× with its per-batch transplant. With 2 + 1 seeds and early stopping, expect ≈ 3 h for the twins
 out of a full run of several hours. Run it overnight.
 
-## 6. Running it on full MIMIC-IV
+## 6. Getting the number as high as it honestly goes
+
+On CinC the ceiling was the data: the tuned booster's score was sufficient for its 40
+variables. So the full run is built to extract every legitimate bit of information MIMIC-IV
+holds, fit it as well as a laptop allows, and report the result in every setting a paper
+might use — with what each one means printed beside it.
+
+**More information (store v3, 130 channels, 1,038 features).**
+* **Labs:** inflammation and the differential (CRP, neutrophils, lymphocytes, immature
+  granulocytes, eosinophils, absolute counts, anion gap, ferritin, LDH, CK, lipase, ammonia,
+  NT-proBNP), plus urinalysis coded from text (leukocytes, nitrite: a urinary source).
+* **Chart:** CVP, and the ventilator settings at tier T.
+* **Treatment (tier T):** crystalloids and blood products by volume, sedation, dialysis.
+* **Suspicion (tier S):** IV antibiotics as administered at the bedside.
+* **Known on arrival:** admission source, admitting service, and comorbidities from
+  admissions *discharged before* this one (Charlson groups in the Quan 2005 ICD-9/10 codings,
+  prior sepsis, readmission recency).
+* All 113 item IDs are verified against MIMIC's own dictionaries. D-dimer is left out on
+  purpose: its item IDs are charted in two unit systems.
+
+**The label's structure as features** (`mimicfeat.py`, each at the tier allowed to see it):
+* the per-organ SOFA points and measured rise that Sepsis-3's organ half is computed from,
+  from physiology alone at tier P and with vasopressors and ventilation at tier T;
+* whether a culture and an antibiotic have already paired into suspected infection (tier S);
+* urine per kg per hour, the neutrophil–lymphocyte ratio, norepinephrine-equivalent dose.
+
+The definitional oracle (§4.4) still reports how much of any AUROC is only reading the
+formula.
+
+**Fitting it well.**
+* A budgeted hyperparameter search on dev subjects only, with the incumbent as trial 0.
+  Tuning was CinC's largest single gain.
+* A soft-label booster trained on all 9 onset definitions at once.
+* A **prior-centred stacker** per tier. It starts at the GENESIS product and learns only
+  shrunken corrections, with the strength chosen per fold by nested cross-validation.
+  Two free stackers were measured first and lost to the product on the demo (0.654, 0.628
+  vs 0.739).
+* The Process Twin v2. It reads the dynamics: the arrival context is the trees' job. With
+  context included, the planted-world physiology twin fell 0.757 → 0.609.
+
+**The headline** (`report["headline"]`). The best model of each tier is chosen by the
+primary dev AUROC and reported under every setting:
+* early-warning hourly (the pre-registered primary);
+* clock-matched;
+* every stay, sepsis on arrival included;
+* patient level (a stay's highest score);
+* patient level, every stay.
+
+The single highest number is printed as `IDEAL CIRCUMSTANCES`, always with its tier and
+setting spelled out and with the primary beside it. On the demo that line reads 0.842:
+every input, hourly, over every stay. That is noise at 99 subjects, but it shows exactly
+which knobs carry a number toward 0.9.
+
+**What to expect on full MIMIC-IV** (expectations, not results):
+* **Physiology-only, early-warning, hourly** (the honest number): somewhere around
+  0.80–0.87. CinC's tuned booster reached 0.862 on its lock, with a learning-curve ceiling
+  of 0.887, and MIMIC adds the three organ systems CinC lacked.
+* **All information, every stay, hourly:** plausibly around 0.9. It reads the orders that
+  make up half of the label and includes sepsis present on arrival; the harness will say
+  how much of it is the formula and the clinicians.
+
+Which of these to put on a poster is a pre-registration decision, made before the lock is
+read (§7).
+
+**Fitting a laptop.**
+* `plan.py` estimates rows, disk, memory and hours from the extracted store before any
+  feature is built. It picks the richest plan that fits, or refuses and names what doesn't
+  fit.
+* `trim_septic` drops septic stays' hours after their latest onset across all 9
+  definitions (+3 h). No model trains on those hours and no metric scores them, and because
+  everything is causal no kept feature changes (verified bit for bit).
+* Full-MIMIC-sized, the plan comes to ≈ 2.4 M rows, 5 GB of features, 6.4 GB peak RAM and
+  about 7 h.
+* BigQuery results are placed into the grid page by page, never held whole.
+
+**Day one with credentials: `parity.py`.** The demo is 100 real MIMIC-IV patients. The
+parity check fetches every binned table for exactly those stays through BigQuery and
+compares it cell by cell with the CSV path. The SQL is trusted only where it reproduces the
+reference.
+
+## 7. Running it on full MIMIC-IV
 
 1. PhysioNet: complete CITI "Data or Specimens Only Research", request credentialed access,
    sign the MIMIC-IV data use agreement.
 2. Link a Google Cloud project on the MIMIC-IV page (BigQuery access); the BigQuery sandbox
    is free (1 TB of queries / month; this extraction scans well under that).
 3. `pip install google-cloud-bigquery db-dtypes` and `gcloud auth application-default login`.
-4. `python -m backend.ml.mimic.run --source bigquery --project <project> --scale full`: every
-   stage on the dev folds only (the lock is never read). Read the verdicts, pick the claims.
-5. **Before any locked number exists**, pre-register through `trust.preregister`. The
-   harness refuses a claim the lock cannot answer. Registration fixes the primary rule
-   (`measured`), the cohort (onset ≥ 4 h), the metric, the comparator and the bar, bound
-   to the code fingerprint. Commit the chain.
-6. `trust.lock_scores` + `trust.confirm` for each registered claim, spent once. Anything
+4. `python -m backend.ml.mimic.parity --project <project>`: BigQuery must reproduce the CSV
+   binning on the demo's 100 patients before anything else runs.
+5. `python -m backend.ml.mimic.run --source bigquery --project <project> --plan-only`: extract
+   once, and see the plan the machine can afford.
+6. `python -m backend.ml.mimic.run --source bigquery --project <project> --scale full`: every
+   stage on the dev folds only (the lock is never read). Read the verdicts and the headline,
+   and pick the claims.
+7. **Before any locked number exists**, pre-register through `trust.preregister`. The harness
+   refuses a claim the lock cannot answer. Registration fixes the primary rule (`measured`),
+   the cohort (onset ≥ 4 h), the metric and setting, the comparator and the bar, bound to the
+   code fingerprint. Commit the chain.
+8. `trust.lock_scores` + `trust.confirm` for each registered claim, spent once. Anything
    exploratory goes through `trust.Ladder` (8 submissions).
 
-## 7. Reproduce the demo
+## 8. Reproduce the demo
 
     python -m backend.ml.mimic.extract          # build the demo store (under a second)
-    python -m backend.ml.mimic.run --source demo  # every stage, ~2 min
-    python verify_mimic.py                        # 79 adversarial checks, ~4.5 min
+    python -m backend.ml.mimic.run --source demo  # every stage, ~2.5 min
+    python verify_mimic.py                        # 97 adversarial checks, ~5 min

@@ -1,0 +1,129 @@
+"""Will the full run fit this laptop? Estimated before a single feature is built.
+
+Full MIMIC-IV is ~94k ICU stays and ~6-8M hourly rows. Built naively — every stay, 1,000+
+features, three tiers of boosters with their products, two twins, the harness — the run
+needs more disk than this machine has free, more memory than it has, and days of CPU. The
+planner reads the extracted store (stays, hours, how many ever become septic), the feature
+count (built exactly on a handful of stays), the machine (free disk, RAM) and a time budget,
+and walks from the richest plan to the leanest until one fits — or refuses, naming what
+does not fit, before hours are spent.
+
+Cost models, calibrated where this repo has measurements:
+  * one LightGBM fit ~ ``SEC_PER_ROW_COL`` x training rows x columns (CinC: 110 s for 1.24M
+    rows x 510 columns, docs/GENESIS.md), early stopping included;
+  * the record twin ~ ``TWIN_SEC_PER_ROW_STEP`` per (row x optimiser step) at d = 128
+    (extrapolated from ~17 ms per 32-stay step at d = 64 on the demo), the physiology twin 2x;
+  * float16 features on disk; LightGBM's binned copy ~1 byte per training cell; the twin's
+    inputs ~220 float32 per row.
+These are estimates to plan with, not promises — the report records the plan and the actual
+time beside it.
+"""
+from __future__ import annotations
+
+import os
+import shutil
+from dataclasses import asdict, dataclass, replace
+from typing import Dict, List, Tuple
+
+import numpy as np
+
+from backend.ml import config
+
+SEC_PER_ROW_COL = 1.8e-7
+TWIN_SEC_PER_ROW_STEP = 1.2e-5
+TWIN_INPUTS_PER_ROW = 220
+HARNESS_HOURS = 0.75                  # audits, cross-examination, transplant (sampled), lock plans
+
+
+@dataclass
+class Budget:
+    disk_gb: float
+    ram_gb: float
+    hours: float
+
+    @staticmethod
+    def detect(hours: float = 12.0, disk_reserve_gb: float = 6.0, ram_fraction: float = 0.65) -> "Budget":
+        free = shutil.disk_usage(config.ARTIFACTS_DIR).free / 1e9
+        ram = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
+        return Budget(disk_gb=free - disk_reserve_gb, ram_gb=ram * ram_fraction, hours=hours)
+
+
+#: from the richest plan to the leanest; each overrides fields of the scale
+STAGE_SETS: List[Tuple[str, Dict]] = [
+    ("full", {}),
+    ("no tier T, one record-twin seed", {"tiers": ("P", "S"), "twin_seeds": (0,)}),
+    ("lean: no soft label, fewer tuning trials", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False,
+                                                  "tune_trials": 8}),
+    ("core: direct boosters + twin", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False,
+                                      "products": False, "tune_trials": 6, "phys_seeds": (0,)}),
+]
+KEEP_RATES = (0.25, 0.15, 0.10, 0.05)
+
+
+def estimate(store, n_features: int, scale) -> Dict:
+    """Rows, disk, memory and hours for ``scale`` on ``store`` (before design sampling)."""
+    ever = np.zeros(store.n_patients, dtype=bool)
+    for col in [c for c in store.onsets.columns if c.startswith("t_sepsis_") and c.endswith("_min")]:
+        ever |= store.onsets[col].notna().to_numpy()
+    lens = store.lens.astype(float)
+    if scale.trim_septic:                                 # extract.trim_septic, estimated exactly
+        prim = store.onsets["t_sepsis_measured_min"].notna().to_numpy()
+        cols_t = [c for c in store.onsets.columns if c.startswith("t_sepsis_")]
+        latest = np.nanmax(store.onsets[cols_t].to_numpy(dtype=float), axis=1)
+        cut = prim & np.isfinite(latest)
+        lens[cut] = np.minimum(lens[cut], np.ceil(latest[cut]) + 8)
+    rows_ever = float(lens[ever].sum())
+    rows_never = float(lens[~ever].sum())
+    kept = rows_ever + scale.keep_rate * rows_never
+    dev_rows = 0.8 * kept
+    train_rows = 0.8 * dev_rows                          # four of the five dev folds
+    cols = 0.8 * n_features                               # a tier sees most columns
+    fit_s = SEC_PER_ROW_COL * train_rows * cols
+    folds = 5
+    per_tier = 3 if scale.products else 1
+    n_fits = folds * (per_tier * len(scale.tiers) + 1 + 1 + (1 if scale.soft else 0))   # + strict + clinician
+    n_fits += 3 * folds * min(1.0, (scale.learn_stays or store.n_patients) / max(store.n_patients, 1))
+    n_fits += 1                                           # temporal validation
+    if scale.info_ledger:
+        n_fits += 7 * folds
+    tune_s = scale.tune_trials * len(scale.tune_val_folds) * SEC_PER_ROW_COL * \
+        min(scale.tune_rows, train_rows) * cols
+    booster_h = (n_fits * fit_s + tune_s) / 3600.0
+    twin_h = 0.0
+    if scale.twin:
+        stays_train = 0.64 * (float(ever.sum()) + scale.keep_rate * float((~ever).sum()))
+        avg_len = kept / max(float(ever.sum()) + scale.keep_rate * float((~ever).sum()), 1.0)
+        steps = max(scale.twin_epochs * stays_train / 32.0 * 0.6, scale.twin_min_steps)   # early stopping ~60%
+        step_s = TWIN_SEC_PER_ROW_STEP * 32 * avg_len * (scale.twin_d_model / 128.0)
+        twin_h = folds * steps * step_s * (len(scale.twin_seeds) + 2 * len(scale.phys_seeds)) / 3600.0
+    feat_gb = kept * n_features * 2 / 1e9
+    # two phases, never together: extraction holds the whole grid plus a page of query
+    # results; modelling holds the sampled grid plus LightGBM's binned copy OR the twin's inputs
+    extract_gb = store.n_rows * len(store.columns) * 4 / 1e9 + 2.0
+    grid_gb = kept * len(store.columns) * 4 / 1e9
+    lgb_gb = train_rows * cols * 1.2 / 1e9
+    twin_gb = kept * TWIN_INPUTS_PER_ROW * 4 / 1e9 if scale.twin else 0.0
+    ram_gb = max(extract_gb, grid_gb + max(lgb_gb, twin_gb) + 2.0)
+    return {"stays": int(store.n_patients), "hours_all": int(store.n_rows), "rows_kept": int(kept),
+            "features": int(n_features), "keep_rate": scale.keep_rate, "feature_disk_gb": feat_gb,
+            "ram_peak_gb": ram_gb, "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
+            "booster_hours": booster_h, "twin_hours": twin_h, "hours": booster_h + twin_h + HARNESS_HOURS}
+
+
+def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]:
+    """The richest plan that fits ``budget``; raises (naming what does not fit) otherwise."""
+    tried = []
+    for keep in [scale.keep_rate] + [k for k in KEEP_RATES if k < scale.keep_rate]:
+        for label, over in STAGE_SETS:
+            sc = replace(scale, keep_rate=keep, **over)
+            est = estimate(store, n_features, sc)
+            fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": est["ram_peak_gb"] <= budget.ram_gb,
+                    "time": est["hours"] <= budget.hours}
+            tried.append({"plan": label, "keep_rate": keep, **{k: round(v, 2) if isinstance(v, float) else v
+                                                                 for k, v in est.items()}, "fits": fits})
+            if all(fits.values()):
+                return sc, {"chosen": label, "estimate": est, "budget": asdict(budget), "tried": tried}
+    worst = tried[-1]
+    raise RuntimeError(f"no plan fits this machine: leanest plan needs {worst['feature_disk_gb']:.1f} GB disk "
+                       f"(have {budget.disk_gb:.1f}), {worst['ram_peak_gb']:.1f} GB RAM (budget {budget.ram_gb:.1f}), "
+                       f"{worst['hours']:.1f} h (budget {budget.hours:.1f})")

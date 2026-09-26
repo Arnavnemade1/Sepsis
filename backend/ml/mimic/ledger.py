@@ -79,10 +79,13 @@ LOCK_FRACTION = 0.2
 
 #: variable families for the information ledger (channel -> family)
 FAMILIES = {
-    "vitals": E.VITAL_CH + ["FiO2"], "gcs": E.GCS_CH, "labs": E.LAB_CH, "urine": ["UrineOutput"],
-    "sofa": E.SOFA_CH, "vasopressors": E.VASO_CH, "ventilation": E.VENT_CH,
-    "suspicion": E.SUSP_CH,
+    "vitals": E.VITAL_CH + E.HEMO_CH + ["FiO2"], "gcs": E.GCS_CH,
+    "labs": [c for c in E.LAB_CH if c not in E.NEW_LAB_CH], "inflammation": E.NEW_LAB_CH,
+    "urine": ["UrineOutput"], "sofa": E.SOFA_CH, "vasopressors": E.VASO_CH,
+    "ventilation": E.VENT_CH + E.VENT_SET_CH, "treatments": E.TREAT_CH, "suspicion": E.SUSP_CH,
 }
+#: static families (dropped by column name, not by channel)
+STATIC_FAMILIES = {"history": E.CONTEXT}
 
 
 #: features that describe WHEN a channel was measured, not what it read
@@ -99,10 +102,15 @@ COMPOSITE_SOURCES: Dict[str, FrozenSet[str]] = {
 }
 
 
+#: channels with rolling-window trends beyond CinC's seven vitals
+ROLLING_EXTRA = ["GCS", "SOFA_P", "CVP"]
+
+
 def feature_spec(channels: Sequence[str]) -> feat.FeatureSpec:
-    return feat.FeatureSpec(channels=list(channels), rolling=[c for c in VITALS if c in channels],
+    return feat.FeatureSpec(channels=list(channels),
+                            rolling=[c for c in list(VITALS) + ROLLING_EXTRA if c in channels],
                             labs=[c for c in E.LAB_CH if c in channels],
-                            static_cols=list(E.STATIC))
+                            static_cols=list(E.STATIC), light=[c for c in E.LIGHT_CH if c in channels])
 
 
 def channel_of(feature: str) -> Optional[str]:
@@ -110,11 +118,29 @@ def channel_of(feature: str) -> Optional[str]:
     return base if base in E.DYNAMIC else None
 
 
+_SOFA_P_SOURCES = frozenset({"PaO2", "FiO2", "Platelets", "Bilirubin_total", "MAP", "GCS_eye", "GCS_verbal",
+                             "GCS_motor", "Creatinine", "UrineOutput"})
+#: derived channels inherit every channel they are computed from — so the strict tier
+#: drops total GCS with a covert verbal score, and SOFA with a covert FiO2
+DERIVED_SOURCES: Dict[str, FrozenSet[str]] = {
+    "GCS": frozenset({"GCS_eye", "GCS_verbal", "GCS_motor"}),
+    "SOFA_P": _SOFA_P_SOURCES,
+    "SOFA": _SOFA_P_SOURCES | frozenset(E.VASO_CH) | frozenset({"VentInvasive"}),
+}
+
+
 def sources_of(feature: str) -> FrozenSet[str]:
     """Every raw channel a feature column is computed from (empty for static context)."""
     ch = channel_of(feature)
     if ch:
-        return frozenset({ch})
+        src = frozenset({ch}) | DERIVED_SOURCES.get(ch, frozenset())
+        if feature.startswith("Neutrophils__nlr"):
+            src |= {"Lymphocytes"}
+        if feature.startswith("Norepinephrine__nee"):
+            src |= frozenset(E.VASO_CH)
+        if feature.startswith("Antibiotic__si"):
+            src |= {"Culture"}
+        return src
     if feature in COMPOSITE_SOURCES:
         return COMPOSITE_SOURCES[feature]
     if feature.startswith("proc__gas"):
@@ -220,6 +246,119 @@ class FoldModels:
                 m = f == k
                 out[m] = self.predictors[int(k)](view, rows[m])
         return out
+
+
+def _gates(M: np.ndarray) -> np.ndarray:
+    """Each margin m as [log sigmoid(m), log sigmoid(-m)]: their difference is m itself, and
+    unit weights on the first reproduce the GENESIS product of experts exactly — so a linear
+    stacker over these can express both, and learn anything between."""
+    from backend.ml.genesis.stack import log_sigmoid
+    M = np.clip(M, -30.0, 30.0)
+    return np.column_stack([log_sigmoid(M), log_sigmoid(-M)])
+
+
+def _offset_logit(X: np.ndarray, y: np.ndarray, w: np.ndarray, off: np.ndarray, lam: float,
+                  iters: int = 60) -> Tuple[np.ndarray, float]:
+    """Weighted logistic regression with a fixed OFFSET and an L2 penalty on the slopes
+    (intercept free): damped Newton with a backtracking line search, like ``platt``."""
+    n, d = X.shape
+    Xb = np.column_stack([X, np.ones(n)])
+    pen = np.r_[np.full(d, lam), 0.0]
+    sw = float(w.sum())
+    beta = np.zeros(d + 1)
+
+    def obj(b):
+        z = off + Xb @ b
+        return float((w * (np.logaddexp(0.0, z) - y * z)).sum()) / sw + float((pen * b * b).sum())
+    f = obj(beta)
+    for _ in range(iters):
+        z = off + Xb @ beta
+        pr = 1.0 / (1.0 + np.exp(-np.clip(z, -35, 35)))
+        g = Xb.T @ (w * (pr - y)) / sw + 2 * pen * beta
+        H = (Xb * (w * pr * (1 - pr))[:, None]).T @ Xb / sw + np.diag(2 * pen) + 1e-9 * np.eye(d + 1)
+        step = np.linalg.solve(H, g)
+        t, moved = 1.0, False
+        while t > 1e-6:
+            nb = beta - t * step
+            nf = obj(nb)
+            if np.isfinite(nf) and nf <= f - 1e-12:
+                moved = True
+                break
+            t *= 0.5
+        if not moved:
+            break
+        beta, f = nb, nf
+        if np.max(np.abs(t * step)) < 1e-8:
+            break
+    return beta[:d], float(beta[d])
+
+
+SHRINK_GRID = (1.0, 10.0, 100.0, 1000.0)
+
+
+def stack(led: "Ledger", name: str, parts: Sequence[FoldModels],
+          shrink: Optional[float] = None) -> FoldModels:
+    """A cross-fitted stacker that STARTS at the product of experts and learns corrections.
+
+    logit = sum_j log sigmoid(m_j)  (the GENESIS product, a fixed offset)
+            + sum_j beta_j . [log sigmoid(m_j), log sigmoid(-m_j)]  + b
+
+    with an L2 penalty ``shrink / n_stays`` on beta: with few patients the stack stays at the
+    product, with many it learns what the product cannot. ``shrink`` is chosen per outer fold
+    by an inner leave-one-fold-out over that fold's TRAINING folds (the grid ``SHRINK_GRID``),
+    so the fold-k stack — weights and strength alike — never sees the labels it scores.
+    Two simpler stacks were measured first on the demo and lost to the product they were
+    meant to generalise: plain logistic regression on raw margins (0.654 vs 0.739) and on
+    gated margins (0.628) — a free stacker with ~20 septic stays per fold overfits."""
+    s = led.store
+    raw = np.clip(np.column_stack([fm.oof for fm in parts]), -30.0, 30.0)
+    G = _gates(raw)
+    off_all = G[:, :len(parts)].sum(axis=1)
+    f = led.folds[s.seg]
+    ok = (f >= 0) & led.train_mask & np.all(np.isfinite(raw), axis=1)
+    folds = sorted(set.intersection(*(set(fm.predictors) for fm in parts)))
+    oof = np.full(s.n_rows, np.nan)
+    preds: Dict[int, Predictor] = {}
+    def fit_on(rows, strength):
+        mu, sd = G[rows].mean(axis=0), G[rows].std(axis=0) + 1e-9
+        lam = strength / max(len(np.unique(s.seg[rows])), 1)
+        beta, b = _offset_logit((G[rows] - mu) / sd, led.y[rows].astype(float), led.design_w[rows],
+                                off_all[rows], lam)
+        return beta / sd, b - float((beta * mu / sd).sum())
+
+    chosen = {}
+    for k in folds:
+        tr, te = np.flatnonzero(ok & (f != k)), np.flatnonzero(ok & (f == k))
+        if not len(tr) or not len(te) or led.y[tr].min() == led.y[tr].max():
+            continue
+        strength = shrink
+        if strength is None:                   # inner leave-one-fold-out over the training folds
+            score = {}
+            for lam in SHRINK_GRID:
+                aucs = []
+                for j in folds:
+                    if j == k:
+                        continue
+                    itr, ite = tr[f[tr] != j], tr[f[tr] == j]
+                    if not len(ite) or led.y[itr].min() == led.y[itr].max() or led.y[ite].min() == led.y[ite].max():
+                        continue
+                    c, bb = fit_on(itr, lam)
+                    aucs.append(Ranked(off_all[ite] + G[ite] @ c + bb).auc(led.y[ite], led.design_w[ite]))
+                score[lam] = float(np.mean(aucs)) if aucs else -1.0
+            strength = max(score, key=score.get)
+        chosen[k] = strength
+        coef, b = fit_on(tr, strength)
+        oof[te] = off_all[te] + G[te] @ coef + b
+
+        def make(k=k, coef=coef, b=b):
+            def predict(view, rows):
+                g = _gates(np.column_stack([fm.predictors[k](view, rows) for fm in parts]))
+                return g[:, :len(parts)].sum(axis=1) + g @ coef + b
+            return predict
+        preds[k] = make()
+    fm = FoldModels(name, max((fm.tier for fm in parts), key=lambda t: K.TIER_ORDER[t]), oof, preds)
+    fm.shrink = chosen
+    return fm
 
 
 def product(name: str, parts: Sequence[FoldModels]) -> FoldModels:
@@ -376,6 +515,7 @@ class Ledger:
               y: Optional[np.ndarray] = None) -> Dict[str, float]:
         s = self.store
         y = self.y if y is None else y
+        default_rows = rows is None
         rows = np.flatnonzero(self.eval_mask & np.isfinite(p) & (self.folds[s.seg] >= 0)) \
             if rows is None else rows
         yy, pp, ww, hh = y[rows], p[rows], self.design_w[rows], s.hour[rows]
@@ -394,7 +534,28 @@ class Ledger:
         pre = self.pre_susp[rows]
         out["auroc_presusp"] = R.auc(yy, np.where(pre, ww, 0.0)) if (yy[pre].min() < yy[pre].max()
                                                                      if pre.any() else False) else float("nan")
+        if default_rows:
+            # the settings a paper would call "ideal": every stay (sepsis on arrival included),
+            # and patient level (a stay's highest score vs whether it became septic)
+            every = np.flatnonzero(self.train_mask & np.isfinite(p) & (self.folds[s.seg] >= 0))
+            ya = y[every]
+            out["auroc_all_stays"] = Ranked(p[every]).auc(ya, self.design_w[every]) \
+                if 0 < ya.sum() < len(ya) else float("nan")
+            out["patient_auroc"] = self._patient_auc(p, rows)
+            out["patient_auroc_all_stays"] = self._patient_auc(p, every)
         return out
+
+    def _patient_auc(self, p: np.ndarray, rows: np.ndarray) -> float:
+        """AUROC of each stay's highest score (over ``rows``: scored up to onset + 3 h for a
+        septic stay, the whole stay otherwise) against whether the stay became septic."""
+        s = self.store
+        if not len(rows):
+            return float("nan")
+        seg = s.seg[rows]
+        first = np.flatnonzero(np.r_[True, seg[1:] != seg[:-1]])
+        mx = np.maximum.reduceat(p[rows], first)
+        lab = np.isfinite(self.onset[seg[first]]).astype(np.int8)
+        return Ranked(mx).auc(lab, self.design_w[rows][first]) if 0 < lab.sum() < len(lab) else float("nan")
 
     def compare(self, a: np.ndarray, b: np.ndarray, n_boot: int = 1000, seed: int = 0) -> Dict:
         """Paired bootstrap over SUBJECTS (design-weighted)."""
@@ -428,7 +589,9 @@ class Ledger:
         s = self.store
         rows = np.flatnonzero(self.eval_mask & (self.folds[s.seg] >= 0))
         clock = Ranked(s.hour[rows].astype(float)).auc(self.y[rows], self.design_w[rows])
-        length = Ranked(s.lens[s.seg[rows]].astype(float)).auc(self.y[rows], self.design_w[rows])
+        # the ORIGINAL record length (``trim_septic`` shortens the grid, never the stay)
+        full_len = s.meta.n_hours.to_numpy() if s.meta is not None and "n_hours" in s.meta else s.lens
+        length = Ranked(full_len[s.seg[rows]].astype(float)).auc(self.y[rows], self.design_w[rows])
         early = {}
         for rule in E.RULES:
             t = s.onsets[f"t_sepsis_{rule}_min"].to_numpy()
@@ -438,21 +601,29 @@ class Ledger:
                 **{f"onset_within_{int(ONSET_MIN)}h_{r}": v for r, v in early.items()}}
 
 
+def _features(store: E.MimicStore, spec: feat.FeatureSpec):
+    """The GENESIS engine's features plus the MIMIC block (the label's structure, causal)."""
+    from backend.ml.mimic import mimicfeat
+    F, names = feat.build(store, spec, cap=2000)
+    B, bnames = mimicfeat.block(store)
+    return np.hstack([F, B]), list(names) + bnames
+
+
 def build_features(store: E.MimicStore, chunk_stays: Optional[int] = None,
                    memmap_path: Optional[str] = None, dtype=np.float32):
     spec = feature_spec(E.DYNAMIC)
     if not chunk_stays:
-        F, names = feat.build(store, spec)
+        F, names = _features(store, spec)
         return np.ascontiguousarray(F, dtype=dtype), names
     first = E.subset(store, np.arange(min(chunk_stays, store.n_patients)))
-    F0, names = feat.build(first, spec)
+    F0, names = _features(first, spec)
     shape = (store.n_rows, len(names))
     F = (np.lib.format.open_memmap(memmap_path, mode="w+", dtype=dtype, shape=shape)
          if memmap_path else np.empty(shape, dtype=dtype))
     for a in range(0, store.n_patients, chunk_stays):
         idx = np.arange(a, min(a + chunk_stays, store.n_patients))
         part = E.subset(store, idx)
-        Fc, nc = feat.build(part, spec)
+        Fc, nc = _features(part, spec)
         if nc != names:
             raise RuntimeError("feature names changed between chunks")
         r0 = store.starts[idx[0]]

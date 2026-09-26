@@ -32,7 +32,7 @@ help:
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
 	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
 	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
-	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (79 checks: every harness layer and the temporal model attacked)"
+	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (97 checks: harness, temporal model, v3 information, AUROC machinery)"
 	@echo "  make mimic-demo        The whole MIMIC-IV pipeline on the open demo"
 	@echo "  make verify-scenarios  Scenario Lab audit: sandbox isolation + the synthetic-data firewall"
 	@echo "  make scenarios    Run the standing scenario suite against the shipped detector"
@@ -94,8 +94,10 @@ verify-genesis:
 # synthetic stays, symmetric censoring, causality, tier firewall, subject lock, masks, design
 # weights, chunking, the BigQuery SQL — and every harness layer attacked with a planted
 # failure: views, the Care-Process Transplant, the admission audit, information flow, the
-# cross-examination, the trust layer (hash chain, power gate, Ladder) and the temporal model
-# (survival semantics, exact composition, lag capacity, the physiology twin, keyed draws).
+# cross-examination, the trust layer (hash chain, power gate, Ladder), the temporal model
+# (survival semantics, exact composition, lag capacity, the physiology twin, keyed draws), the
+# v3 information (planted source tables, prior-admission comorbidities), the label-structure
+# features, and the AUROC machinery (tuning, stacking, headline, planner, parity).
 verify-mimic:
 	PYTHONPATH=. $(PY) verify_mimic.py
 
