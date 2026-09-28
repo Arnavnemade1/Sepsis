@@ -141,10 +141,12 @@ except Exception as exc:  # pragma: no cover
 BOOT.note(beds=len(getattr(cluster, "node_ids", [])), mode=DATA_MODE,
           ebpf_drivers=len(getattr(cluster, "ebpf_beds", {})))
 BOOT.checkpoint("cage", "egress cages, syscall table, orchestrator")
-# On the throttled free-tier CPU a Z3 solve every scheduler tick starves the box;
-# verify every ~30th tick instead (deterministic policy, last proof holds between).
+# Every scheduling decision is proven. This was throttled to one tick in 30 when a
+# verify built ~4 Z3 terms per bed through the Python API (3.6 ms at 12 beds, 107 ms
+# at 400); as one SMT-LIB2 script it is ~0.25 ms at 12 beds, so proving every tick
+# costs about what proving every 30th used to — and "the last proof holds" is gone.
 import backend.aegis.kernel.scheduler as _sched_mod
-_sched_mod.VERIFY_EVERY = 30
+_sched_mod.VERIFY_EVERY = 1
 cluster_safety = NeuroSymbolicRuntime()
 bundle_engine = SepsisBundleEngine()
 device_registry = DeviceRegistry()                # simulated sensor fleet (Phase A)
@@ -676,17 +678,26 @@ class TelemetryIn(BaseModel):
     evidence_capabilities: Optional[Dict[str, bool]] = None
 
 
-async def _broadcast(snapshot: Dict[str, Any]) -> None:
-    OS_HUB.publish("snapshot", snapshot)
+async def _fanout(clients: List[Any], payload: Dict[str, Any]) -> None:
+    """Send one payload to every socket in ``clients``, encoded ONCE (the bytes
+    ``send_json`` would have produced per socket), dropping sockets that fail."""
+    if not clients:
+        return
+    msg = _osstream_encode(payload)
     dead = []
-    for ws in _clients:
+    for ws in list(clients):
         try:
-            await ws.send_json(snapshot)
+            await _osstream_send(ws, msg)
         except Exception:
             dead.append(ws)
     for ws in dead:
-        if ws in _clients:
-            _clients.remove(ws)
+        if ws in clients:
+            clients.remove(ws)
+
+
+async def _broadcast(snapshot: Dict[str, Any]) -> None:
+    OS_HUB.publish("snapshot", snapshot)
+    await _fanout(_clients, snapshot)
 
 
 def _apply_treatment_from(snapshot: Dict[str, Any]) -> None:
@@ -1491,7 +1502,8 @@ from backend.aegis.kernel.vfs import (VFS as _VFSClass, VirtualFS as _VirtualFS,
                                       FileStore as _FileStore, VFSError as _VFSError)
 from backend.aegis.kernel.policyfile import (PolicyStore as _PolicyStore,
                                              PolicyRejected as _PolicyRejected)
-from backend.aegis.kernel.osstream import OSHub as _OSHub, fingerprint as _vfs_fingerprint
+from backend.aegis.kernel.osstream import (OSHub as _OSHub, fingerprint as _vfs_fingerprint,
+                                          encode as _osstream_encode, send as _osstream_send)
 
 FILES = _FileStore()
 # The active /etc/policy.dsl. Starts from the default rules; a persisted policy is
@@ -2189,15 +2201,7 @@ def _cluster_payload() -> Dict[str, Any]:
 
 async def _broadcast_cluster(payload: Dict[str, Any]) -> None:
     OS_HUB.publish("cluster", payload)
-    dead = []
-    for ws in _cluster_clients:
-        try:
-            await ws.send_json(payload)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        if ws in _cluster_clients:
-            _cluster_clients.remove(ws)
+    await _fanout(_cluster_clients, payload)
 
 
 async def _cluster_loop() -> None:
@@ -4780,6 +4784,15 @@ if not GATE_COVERAGE["complete"]:
 # the reported cold start was shorter than the real one.)
 print("[aegis] kernel up in %.1fs (%d boot phases, boot %s)"
       % (BOOT.ready(), len(BOOT.phases), BOOT_ID))
+
+# Everything built above lives as long as the process: the ward's precedent bank (tens
+# of thousands of case records), the pharmacopoeia graph, the route table. Left in the
+# cyclic collector's view, every gen-2 pass re-walks all of it — measured at up to
+# 35 ms stalls mid-tick at 800 beds. Frozen, a pass scans only what the running
+# system allocates (worst pause 2 ms). Refcounting still frees anything released.
+import gc as _gc
+_gc.collect()
+_gc.freeze()
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -483,7 +483,8 @@ The conformal half of the proposal is built and documented separately in
 ### On the proposal's cost figures
 
 The quoted "≈1.4 ms per bed tick" is not the measured number: `artifacts/scale.json`
-records **1.57 ms** at one bed and **1.69 ms** at 350. The "≈1.8 ms" for the proposed
+recorded **1.57 ms** at one bed and **1.69 ms** at 350 (2026-08; the tick has since been
+squeezed ~6x, see `docs/SCALE.md`). The "≈1.8 ms" for the proposed
 system is an estimate of something never built. For scale, HDC already consumes
 **43% of the tick budget** (257 ms of 593 ms at 350 beds) and the HDC-based resonance
 gate another 28% — so hyperdimensional work is ~71% of the runtime while contributing

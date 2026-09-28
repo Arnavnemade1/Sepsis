@@ -48,33 +48,48 @@ TREND_WIN = 4
 SOON_H = 6
 
 
+def _enrich_at(states: List[Dict[str, float]], hr: int) -> Dict[str, float]:
+    """Hour ``hr`` of :func:`enrich_series`: its levels plus trends against the trailing
+    window and the clinical composites."""
+    s = states[hr]
+    e = dict(s)
+    j = max(0, hr - TREND_WIN)
+    for ch in CHANNELS:
+        past = [states[t][ch] for t in range(j, hr) if states[t].get(ch) is not None]
+        if past and s.get(ch) is not None:
+            e[ch + "__tr"] = float(s[ch]) - float(np.mean(past))
+    hrv, mapv = s.get("hr"), s.get("map")
+    if hrv and mapv:
+        e["shock_index"] = float(hrv) / max(float(mapv), 1.0)
+    e["sirs"] = float(sum([
+        (s.get("hr", 0) or 0) > 90,
+        (s.get("temp_c", 37) or 37) > 38 or (s.get("temp_c", 37) or 37) < 36,
+        (s.get("resp_rate", 0) or 0) > 20,
+        (s.get("wbc", 8) or 8) > 12 or (s.get("wbc", 8) or 8) < 4,
+    ]))
+    e["qsofa"] = float(sum([
+        (s.get("resp_rate", 0) or 0) >= 22,
+        (s.get("map", 100) or 100) <= 65,
+    ]))
+    return e
+
+
 def enrich_series(states: List[Dict[str, float]]) -> List[Dict[str, float]]:
     """Per hour, add channel trends (Δ vs a short trailing window) + clinical
     composites (shock index, SIRS, qSOFA) so the hypervector carries the
     deterioration pattern, not just the instantaneous level."""
-    out = []
-    for hr, s in enumerate(states):
-        e = dict(s)
-        j = max(0, hr - TREND_WIN)
-        for ch in CHANNELS:
-            past = [states[t][ch] for t in range(j, hr) if states[t].get(ch) is not None]
-            if past and s.get(ch) is not None:
-                e[ch + "__tr"] = float(s[ch]) - float(np.mean(past))
-        hrv, mapv = s.get("hr"), s.get("map")
-        if hrv and mapv:
-            e["shock_index"] = float(hrv) / max(float(mapv), 1.0)
-        e["sirs"] = float(sum([
-            (s.get("hr", 0) or 0) > 90,
-            (s.get("temp_c", 37) or 37) > 38 or (s.get("temp_c", 37) or 37) < 36,
-            (s.get("resp_rate", 0) or 0) > 20,
-            (s.get("wbc", 8) or 8) > 12 or (s.get("wbc", 8) or 8) < 4,
-        ]))
-        e["qsofa"] = float(sum([
-            (s.get("resp_rate", 0) or 0) >= 22,
-            (s.get("map", 100) or 100) <= 65,
-        ]))
-        out.append(e)
-    return out
+    return [_enrich_at(states, hr) for hr in range(len(states))]
+
+
+def enrich_last(states: List[Dict[str, float]]) -> Dict[str, float]:
+    """``enrich_series(states)[-1]`` without enriching the hours before it (the live
+    frame needs only the current hour; the series cost 5x that on every recompute)."""
+    return _enrich_at(states, len(states) - 1) if states else {}
+
+
+#: states encoded per block by :meth:`HDCBioMemory.encode_many` — bounds the int16
+#: accumulator at CHUNK x D x 2 bytes (~10 MB) however large the batch
+CHUNK = 512
 
 
 class HDCBioMemory:
@@ -86,9 +101,106 @@ class HDCBioMemory:
         self.ids = {f: rng.choice([-1, 1], size=dim).astype(np.int8) for f in self.feats}
         self.mem: Optional[np.ndarray] = None           # (N, D) int8
         self.meta: List[Dict[str, Any]] = []            # per-row {label, tto, pid, hour}
+        self._T: Optional[np.ndarray] = None            # (F, L, D) int8 bind tables, lazy
 
     # ---- encoding ---- #
+    def tables(self) -> np.ndarray:
+        """``T[f, l] = bind(id_f, level_l)`` for every feature and level, built once.
+
+        Encoding a state used to re-derive each bind per call (a 10,000-D multiply per
+        feature per state). There are only F x L distinct binds (17 x 100), so they are
+        a 17 MB lookup table and an encode is a gather, a sum and a sign."""
+        if self._T is None:
+            lv = self.eng.level_vectors
+            self._T = np.stack([(self.ids[f][None, :] * lv).astype(np.int8) for f in self.feats])
+        return self._T
+
+    def levels(self, states: List[Dict[str, float]],
+               feats: Optional[List[str]] = None) -> Tuple[np.ndarray, np.ndarray]:
+        """``(level index, present)`` per state and feature, exactly as
+        ``HDCEngine.encode_value`` computes it (clip, scale, truncate). Missing and NaN
+        values are absent, as :meth:`encode` skips them."""
+        feats = self.feats if feats is None else feats
+        B, F = len(states), len(feats)
+        vals = np.zeros((B, F))
+        present = np.zeros((B, F), dtype=bool)
+        odd = []                                         # present but non-Python-float NaN
+        for i, st in enumerate(states):
+            for j, f in enumerate(feats):
+                v = st.get(f)
+                if v is None or (isinstance(v, float) and v != v):
+                    continue
+                x = float(v)
+                present[i, j] = True
+                vals[i, j] = x
+                if x != x:
+                    odd.append((i, j, f, x))
+        lo = np.array([self.eng.ranges[f][0] for f in feats], dtype=np.float64)
+        hi = np.array([self.eng.ranges[f][1] for f in feats], dtype=np.float64)
+        frac = (np.maximum(lo, np.minimum(hi, vals)) - lo) / (hi - lo)
+        idx = np.zeros((B, F), dtype=np.int64)
+        ok = present & np.isfinite(frac)
+        idx[ok] = (frac[ok] * (self.eng.num_levels - 1)).astype(np.int64)
+        for i, j, f, x in odd:                           # the scalar path's own answer
+            idx[i, j] = self._level_index(f, x)
+        return idx, present
+
+    def _level_index(self, f: str, value: float) -> int:
+        """``HDCEngine.encode_value``'s index arithmetic, verbatim (Python ``min``/``max``
+        send a NaN to the top level, which the vectorised clip would not)."""
+        val_min, val_max = self.eng.ranges[f]
+        clipped_val = max(val_min, min(val_max, value))
+        fraction = (clipped_val - val_min) / (val_max - val_min)
+        return int(fraction * (self.eng.num_levels - 1))
+
+    def encode_many(self, states: List[Dict[str, float]],
+                    feats: Optional[List[str]] = None) -> np.ndarray:
+        """``(B, D)`` int8 — row ``i`` bit-identical to ``encode(states[i])`` (or, with
+        ``feats``, to bundling only those features). Ties break on the engine's fixed
+        pattern and a state with no usable feature draws ``random_vector()`` in order,
+        both exactly as the scalar path does."""
+        feats = self.feats if feats is None else feats
+        idx, present = self.levels(states, feats)
+        out = self.bundle_levels(idx, present, feats)
+        for i in np.flatnonzero(~present.any(axis=1)):   # same RNG draws, same order
+            out[i] = self.eng.random_vector()
+        return out
+
+    def bundle_levels(self, idx: np.ndarray, present: np.ndarray,
+                      feats: Optional[List[str]] = None) -> np.ndarray:
+        """``sign(sum of the present binds)`` per row, ties on the engine's fixed
+        pattern. A row with nothing present comes back as the tie pattern; callers
+        decide what an empty state means (``encode`` draws a random vector, a
+        resonance modality is absent)."""
+        feats = self.feats if feats is None else feats
+        T = self.tables()
+        fidx = [self.feats.index(f) for f in feats]
+        B, D = idx.shape[0], self.eng.D
+        out = np.empty((B, D), dtype=np.int8)
+        tie = self.eng._tie_break
+        for a in range(0, B, CHUNK):
+            b = min(a + CHUNK, B)
+            acc = np.zeros((b - a, D), dtype=np.int16)
+            for j, fj in enumerate(fidx):
+                pres = present[a:b, j]
+                cnt = int(pres.sum())
+                if cnt == b - a:
+                    acc += T[fj, idx[a:b, j]]
+                elif 2 * cnt > b - a:                # mostly present: masked add, no scatter
+                    acc += T[fj, idx[a:b, j]] * pres[:, None]
+                elif cnt:
+                    rows = np.flatnonzero(pres)
+                    acc[rows] += T[fj, idx[a + rows, j]]
+            acc = np.where(acc == 0, tie[None, :], acc)
+            out[a:b] = np.sign(acc)
+        return out
+
     def encode(self, state: Dict[str, float]) -> np.ndarray:
+        return self.encode_many([state])[0]
+
+    def encode_reference(self, state: Dict[str, float]) -> np.ndarray:
+        """The original per-feature encoder: the specification :meth:`encode_many` is
+        verified bit-for-bit against."""
         binds = []
         for f in self.feats:
             v = state.get(f)
@@ -101,11 +213,8 @@ class HDCBioMemory:
     # ---- memory bank ---- #
     def build(self, rows: List[Tuple[Dict[str, float], int, Optional[int], str]]) -> "HDCBioMemory":
         """rows: (state, hour_label, time_to_onset|None, patient_id)."""
-        vecs, meta = [], []
-        for state, label, tto, pid in rows:
-            vecs.append(self.encode(state))
-            meta.append({"label": int(label), "tto": tto, "pid": pid})
-        self.mem = np.stack(vecs).astype(np.int8) if vecs else None
+        meta = [{"label": int(label), "tto": tto, "pid": pid} for _, label, tto, pid in rows]
+        self.mem = self.encode_many([r[0] for r in rows]) if rows else None
         self._M = self.mem.astype(np.float32) if self.mem is not None else None   # fast matmul
         self.meta = meta
         return self
@@ -181,8 +290,7 @@ class HDCBioMemory:
         if exclude_pids is None:
             exclude_pids = [None] * n
         Q = np.empty((self.eng.D, n), dtype=np.float32)
-        for j, st in enumerate(states):
-            Q[:, j] = self.encode(st)
+        Q[:] = self.encode_many(states).T
         with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
             S = (self._M @ Q) / float(self.eng.D)        # (N, B) — one GEMM
         return [self._finish(np.ascontiguousarray(S[:, j]), k, exclude_pids[j])

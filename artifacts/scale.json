@@ -1,5 +1,5 @@
 {
- "generated": "2026-08-26 00:03:13 UTC",
+ "generated": "2026-09-28 00:32:34 UTC",
  "host": {
   "machine": "arm64",
   "python": "3.9.6",
@@ -10,366 +10,585 @@
   {
    "beds_requested": 1,
    "beds_built": 1,
-   "build_seconds": 0.91,
+   "build_seconds": 0.9,
    "ticks": 25,
    "tick_ms": {
-    "p50": 1.5518749999996473,
-    "p95": 1.6788329999997131,
-    "p99": 1.7012919999999099,
-    "mean": 1.57411331999997,
-    "max": 1.7012919999999099
+    "p50": 0.2511670000000521,
+    "p95": 0.6253339999999774,
+    "p99": 0.6633339999999599,
+    "mean": 0.2970967600000307,
+    "max": 0.6633339999999599
    },
-   "bed_ticks_per_s": 635.199590382647,
-   "ms_per_bed_tick": 1.574308320000011,
-   "cpu_utilisation": 1.0001090510656732,
-   "peak_rss_mb": 147.84375,
-   "rss_growth_mb": 5.828125,
+   "bed_ticks_per_s": 3363.8696449380213,
+   "ms_per_bed_tick": 0.2972766800000137,
+   "cpu_utilisation": 1.000280277618762,
+   "peak_rss_mb": 189.65625,
+   "rss_growth_mb": 9.109375,
    "phases": {
     "sched_decide": {
-     "ms_per_tick": 0.8536784799999353,
-     "share_of_tick": 0.5422562208144396,
+     "ms_per_tick": 0.17265824000000762,
+     "share_of_tick": 0.5807998124844493,
      "calls_per_tick": 1.0
     },
     "z3_verify": {
-     "ms_per_tick": 0.8453799999999845,
-     "share_of_tick": 0.5369850297176723,
+     "ms_per_tick": 0.16498332000004723,
+     "share_of_tick": 0.5549823820692549,
      "calls_per_tick": 1.0,
      "nested_in": "sched_decide"
     },
     "resonance_gate": {
-     "ms_per_tick": 0.38997655999997605,
-     "share_of_tick": 0.24771295117081854,
-     "calls_per_tick": 1.0
-    },
-    "hdc_memory": {
-     "ms_per_tick": 0.238476640000016,
-     "share_of_tick": 0.15148026404384013,
+     "ms_per_tick": 0.025616759999902428,
+     "share_of_tick": 0.08617144136533429,
      "calls_per_tick": 1.0
     },
     "device_pump": {
-     "ms_per_tick": 0.03618160000000259,
-     "share_of_tick": 0.022982537499390426,
+     "ms_per_tick": 0.0251533600000009,
+     "share_of_tick": 0.08461262417220126,
+     "calls_per_tick": 1.0
+    },
+    "hdc_memory": {
+     "ms_per_tick": 0.021508360000019877,
+     "share_of_tick": 0.072351319316466,
      "calls_per_tick": 1.0
     },
     "fusion": {
-     "ms_per_tick": 0.01440836000000445,
-     "share_of_tick": 0.009152184370088542,
+     "ms_per_tick": 0.013826760000004157,
+     "share_of_tick": 0.04651141825185722,
      "calls_per_tick": 1.0
     },
     "sample_vitals": {
-     "ms_per_tick": 0.0033599599999689644,
-     "share_of_tick": 0.0021342452156823647,
+     "ms_per_tick": 0.0033882399999995982,
+     "share_of_tick": 0.01139759768576345,
      "calls_per_tick": 1.0
     },
     "sched_observe": {
-     "ms_per_tick": 0.0011400400000027844,
-     "share_of_tick": 0.0007241529410216015,
+     "ms_per_tick": 0.001091719999983809,
+     "share_of_tick": 0.0036724037687172724,
      "calls_per_tick": 1.0
     },
     "learner_lookup": {
-     "ms_per_tick": 0.0002148799999801554,
-     "share_of_tick": 0.0001364916879688179,
+     "ms_per_tick": 0.0002550400000345121,
+     "share_of_tick": 0.0008579213143610872,
      "calls_per_tick": 1.0
     }
    },
-   "phase_coverage": 0.9765790477432501,
+   "phase_coverage": 0.8863745383591499,
    "repeats": 3,
    "p50_spread": {
-    "min": 1.5111249999999465,
-    "max": 1.5618750000001569,
-    "rel_range": 0.03358425014490009
+    "min": 0.2478329999999751,
+    "max": 0.261875000000078,
+    "rel_range": 0.05665912126352959
    }
   },
   {
    "beds_requested": 50,
    "beds_built": 50,
-   "build_seconds": 2.91,
+   "build_seconds": 1.78,
    "ticks": 25,
    "tick_ms": {
-    "p50": 66.62108300000114,
-    "p95": 71.32399999999883,
-    "p99": 71.67554199999948,
-    "mean": 66.17337167999992,
-    "max": 71.67554199999948
+    "p50": 9.731833000000023,
+    "p95": 10.07054199999935,
+    "p99": 10.284208999999933,
+    "mean": 9.651671759999942,
+    "max": 10.284208999999933
    },
-   "bed_ticks_per_s": 755.5874557460058,
-   "ms_per_bed_tick": 1.3234735335999999,
-   "cpu_utilisation": 1.04024142912411,
-   "peak_rss_mb": 574.84375,
-   "rss_growth_mb": 0.53125,
+   "bed_ticks_per_s": 5180.30928468823,
+   "ms_per_bed_tick": 0.19303866719999974,
+   "cpu_utilisation": 0.9994101326866205,
+   "peak_rss_mb": 540.109375,
+   "rss_growth_mb": 158.734375,
    "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 4.389505000000042,
+     "share_of_tick": 0.4547798701337126,
+     "calls_per_tick": 1.0
+    },
     "resonance_gate": {
-     "ms_per_tick": 22.916450400000343,
-     "share_of_tick": 0.34630764904931594,
+     "ms_per_tick": 1.2082033199992637,
+     "share_of_tick": 0.1251773375276666,
      "calls_per_tick": 50.0
     },
+    "device_pump": {
+     "ms_per_tick": 1.1322398000001144,
+     "share_of_tick": 0.11730704696868276,
+     "calls_per_tick": 1.0
+    },
     "sched_decide": {
-     "ms_per_tick": 20.627433399999973,
-     "share_of_tick": 0.31171659842552324,
+     "ms_per_tick": 0.7559632400000282,
+     "share_of_tick": 0.07832246782110287,
      "calls_per_tick": 1.0
     },
     "z3_verify": {
-     "ms_per_tick": 20.508793159999996,
-     "share_of_tick": 0.3099237368837097,
+     "ms_per_tick": 0.6493200000000243,
+     "share_of_tick": 0.06727356849467775,
      "calls_per_tick": 1.0,
      "nested_in": "sched_decide"
     },
-    "hdc_memory": {
-     "ms_per_tick": 17.47660988000021,
-     "share_of_tick": 0.26410214388589737,
-     "calls_per_tick": 1.0
-    },
-    "device_pump": {
-     "ms_per_tick": 2.106696560000003,
-     "share_of_tick": 0.0318358698759853,
-     "calls_per_tick": 1.0
-    },
     "fusion": {
-     "ms_per_tick": 0.7478250799989183,
-     "share_of_tick": 0.01130094499078872,
+     "ms_per_tick": 0.550412639999216,
+     "share_of_tick": 0.05702615418795398,
      "calls_per_tick": 50.0
     },
     "sample_vitals": {
-     "ms_per_tick": 0.23427872000013394,
-     "share_of_tick": 0.003540361239606642,
+     "ms_per_tick": 0.17278352000143826,
+     "share_of_tick": 0.017901441458091305,
      "calls_per_tick": 50.0
     },
     "sched_observe": {
-     "ms_per_tick": 0.06875680000241857,
-     "share_of_tick": 0.0010390355115812884,
+     "ms_per_tick": 0.04664355999999259,
+     "share_of_tick": 0.0048325613387774835,
      "calls_per_tick": 50.0
     },
     "learner_lookup": {
-     "ms_per_tick": 0.014496199999527448,
-     "share_of_tick": 0.00021906293751256393,
+     "ms_per_tick": 0.010617039999374356,
+     "share_of_tick": 0.001099991017693306,
      "calls_per_tick": 50.0
     }
    },
-   "phase_coverage": 0.9700616659162111,
+   "phase_coverage": 0.856446870453681,
    "repeats": 3,
    "p50_spread": {
-    "min": 66.29170799999784,
-    "max": 71.26954200000046,
-    "rel_range": 0.0750898438158024
+    "min": 9.674374999999458,
+    "max": 9.775999999999563,
+    "rel_range": 0.010504554557799424
    }
   },
   {
    "beds_requested": 100,
    "beds_built": 100,
-   "build_seconds": 4.36,
+   "build_seconds": 2.55,
    "ticks": 25,
    "tick_ms": {
-    "p50": 132.728457999999,
-    "p95": 140.06224999999972,
-    "p99": 140.35641699999957,
-    "mean": 131.02815339999992,
-    "max": 140.35641699999957
+    "p50": 18.041208999999725,
+    "p95": 19.957542000000217,
+    "p99": 20.40033299999955,
+    "mean": 17.95830835999972,
+    "max": 20.40033299999955
    },
-   "bed_ticks_per_s": 763.1930026191638,
-   "ms_per_bed_tick": 1.3102845500000002,
-   "cpu_utilisation": 1.053386762440265,
-   "peak_rss_mb": 1325.484375,
-   "rss_growth_mb": 4.921875,
+   "bed_ticks_per_s": 5568.340576886898,
+   "ms_per_bed_tick": 0.17958671640000007,
+   "cpu_utilisation": 1.1128039089198445,
+   "peak_rss_mb": 850.328125,
+   "rss_growth_mb": 4.0625,
    "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 7.657509920000153,
+     "share_of_tick": 0.4263962320545079,
+     "calls_per_tick": 1.0
+    },
     "resonance_gate": {
-     "ms_per_tick": 43.84460011999721,
-     "share_of_tick": 0.3346189201421722,
+     "ms_per_tick": 2.381165880000111,
+     "share_of_tick": 0.13259142589903217,
      "calls_per_tick": 100.0
     },
-    "hdc_memory": {
-     "ms_per_tick": 39.78242344000023,
-     "share_of_tick": 0.3036166719664078,
+    "device_pump": {
+     "ms_per_tick": 2.30972336000022,
+     "share_of_tick": 0.12861326306872767,
      "calls_per_tick": 1.0
     },
     "sched_decide": {
-     "ms_per_tick": 37.51676155999931,
-     "share_of_tick": 0.286325299035231,
-     "calls_per_tick": 1.0
-    },
-    "z3_verify": {
-     "ms_per_tick": 37.275259999999975,
-     "share_of_tick": 0.28448217602809994,
-     "calls_per_tick": 1.0,
-     "nested_in": "sched_decide"
-    },
-    "device_pump": {
-     "ms_per_tick": 3.786184960000014,
-     "share_of_tick": 0.028895898680939298,
+     "ms_per_tick": 1.226406640000377,
+     "share_of_tick": 0.0682904985727762,
      "calls_per_tick": 1.0
     },
     "fusion": {
-     "ms_per_tick": 1.4784359200011465,
-     "share_of_tick": 0.01128331948965701,
+     "ms_per_tick": 1.0993019599990106,
+     "share_of_tick": 0.06121287710113788,
      "calls_per_tick": 100.0
     },
+    "z3_verify": {
+     "ms_per_tick": 1.0232682799998116,
+     "share_of_tick": 0.056979062845642144,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
     "sample_vitals": {
-     "ms_per_tick": 0.49215811999360426,
-     "share_of_tick": 0.003756116333613216,
+     "ms_per_tick": 0.37573656000205347,
+     "share_of_tick": 0.020922291332793327,
      "calls_per_tick": 100.0
     },
     "sched_observe": {
-     "ms_per_tick": 0.1367365199942583,
-     "share_of_tick": 0.0010435635526211333,
+     "ms_per_tick": 0.09253651999991064,
+     "share_of_tick": 0.005152748591594083,
      "calls_per_tick": 100.0
     },
     "learner_lookup": {
-     "ms_per_tick": 0.02993323999845643,
-     "share_of_tick": 0.00022844839312542018,
+     "ms_per_tick": 0.020652320002341185,
+     "share_of_tick": 0.0011499915147588932,
      "calls_per_tick": 100.0
     }
    },
-   "phase_coverage": 0.9697682375937671,
+   "phase_coverage": 0.8443293281353281,
    "repeats": 3,
    "p50_spread": {
-    "min": 130.07408399999676,
-    "max": 137.35962500000198,
-    "rel_range": 0.056010703869384205
+    "min": 18.025041999999658,
+    "max": 18.85683300000096,
+    "rel_range": 0.04614641119844928
    }
   },
   {
    "beds_requested": 250,
    "beds_built": 250,
-   "build_seconds": 9.21,
+   "build_seconds": 5.99,
    "ticks": 25,
    "tick_ms": {
-    "p50": 372.3898329999997,
-    "p95": 389.3220420000034,
-    "p99": 391.6024169999872,
-    "mean": 360.6713683600008,
-    "max": 391.6024169999872
+    "p50": 55.60270899999864,
+    "p95": 59.84375000000597,
+    "p99": 60.23024999999649,
+    "mean": 55.367128280000486,
+    "max": 60.23024999999649
    },
-   "bed_ticks_per_s": 693.1511431711831,
-   "ms_per_bed_tick": 1.4426867932799996,
-   "cpu_utilisation": 1.093695351859899,
-   "peak_rss_mb": 2238.875,
-   "rss_growth_mb": 113.5,
+   "bed_ticks_per_s": 4515.275266532197,
+   "ms_per_bed_tick": 0.22147043999999935,
+   "cpu_utilisation": 1.1472635354858232,
+   "peak_rss_mb": 1370.0,
+   "rss_growth_mb": 0.0,
    "phases": {
     "hdc_memory": {
-     "ms_per_tick": 136.6434499199977,
-     "share_of_tick": 0.3788582540756028,
+     "ms_per_tick": 25.20609660000019,
+     "share_of_tick": 0.4552498581752087,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 7.8357199200002015,
+     "share_of_tick": 0.14152172940100222,
      "calls_per_tick": 1.0
     },
     "resonance_gate": {
-     "ms_per_tick": 110.15326663999531,
-     "share_of_tick": 0.30541145078221155,
+     "ms_per_tick": 6.566256439998028,
+     "share_of_tick": 0.11859382118892339,
      "calls_per_tick": 250.0
     },
     "sched_decide": {
-     "ms_per_tick": 87.22323160000087,
-     "share_of_tick": 0.24183553077850187,
-     "calls_per_tick": 1.0
-    },
-    "z3_verify": {
-     "ms_per_tick": 86.79554492000022,
-     "share_of_tick": 0.2406497247338557,
-     "calls_per_tick": 1.0,
-     "nested_in": "sched_decide"
-    },
-    "device_pump": {
-     "ms_per_tick": 10.79853324000112,
-     "share_of_tick": 0.029940062639515184,
+     "ms_per_tick": 3.097773199999665,
+     "share_of_tick": 0.05594919484513913,
      "calls_per_tick": 1.0
     },
     "fusion": {
-     "ms_per_tick": 3.7924231600072744,
-     "share_of_tick": 0.010514889794991652,
+     "ms_per_tick": 3.036428800000124,
+     "share_of_tick": 0.05484124743690639,
      "calls_per_tick": 250.0
     },
+    "z3_verify": {
+     "ms_per_tick": 2.5947516800005133,
+     "share_of_tick": 0.046864072333996726,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
     "sample_vitals": {
-     "ms_per_tick": 1.3406206800362952,
-     "share_of_tick": 0.0037170110277043476,
+     "ms_per_tick": 1.431703200008485,
+     "share_of_tick": 0.025858136192053245,
      "calls_per_tick": 250.0
     },
     "sched_observe": {
-     "ms_per_tick": 0.36159640002210836,
-     "share_of_tick": 0.0010025638321676353,
+     "ms_per_tick": 0.33915564000068343,
+     "share_of_tick": 0.006125524291199934,
      "calls_per_tick": 250.0
     },
     "learner_lookup": {
-     "ms_per_tick": 0.08019787999842265,
-     "share_of_tick": 0.00022235700880324807,
+     "ms_per_tick": 0.06305868001305726,
+     "share_of_tick": 0.0011389091928125023,
      "calls_per_tick": 250.0
     }
    },
-   "phase_coverage": 0.9715021199394983,
+   "phase_coverage": 0.8592784207232455,
    "repeats": 3,
    "p50_spread": {
-    "min": 363.8007499999958,
-    "max": 373.35425000000555,
-    "rel_range": 0.02626025372407801
+    "min": 55.44308400000375,
+    "max": 59.77245900000128,
+    "rel_range": 0.07808683586211101
    }
   },
   {
    "beds_requested": 400,
    "beds_built": 400,
-   "build_seconds": 13.53,
+   "build_seconds": 8.17,
    "ticks": 25,
    "tick_ms": {
-    "p50": 535.8684589999996,
-    "p95": 579.7081249999962,
-    "p99": 623.9652080000155,
-    "mean": 517.9586366399963,
-    "max": 623.9652080000155
+    "p50": 97.21695900000071,
+    "p95": 100.79449999999923,
+    "p99": 105.78204099999766,
+    "mean": 96.70264160000045,
+    "max": 105.78204099999766
    },
-   "bed_ticks_per_s": 772.2619095820693,
-   "ms_per_bed_tick": 1.2948974792,
-   "cpu_utilisation": 1.1554297726522293,
-   "peak_rss_mb": 2541.296875,
-   "rss_growth_mb": 0.0,
+   "bed_ticks_per_s": 4136.371694241324,
+   "ms_per_bed_tick": 0.2417577707999996,
+   "cpu_utilisation": 1.172247324510824,
+   "peak_rss_mb": 1529.875,
+   "rss_growth_mb": 10.875,
    "phases": {
     "hdc_memory": {
-     "ms_per_tick": 228.97867335999987,
-     "share_of_tick": 0.44207876885640607,
+     "ms_per_tick": 49.09580668000075,
+     "share_of_tick": 0.507696262642748,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 11.795476720000124,
+     "share_of_tick": 0.12197619006172751,
      "calls_per_tick": 1.0
     },
     "resonance_gate": {
-     "ms_per_tick": 142.47894532002078,
-     "share_of_tick": 0.27507765597019623,
+     "ms_per_tick": 10.66568724001911,
+     "share_of_tick": 0.1102931169981148,
+     "calls_per_tick": 400.0
+    },
+    "fusion": {
+     "ms_per_tick": 4.847251919985638,
+     "share_of_tick": 0.05012508909171376,
      "calls_per_tick": 400.0
     },
     "sched_decide": {
-     "ms_per_tick": 109.77538672000264,
-     "share_of_tick": 0.21193837443374844,
+     "ms_per_tick": 4.76152164000041,
+     "share_of_tick": 0.04923855833303806,
      "calls_per_tick": 1.0
     },
     "z3_verify": {
-     "ms_per_tick": 109.17697828000543,
-     "share_of_tick": 0.21078305432229272,
+     "ms_per_tick": 3.9686199199996963,
+     "share_of_tick": 0.04103921775572253,
      "calls_per_tick": 1.0,
      "nested_in": "sched_decide"
     },
-    "device_pump": {
-     "ms_per_tick": 15.475534959999777,
-     "share_of_tick": 0.02987791545003375,
-     "calls_per_tick": 1.0
-    },
-    "fusion": {
-     "ms_per_tick": 5.044907360062325,
-     "share_of_tick": 0.009739974478865918,
-     "calls_per_tick": 400.0
-    },
     "sample_vitals": {
-     "ms_per_tick": 2.059526920056669,
-     "share_of_tick": 0.003976235480296603,
+     "ms_per_tick": 2.315479360000836,
+     "share_of_tick": 0.023944208208268685,
      "calls_per_tick": 400.0
     },
     "sched_observe": {
-     "ms_per_tick": 0.5258037599878662,
-     "share_of_tick": 0.001015145539384154,
+     "ms_per_tick": 0.5510816399981877,
+     "share_of_tick": 0.005698696242261477,
      "calls_per_tick": 400.0
     },
     "learner_lookup": {
-     "ms_per_tick": 0.11091651997730878,
-     "share_of_tick": 0.00021414150880468555,
+     "ms_per_tick": 0.10636948000865232,
+     "share_of_tick": 0.0010999592655973945,
      "calls_per_tick": 400.0
     }
    },
-   "phase_coverage": 0.9739182117177358,
+   "phase_coverage": 0.8700720808434697,
    "repeats": 3,
    "p50_spread": {
-    "min": 525.5836249999959,
-    "max": 559.4535409999963,
-    "rel_range": 0.06444248714940598
+    "min": 83.20399999999495,
+    "max": 97.66379200000586,
+    "rel_range": 0.17378722176832587
+   }
+  },
+  {
+   "beds_requested": 600,
+   "beds_built": 600,
+   "build_seconds": 11.44,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 165.99012500000754,
+    "p95": 192.086541000009,
+    "p99": 370.2740829999982,
+    "mean": 174.8752799600004,
+    "max": 370.2740829999982
+   },
+   "bed_ticks_per_s": 3431.0053178686235,
+   "ms_per_bed_tick": 0.2914597639333332,
+   "cpu_utilisation": 1.132490452697614,
+   "peak_rss_mb": 1910.296875,
+   "rss_growth_mb": 103.671875,
+   "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 92.88136332000079,
+     "share_of_tick": 0.5311274191363508,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 20.104028440001684,
+     "share_of_tick": 0.11496171414704638,
+     "calls_per_tick": 1.0
+    },
+    "resonance_gate": {
+     "ms_per_tick": 18.346567920000894,
+     "share_of_tick": 0.10491195349693493,
+     "calls_per_tick": 600.0
+    },
+    "fusion": {
+     "ms_per_tick": 8.1545984000104,
+     "share_of_tick": 0.04663078412586442,
+     "calls_per_tick": 600.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 7.795503280000844,
+     "share_of_tick": 0.04457735534857532,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 6.41936499999872,
+     "share_of_tick": 0.036708125753892214,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "sample_vitals": {
+     "ms_per_tick": 3.8910172799796783,
+     "share_of_tick": 0.022250168299214973,
+     "calls_per_tick": 600.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 1.003446720003467,
+     "share_of_tick": 0.005738051720882872,
+     "calls_per_tick": 600.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.19452688000967555,
+     "share_of_tick": 0.0011123712663026475,
+     "calls_per_tick": 600.0
+    }
+   },
+   "phase_coverage": 0.8713098175411722,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 158.82541699998853,
+    "max": 173.4064579999881,
+    "rel_range": 0.09180546335351744
+   }
+  },
+  {
+   "beds_requested": 800,
+   "beds_built": 800,
+   "build_seconds": 13.73,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 186.14758299997902,
+    "p95": 226.0268750000023,
+    "p99": 256.74291699999685,
+    "mean": 191.5481465999983,
+    "max": 256.74291699999685
+   },
+   "bed_ticks_per_s": 4176.486303800474,
+   "ms_per_bed_tick": 0.2394357187500006,
+   "cpu_utilisation": 1.2119405221364856,
+   "peak_rss_mb": 2333.28125,
+   "rss_growth_mb": 228.40625,
+   "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 104.90170335999892,
+     "share_of_tick": 0.5476506591604696,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 20.83162835999815,
+     "share_of_tick": 0.10875376316424226,
+     "calls_per_tick": 1.0
+    },
+    "resonance_gate": {
+     "ms_per_tick": 20.02305220002995,
+     "share_of_tick": 0.10453250409213381,
+     "calls_per_tick": 800.0
+    },
+    "fusion": {
+     "ms_per_tick": 9.050950119951722,
+     "share_of_tick": 0.04725146151544953,
+     "calls_per_tick": 800.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 8.135368400003244,
+     "share_of_tick": 0.042471568373730915,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 6.270281759998397,
+     "share_of_tick": 0.03273468236450405,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "sample_vitals": {
+     "ms_per_tick": 3.8510036400305125,
+     "share_of_tick": 0.02010457994809151,
+     "calls_per_tick": 800.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 0.9280659999842555,
+     "share_of_tick": 0.004845068672446418,
+     "calls_per_tick": 800.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.19920891999277046,
+     "share_of_tick": 0.0010399916574308629,
+     "calls_per_tick": 800.0
+    }
+   },
+   "phase_coverage": 0.876649596583995,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 181.01983299999347,
+    "max": 207.54700000000526,
+    "rel_range": 0.14654287632677654
+   }
+  },
+  {
+   "beds_requested": 1000,
+   "beds_built": 1000,
+   "build_seconds": 15.78,
+   "ticks": 25,
+   "tick_ms": {
+    "p50": 253.6640840000075,
+    "p95": 266.7343340000059,
+    "p99": 267.2314159999871,
+    "mean": 253.45652019999875,
+    "max": 267.2314159999871
+   },
+   "bed_ticks_per_s": 3945.443771492072,
+   "ms_per_bed_tick": 0.25345691332000003,
+   "cpu_utilisation": 1.2125312976252884,
+   "peak_rss_mb": 2946.9375,
+   "rss_growth_mb": 258.921875,
+   "phases": {
+    "hdc_memory": {
+     "ms_per_tick": 150.03561667999747,
+     "share_of_tick": 0.591957089332068,
+     "calls_per_tick": 1.0
+    },
+    "device_pump": {
+     "ms_per_tick": 24.48902664000002,
+     "share_of_tick": 0.0966200776266915,
+     "calls_per_tick": 1.0
+    },
+    "resonance_gate": {
+     "ms_per_tick": 23.596724319957048,
+     "share_of_tick": 0.09309954899579002,
+     "calls_per_tick": 1000.0
+    },
+    "fusion": {
+     "ms_per_tick": 10.862552719936502,
+     "share_of_tick": 0.042857590971377736,
+     "calls_per_tick": 1000.0
+    },
+    "sched_decide": {
+     "ms_per_tick": 10.601926759997014,
+     "share_of_tick": 0.04182930590104534,
+     "calls_per_tick": 1.0
+    },
+    "z3_verify": {
+     "ms_per_tick": 8.19349164000073,
+     "share_of_tick": 0.03232696055781324,
+     "calls_per_tick": 1.0,
+     "nested_in": "sched_decide"
+    },
+    "sample_vitals": {
+     "ms_per_tick": 4.419747159903409,
+     "share_of_tick": 0.017437863903610677,
+     "calls_per_tick": 1000.0
+    },
+    "sched_observe": {
+     "ms_per_tick": 1.0576997199279958,
+     "share_of_tick": 0.00417309477209882,
+     "calls_per_tick": 1000.0
+    },
+    "learner_lookup": {
+     "ms_per_tick": 0.23115339996024886,
+     "share_of_tick": 0.0009120027421323796,
+     "calls_per_tick": 1000.0
+    }
+   },
+   "phase_coverage": 0.8888865742448145,
+   "repeats": 3,
+   "p50_spread": {
+    "min": 251.38670900003035,
+    "max": 258.6222920000125,
+    "rel_range": 0.028782679198769007
    }
   }
  ]

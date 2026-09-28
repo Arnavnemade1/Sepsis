@@ -25,7 +25,7 @@ its real effect on lead time is measured and reported, not assumed.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 SCORED = ["hr", "temp_c", "resp_rate", "spo2", "map", "wbc", "lactate"]
 # direction (per channel) that increases sepsis risk; temp is handled two-sided
@@ -149,9 +149,11 @@ class PatientBaselineLearner:
             })
         return out
 
-    def narrative(self, vals: Dict[str, float]) -> Dict[str, Any]:
+    def narrative(self, vals: Dict[str, float],
+                  per_channel: Optional[Dict[str, float]] = None) -> Dict[str, Any]:
         """A plain-English account of the learned baseline + the patient's current
-        departures from it — the dossier reads this verbatim."""
+        departures from it — the dossier reads this verbatim. ``per_channel`` is
+        ``self.per_channel(vals)`` when the caller already has it."""
         if self.n <= WARMUP + 2:
             return {"status": "learning", "n_hours": self.n, "learned": [],
                     "drifting": [], "summary": f"Still learning this patient's "
@@ -173,7 +175,8 @@ class PatientBaselineLearner:
             learned.append("Baseline within population norms — a physiologically "
                            "unremarkable patient so far.")
         drifting: List[str] = []
-        for ch, z in sorted(self.per_channel(vals).items(), key=lambda kv: -kv[1]):
+        pc = self.per_channel(vals) if per_channel is None else per_channel
+        for ch, z in sorted(pc.items(), key=lambda kv: -kv[1]):
             if z >= 0.8 and ch in self.mean:
                 dirn = ("below" if _WORSE.get(ch, 1) == -1
                         else "off" if ch == "temp_c" else "above")
@@ -193,7 +196,7 @@ class PatientBaselineLearner:
             "per_channel": pc,
             "top": [{"ch": k, "z": v, "baseline": round(self.mean.get(k, 0.0), 1)}
                     for k, v in top[:3] if v > 0.4],
-            "learned": self.narrative(vals),
+            "learned": self.narrative(vals, pc),
         }
 
 

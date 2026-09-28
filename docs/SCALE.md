@@ -13,7 +13,7 @@ with the instrumentation living in the measurement code so the clinical path car
 no profiling hooks.
 
 ```bash
-python -m backend.aegis.scale.loadgen --beds 1,50,100,250,400 --ticks 25 --repeats 3
+python -m backend.aegis.scale.loadgen --beds 1,50,100,250,400,600,800,1000 --ticks 25 --repeats 3
 ```
 
 ---
@@ -21,20 +21,79 @@ python -m backend.aegis.scale.loadgen --beds 1,50,100,250,400 --ticks 25 --repea
 ## Result
 
 Median of 3 rebuilt runs per level, one core of an ARM laptop. Tick budget 600 ms.
+Measured 2026-09-27, after the tick was squeezed (next section).
 
 | beds | tick p50 | run spread | tick p99 | ms/bed | peak RSS | dominant phase |
 |---:|---:|---:|---:|---:|---:|---|
-| 1 | 1.6 ms | ±3% | 1.7 ms | 1.57 | 148 MB | sched_decide 54% |
-| 50 | 66.6 ms | ±8% | 71.7 ms | 1.32 | 575 MB | resonance_gate 35% |
-| 100 | 132.7 ms | ±6% | 140.4 ms | 1.31 | 1325 MB | resonance_gate 34% |
-| 250 | 372.4 ms | ±3% | 391.6 ms | 1.44 | 2239 MB | hdc_memory 38% |
-| 400 | 535.9 ms | ±6% | **624.0 ms** | 1.29 | 2541 MB | hdc_memory 44% |
+| 1 | 0.3 ms | ±6% | 0.7 ms | 0.30 | 189 MB | sched_decide 58% |
+| 50 | 9.7 ms | ±1% | 10.3 ms | 0.19 | 540 MB | hdc_memory 45% |
+| 100 | 18.0 ms | ±5% | 20.4 ms | 0.18 | 850 MB | hdc_memory 43% |
+| 250 | 55.6 ms | ±8% | 60.2 ms | 0.22 | 1370 MB | hdc_memory 46% |
+| 400 | 97.2 ms | ±17% | 105.8 ms | 0.24 | 1529 MB | hdc_memory 51% |
+| 600 | 166.0 ms | ±9% | 370.3 ms | 0.29 | 1910 MB | hdc_memory 53% |
+| 800 | 186.1 ms | ±15% | 256.7 ms | 0.24 | 2333 MB | hdc_memory 55% |
+| 1000 | 253.7 ms | ±3% | **267.2 ms** | 0.25 | 2946 MB | hdc_memory 59% |
 
-**250 beds within the real-time budget at p99.** 400 beds fits on the median (536 ms)
-and breaches at p99 (624 ms), so the crossing lies between the two measured levels.
-The **per-bed cost is flat** — 1.29 to 1.57 ms across a 400× range in ward size.
+**1,000 beds within the real-time budget at p99**, from 250 before. The 600-bed p99 is
+one slow tick in one repeat (its p50 spread is ±9%); on a laptop doing other work that
+is the machine, not the ward. The remaining growth is the precedent retrieval: every
+recomputing bed scores against a case store that grows with the ward, so that one
+phase is quadratic and everything else is linear. Extrapolating it puts the ceiling
+near 1,400 beds; nothing past 1,000 was measured, because memory (2.9 GB there) is the
+next wall on this machine.
 
----
+Before (2026-08-26, same harness):
+
+| beds | tick p50 | tick p99 | ms/bed | dominant phase |
+|---:|---:|---:|---:|---|
+| 1 | 1.6 ms | 1.7 ms | 1.57 | sched_decide 54% |
+| 50 | 66.6 ms | 71.7 ms | 1.32 | resonance_gate 35% |
+| 100 | 132.7 ms | 140.4 ms | 1.31 | resonance_gate 34% |
+| 250 | 372.4 ms | 391.6 ms | 1.44 | hdc_memory 38% |
+| 400 | 535.9 ms | **624.0 ms** | 1.29 | hdc_memory 44% |
+
+## Squeezing the tick (2026-09-27)
+
+Six changes, each exact — the same bits, verdicts and results as the code it replaced,
+held to that reference by `make verify-fastpaths` (17 checks, 5 of them planted defects
+the suite must catch). At 400 beds: p50 **528 → 97 ms**, p99 **664 → 106 ms**, boot
+**13.1 → 7.1 s**.
+
+- **Recompute on change, not on tick.** The clock advances 0.12 ICU hours per tick and
+  a bed's HDC query and resonance verdict read its *hourly* frame, so 88% of ticks
+  re-encoded, re-queried and re-gated an identical input. Frames, verdicts and
+  precedents are now memoised per bed and recomputed exactly when the hour changes.
+- **Bed clocks were phase-locked.** Every bed started on a whole hour, so the whole
+  ward crossed each hour on the same tick: memoisation alone would have left a
+  full-ward recompute spike every ~8 ticks, and the p99 with it. Real admissions are
+  not synchronised; each bed now carries a golden-ratio fractional-hour phase, so ~12%
+  of the ward changes hour per tick (worst tick 15%, against 100% phase-locked).
+- **An encoder that looks up instead of multiplying.** A hypervector was 17 binds (a
+  10,000-D multiply each), a stack, a sum and a sign per state. There are only 17 × 100
+  distinct binds, so they are a 17 MB table built once; encoding is a gather, an int16
+  sum and a sign, batched across states. The resonance gate encodes all three
+  modalities from one level lookup, and the frame enriches only the current hour.
+- **The scheduler proof as one SMT-LIB2 script.** Building ~4 Z3 terms per bed through
+  the Python API cost 107 ms a tick at 400 beds; the same invariants over the same named
+  lanes, parsed by Z3 itself, cost 3. A refutation used to pretty-print the solver's
+  whole model — every lane of every bed, ~15 ms — and now names the failing invariants
+  and beds. So the server's `VERIFY_EVERY` throttle (1 tick in 30) is gone: **every
+  scheduling decision is proven** again, at about the cost the throttled schedule had.
+- **The boot heap is frozen out of the collector.** The precedent bank alone is tens of
+  thousands of long-lived records; each gen-2 pass re-walked them, measured at up to
+  35 ms mid-tick at 800 beds. `gc.freeze()` once the kernel is up leaves a pass only
+  what the running system allocates (worst pause 2 ms, p50 −11%).
+- **Boot does each thing once.** The resonance fit re-derived every cohort row the bank
+  had just built, and computed its sepsis axis from two float32 copies of the bank
+  (~1.3 GB at 400 beds); it now reuses the rows and sums the ±1 bank in int32, which is
+  bit-identical to the float32 mean and allocates nothing.
+
+On the wire: a broadcast was JSON-encoded once per connected socket; it is encoded
+once and sent as the same bytes to every socket.
+
+Found on the way: at 400 beds the default 160-lane budget cannot give every bed its
+safety lane, so the prover correctly refutes every decision there. The ward is sized
+for its budget in production (12 beds); a large ward needs a larger `lane_budget`.
 
 ## The bottleneck was not the prover
 
@@ -44,8 +103,9 @@ serialises through one process-wide lock. Profiling said that was wrong.
 
 Scheduler verification runs **once per tick**, not once per bed, so its share of the
 tick *falls* as the ward grows: **53% at one bed, 20% at five hundred.** The lock also
-already takes a non-blocking acquire and defers when contended, and `VERIFY_EVERY`
-throttles it further — the tick loop was designed around exactly that hazard. Both
+already takes a non-blocking acquire and defers when contended (the `VERIFY_EVERY`
+throttle that once sat on top of it is gone; see above) — the tick loop was designed
+around exactly that hazard. Both
 planned optimisations would have bought close to nothing at the scale that matters.
 
 The measured cost was **HDC associative retrieval**: every bed querying, separately,
@@ -109,10 +169,10 @@ between-row differences a scaling table invites you to draw conclusions from.
 
 - **One machine, one core, one tick rate.** These are numbers for an ARM laptop at the
   simulator's tick cadence, not a deployment guarantee.
-- **Memory is the uncomfortable axis.** ~2.5 GB peak at 400 beds, growing roughly
-  linearly. A large-ward claim on a free-tier host is not credible on memory grounds
-  even where latency fits.
-- **Capacity is not clinical validation.** Running 250 beds says nothing about whether
+- **Memory is the uncomfortable axis.** 1.5 GB peak at 400 beds and 2.9 GB at 1,000,
+  growing roughly linearly (the float32 precedent bank is most of it). A large-ward
+  claim on a free-tier host is not credible on memory grounds even where latency fits.
+- **Capacity is not clinical validation.** Running 1,000 beds says nothing about whether
   the detector helps any of them; that question lives in `docs/SUBGROUP_AUDIT.md` and
   the research page.
 

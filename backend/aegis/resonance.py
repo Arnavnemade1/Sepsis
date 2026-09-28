@@ -47,6 +47,10 @@ MODALITIES: Dict[str, List[str]] = {
     "ehr":      ["wbc", "lactate", "wbc__tr", "lactate__tr"],        # async labs
 }
 
+#: the union of every modality's channels, and each modality's columns within it
+_UNION: List[str] = list(dict.fromkeys(f for fs in MODALITIES.values() for f in fs))
+_COLS: Dict[str, List[int]] = {m: [_UNION.index(f) for f in fs] for m, fs in MODALITIES.items()}
+
 # Artifact-flagging thresholds, in calibrated σ units (tuned in verify_resonance).
 # The gated consensus is the MEDIAN pathway — a robust statistic that ignores a
 # single outlier (high or low) without discarding a corroborated signal, so it
@@ -72,6 +76,7 @@ class CrossModalResonance:
         self.hdc = hdc
         self.eng = hdc.eng
         self.ids = hdc.ids
+        self._ufidx = np.array([hdc.feats.index(f) for f in _UNION])   # union rows in hdc tables
         self.axis: Optional[np.ndarray] = None         # unit sepsis-direction in HDC space
         self.cal: Dict[str, Tuple[float, float]] = {}  # modality -> (mu, sigma)
         self._fitted = False
@@ -87,30 +92,36 @@ class CrossModalResonance:
         can evaluate leave-one-patient-out (the axis never sees the test patient)."""
         if self.hdc.mem is None or not self.hdc.meta:
             raise ValueError("resonance needs a built HDCBioMemory precedent bank")
-        M = self.hdc.mem.astype(np.float32)
         keep = np.array([m["pid"] != exclude_pid for m in self.hdc.meta], dtype=bool)
         soon = np.array([
             1 if (m["label"] == 1 or (m["tto"] is not None and 0 <= m["tto"] <= SOON_H))
             else 0 for m in self.hdc.meta], dtype=np.int8)
-        M, soon = M[keep], soon[keep]
-        if soon.sum() == 0 or (soon == 0).sum() == 0:
+        pos, neg = keep & (soon == 1), keep & (soon == 0)
+        if not pos.any() or not neg.any():
             raise ValueError("precedent bank lacks both septic and non-septic rows")
-        axis = M[soon == 1].mean(0) - M[soon == 0].mean(0)   # septic − healthy direction
+        # Class means of a +/-1 bank are integer column sums over a count. Summed in
+        # int32 they are exact, and so are the float32 partial sums of
+        # ``M.astype(float32)[rows].mean(0)`` (integers below 2**24). np.mean then
+        # divides by an intp count in float64 and casts back to float32, so doing the
+        # same here is bit-identical — without the two full float32 copies of the bank
+        # that took ~1.3 GB of peak memory at 400 beds.
+        def mean(rows):
+            s = np.sum(self.hdc.mem, axis=0, where=rows[:, None], dtype=np.int32)
+            return (s.astype(np.float64) / np.float64(rows.sum())).astype(np.float32)
+        axis = mean(pos) - mean(neg)                     # septic − healthy direction
         self.axis = axis / (np.linalg.norm(axis) + 1e-9)
 
         # Calibrate per-modality projection scale on the SAME cohort rows.
-        proj: Dict[str, List[float]] = {m: [] for m in MODALITIES}
-        for st in states:
-            for m in MODALITIES:
-                proj[m].append(self._project(st, m))
-        for m, vals in proj.items():
-            a = np.asarray(vals, dtype=np.float64)
+        for m in MODALITIES:
+            a = np.asarray(self._project_many(states, m), dtype=np.float64)
             self.cal[m] = (float(a.mean()), float(a.std()) or 1.0)
         self._fitted = True
         return self
 
     # ------------------------------------------------------------------ #
     def _encode_modality(self, state: Dict[str, float], modality: str) -> Optional[np.ndarray]:
+        """The original per-feature modality encoder — the specification the batched
+        path below is verified bit-for-bit against."""
         binds = []
         for f in MODALITIES[modality]:
             v = state.get(f)
@@ -120,9 +131,7 @@ class CrossModalResonance:
             binds.append(self.eng.bind(self.ids[f], lvl))
         return self.eng.bundle(binds) if binds else None
 
-    def _project(self, state: Dict[str, float], modality: str) -> float:
-        """Raw projection of one modality's hypervector onto the sepsis axis."""
-        v = self._encode_modality(state, modality)
+    def _project_vec(self, v: Optional[np.ndarray]) -> float:
         if v is None or self.axis is None:
             return 0.0
         vf = v.astype(np.float32)
@@ -131,9 +140,43 @@ class CrossModalResonance:
             return 0.0
         return float(np.dot(vf / n, self.axis))
 
+    def _project(self, state: Dict[str, float], modality: str) -> float:
+        """Raw projection of one modality's hypervector onto the sepsis axis."""
+        return self._project_many([state], modality)[0]
+
+    def _project_many(self, states: List[Dict[str, float]], modality: str) -> List[float]:
+        """Projections for many states: one gather-and-sign encode from the shared bind
+        tables, then the same per-vector dot product as the scalar path (a matrix-vector
+        product would sum in a different order and move the last bits)."""
+        feats = MODALITIES[modality]
+        idx, present = self.hdc.levels(states, feats)
+        V = self.hdc.bundle_levels(idx, present, feats)
+        has = present.any(axis=1)
+        return [self._project_vec(V[i] if has[i] else None) for i in range(len(states))]
+
     def _z(self, state: Dict[str, float], modality: str) -> float:
         mu, sigma = self.cal.get(modality, (0.0, 1.0))
         return (self._project(state, modality) - mu) / sigma
+
+    def _z_all(self, state: Dict[str, float]) -> Dict[str, float]:
+        """All three modality z-scores from ONE level lookup over the union of their
+        channels (each modality then bundles its own columns) — identical numbers to
+        ``_z`` per modality at a third of the fixed cost."""
+        idx, present = self.hdc.levels([state], _UNION)
+        idx, present = idx[0], present[0]
+        T, tie = self.hdc.tables(), self.eng._tie_break
+        out: Dict[str, float] = {}
+        for m, cols in _COLS.items():
+            rows = [c for c in cols if present[c]]
+            v = None
+            if rows:
+                # the present channels' binds summed as integers, ties on the fixed
+                # pattern — the same vector the per-modality bundle produces
+                acc = T[self._ufidx[rows], idx[rows]].sum(axis=0, dtype=np.int16)
+                v = np.sign(np.where(acc == 0, tie, acc)).astype(np.int8)
+            mu, sigma = self.cal.get(m, (0.0, 1.0))
+            out[m] = (self._project_vec(v) - mu) / sigma
+        return out
 
     # ------------------------------------------------------------------ #
     # Assess: per-modality scores → robust consensus with outlier rejection.
@@ -141,7 +184,7 @@ class CrossModalResonance:
     def assess(self, state: Dict[str, float]) -> Dict[str, Any]:
         if not self._fitted:
             raise RuntimeError("CrossModalResonance.fit() must be called first")
-        z = {m: self._z(state, m) for m in MODALITIES}
+        z = self._z_all(state)
         names = list(z.keys())
         vals = np.array([z[m] for m in names], dtype=np.float64)
 
@@ -190,8 +233,12 @@ class CrossModalResonance:
 
     # convenience: build a fitted gate straight from a set of cohort patients
     @classmethod
-    def from_patients(cls, hdc: HDCBioMemory, patients: List[Any]) -> "CrossModalResonance":
-        states: List[Dict[str, float]] = []
-        for p in patients:
-            states.extend(s for (s, *_rest) in HDCBioMemory.rows_from_patient(p))
+    def from_patients(cls, hdc: HDCBioMemory, patients: List[Any],
+                      states: Optional[List[Dict[str, float]]] = None) -> "CrossModalResonance":
+        """``states`` = the enriched cohort states when the caller already built them
+        for the bank (the same rows, so re-deriving them only repeated the work)."""
+        if states is None:
+            states = []
+            for p in patients:
+                states.extend(s for (s, *_rest) in HDCBioMemory.rows_from_patient(p))
         return cls(hdc).fit(states)

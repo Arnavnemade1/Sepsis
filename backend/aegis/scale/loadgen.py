@@ -149,6 +149,11 @@ def _measure_once(n_beds: int, ticks: int, warmup: int, seed: int) -> Dict[str, 
     cluster = CohortCluster(n=n_beds, seed=seed)
     build_s = time.perf_counter() - t0
     actual = len(cluster.node_ids)
+    # The server freezes its boot heap out of the cyclic collector once the kernel is
+    # up (server.py); measure the tick the product runs, not a different heap policy.
+    import gc
+    gc.collect()
+    gc.freeze()
 
     for _ in range(warmup):                          # first ticks pay import + JIT costs
         cluster.tick()
@@ -164,6 +169,7 @@ def _measure_once(n_beds: int, ticks: int, warmup: int, seed: int) -> Dict[str, 
     wall = time.perf_counter() - wall0
     cpu = time.process_time() - cpu0
     probe.restore()
+    gc.unfreeze()                                    # the next level starts clean
 
     lat.sort()
     def pct(q: float) -> float:

@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -54,6 +54,7 @@ help:
 	@echo "  make verify-z3    Z3 concurrency: every entry point guarded, no context corruption"
 	@echo "  make verify-os    The OS layer: kernel package + apps, aegisd, pkg, RBAC, proofs, DSL"
 	@echo "  make verify-os-fast  As above without the slow HDSched benchmark (what CI runs)"
+	@echo "  make verify-fastpaths  Each optimised tick path vs the reference it replaced (bit-exact)"
 	@echo "  make verify-doctor AI-doctor consult: grounding, provenance, scale firewall, failover"
 	@echo "  make verify-agent  Agent plane: catalogue, read confinement, gated writes"
 	@echo "  make verify-llm    LLM transport: fallback chain, cooldown, cache, budget"
@@ -269,6 +270,13 @@ verify-os:
 	$(PY) -m backend.aegis.verify_z3_safety
 	$(PY) -m backend.aegis.verify_abi
 	$(PY) -m backend.aegis.verify_os_surface
+	$(PY) -m backend.aegis.verify_fastpaths
+
+# Every optimised path in the ward tick (bind-table encoder, memoised frames, batched
+# retrieval, the SMT-LIB2 scheduler proof, one-encode broadcast) against the reference
+# it replaced — exact to the bit — with a planted defect each check must catch.
+verify-fastpaths:
+	$(PY) -m backend.aegis.verify_fastpaths
 
 # Same suites, minus the multi-minute HDSched surrogate search — what CI runs.
 verify-os-fast:

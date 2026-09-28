@@ -40,7 +40,7 @@ than wins. The nulls are why the wins can be believed.
 | **Across hospitals** | **AUROC 0.68–0.70**, trained at one hospital and scored at the other. This is the honest deployment number |
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
-| **Scale** | **250 beds** inside a 600 ms tick at p99, on one laptop core, on real patients |
+| **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
 | **Verification** | **89 suites**. The ones behind published claims plant known failures and require the guard to fire |
 
 ---
@@ -166,13 +166,17 @@ On the open demo it found three:
 All three are fixed and guarded by checks that were seen to fail.
 → [`docs/MIMIC.md`](docs/MIMIC.md)
 
-### 12 · 250 beds on one core, and the bottleneck was not the prover
+### 12 · 1,000 beds on one core, by removing work rather than adding hardware
 
 The load harness drives the real cohort tick with no mocks: device bus, memory fabric,
-fusion, learner, HDC memory, resonance gate and the Z3-verified scheduler. It holds **250
-beds** inside a 600 ms tick at p99, at a flat **1.3–1.6 ms per bed**. The plan had been to
-optimise Z3. Profiling showed Z3 runs once per tick and that hyperdimensional memory was the
-real cost. → [`docs/SCALE.md`](docs/SCALE.md)
+fusion, learner, HDC memory, resonance gate and the Z3-verified scheduler. It first held
+**250 beds** inside the 600 ms tick; profiling showed Z3 was not the bottleneck, as planned
+for, and that hyperdimensional memory was. A second pass found that 88% of each tick
+recomputed an unchanged hourly input, and that every bed's clock was phase-locked, so the
+whole ward recomputed on the same tick. Exact memoisation, staggered clocks, a lookup-table
+encoder and a one-script scheduler proof now hold **1,000 beds at p99 267 ms**
+(400 beds: 664 → 106 ms). Every change is bit-identical to the code it replaced, held there
+by a suite of 17 checks that must catch planted defects. → [`docs/SCALE.md`](docs/SCALE.md)
 
 ### Published nulls
 

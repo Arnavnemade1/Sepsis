@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-09-12",
+ "syncedAt": "2026-09-28",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -3176,58 +3176,91 @@
   "levels": [
    {
     "beds": 1,
-    "p50": 1.6,
-    "p99": 1.7,
-    "spreadPct": 3,
-    "msPerBed": 1.57,
-    "peakRssMb": 148,
+    "p50": 0.3,
+    "p99": 0.7,
+    "spreadPct": 6,
+    "msPerBed": 0.3,
+    "peakRssMb": 190,
     "repeats": 3,
     "topPhase": "sched_decide",
-    "topPhaseShare": 0.542
+    "topPhaseShare": 0.581
    },
    {
     "beds": 50,
-    "p50": 66.6,
-    "p99": 71.7,
-    "spreadPct": 8,
-    "msPerBed": 1.32,
-    "peakRssMb": 575,
+    "p50": 9.7,
+    "p99": 10.3,
+    "spreadPct": 1,
+    "msPerBed": 0.19,
+    "peakRssMb": 540,
     "repeats": 3,
-    "topPhase": "resonance_gate",
-    "topPhaseShare": 0.346
+    "topPhase": "hdc_memory",
+    "topPhaseShare": 0.455
    },
    {
     "beds": 100,
-    "p50": 132.7,
-    "p99": 140.4,
-    "spreadPct": 6,
-    "msPerBed": 1.31,
-    "peakRssMb": 1325,
+    "p50": 18,
+    "p99": 20.4,
+    "spreadPct": 5,
+    "msPerBed": 0.18,
+    "peakRssMb": 850,
     "repeats": 3,
-    "topPhase": "resonance_gate",
-    "topPhaseShare": 0.335
+    "topPhase": "hdc_memory",
+    "topPhaseShare": 0.426
    },
    {
     "beds": 250,
-    "p50": 372.4,
-    "p99": 391.6,
-    "spreadPct": 3,
-    "msPerBed": 1.44,
-    "peakRssMb": 2239,
+    "p50": 55.6,
+    "p99": 60.2,
+    "spreadPct": 8,
+    "msPerBed": 0.22,
+    "peakRssMb": 1370,
     "repeats": 3,
     "topPhase": "hdc_memory",
-    "topPhaseShare": 0.379
+    "topPhaseShare": 0.455
    },
    {
     "beds": 400,
-    "p50": 535.9,
-    "p99": 624,
-    "spreadPct": 6,
-    "msPerBed": 1.29,
-    "peakRssMb": 2541,
+    "p50": 97.2,
+    "p99": 105.8,
+    "spreadPct": 17,
+    "msPerBed": 0.24,
+    "peakRssMb": 1530,
     "repeats": 3,
     "topPhase": "hdc_memory",
-    "topPhaseShare": 0.442
+    "topPhaseShare": 0.508
+   },
+   {
+    "beds": 600,
+    "p50": 166,
+    "p99": 370.3,
+    "spreadPct": 9,
+    "msPerBed": 0.29,
+    "peakRssMb": 1910,
+    "repeats": 3,
+    "topPhase": "hdc_memory",
+    "topPhaseShare": 0.531
+   },
+   {
+    "beds": 800,
+    "p50": 186.1,
+    "p99": 256.7,
+    "spreadPct": 15,
+    "msPerBed": 0.24,
+    "peakRssMb": 2333,
+    "repeats": 3,
+    "topPhase": "hdc_memory",
+    "topPhaseShare": 0.548
+   },
+   {
+    "beds": 1000,
+    "p50": 253.7,
+    "p99": 267.2,
+    "spreadPct": 3,
+    "msPerBed": 0.25,
+    "peakRssMb": 2947,
+    "repeats": 3,
+    "topPhase": "hdc_memory",
+    "topPhaseShare": 0.592
    }
   ]
  },
@@ -3369,52 +3402,52 @@
    }
   ],
   "runtime": {
-   "beds": 400,
+   "beds": 1000,
    "phases": [
     {
      "phase": "hdc_memory",
-     "share": 0.442,
-     "msPerTick": 229
-    },
-    {
-     "phase": "resonance_gate",
-     "share": 0.275,
-     "msPerTick": 142.5
-    },
-    {
-     "phase": "sched_decide",
-     "share": 0.212,
-     "msPerTick": 109.8
-    },
-    {
-     "phase": "z3_verify",
-     "share": 0.211,
-     "msPerTick": 109.2
+     "share": 0.592,
+     "msPerTick": 150
     },
     {
      "phase": "device_pump",
-     "share": 0.03,
-     "msPerTick": 15.5
+     "share": 0.097,
+     "msPerTick": 24.5
+    },
+    {
+     "phase": "resonance_gate",
+     "share": 0.093,
+     "msPerTick": 23.6
     },
     {
      "phase": "fusion",
-     "share": 0.01,
-     "msPerTick": 5
+     "share": 0.043,
+     "msPerTick": 10.9
+    },
+    {
+     "phase": "sched_decide",
+     "share": 0.042,
+     "msPerTick": 10.6
+    },
+    {
+     "phase": "z3_verify",
+     "share": 0.032,
+     "msPerTick": 8.2
     },
     {
      "phase": "sample_vitals",
-     "share": 0.004,
-     "msPerTick": 2.1
+     "share": 0.017,
+     "msPerTick": 4.4
     },
     {
      "phase": "sched_observe",
-     "share": 0.001,
-     "msPerTick": 0.5
+     "share": 0.004,
+     "msPerTick": 1.1
     },
     {
      "phase": "learner_lookup",
-     "share": 0,
-     "msPerTick": 0.1
+     "share": 0.001,
+     "msPerTick": 0.2
     }
    ]
   }

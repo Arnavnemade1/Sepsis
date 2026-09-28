@@ -253,6 +253,71 @@ class CognitiveScheduler:
             Z3_LOCK.release()
 
     def _verify_decision_z3(self, decision: ScheduleDecision) -> Tuple[str, str]:
+        """The same four invariants over the same symbolic lane variables, handed to Z3
+        as ONE SMT-LIB2 script. Building ~4 terms per bed through the Python API cost
+        76 ms a tick at 400 beds; Z3's own parser builds the identical formula in ~7.
+        :meth:`_verify_decision_z3_api` is the construction it is checked against."""
+        from z3 import Solver, unsat
+        ids = list(self.nodes)
+        if not ids or any(("|" in nid or "\\" in nid) for nid in ids):
+            return self._verify_decision_z3_api(decision)   # unquotable id: build by API
+
+        def lit(v: int) -> str:
+            v = int(v)
+            return str(v) if v >= 0 else f"(- {-v})"
+
+        total = " ".join(f"|safety_{n}| |ml_{n}| |render_{n}| |logging_{n}|" for n in ids)
+        viol = ["(or " + " ".join(f"(< |safety_{n}| 1)" for n in ids) + ")",
+                f"(> (+ 0 {total}) {lit(decision.budget)})",
+                "(or false " + " ".join(f"(< |ml_{n}| 4)" for n in ids
+                                        if self.nodes[n].tier() == "CRITICAL") + ")",
+                ("(or " + " ".join(f"(> |render_{n}| 0) (> |logging_{n}| 0)" for n in ids) + ")")
+                if decision.mode == "PREEMPT" else "false"]
+        claim = "(assert (or " + " ".join(viol) + "))"
+        # Each lane is a named constant (define-fun), so Z3's parser folds the decision
+        # into the invariants and the check is a one-step refutation — equisatisfiable
+        # with asserting ``x = v`` for fresh constants, at a third of the parse.
+        defs = "".join(
+            f"(define-fun |safety_{n}| () Int {lit(L['safety'])})"
+            f"(define-fun |ml_{n}| () Int {lit(L['ml_tracking'])})"
+            f"(define-fun |render_{n}| () Int {lit(L['render'])})"
+            f"(define-fun |logging_{n}| () Int {lit(L['logging'])})"
+            for n, L in ((n, decision.lanes[n]) for n in ids))
+        s = Solver()
+        s.from_string(defs + claim)
+        if s.check() == unsat:
+            return "proven", "FORMALLY VERIFIED: All scheduler liveness, budget, and preemption invariants hold."
+        return "violated", ("SCHEDULER VIOLATION: Invariants failed under solver check ("
+                            + self._violation_detail(decision) + ")")
+
+    def _violation_detail(self, decision: ScheduleDecision) -> str:
+        """Which invariants the refuted decision breaks, and where. It used to print the
+        solver's whole model — every lane of every bed, ~15 ms of pretty-printing a tick
+        at 400 beds, and a list nobody could read. The model's values ARE the decision's
+        lanes, so the failing clauses are named from them directly."""
+        ids = list(self.nodes)
+
+        def few(ns: List[str]) -> str:
+            return ", ".join(ns[:4]) + (", …" if len(ns) > 4 else "")
+        out = []
+        floor = [n for n in ids if decision.lanes[n]["safety"] < 1]
+        if floor:
+            out.append(f"safety floor unmet on {len(floor)}/{len(ids)} nodes: {few(floor)}")
+        total = sum(sum(decision.lanes[n][k] for k in ("safety", "ml_tracking", "render", "logging"))
+                    for n in ids)
+        if total > decision.budget:
+            out.append(f"{total} lanes allocated > budget {decision.budget}")
+        crit = [n for n in ids if self.nodes[n].tier() == "CRITICAL"
+                and decision.lanes[n]["ml_tracking"] < 4]
+        if crit:
+            out.append(f"critical nodes under 4 ML lanes: {few(crit)}")
+        if decision.mode == "PREEMPT":
+            busy = [n for n in ids if decision.lanes[n]["render"] > 0 or decision.lanes[n]["logging"] > 0]
+            if busy:
+                out.append(f"non-essential lanes during preemption: {few(busy)}")
+        return "; ".join(out) or "see solver model"
+
+    def _verify_decision_z3_api(self, decision: ScheduleDecision) -> Tuple[str, str]:
         from z3 import Solver, Int, Or, Sum, BoolVal, unsat
 
         s = Solver()

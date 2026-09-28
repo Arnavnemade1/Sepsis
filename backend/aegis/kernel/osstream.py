@@ -32,6 +32,7 @@ have not moved.
 from __future__ import annotations
 
 import asyncio
+import json
 import hashlib
 import time
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Set
@@ -43,6 +44,34 @@ COALESCE = ("snapshot", "cluster", "proc")
 SENSITIVE_FACILITIES = frozenset({"auth", "syscall", "agent", "egress", "clinical", "vfs"})
 MAX_WATCHES = 16
 QUEUE_MAX = 128
+
+
+class Wire:
+    """A message already encoded exactly as Starlette's ``send_json`` would encode it.
+
+    ``publish`` fans one payload out to every subscriber; encoding it once there, rather
+    than once per connection in each pump, is the same bytes on every socket for 1/N of
+    the event-loop time."""
+    __slots__ = ("text",)
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+
+def encode(msg: Any) -> Any:
+    """``msg`` as a :class:`Wire`, or unchanged if it will not encode — the pump then
+    sends it with ``send_json`` and fails exactly as it always did."""
+    try:
+        return Wire(json.dumps(msg, separators=(",", ":"), ensure_ascii=False))
+    except (TypeError, ValueError):
+        return msg
+
+
+async def send(ws: Any, msg: Any) -> None:
+    if isinstance(msg, Wire):
+        await ws.send_text(msg.text)
+    else:
+        await ws.send_json(msg)
 
 
 class Conn:
@@ -90,9 +119,12 @@ class OSHub:
     # -- publishing (event-loop thread) ------------------------------------- #
     def publish(self, topic: str, data: Any) -> None:
         coalesce = topic in COALESCE
-        for c in list(self.conns):
-            if topic in c.topics:
-                c.offer({"type": topic, "data": data}, coalesce)
+        subs = [c for c in list(self.conns) if topic in c.topics]
+        if not subs:
+            return
+        msg = encode({"type": topic, "data": data})
+        for c in subs:
+            c.offer(msg, coalesce)
 
     def send(self, conn: Conn, msg: Dict[str, Any]) -> None:
         conn.offer(msg, coalesce=False)
@@ -148,7 +180,7 @@ class OSHub:
         async def pump() -> None:
             while not conn.closed:
                 msg = await conn.queue.get()
-                await ws.send_json(msg)
+                await send(ws, msg)
                 conn.sent += 1
 
         sender = asyncio.create_task(pump())

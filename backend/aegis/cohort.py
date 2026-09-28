@@ -72,6 +72,9 @@ CINC_FOR = {
     "spo2": "O2Sat", "map": "MAP", "wbc": "WBC", "lactate": "Lactate",
 }
 CHANNELS = list(CINC_FOR)
+#: golden-ratio step between consecutive beds' clock phases (low-discrepancy: any run
+#: of beds covers the hour evenly, so ~HOURS_PER_TICK of the ward changes hour per tick)
+PHASE_STEP = 0.6180339887498949
 # Population fallbacks for leading NaNs before any measurement exists.
 DEFAULTS = {"hr": 80.0, "temp_c": 37.0, "resp_rate": 16.0, "spo2": 97.0,
             "map": 85.0, "wbc": 8.0, "lactate": 1.2}
@@ -110,6 +113,13 @@ class RealPatient:
     win1: int = 0
     _ff: np.ndarray = field(default=None, repr=False)     # (n, 7) forward-filled
     _fresh: np.ndarray = field(default=None, repr=False)  # (n, 7) measured mask
+    #: fractional-hour offset of this bed's replay clock. Every bed used to start on a
+    #: whole hour, so the whole ward crossed each hour boundary on the SAME tick — a
+    #: synchronised recompute spike every ~8 ticks that set the p99. Real admissions
+    #: are not phase-locked; a golden-ratio offset per bed spreads the crossings.
+    phase: float = 0.0
+    _interp_at: float = field(default=float("nan"), repr=False)
+    _interp_val: Any = field(default=None, repr=False)
 
     @property
     def mrn(self) -> str:
@@ -143,13 +153,13 @@ class RealPatient:
             self.win1 = min(self.los_total - 1, self.onset_hour + 6)
         else:
             self.win0, self.win1 = 0, max(1, self.los_total - 1)
-        self.pos = float(self.win0)
+        self.pos = float(self.win0) + self.phase
 
     # -- replay --------------------------------------------------------- #
     def advance(self, dhours: float) -> None:
         self.pos += dhours
         if self.pos >= self.win1:
-            self.pos = float(self.win0)        # loop the monitoring window
+            self.pos = float(self.win0) + self.phase   # loop the window, keeping the phase
 
     def jump_to_onset(self) -> None:
         if self.onset_hour is not None:
@@ -168,6 +178,10 @@ class RealPatient:
 
     # -- current conditioned-input sample ------------------------------- #
     def _interp(self) -> Tuple[Dict[str, float], Dict[str, float]]:
+        # Each of the bed's four drivers samples the same clock position every tick;
+        # the interpolation is a pure function of ``pos``, so it is computed once.
+        if self._interp_at == self.pos:
+            return self._interp_val
         n = self._ff.shape[0]
         i = int(self.pos)
         i = 0 if i < 0 else (n - 1 if i >= n else i)
@@ -182,6 +196,7 @@ class RealPatient:
         # declared SpO2-derived perfusion proxy (not scored by fusion)
         vals["perfusion"] = float(max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0)))
         qual["perfusion"] = qual["spo2"]
+        self._interp_at, self._interp_val = self.pos, (vals, qual)
         return vals, qual
 
     def feed_for(self, kind: str) -> Callable[[], Tuple[Dict[str, float], float]]:
@@ -311,7 +326,7 @@ def build_cohort(n: int = 12, seed: int = 7, scan: int = 1500) -> List[RealPatie
             w = 1.0
         out.append(RealPatient(
             record=rec, name=_NAMES[i % len(_NAMES)],
-            bed_id=f"bed_{i}", weight=w))
+            bed_id=f"bed_{i}", weight=w, phase=(i * PHASE_STEP) % 1.0))
     return out
 
 
@@ -458,12 +473,21 @@ class CohortCluster:
         self.pump = FabricPump(self.bus, self.fabric,
                                [fd for fds in self._fds.values() for fd in fds.values()])
         self.hdc_state: Dict[str, Dict[str, Any]] = {}
+        # Per-bed memo of the hourly frame and of what was computed from it. The frame
+        # is a pure function of the bed's ICU hour, and the clock advances 0.12 h per
+        # tick, so ~88% of ticks used to re-encode, re-query and re-gate an identical
+        # input. Results are recomputed exactly when their input changes.
+        self._frames: Dict[str, Tuple[int, Dict[str, float]]] = {}
+        self._hdc_key: Dict[str, int] = {}
+        self._res_key: Dict[str, Tuple[int, bool]] = {}
         self._build_hdc_memory()
         self._build_ews()
         # Cross-modal resonance gate: fit the sepsis axis + per-modality calibration
         # on the real precedent, then assess each bed live (artifact-robust evidence).
         from backend.aegis.resonance import CrossModalResonance
-        self.resonance = CrossModalResonance.from_patients(self.hdc, self.patients)
+        self.resonance = CrossModalResonance.from_patients(self.hdc, self.patients,
+                                                           states=self._bank_states)
+        del self._bank_states
         self.resonance_state: Dict[str, Dict[str, Any]] = {}
         self._artifact: Dict[str, int] = {}     # bed -> ticks of injected camera artifact
 
@@ -487,6 +511,7 @@ class CohortCluster:
         for p in self.patients:
             rows.extend(HDCBioMemory.rows_from_patient(p))
         self.hdc = HDCBioMemory().build(rows)
+        self._bank_states = [r[0] for r in rows]      # reused by the resonance fit
 
     # -- verified-driver data plane ------------------------------------- #
     def _mount_ebpf_optical(self, p: "RealPatient") -> "EbpfDevice":
@@ -619,38 +644,57 @@ class CohortCluster:
     def frame_for(self, nid: str) -> Dict[str, float]:
         """The enriched bio-state (levels + trends + composites) of one bed — the
         sensor 'frame' the managed app/service plane (aegisd) ticks on."""
-        from backend.aegis.hdc_memory import enrich_series, TREND_WIN
+        return dict(self._frame(nid)[1])
+
+    def _frame(self, nid: str) -> Tuple[int, Dict[str, float]]:
+        """``(hour, frame)`` from the memo — computed once per bed per ICU hour. Callers
+        inside the cluster must not mutate the frame; ``frame_for`` hands out copies."""
+        from backend.aegis.hdc_memory import enrich_last, TREND_WIN
         p = self._by.get(nid)
         if p is None:
-            return {}
+            return -1, {}
         hr = min(p.icu_hour, p.los_total - 1)
+        memo = self._frames.get(nid)
+        if memo is not None and memo[0] == hr:
+            return memo
         lo = max(0, hr - TREND_WIN)
         win = [{ch: float(p._ff[t, k]) for k, ch in enumerate(CHANNELS)}
                for t in range(lo, hr + 1)]
-        return enrich_series(win)[-1] if win else {}
+        memo = (hr, enrich_last(win))
+        self._frames[nid] = memo
+        return memo
 
     def _resonance_query(self, nid: str) -> None:
-        est = self.frame_for(nid)
+        hr, est = self._frame(nid)
         if not est:
             return
         n = self._artifact.get(nid, 0)
         if n > 0:                                # injected rPPG lock-failure on the camera
             self._artifact[nid] = n - 1
+        key = (hr, n > 0)
+        if self._res_key.get(nid) == key:        # same input as last tick: same verdict
+            return
+        if n > 0:
             est = dict(est); bad = 185.0
             est["hr__tr"] = bad - float(est.get("hr", 80.0)); est["hr"] = bad
         self.resonance_state[nid] = self.resonance.assess(est)
+        self._res_key[nid] = key
 
     def _hdc_query_all(self) -> None:
-        """Every bed's precedent lookup, batched into a single matmul."""
-        nids = list(self.node_ids)
-        states = [self.frame_for(nid) for nid in nids]
-        live = [(nid, st) for nid, st in zip(nids, states) if st]
-        if not live:
+        """Precedent lookup for every bed whose hour changed, batched into one matmul
+        (every bed scores against the same case matrix, so one GEMM reads it once)."""
+        todo = []
+        for nid in self.node_ids:
+            hr, st = self._frame(nid)
+            if st and self._hdc_key.get(nid) != hr:
+                todo.append((nid, hr, st))
+        if not todo:
             return
-        res = self.hdc.query_batch([st for _, st in live], k=16,
-                                   exclude_pids=[nid for nid, _ in live])
-        for (nid, _), r in zip(live, res):
+        res = self.hdc.query_batch([st for _, _, st in todo], k=16,
+                                   exclude_pids=[nid for nid, _, _ in todo])
+        for (nid, hr, _), r in zip(todo, res):
             self.hdc_state[nid] = r
+            self._hdc_key[nid] = hr
 
     def _hdc_query(self, nid: str) -> None:
         from backend.aegis.hdc_memory import enrich_series, TREND_WIN
