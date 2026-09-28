@@ -72,7 +72,7 @@ Vercel, **Root Directory = `site`**, everything else default. Enable
 - **Do not add a `package.json` at the repo root.** Cloudflare Pages builds
   `webui/` with an empty build command; a root manifest would make its build
   system start guessing at a framework.
-- **Do not proxy the console through `rewrites()`.** It would push 44 MB of
+- **Do not proxy the console through `rewrites()`.** It would push 38 MB of
   three.js and organ GLBs through this site's bandwidth, bypass
   `webui/_headers`' immutable caching, and break `webui/config.js`'s same-origin
   backend resolution. `NEXT_PUBLIC_CONSOLE_URL` is a plain outbound link.

@@ -612,7 +612,7 @@ Datasets are never committed. Each one is redistributed only by its own source.
 | Piece | Where | Notes |
 |:--|:--|:--|
 | Backend (`backend/`) | Render, from [`render.yaml`](render.yaml) | FastAPI, the WebSocket stream and the live drive loop |
-| Frontend (`webui/`) | Cloudflare Pages | ~35 MB of static assets on uncapped bandwidth. Vendor files are cached as immutable |
+| Frontend (`webui/`) | Cloudflare Pages | ~38 MB of static assets on uncapped bandwidth, cached as immutable. The anatomical meshes are re-encoded to a third less (`scripts/slim_glb.py`: positions and indices byte-identical, renders within 3/255 per pixel) |
 | Persistence | Supabase | Real camera telemetry, with raw rows kept 7 days and 1-minute rollups kept indefinitely. Also the kernel journal and files |
 | CI | GitHub Actions | `verify-os` on every push, and a keep-warm ping inside a fixed daily window that fits Render's free tier |
 
