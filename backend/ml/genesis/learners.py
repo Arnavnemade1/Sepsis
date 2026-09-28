@@ -11,6 +11,8 @@ patients only. The outer test fold never influences the number of trees.
 """
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -40,24 +42,72 @@ LGB_BASE: Dict[str, object] = {
 
 
 class RowView(lgb.Sequence if lgb is not None else object):
-    """Rows ``rows`` (and optionally columns ``cols``) of ``F``, served in batches."""
+    """Rows ``rows`` (and optionally columns ``cols``) of ``F``, served in batches.
+
+    Batches are served C-contiguous: ``F[r][:, cols]`` is not, and LightGBM's row push
+    flattens its input, so every 16k-row batch used to be copied a second time (3.8 s of
+    a 14 s ingestion at 360k x 800). A float16/float32 source is pushed as float32 —
+    LightGBM widens it to double exactly, so the bins are those of a float64 push at
+    half the bytes. Single rows (LightGBM's bin sampler) stay float64, which it requires.
+    """
 
     def __init__(self, F: np.ndarray, rows: np.ndarray, cols: Optional[np.ndarray] = None,
                  batch_size: int = 16384):
         self.F, self.rows, self.cols = F, np.asarray(rows), cols
         self.batch_size = batch_size
+        dt = np.dtype(getattr(F, "dtype", np.float64))
+        self.push_dtype = np.float32 if (dt.kind == "f" and dt.itemsize <= 4) else np.float64
 
     def __len__(self) -> int:
         return len(self.rows)
 
-    def __getitem__(self, idx):
-        r = self.rows[idx]
+    def take(self, r: np.ndarray, dtype=None) -> np.ndarray:
+        """Global rows ``r`` (restricted to ``cols``), C-contiguous, as ``dtype`` (default:
+        the source's own)."""
         block = self.F[r]
         if self.cols is not None:
-            # LightGBM asks for single rows (an int) while sampling bin boundaries
-            block = block[self.cols] if np.ndim(r) == 0 else block[:, self.cols]
-        # LightGBM's sequence path samples bin boundaries in float64 only
-        return np.asarray(block, dtype=np.float64)
+            block = np.take(block, self.cols, axis=1)
+        return np.ascontiguousarray(block, dtype=dtype)
+
+    def __getitem__(self, idx):
+        r = self.rows[idx]
+        if np.ndim(r) == 0:                 # LightGBM sampling one row for bin boundaries
+            row = self.F[r]
+            return np.asarray(row if self.cols is None else row[self.cols], dtype=np.float64)
+        return self.take(r, self.push_dtype)
+
+
+class SampledDataset(lgb.Dataset if lgb is not None else object):
+    """``lgb.Dataset`` whose bin-boundary sample is read in ONE vectorised gather.
+
+    LightGBM samples up to ``bin_construct_sample_cnt`` (200,000) rows of a Sequence with
+    one ``seq[i]`` call each, collects them in a Python list and stacks it: 200k calls and
+    two float64 copies of the sample (~3 GB at 1,000 columns) before a single bin exists.
+    Here the SAME indices (LightGBM's own sampler) are gathered at once in the source
+    dtype and widened a column at a time, with the SAME filter, so the bin boundaries —
+    and the model — are identical (``verify_genesis`` trains both and compares the
+    model text). Any other input, or a LightGBM without these internals, takes the
+    stock path."""
+
+    def _Dataset__sample(self, seqs, total_nrow):          # overrides Dataset.__sample
+        stock = lgb.Dataset._Dataset__sample
+        if len(seqs) != 1 or not isinstance(seqs[0], RowView):
+            return stock(self, seqs, total_nrow)
+        try:
+            indices = self._create_sample_indices(total_nrow)
+            zero = lgb.basic.ZERO_THRESHOLD
+        except AttributeError:                                # pragma: no cover
+            return stock(self, seqs, total_nrow)
+        seq = seqs[0]
+        cols_major = np.ascontiguousarray(seq.take(seq.rows[indices]).T)   # widen contiguous columns
+        filtered, filtered_idx = [], []
+        sampled_row_range = np.arange(len(indices), dtype=np.int32)
+        for j in range(cols_major.shape[0]):
+            col = cols_major[j].astype(np.float64)
+            keep = (np.abs(col) > zero) | np.isnan(col)
+            filtered.append(col[keep])
+            filtered_idx.append(sampled_row_range[keep])
+        return filtered, filtered_idx
 
 
 class HStack:
@@ -72,9 +122,51 @@ class HStack:
             raise ValueError("blocks disagree on row count")
         self.blocks = blocks
         self.shape = (blocks[0].shape[0], sum(b.shape[1] for b in blocks))
+        self.dtype = np.dtype(np.float32)               # what __getitem__ produces
 
     def __getitem__(self, r):
         return np.hstack([np.asarray(b[r], dtype=np.float32) for b in self.blocks])
+
+
+class _SharedDatasets:
+    """One constructed (train, valid) LightGBM pair, handed to the next fit that would bin
+    EXACTLY the same rows, columns, weights and early-stopping split under the same dataset
+    parameters — only the labels differ, and they are set on the handle. Binning is a
+    function of the feature values alone, so the reused pair is the pair that fit would
+    have built (``verify_genesis`` trains heads both ways and compares the model text).
+    A fit is ~18% ingestion, and a tier's direct / who / soft / distill heads all bin the
+    same fold. Off unless inside :func:`shared_datasets`; one slot, freed before a miss
+    builds, so it never holds two datasets at once."""
+
+    def __init__(self) -> None:
+        self.on, self.key, self.pair = False, None, None
+        self.hits = self.misses = 0
+
+
+_SHARED = _SharedDatasets()
+#: training parameters that do not touch the binned data
+_NOT_DATASET = frozenset({"objective", "metric"})
+
+
+@contextlib.contextmanager
+def shared_datasets():
+    _SHARED.on, _SHARED.key, _SHARED.pair = True, None, None
+    try:
+        yield _SHARED
+    finally:
+        _SHARED.on, _SHARED.key, _SHARED.pair = False, None, None
+
+
+def _digest(*arrays) -> str:
+    h = hashlib.blake2b(digest_size=16)
+    for a in arrays:
+        if a is None:
+            h.update(b"-")
+            continue
+        a = np.ascontiguousarray(a)
+        h.update(f"{a.dtype}{a.shape}".encode())
+        h.update(a.tobytes())
+    return h.hexdigest()
 
 
 def grouped_holdout(seg: np.ndarray, frac: float, seed: int,
@@ -177,9 +269,10 @@ class LGBFit:
         out = np.empty(len(rows))
         for a in range(0, len(rows), batch):
             r = rows[a:a + batch]
-            X = F[r] if self.cols is None else F[r][:, self.cols]
+            X = F[r] if self.cols is None else np.take(F[r], self.cols, axis=1)
+            # C-contiguous, or LightGBM's predict flattens it with a copy of its own
             out[a:a + batch] = self.booster.predict(
-                np.asarray(X, dtype=np.float32), num_iteration=self.best_iter,
+                np.ascontiguousarray(X, dtype=np.float32), num_iteration=self.best_iter,
                 raw_score=True, num_threads=THREADS)
         if calibrated:
             out = self.calib[0] * out + self.calib[1]
@@ -203,20 +296,36 @@ def fit_lgb(F: np.ndarray, rows: np.ndarray, target: np.ndarray, seg: np.ndarray
     target = np.asarray(target, dtype=np.float64)
     w = None if weight is None else np.asarray(weight, dtype=np.float64)
     if fixed_rounds is not None:
-        ds = lgb.Dataset(RowView(F, rows, cols), label=target, weight=w, free_raw_data=True,
-                         params={"max_bin": p["max_bin"], "verbose": -1})
+        ds = SampledDataset(RowView(F, rows, cols), label=target, weight=w, free_raw_data=True,
+                            params={"max_bin": p["max_bin"], "verbose": -1})
         b = lgb.train(p, ds, num_boost_round=fixed_rounds)
         return LGBFit(b, fixed_rounds, cols)
     fit_pos, val_pos = grouped_holdout(seg, valid_frac, seed, strat)
-    ds = lgb.Dataset(RowView(F, rows[fit_pos], cols), label=target[fit_pos],
-                     weight=None if w is None else w[fit_pos], free_raw_data=True,
-                     params={"max_bin": p["max_bin"], "verbose": -1})
-    dv = lgb.Dataset(RowView(F, rows[val_pos], cols), label=target[val_pos],
-                     weight=None if w is None else w[val_pos], reference=ds, free_raw_data=True)
+    key = None
+    if _SHARED.on:
+        dparams = tuple(sorted((k, repr(v)) for k, v in p.items() if k not in _NOT_DATASET))
+        key = (id(F), getattr(F, "shape", None), dparams,
+               _digest(np.asarray(rows), None if cols is None else np.asarray(cols), w, fit_pos, val_pos))
+    if key is not None and _SHARED.key == key:
+        ds, dv = _SHARED.pair
+        ds.set_label(target[fit_pos])
+        dv.set_label(target[val_pos])
+        _SHARED.hits += 1
+    else:
+        if key is not None:
+            _SHARED.key, _SHARED.pair = None, None       # free the old pair before building
+            _SHARED.misses += 1
+        ds = SampledDataset(RowView(F, rows[fit_pos], cols), label=target[fit_pos],
+                            weight=None if w is None else w[fit_pos], free_raw_data=True,
+                            params={"max_bin": p["max_bin"], "verbose": -1})
+        dv = lgb.Dataset(RowView(F, rows[val_pos], cols), label=target[val_pos],
+                         weight=None if w is None else w[val_pos], reference=ds, free_raw_data=True)
     cb = [lgb.early_stopping(early_stop, verbose=False)]
     if verbose:
         cb.append(lgb.log_evaluation(100))
     b = lgb.train(p, ds, num_boost_round=rounds, valid_sets=[dv], callbacks=cb)
+    if key is not None:
+        _SHARED.key, _SHARED.pair = key, (ds, dv)
     fit = LGBFit(b, int(b.best_iteration or rounds), cols)
     vm = fit.predict(F, rows[val_pos], raw=True, calibrated=False)
     fit.calib = platt(vm, target[val_pos], None if w is None else w[val_pos])

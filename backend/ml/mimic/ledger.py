@@ -490,6 +490,31 @@ class Ledger:
             self.report(fm)
         return fm
 
+    def fit_oof_many(self, cands: Sequence[Candidate], report: Sequence[bool] = ()) -> List[FoldModels]:
+        """:meth:`fit_oof` for several candidates, FOLD by fold instead of candidate by
+        candidate. Inside a fold, consecutive heads that bin the same rows and columns (a
+        tier's direct / who / soft / distill) share one constructed LightGBM dataset
+        (``learners.shared_datasets``), so pass them adjacently. Every fit is the fit
+        ``fit_oof`` would make — same rows, seeds and splits — so the FoldModels are too."""
+        from backend.ml.genesis import learners as GL
+        cols = [c.cols(self) for c in cands]
+        oofs = [np.full(self.store.n_rows, np.nan) for _ in cands]
+        preds: List[Dict[int, Predictor]] = [{} for _ in cands]
+        for k in range(self.n_folds):
+            tr, te = self.fold_rows(k)
+            if not len(te):
+                continue
+            with GL.shared_datasets():
+                for i, c in enumerate(cands):
+                    pr = c.fit(self, cols[i], tr, k)
+                    oofs[i][te] = pr(self, te)
+                    preds[i][k] = pr
+        out = [FoldModels(c.name, c.tier, oofs[i], preds[i], cols[i]) for i, c in enumerate(cands)]
+        for i, fm in enumerate(out):
+            if i < len(report) and report[i]:
+                self.report(fm)
+        return out
+
     def report(self, fm: FoldModels) -> None:
         s = self.score(fm.oof)
         print(f"  {fm.name:<28} [{fm.tier}] AUROC {s['auroc']:.4f}  hour-matched {s['auroc_hourmatched']:.4f}  "

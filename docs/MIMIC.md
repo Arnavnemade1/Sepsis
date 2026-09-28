@@ -399,8 +399,19 @@ read (§8).
 * `trim_septic` drops septic stays' hours after their latest onset across all 9
   definitions (+3 h). No model trains on those hours and no metric scores them, and because
   everything is causal no kept feature changes (verified bit for bit).
-* Full-MIMIC-sized, the plan comes to ≈ 2.4 M rows, 5 GB of features, 6.4 GB peak RAM and
-  about 7 h.
+* Full-MIMIC-sized, the plan comes to ≈ 2.4 M rows, 6.1 GB of features on disk, 7.4 GB peak
+  RAM and about 9.3 h: 73 booster fits at ~5 min each (7.0 h, tuning included) and the twin
+  (1.6 h). The per-fit constant is measured with the full preset itself — learning rate
+  0.02, on 995k real CinC rows x 510 columns, 102.6 s and 452 trees. The first estimate
+  (~7 h) was calibrated on an untuned model that stopped at ~160 trees; the RAM figure now
+  also counts LightGBM's bin-boundary sample, which the first one left out.
+* **Ingestion is squeezed, exactly.** Every fit bins its data first: one vectorised read of
+  LightGBM's own 200k-row bin sample instead of 200,000 single-row calls, C-contiguous float32
+  batches instead of float64 copies it had to flatten again. 13.5 s -> 6.6 s at 360k x 800,
+  and the model text is byte-identical (`verify_genesis` §10). Then a tier's direct, who,
+  soft and distilled heads are fitted fold by fold and share ONE binned dataset per fold —
+  only their labels differ — so 25 of the 73 fits skip ingestion entirely. The whole demo
+  report is identical to the one produced before either change, to the last digit.
 * BigQuery results are placed into the grid page by page, never held whole.
 
 **Day one with credentials: `parity.py`.** The demo is 100 real MIMIC-IV patients. The

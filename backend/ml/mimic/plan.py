@@ -9,12 +9,20 @@ and walks from the richest plan to the leanest until one fits — or refuses, na
 does not fit, before hours are spent.
 
 Cost models, calibrated where this repo has measurements:
-  * one LightGBM fit ~ ``SEC_PER_ROW_COL`` x training rows x columns (CinC: 110 s for 1.24M
-    rows x 510 columns, docs/GENESIS.md), early stopping included;
+  * one LightGBM fit ~ ``SEC_PER_ROW_COL`` x training rows x columns, measured with the FULL
+    preset itself (learning rate 0.02, 31 leaves, 30% features, 70% bagging) on real CinC:
+    995k rows x 510 columns in 102.6 s, 452 trees + patience, ingestion included. The first
+    constant (1.8e-7) came from the untuned all-variable model, which stopped at ~160
+    trees; the slower tuned boosting grows ~3x the trees and lands within 12% of it;
+  * ``CONSTRUCT_SHARE`` of a fit is binning the data (16.5 of those 102.6 s); a head that
+    reuses its fold's dataset (``learners.shared_datasets``: who / soft / distill beside
+    direct) skips it;
   * the record twin ~ ``TWIN_SEC_PER_ROW_STEP`` per (row x optimiser step) at d = 128
     (extrapolated from ~17 ms per 32-stay step at d = 64 on the demo), the physiology twin 2x;
-  * float16 features on disk; LightGBM's binned copy ~1 byte per training cell; the twin's
-    inputs ~220 float32 per row.
+  * float16 features on disk; LightGBM's binned copy ~1 byte per training cell, plus its
+    bin-boundary sample — up to ``SAMPLE_ROWS`` rows x columns x ~10 bytes (the float16
+    gather and LightGBM's float64 columns; ~2 GB at 1,000 columns); the twin's inputs ~220
+    float32 per row.
 These are estimates to plan with, not promises — the report records the plan and the actual
 time beside it.
 """
@@ -29,7 +37,9 @@ import numpy as np
 
 from backend.ml import config
 
-SEC_PER_ROW_COL = 1.8e-7
+SEC_PER_ROW_COL = 2.0e-7
+CONSTRUCT_SHARE = 0.16
+SAMPLE_ROWS = 200_000                 # LightGBM's bin_construct_sample_cnt
 TWIN_SEC_PER_ROW_STEP = 1.2e-5
 TWIN_INPUTS_PER_ROW = 220
 HARNESS_HOURS = 0.75                  # audits, cross-examination, transplant (sampled), lock plans
@@ -91,9 +101,12 @@ def estimate(store, n_features: int, scale) -> Dict:
         n_fits += 10 * 0.6                                # pairwise teachers, each on 3 of 5 dev folds
     if scale.info_ledger:
         n_fits += 7 * folds
+    # heads that bin the same fold as a tier's direct head reuse its dataset
+    shared = folds * ((len(scale.tiers) if scale.products else 0)
+                      + ((int(scale.soft) + int(getattr(scale, "distill", False))) if "P" in scale.tiers else 0))
     tune_s = scale.tune_trials * len(scale.tune_val_folds) * SEC_PER_ROW_COL * \
         min(scale.tune_rows, train_rows) * cols
-    booster_h = (n_fits * fit_s + tune_s) / 3600.0
+    booster_h = ((n_fits - CONSTRUCT_SHARE * shared) * fit_s + tune_s) / 3600.0
     twin_h = 0.0
     if scale.twin:
         stays_train = 0.64 * (float(ever.sum()) + scale.keep_rate * float((~ever).sum()))
@@ -106,7 +119,7 @@ def estimate(store, n_features: int, scale) -> Dict:
     # results; modelling holds the sampled grid plus LightGBM's binned copy OR the twin's inputs
     extract_gb = store.n_rows * len(store.columns) * 4 / 1e9 + 2.0
     grid_gb = kept * len(store.columns) * 4 / 1e9
-    lgb_gb = train_rows * cols * 1.2 / 1e9
+    lgb_gb = (train_rows * cols * 1.2 + min(SAMPLE_ROWS, train_rows) * cols * 10) / 1e9
     twin_gb = kept * TWIN_INPUTS_PER_ROW * 4 / 1e9 if scale.twin else 0.0
     ram_gb = max(extract_gb, grid_gb + max(lgb_gb, twin_gb) + 2.0)
     return {"stays": int(store.n_patients), "hours_all": int(store.n_rows), "rows_kept": int(kept),

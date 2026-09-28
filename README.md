@@ -403,9 +403,11 @@ flowchart TB
 
 **Nothing large ever lands on the laptop.** BigQuery bins every event to the hour on
 Google's servers, and results are placed into the grid page by page. The planner prices a
-full-MIMIC-sized run before a single feature is built: about 2.4 M rows, 5 GB of features,
-6.4 GB of peak RAM and ~7 hours. If nothing fits the machine, it refuses and names the
-constraint.
+full-MIMIC-sized run before a single feature is built: about 2.4 M rows, 6.1 GB of features,
+7.4 GB of peak RAM and ~9.3 hours, from a per-fit constant measured with the full-run settings
+on real data. If nothing fits the machine, it refuses and names the constraint. Every fit's
+data ingestion is 2x faster than before, and heads that bin the same fold share one dataset
+(25 of 73 fits skip it), with models byte-identical to the unshared ones.
 
 **Every input declares what it knows.** The three tiers are:
 
@@ -519,7 +521,7 @@ machinery built to refuse a false claim actually refuses it.
 | `make verify-os-fast` | The whole OS layer across 13 suites: kernel, apps, `aegisd`, packages, RBAC, proofs, DSL, consensus, orchestrator, Z3 concurrency and the ABI. CI runs it on every push |
 | `make verify-integrity` | Planted lies: shuffled labels must collapse to chance, and in-sample scores must be caught |
 | `make verify-frontier` | Causality, the exact utility and the leakage tripwire |
-| `make verify-genesis` | 32 checks, including the causality of every feature column under rewritten and truncated futures, the clock control and lock isolation |
+| `make verify-genesis` | 35 checks, including the causality of every feature column under rewritten and truncated futures, the clock control, lock isolation, and the fast LightGBM ingestion training byte-identical models |
 | `make verify-mimic` | 103 checks on the open demo, attacking every harness layer with a planted failure |
 | `make falsify` | Mutates scientific invariants and requires that a *named* check fails |
 | `make verify-lab` | 90 checks on the Lab's gate, replication pool and nulls |

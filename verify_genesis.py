@@ -23,6 +23,11 @@ check that cannot fail is not evidence (see the project's vacuous-check history)
  8. NETWORK — causal under a rewritten future; the Sepsis-3 head is an AND gate.
  9. SELF-SUPERVISED PRETEXT — a hidden value stays hidden: blanked and flagged, no
     composite hands it back (checked with the guard off too), targets only where measured.
+10. INGESTION — the fast LightGBM ingestion (one vectorised bin sample, contiguous float32
+    batches) trains the model the stock Sequence path trains, byte for byte in the model
+    text, for float16 and float32 sources; heads that share a fold's dataset train the
+    models they would train alone; and a dataset shared across DIFFERENT rows is caught
+    by the same comparison (the check can fail).
 """
 from __future__ import annotations
 
@@ -355,6 +360,88 @@ def check_ssl_masking(c: H.Cohort) -> None:
           len(leaks(x2.numpy(), M2)) > 0)
 
 
+def check_ingestion() -> None:
+    print("\n10. INGESTION — the fast path trains the stock path's model")
+    import lightgbm as lgb
+    from backend.ml.genesis import learners as L
+
+    class StockRowView(lgb.Sequence):                 # the ingestion the fast path replaced
+        def __init__(self, F, rows, cols=None, batch_size=16384):
+            self.F, self.rows, self.cols, self.batch_size = F, np.asarray(rows), cols, batch_size
+
+        def __len__(self):
+            return len(self.rows)
+
+        def __getitem__(self, idx):
+            r = self.rows[idx]
+            block = self.F[r]
+            if self.cols is not None:
+                block = block[self.cols] if np.ndim(r) == 0 else block[:, self.cols]
+            return np.asarray(block, dtype=np.float64)
+
+    rng = np.random.default_rng(3)
+    n, p = 60_000, 40
+    X = rng.normal(size=(n, p))
+    X[rng.random(X.shape) < 0.25] = np.nan
+    X[rng.random(X.shape) < 0.10] = 0.0                # exact zeros: the bin sampler filters them
+    sig = np.nan_to_num(X[:, 0]) + 0.5 * np.nan_to_num(X[:, 7])
+    y = (rng.random(n) < 1 / (1 + np.exp(-(sig - 3)))).astype(float)
+    w = rng.uniform(0.5, 2.0, n)
+    rows, cols = np.arange(50_000), np.arange(0, p, 2)
+    prm = dict(L.LGB_BASE) | {"learning_rate": 0.1, "num_leaves": 15, "min_data_in_leaf": 50,
+                              "num_threads": L.THREADS, "seed": 0, "bin_construct_sample_cnt": 20_000}
+    dsp = {"max_bin": 255, "verbose": -1, "bin_construct_sample_cnt": 20_000}
+    same = True
+    for dt in (np.float16, np.float32):
+        F = X.astype(dt)
+        b0 = lgb.train(prm, lgb.Dataset(StockRowView(F, rows, cols), label=y[rows], weight=w[rows],
+                                        params=dsp), num_boost_round=30)
+        b1 = lgb.train(prm, L.SampledDataset(L.RowView(F, rows, cols), label=y[rows], weight=w[rows],
+                                             params=dsp), num_boost_round=30)
+        same &= b0.model_to_string() == b1.model_to_string()
+    check("fast ingestion trains the stock model (model text identical, float16 and float32)", same)
+
+    F = X.astype(np.float16)
+    seg = np.repeat(np.arange(n // 25), 25)
+    who = np.repeat((rng.random(n // 25) < 0.15).astype(float), 25)
+    soft = np.clip(0.7 * y + 0.3 * rng.random(n), 0, 1)
+    ce = {"learning_rate": 0.1, "num_leaves": 15, "min_data_in_leaf": 50, "objective": "cross_entropy"}
+    heads = [(y, {"learning_rate": 0.1, "num_leaves": 15, "min_data_in_leaf": 50}, "auc"),
+             (who, {"learning_rate": 0.1, "num_leaves": 15, "min_data_in_leaf": 50}, "auc"),
+             (soft, ce, "cross_entropy")]
+
+    def fit_heads(shared: bool, head_rows):
+        out = []
+        ctx = L.shared_datasets() if shared else None
+        if ctx is not None:
+            ctx.__enter__()
+        try:
+            for (tgt, prm_h, met), r in zip(heads, head_rows):
+                f = L.fit_lgb(F, r, tgt[r], seg[r], weight=w[r], params=prm_h, cols=cols,
+                              strat=who[r].astype(int), early_stop=10, rounds=60, feval_metric=met)
+                out.append(f.booster.model_to_string())
+        finally:
+            if ctx is not None:
+                ctx.__exit__(None, None, None)
+        return out
+    L._SHARED.hits = 0
+    alone = fit_heads(False, [rows] * 3)
+    together = fit_heads(True, [rows] * 3)
+    check("heads sharing a fold's dataset train the models they train alone",
+          alone == together and L._SHARED.hits == 2, f"{L._SHARED.hits} datasets reused")
+    # planted: a key that cannot tell rows apart, so the second head silently reuses the
+    # dataset binned from OTHER rows of the same length (the dangerous kind of wrong reuse)
+    other = rows + 5_000
+    real = L._digest
+    L._digest = lambda *a: "same"
+    try:
+        wrong = fit_heads(True, [rows, other, rows])
+    finally:
+        L._digest = real
+    right = fit_heads(False, [rows, other, rows])
+    check("…and a dataset shared across different rows is caught (the check can fail)", wrong != right)
+
+
 def main() -> int:
     raw = rawstore.load()
     check_causality(raw)
@@ -368,6 +455,7 @@ def main() -> int:
     check_tripwire(c)
     check_network()
     check_ssl_masking(c)
+    check_ingestion()
     n_ok = sum(ok for _, ok, _ in _results)
     print(f"\nverify_genesis: {n_ok}/{len(_results)} passed")
     return 0 if n_ok == len(_results) else 1

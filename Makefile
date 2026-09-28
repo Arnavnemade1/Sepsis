@@ -30,7 +30,7 @@ help:
 	@echo "  make mimic3-windows    Fetch ECG windows for the discovered outcomes (resumable)"
 	@echo "  make recovery-outcome  Does recovery slowing precede circulatory decompensation?"
 	@echo "  make verify-frontier   Accuracy-frontier audit: causality, exact utility, leak tripwire"
-	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires"
+	@echo "  make verify-genesis    GENESIS audit: causality, clock control, lock isolation, tripwires, exact fast ingestion"
 	@echo "  make genesis-locked    The one locked evaluation of the frozen GENESIS design"
 	@echo "  make verify-mimic      MIMIC-IV audit on the open demo (103 checks: harness, temporal model, information, AUROC levers)"
 	@echo "  make mimic-demo        The whole MIMIC-IV pipeline on the open demo"

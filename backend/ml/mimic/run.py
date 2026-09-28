@@ -358,21 +358,40 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
 
     fms: Dict[str, FoldModels] = {}
     targets = TW.MAIN if scale.products else ("direct",)
-    for tier in scale.tiers:
-        for tgt in targets:
-            fms[f"{tgt}_{tier}"] = led.fit_oof(Candidate(f"booster {tgt} {tier}", tier, booster(scale, tgt)),
-                                               verbose=tgt == "direct")
+
+    def fit_tier(tier: str, extra=()) -> None:
+        """A tier's heads, fitted FOLD by fold with the ones that bin the same rows adjacent
+        (direct, who, then the P tier's soft and distilled students; ``when`` trains inside
+        septic stays only, so it goes last): one LightGBM dataset per fold serves them all."""
+        heads = [(f"{t}_{tier}", Candidate(f"booster {t} {tier}", tier, booster(scale, t)))
+                 for t in targets if t != "when"]
+        heads += list(extra)
+        heads += [(f"when_{tier}", Candidate(f"booster when {tier}", tier, booster(scale, "when")))
+                  for t in targets if t == "when"]
+        out = led.fit_oof_many([c for _, c in heads],
+                               report=[k.startswith("direct_") or k in ("soft_P", "distill_P") for k, _ in heads])
+        fms.update({k: fm for (k, _), fm in zip(heads, out)})
         if scale.products:
             fms[f"genesis_{tier}"] = LG.product(f"genesis_{tier}", [fms[f"{t}_{tier}"] for t in TW.MAIN])
+
+    # tiers T and S first: the distilled P student's teachers are their out-of-fold scores
+    for tier in [t for t in scale.tiers if t != "P"]:
+        fit_tier(tier)
+    extra = []
     if scale.soft:
-        fms["soft_P"] = led.fit_oof(Candidate("booster soft-label P", "P", booster(scale, "soft")))
+        extra.append(("soft_P", Candidate("booster soft-label P", "P", booster(scale, "soft"))))
     tier_t = next((t for t in ("S", "T") if f"direct_{t}" in fms), None)
     if tier_t is not None and scale.distill:
         teachers = pairwise_teachers(led, scale, fms[f"direct_{tier_t}"].oof, tier=tier_t)
-        fms["distill_P"] = led.fit_oof(Candidate(f"booster distilled from tier {tier_t} P", "P",
-                                                 booster(scale, "distill", teacher=teachers)))
+        extra.append(("distill_P", Candidate(f"booster distilled from tier {tier_t} P", "P",
+                                             booster(scale, "distill", teacher=teachers))))
         rep["distillation"] = {"teacher": f"direct_{tier_t}", "teacher_fits": teachers.fits,
                                "design": "pairwise-held-out teachers (no second-order leak)"}
+    if "P" in scale.tiers:
+        fit_tier("P", extra)
+    else:                                          # no P tier: the students still get fitted
+        out = led.fit_oof_many([c for _, c in extra], report=[True] * len(extra))
+        fms.update({k: fm for (k, _), fm in zip(extra, out)})
     fms["direct_Pstrict"] = led.fit_oof(Candidate("booster direct P-strict", "P", booster(scale), strict=True))
     fms["clinician"] = led.fit_oof(Candidate("clinician actions", "S", booster(scale),
                                              columns=lambda l: l.clinician_columns()))
