@@ -264,13 +264,14 @@ class CausalGraphIngestor:
     def summary(self, recent: int = 6) -> Dict[str, Any]:
         """Compact, snapshot-friendly view for the frontend contract."""
         st = self.graph.stats()
-        d = self.graph.to_dict()
         return {
             **st,
             "ticks_ingested": self.ticks,
             "treated": self._treated,
             "omission_logged": self._omission_logged,
-            "recent_events": d["nodes"][-recent:],
+            # the last few nodes read directly: serialising the whole graph (and replaying
+            # its chain a second time) to keep six of them was O(lifetime) per tick
+            "recent_events": self.graph.recent_nodes(recent),
         }
 
 

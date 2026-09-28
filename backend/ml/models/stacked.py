@@ -50,12 +50,14 @@ and HDC are calibrated). Takes a feature DataFrame, exposing no ``feature_names`
 from __future__ import annotations
 
 import os
+import threading
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier, ExtraTreesClassifier
+from threadpoolctl import threadpool_limits
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
 
@@ -63,6 +65,10 @@ from backend.ml.eval.splits import stratified_group_folds
 from backend.ml.eval.utility import utility_target
 from backend.ml.models.calibration import ProbabilityCalibrator
 from backend.ml.models.hdc_detector import _grouped_holdout
+
+#: at or below this many rows, ``predict_proba`` runs single-threaded (see there)
+SERIAL_ROWS = 256
+_SERIAL_LOCK = threading.Lock()
 
 
 def _class_weights(y: np.ndarray) -> np.ndarray:
@@ -330,10 +336,31 @@ class StackedEnsembleDetector:
         return np.column_stack(cols)
 
     def predict_proba(self, feats: pd.DataFrame) -> np.ndarray:
-        """Calibrated P(sepsis) per row. Accepts a feature DataFrame."""
+        """Calibrated P(sepsis) per row. Accepts a feature DataFrame.
+
+        A few rows (the live bed scores ONE per tick) are scored single-threaded. Each of
+        the histogram boosters' ~700 trees opened an OpenMP parallel region for that one
+        row, and the extra-trees member spun up a joblib thread pool to average it: ~50 ms
+        of thread management around ~5 ms of arithmetic. Boosters sum their trees in the
+        same order either way, so their output is identical; the forest then averages its
+        trees in tree order, which makes the one row DETERMINISTIC (a thread pool adds
+        them in completion order, which can move the last bit between runs)."""
         if not isinstance(feats, pd.DataFrame):
             raise TypeError("StackedEnsembleDetector.predict_proba expects a DataFrame")
-        raw = self.meta_.predict_proba(self._base_matrix(feats))[:, 1]
+        if len(feats) <= SERIAL_ROWS:
+            with _SERIAL_LOCK, threadpool_limits(limits=1, user_api="openmp"):
+                forests = [m for m in getattr(self, "base_models_", {}).values()
+                           if hasattr(m, "estimators_") and getattr(m, "n_jobs", None) not in (None, 1)]
+                saved = [m.n_jobs for m in forests]
+                try:
+                    for m in forests:
+                        m.n_jobs = 1
+                    raw = self.meta_.predict_proba(self._base_matrix(feats))[:, 1]
+                finally:
+                    for m, j in zip(forests, saved):
+                        m.n_jobs = j
+        else:
+            raw = self.meta_.predict_proba(self._base_matrix(feats))[:, 1]
         return self.calibrator_.transform(raw) if self.calibrator_ is not None else raw
 
     def meta_weights(self) -> Dict[str, float]:

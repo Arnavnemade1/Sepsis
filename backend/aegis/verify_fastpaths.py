@@ -22,6 +22,11 @@ defect has to turn it red before its green is believed.
                  every tick, through a camera artifact and a crisis jump
   7. clocks      bed clocks are phase-staggered: no tick recomputes the whole ward
   8. wire        one encode per broadcast is byte-identical to Starlette's send_json
+  9. detector    the single-threaded one-row path scores exactly what the threaded batch
+                 path scores, and restores the forest's thread setting
+ 10. chain       the live incremental integrity check agrees with the full replay, reports
+                 a tampered past entry within its scrub bound, and the recent-events read
+                 equals the slice of the full serialisation
 """
 from __future__ import annotations
 
@@ -254,10 +259,76 @@ def main() -> int:
     check("an unencodable payload falls back to send_json", not isinstance(
         osstream.encode({"x": object()}), osstream.Wire))
 
+    print("\n9. detector serving path")
+    import os
+    import joblib
+    import pandas as pd
+    from backend.ml import config as mlcfg
+    path = os.path.join(mlcfg.ARTIFACTS_DIR, "gbm_wearable.joblib")
+    det = joblib.load(path)
+    if hasattr(det, "base_models_"):
+        rr_ = np.random.default_rng(1)
+        X = pd.DataFrame(rr_.normal(size=(300, len(det.feature_names_))) * 0.6,
+                         columns=det.feature_names_)
+        batch = det.predict_proba(X)                       # > SERIAL_ROWS rows: threaded
+        one = np.array([det.predict_proba(X.iloc[[i]])[0] for i in range(300)])
+        jobs = [getattr(m, "n_jobs", None) for m in det.base_models_.values()]
+        check("one-row serial scores == threaded batch scores, bit for bit",
+              np.array_equal(one, batch), f"300 rows, max |diff| {np.abs(one - batch).max():.1e}")
+        det2 = joblib.load(path)
+        check("the forest's thread setting is restored after a serial call",
+              jobs == [getattr(m, "n_jobs", None) for m in det2.base_models_.values()])
+    else:                                                  # pragma: no cover
+        check("shipped detector is a stacked ensemble", False, type(det).__name__)
+
+    print("\n10. causal chain, live")
+    from dataclasses import replace
+    from backend.aegis.kernel.causal_graph import (ALERT, MODEL_PREDICTED, VITAL,
+                                                   TemporalCausalGraph)
+    g = TemporalCausalGraph("bed_fp")
+    prev = None
+    for i in range(1500):
+        node = g.add_event(VITAL if i % 3 else ALERT, float(i), {"map": 60.0 + i % 30}, risk=0.1)
+        if prev is not None:
+            g.link(prev.id, node.id, "m", MODEL_PREDICTED)
+        prev = node
+    full = g.to_dict()
+    check("recent events == the tail of the full serialisation",
+          all(g.recent_nodes(k) == full["nodes"][-k:] for k in (1, 6, 40)))
+    check("clean chain: live integrity == full replay == True",
+          g.stats()["integrity_ok"] is True and g.verify_chain() is True)
+    victim = next(k for kind, k in g._order[4:] if kind == "n")
+    g._nodes[victim] = replace(g._nodes[victim], risk=0.99)      # tamper an OLD entry
+    bound = -(-len(g._order) // 256)
+    calls = 1
+    while g.stats()["integrity_ok"] and calls <= bound + 1:
+        calls += 1
+    check("a tampered past entry is reported within the scrub bound",
+          calls <= bound and g.verify_chain() is False, f"{calls} calls, bound {bound}")
+    can_fail("a scrub that never re-hashes old entries", lambda: _scrubless_misses(replace))
+
     ok = all(_results)
     print("\n" + ("ALL %d FAST-PATH CHECKS PASSED" % len(_results) if ok else
                   "FAILED: %d of %d" % (len(_results) - sum(_results), len(_results))))
     return 0 if ok else 1
+
+
+def _scrubless_misses(replace) -> bool:
+    """True when a live check WITHOUT the scrub still reports a tampered past entry —
+    it must not: that is what the scrub is for (so this returning False proves the
+    tamper check above is not vacuous)."""
+    from backend.aegis.kernel.causal_graph import MODEL_PREDICTED, VITAL, TemporalCausalGraph
+    g = TemporalCausalGraph("bed_ns")
+    prev = None
+    for i in range(600):
+        node = g.add_event(VITAL, float(i), {"map": 70.0}, risk=0.1)
+        if prev is not None:
+            g.link(prev.id, node.id, "m", MODEL_PREDICTED)
+        prev = node
+    g.integrity(scrub=0)
+    victim = next(k for kind, k in g._order[4:] if kind == "n")
+    g._nodes[victim] = replace(g._nodes[victim], risk=0.99)
+    return all(g.integrity(scrub=0) is False for _ in range(20))
 
 
 def _with_flipped_tie(hdc: HDCBioMemory, states) -> np.ndarray:

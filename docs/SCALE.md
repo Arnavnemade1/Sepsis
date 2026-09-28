@@ -55,7 +55,7 @@ Before (2026-08-26, same harness):
 ## Squeezing the tick (2026-09-27)
 
 Six changes, each exact — the same bits, verdicts and results as the code it replaced,
-held to that reference by `make verify-fastpaths` (17 checks, 5 of them planted defects
+held to that reference by `make verify-fastpaths` (23 checks, 6 of them planted defects
 the suite must catch). At 400 beds: p50 **528 → 97 ms**, p99 **664 → 106 ms**, boot
 **13.1 → 7.1 s**.
 
@@ -90,6 +90,25 @@ the suite must catch). At 400 beds: p50 **528 → 97 ms**, p99 **664 → 106 ms*
 
 On the wire: a broadcast was JSON-encoded once per connected socket; it is encoded
 once and sent as the same bytes to every socket.
+
+### The server around the tick
+
+The live session (the demo patient the shell streams every 3 s) cost **109.5 ms** a tick,
+and 89 ms of it was the production detector scoring one row: each of the histogram
+boosters' ~700 trees opened an OpenMP parallel region for that row, and the extra-trees
+member spun up a joblib thread pool to average it. Scored single-threaded, the ensemble
+is bit-identical to the threaded batch path (300/300 rows) and costs ~6 ms; the session
+tick is **19.2 ms**. On a 0.1-CPU host the server's steady load falls from roughly 40% of
+the machine to roughly 10%.
+
+The session's clinical story is a hash-chained causal graph that is persisted and
+rehydrated on boot, so it only grows — and every snapshot replayed its whole chain
+twice and serialised every node to show six. The live integrity flag is now
+incremental: each new entry is verified on arrival and a rolling scrub re-hashes 256
+older ones per call, so a tampered past entry is reported within ceil(n / 256) snapshots
+and the flag latches until a full replay passes (`verify_chain`, unchanged, is still the
+full replay every tamper test calls). At 6,000 entries — about a day of uptime — the
+snapshot's check costs 1 ms against 21 ms for one replay.
 
 Found on the way: at 400 beds the default 160-lane budget cannot give every bed its
 safety lane, so the prover correctly refutes every decision there. The ward is sized

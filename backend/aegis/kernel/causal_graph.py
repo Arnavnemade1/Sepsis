@@ -82,6 +82,18 @@ def _chain(prev_hash: str, body: Dict[str, Any]) -> str:
     return h.hexdigest()
 
 
+def _body(e: Any) -> Dict[str, Any]:
+    """The hashed body of a ledger entry — what ``add_event`` / ``link`` chained."""
+    if isinstance(e, Node):
+        return {"entry": "node", "id": e.id, "kind": e.kind, "t": e.t,
+                "bed": e.bed, "payload": e.payload, "risk": e.risk,
+                "confidence": e.confidence, "seq": e.seq}
+    return {"entry": "edge", "id": e.id, "src": e.src, "dst": e.dst,
+            "mechanism": e.mechanism, "evidence_type": e.evidence_type,
+            "confidence": e.confidence, "proven_by": e.proven_by,
+            "support": e.support, "seq": e.seq}
+
+
 def cert_hash(cert: Any) -> str:
     """Stable hash of a Layer-4 :class:`SafetyCertificate` (or its ``to_dict``).
 
@@ -179,6 +191,13 @@ class TemporalCausalGraph:
         self._seq = 0
         self._nid = 0
         self._eid = 0
+        # The ledger in seq order as ("n"|"e", id) keys — looked up in _nodes/_edges at
+        # check time, so a replaced or deleted entry is seen, never a cached copy.
+        self._order: List[Tuple[str, str]] = []
+        self._mix: Dict[str, int] = {Z3_PROVEN: 0, MODEL_PREDICTED: 0, OBSERVED_ASSOCIATION: 0}
+        # incremental integrity (``integrity``): entries verified on arrival, plus a rolling
+        # scrub that re-hashes every older entry within a bounded number of calls
+        self._checked, self._scrub_at, self._ok = 0, 0, True
         # Optional persistence sinks: called with each new Node/Edge as it is
         # appended (best-effort; the caller guards them so writes never break ingest).
         self.on_node = on_node
@@ -201,6 +220,7 @@ class TemporalCausalGraph:
         node = Node(nid, kind, float(t), self.bed, dict(payload or {}),
                     float(risk), float(confidence), self._seq, self._head, h)
         self._nodes[nid] = node
+        self._order.append(("n", nid))
         self._out.setdefault(nid, [])
         self._in.setdefault(nid, [])
         self._head, self._seq = h, self._seq + 1
@@ -267,6 +287,8 @@ class TemporalCausalGraph:
         edge = Edge(eid, src, dst, mechanism, evidence_type, float(confidence),
                     ph, sup, self._seq, self._head, h)
         self._edges[eid] = edge
+        self._order.append(("e", eid))
+        self._mix[evidence_type] += 1
         self._out[src].append(eid)
         self._in[dst].append(eid)
         self._head, self._seq = h, self._seq + 1
@@ -283,19 +305,69 @@ class TemporalCausalGraph:
         entries = self._ledger()
         prev = self.GENESIS
         for e in entries:
-            if isinstance(e, Node):
-                body = {"entry": "node", "id": e.id, "kind": e.kind, "t": e.t,
-                        "bed": e.bed, "payload": e.payload, "risk": e.risk,
-                        "confidence": e.confidence, "seq": e.seq}
-            else:
-                body = {"entry": "edge", "id": e.id, "src": e.src, "dst": e.dst,
-                        "mechanism": e.mechanism, "evidence_type": e.evidence_type,
-                        "confidence": e.confidence, "proven_by": e.proven_by,
-                        "support": e.support, "seq": e.seq}
-            if e.prev_hash != prev or _chain(prev, body) != e.hash:
+            if e.prev_hash != prev or _chain(prev, _body(e)) != e.hash:
                 return False
             prev = e.hash
-        return prev == self._head
+        ok = prev == self._head
+        # a full replay settles the incremental check too
+        self._ok, self._checked = ok, (len(self._order) if ok else 0)
+        return ok
+
+    def _entry(self, i: int) -> Any:
+        kind, key = self._order[i]
+        return self._nodes[key] if kind == "n" else self._edges[key]
+
+    def integrity(self, scrub: int = 256) -> bool:
+        """The chain's integrity for a LIVE view, in O(new + ``scrub``) per call.
+
+        ``verify_chain`` replays the whole ledger, and the live snapshot asked for it on
+        every tick — twice — against a graph that is persisted and rehydrated across
+        restarts, so the cost of each tick grew with the server's lifetime. Here each new
+        entry is verified as it arrives, chained from its predecessor, and a rolling
+        scrub re-hashes ``scrub`` older entries per call, so every entry is checked
+        again at least once every ceil(n / scrub) calls: a tampered past entry is
+        reported within that bound, and the verdict latches false until a full
+        ``verify_chain`` passes. Per-entry checks compose exactly into the full replay
+        (each entry against its predecessor's stored hash), so a completed sweep is
+        ``verify_chain``. The API's ``verify_chain`` stays the full replay."""
+        n = len(self._order)
+        if n != len(self._nodes) + len(self._edges):         # an entry added or removed out of band
+            self._ok = False
+        if not self._ok:
+            return False
+        try:
+            for i in range(self._checked, n):                 # new entries, on arrival
+                if not self._entry_ok(i):
+                    self._ok = False
+                    return False
+            self._checked = n
+            if n and self._entry(n - 1).hash != self._head:
+                self._ok = False
+                return False
+            for _ in range(min(scrub, n)):                    # the rolling scrub
+                i = self._scrub_at % n
+                if not self._entry_ok(i):
+                    self._ok = False
+                    return False
+                self._scrub_at = i + 1
+        except KeyError:                                      # an entry deleted out of band
+            self._ok = False
+        return self._ok
+
+    def _entry_ok(self, i: int) -> bool:
+        e = self._entry(i)
+        prev = self.GENESIS if i == 0 else self._entry(i - 1).hash
+        return e.prev_hash == prev and _chain(prev, _body(e)) == e.hash
+
+    def recent_nodes(self, k: int) -> List[Dict[str, Any]]:
+        """``to_dict()["nodes"][-k:]`` without serialising the whole graph."""
+        out: List[Dict[str, Any]] = []
+        for kind, key in reversed(self._order):
+            if kind == "n":
+                out.append(self._nodes[key].to_dict())
+                if len(out) >= k:
+                    break
+        return out[::-1]
 
     def head(self) -> str:
         return self._head
@@ -439,6 +511,7 @@ class TemporalCausalGraph:
                             float(r["confidence"]), int(r["seq"]),
                             r["prev_hash"], r["hash"])
                 g._nodes[node.id] = node
+                g._order.append(("n", node.id))
                 g._out.setdefault(node.id, [])
                 g._in.setdefault(node.id, [])
                 g._nid = max(g._nid, _tail_int(node.id) + 1)
@@ -448,6 +521,9 @@ class TemporalCausalGraph:
                             r.get("proven_by"), r.get("support"), int(r["seq"]),
                             r["prev_hash"], r["hash"])
                 g._edges[edge.id] = edge
+                g._order.append(("e", edge.id))
+                if edge.evidence_type in g._mix:
+                    g._mix[edge.evidence_type] += 1
                 g._out.setdefault(edge.src, []).append(edge.id)
                 g._in.setdefault(edge.dst, []).append(edge.id)
                 g._eid = max(g._eid, _tail_int(edge.id) + 1)
@@ -456,11 +532,11 @@ class TemporalCausalGraph:
         return g
 
     def stats(self) -> Dict[str, Any]:
-        mix = {Z3_PROVEN: 0, MODEL_PREDICTED: 0, OBSERVED_ASSOCIATION: 0}
-        for e in self._edges.values():
-            mix[e.evidence_type] += 1
+        """The live summary. ``integrity_ok`` is the incremental check (``integrity``):
+        new entries verified on arrival, every older one re-hashed within a bounded number
+        of calls; ``verify_chain`` is the on-demand full replay."""
         return {"bed": self.bed, "nodes": len(self._nodes), "edges": len(self._edges),
-                "evidence_mix": mix, "integrity_ok": self.verify_chain(),
+                "evidence_mix": dict(self._mix), "integrity_ok": self.integrity(),
                 "head": self._head[:12]}
 
 

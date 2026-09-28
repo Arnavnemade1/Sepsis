@@ -176,7 +176,7 @@ recomputed an unchanged hourly input, and that every bed's clock was phase-locke
 whole ward recomputed on the same tick. Exact memoisation, staggered clocks, a lookup-table
 encoder and a one-script scheduler proof now hold **1,000 beds at p99 267 ms**
 (400 beds: 664 → 106 ms). Every change is bit-identical to the code it replaced, held there
-by a suite of 17 checks that must catch planted defects. → [`docs/SCALE.md`](docs/SCALE.md)
+by a suite of 23 checks that must catch planted defects. → [`docs/SCALE.md`](docs/SCALE.md)
 
 ### Published nulls
 
@@ -518,7 +518,7 @@ machinery built to refuse a false claim actually refuses it.
 | Command | What it attacks |
 |:--|:--|
 | `make verify` | End to end, 24 tests: data, features, detector, calibration and runtime (needs CinC) |
-| `make verify-os-fast` | The whole OS layer across 13 suites: kernel, apps, `aegisd`, packages, RBAC, proofs, DSL, consensus, orchestrator, Z3 concurrency and the ABI. CI runs it on every push |
+| `make verify-os-fast` | The whole OS layer across 14 suites: kernel, apps, `aegisd`, packages, RBAC, proofs, DSL, consensus, orchestrator, Z3 concurrency, the ABI, and every optimised fast path held bit-exact to the code it replaced. CI runs it on every push |
 | `make verify-integrity` | Planted lies: shuffled labels must collapse to chance, and in-sample scores must be caught |
 | `make verify-frontier` | Causality, the exact utility and the leakage tripwire |
 | `make verify-genesis` | 35 checks, including the causality of every feature column under rewritten and truncated futures, the clock control, lock isolation, and the fast LightGBM ingestion training byte-identical models |
