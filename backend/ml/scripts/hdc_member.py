@@ -65,9 +65,55 @@ def nested_combine(bench: Benchmark, base: np.ndarray, member: np.ndarray) -> np
     return out
 
 
+def exploratory(bench: Benchmark, base: Dict[str, np.ndarray], members: Dict[str, np.ndarray]) -> Dict:
+    """NOT REGISTERED. The registered noise control came out significantly NEGATIVE: the
+    nested combiner re-scales each fold differently, and pooled AUROC punishes that even
+    when every fold's ranking is untouched — a penalty on ANY member. So each combination is
+    also compared with the baseline passed through the same combiner on its own, and with
+    per-fold deltas (immune to cross-fold scale), next to detection at the ward's budget."""
+    ds = bench.ds
+    scores: Dict[str, np.ndarray] = {}
+    for b in base:
+        scores[f"{b}~refit"] = nested_combine(bench, base[b], np.zeros(len(ds.y)))
+        for m, v in members.items():
+            scores[f"{b}+{m}"] = nested_combine(bench, base[b], v)
+    ranked = {k: Ranked(v) for k, v in scores.items()}
+    pts, inv = np.unique(ds.groups, return_inverse=True)
+    br = np.random.default_rng(0)
+    boot = {k: np.empty(N_BOOT) for k in scores}
+    for i in range(N_BOOT):
+        w = br.multinomial(len(pts), np.full(len(pts), 1.0 / len(pts)))[inv].astype(np.float64)
+        for k, r in ranked.items():
+            boot[k][i] = r.auc(ds.y, w)
+    out: Dict = {}
+    for b in base:
+        ref = f"{b}~refit"
+        out[ref] = {"auroc": ranked[ref].auc(ds.y), "raw_auroc": Ranked(base[b]).auc(ds.y)}
+        for m in members:
+            key = f"{b}+{m}"
+            a_ = 0.05 / 4 if not m.startswith("control") else 0.05
+            lo, hi = np.percentile(boot[key] - boot[ref], [100 * a_ / 2, 100 * (1 - a_ / 2)])
+            per_fold = [Ranked(scores[key][te]).auc(ds.y[te]) - Ranked(scores[ref][te]).auc(ds.y[te])
+                        for _, te in bench.folds]
+            row = {"delta_vs_refit": ranked[key].auc(ds.y) - ranked[ref].auc(ds.y), "ci": [float(lo), float(hi)],
+                   "significant": bool(lo > 0), "per_fold_delta": per_fold}
+            if not m.startswith("control"):
+                cb = bench.compare_alarm_budget(BenchResult(key, [], scores[key], 0.0),
+                                                BenchResult(ref, [], scores[ref], 0.0), target_far=0.15, n_boot=1000)
+                row["delta_detect_at_far15"] = cb["delta_detection"]
+                row["detect_significant"] = cb["significant"]
+            out[key] = row
+            print(f"  [exploratory] {key:<30} d vs refit {row['delta_vs_refit']:+.4f} [{lo:+.4f}, {hi:+.4f}] "
+                  f"per-fold {[round(x, 4) for x in per_fold]}"
+                  + (f"  d det@FA15 {row['delta_detect_at_far15']:+.3f}" if "delta_detect_at_far15" in row else ""))
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--reuse", action="store_true")
+    ap.add_argument("--exploratory", action="store_true",
+                    help="also run the (unregistered) refit-matched comparison")
     a = ap.parse_args()
     reg = json.load(open(PREREG))
     reg_hash = hashlib.sha256(open(PREREG, "rb").read()).hexdigest()[:16]
@@ -142,6 +188,11 @@ def main() -> int:
               f"{r['interval']} {'SIG' if r['significant'] else 'n.s.'}  dAUPRC {r['delta_auprc']:+.4f}"
               + (f"  d det@FA15 {det.get('delta_detection', float('nan')):+.3f}" if det else ""))
     print("VERDICT:", "SUCCESS" if verdict["success"] else "NULL", "| controls", "OK" if verdict["controls_ok"] else "FAILED")
+    if a.exploratory:
+        noise = {"control-noise": members["control-noise"]}
+        rep["exploratory"] = exploratory(bench, base, {k: v for k, v in members.items()
+                                                      if not k.startswith("control")} | noise)
+        json.dump(rep, open(OUT, "w"), indent=1, default=float)
     return 0
 
 

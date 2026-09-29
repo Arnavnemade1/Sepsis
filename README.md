@@ -192,6 +192,7 @@ A null reported in full is a result. These are the hypotheses this project teste
 | Random-convolution or tree-topology representations add signal | MiniRocket +0.0012 (n.s.). Forest-VSA's own lossless ceiling loses to its donor | [backend/ml](backend/ml/README.md) |
 | A new hospital can re-derive its operating point without labels | Significantly harmful in both directions | [TRANSFER](docs/TRANSFER.md) |
 | Median lead time is evidence of early warning | Retracted | [LEAD_TIME_NULL](docs/LEAD_TIME_NULL.md) |
+| HDC case retrieval, added as a disagreeing member, raises the detector's AUROC | Registered null. The best HDC model yet (0.726 alone, Spearman 0.60 with the stack) adds nothing to the best detector, and costs detection at the alarm budget | [HDC_MEMBER_NULL](docs/HDC_MEMBER_NULL.md) |
 
 ---
 
@@ -639,6 +640,7 @@ The full walkthrough is in [`DEPLOY.md`](DEPLOY.md).
 | [AUTONOMIC_RECOVERY](docs/AUTONOMIC_RECOVERY.md) · [RECOVERY_NULL](docs/RECOVERY_NULL.md) | A new detection algorithm, and its pre-registered failure |
 | [HOST_RESPONSE_NULL](docs/HOST_RESPONSE_NULL.md) | Gene expression across cohorts: bar missed |
 | [SEQUENCE_PATIENT_NULL](docs/SEQUENCE_PATIENT_NULL.md) | Patient supervision on a sequence model: refused |
+| [HDC_MEMBER_NULL](docs/HDC_MEMBER_NULL.md) | HDC case retrieval as a stack member: registered null, and a stacking-test flaw its noise control caught |
 | [ALGORITHM_ROADMAP](docs/ALGORITHM_ROADMAP.md) · [AERIS_RESEARCH](docs/AERIS_RESEARCH.md) | What comes next, with falsifiable success criteria |
 | [TACTICAL_SPHERE_FRONTEND](docs/TACTICAL_SPHERE_FRONTEND.md) | The design spec for the tactical console |
 | [REPO_MAP](docs/REPO_MAP.md) | Which paths are production, which are research and which are history |

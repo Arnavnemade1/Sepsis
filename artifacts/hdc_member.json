@@ -1,0 +1,420 @@
+{
+ "preregistration": {
+  "registered": "2026-09-28",
+  "question": "Does HDC case retrieval, added to the detector as a disagreeing stack member, raise pooled out-of-fold AUROC on the fixed CinC dev benchmark?",
+  "benchmark": {
+   "spec": "dev",
+   "patients": 8000,
+   "rows": 310061,
+   "folds": 3,
+   "seed": 42,
+   "harness": "backend/ml/eval/bench.py (identical patient-grouped folds)"
+  },
+  "member": {
+   "module": "backend/ml/models/hdc_knn.py",
+   "dim": 4096,
+   "levels": 32,
+   "k": 64,
+   "per_patient": 8,
+   "seed": 0,
+   "bank": "training folds only: up to 8 evenly spaced hours per patient + up to 8 of each septic patient's positive hours",
+   "vote": "similarity-weighted (relu cosine) mean of the k nearest bank hours' labels"
+  },
+  "variants": [
+   "flat-hour",
+   "flat-patient",
+   "segmented-hour",
+   "segmented-patient"
+  ],
+  "baselines": {
+   "primary": "stack+xgb@utility (artifacts/frontier/mixed_dev_oof.npz; the benchmark's best AUROC, 0.7811)",
+   "secondary": "stack-patient (artifacts/subgroup_oof_dev_stack-patient.npz; the shipped detector, 0.7605)"
+  },
+  "combiner": "per fold k: logistic regression on [logit(baseline OOF), z-scored member OOF] fitted on the other two folds' out-of-fold rows only, applied to fold k; pooled",
+  "primary_endpoint": "delta pooled AUROC (baseline + member) - (baseline), primary baseline; paired patient bootstrap, 1000 draws; Bonferroni over the 4 variants (98.75% interval). SUCCESS iff the corrected lower bound > 0 for at least one variant.",
+  "secondary": [
+   "the same against the shipped detector",
+   "delta AUPRC (point)",
+   "delta detection at a 15% false-alarm budget (paired patient bootstrap)",
+   "standalone member AUROC",
+   "Spearman rank correlation of the member with the primary baseline"
+  ],
+  "controls": {
+   "oracle": "member = label + N(0,1) noise must come out significant (the test can succeed)",
+   "noise": "member = N(0,1) must NOT come out significant (the combiner cannot manufacture a gain)"
+  },
+  "disclosures": [
+   "Before registering, a smoke test scored standalone AUROC of the flat and segmented members on 20,000 rows of fold 0 (hour vote 0.737 / 0.731, patient vote 0.751 / 0.745). No combination result has been computed."
+  ],
+  "rules": [
+   "No parameter above changes after results are seen; anything further is labelled exploratory.",
+   "The result is reported whatever it is."
+  ]
+ },
+ "prereg_sha256_16": "a56c34a21f5e17ca",
+ "baselines_auroc": {
+  "primary": 0.7708916727816879,
+  "shipped": 0.7605163888275996
+ },
+ "standalone": {
+  "flat-hour": {
+   "auroc": 0.7199370663165213,
+   "spearman_vs_primary": 0.5750249835200504
+  },
+  "flat-patient": {
+   "auroc": 0.7259743369090136,
+   "spearman_vs_primary": 0.5984639650161393
+  },
+  "segmented-hour": {
+   "auroc": 0.7094996066185145,
+   "spearman_vs_primary": 0.5694384272180566
+  },
+  "segmented-patient": {
+   "auroc": 0.7177370884166675,
+   "spearman_vs_primary": 0.5964772716169212
+  }
+ },
+ "comparisons": {
+  "primary+flat-hour": {
+   "baseline": "primary",
+   "member": "flat-hour",
+   "auroc": 0.7707828800016384,
+   "delta_auroc": -0.00010879278004949366,
+   "ci_lo": -0.004801301646822519,
+   "ci_hi": 0.004399989713437981,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": -8.055876032413145e-05,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.044182621502209085,
+    "ci_lo": -0.07363770250368185,
+    "ci_hi": -0.013254786450662748,
+    "significant": false
+   }
+  },
+  "primary+flat-patient": {
+   "baseline": "primary",
+   "member": "flat-patient",
+   "auroc": 0.7710819093221783,
+   "delta_auroc": 0.00019023654049044048,
+   "ci_lo": -0.0046172085081898125,
+   "ci_hi": 0.00516716688560891,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": -0.0020350401523807765,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.02061855670103091,
+    "ci_lo": -0.05007363770250367,
+    "ci_hi": 0.007400589101620078,
+    "significant": false
+   }
+  },
+  "primary+segmented-hour": {
+   "baseline": "primary",
+   "member": "segmented-hour",
+   "auroc": 0.7687830620004552,
+   "delta_auroc": -0.0021086107812327004,
+   "ci_lo": -0.00602480916060078,
+   "ci_hi": 0.0018803320914111015,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": -0.0002840778103154473,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.05007363770250367,
+    "ci_lo": -0.08247422680412375,
+    "ci_hi": -0.019145802650957333,
+    "significant": false
+   }
+  },
+  "primary+segmented-patient": {
+   "baseline": "primary",
+   "member": "segmented-patient",
+   "auroc": 0.7696796851256141,
+   "delta_auroc": -0.0012119876560737763,
+   "ci_lo": -0.005615910010839649,
+   "ci_hi": 0.0030614579378567828,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": -0.002031083143830603,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.02945508100147276,
+    "ci_lo": -0.06332842415316642,
+    "ci_hi": -0.002945508100147265,
+    "significant": false
+   }
+  },
+  "primary+control-oracle": {
+   "baseline": "primary",
+   "member": "control-oracle",
+   "auroc": 0.8423263120812995,
+   "delta_auroc": 0.07143463929961158,
+   "ci_lo": 0.06188997988891107,
+   "ci_hi": 0.08091029886283513,
+   "interval": "95.00%",
+   "significant": true,
+   "delta_auprc": 0.08749924555502278
+  },
+  "primary+control-noise": {
+   "baseline": "primary",
+   "member": "control-noise",
+   "auroc": 0.7687539811924176,
+   "delta_auroc": -0.002137691589270352,
+   "ci_lo": -0.003579917224106224,
+   "ci_hi": -0.0009672079542712433,
+   "interval": "95.00%",
+   "significant": false,
+   "delta_auprc": 0.0011078074925124637
+  },
+  "shipped+flat-hour": {
+   "baseline": "shipped",
+   "member": "flat-hour",
+   "auroc": 0.7625754271967531,
+   "delta_auroc": 0.002059038369153443,
+   "ci_lo": -0.0024557656633127914,
+   "ci_hi": 0.006258262904949768,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": 0.0041674797999787655,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.030927835051546393,
+    "ci_lo": -0.04712812960235635,
+    "ci_hi": 0.0029823269513991803,
+    "significant": false
+   }
+  },
+  "shipped+flat-patient": {
+   "baseline": "shipped",
+   "member": "flat-patient",
+   "auroc": 0.7611183718245057,
+   "delta_auroc": 0.0006019829969060586,
+   "ci_lo": -0.0031675840037276985,
+   "ci_hi": 0.004217089730690543,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": 0.0016323972227589995,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.014727540500736436,
+    "ci_lo": -0.030927835051546393,
+    "ci_hi": 0.014727540500736436,
+    "significant": false
+   }
+  },
+  "shipped+segmented-hour": {
+   "baseline": "shipped",
+   "member": "segmented-hour",
+   "auroc": 0.760943122138983,
+   "delta_auroc": 0.0004267333113833205,
+   "ci_lo": -0.003811448621611076,
+   "ci_hi": 0.004400579570445535,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": 0.003773931603420308,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.02356406480117823,
+    "ci_lo": -0.038291605301914555,
+    "ci_hi": 0.008836524300441906,
+    "significant": false
+   }
+  },
+  "shipped+segmented-patient": {
+   "baseline": "shipped",
+   "member": "segmented-patient",
+   "auroc": 0.760179256357724,
+   "delta_auroc": -0.00033713246987565615,
+   "ci_lo": -0.0042361839550610165,
+   "ci_hi": 0.0031590187358543974,
+   "interval": "98.75%",
+   "significant": false,
+   "delta_auprc": 0.001683799869721142,
+   "delta_detect_at_far15": {
+    "delta_detection": -0.022091310751104598,
+    "ci_lo": -0.03534609720176729,
+    "ci_hi": 0.008836524300441795,
+    "significant": false
+   }
+  },
+  "shipped+control-oracle": {
+   "baseline": "shipped",
+   "member": "control-oracle",
+   "auroc": 0.8324501268136248,
+   "delta_auroc": 0.0719337379860252,
+   "ci_lo": 0.06350728955290437,
+   "ci_hi": 0.08106830976756017,
+   "interval": "95.00%",
+   "significant": true,
+   "delta_auprc": 0.10448397305697163
+  },
+  "shipped+control-noise": {
+   "baseline": "shipped",
+   "member": "control-noise",
+   "auroc": 0.751976321570506,
+   "delta_auroc": -0.008540067257093664,
+   "ci_lo": -0.011494431539887445,
+   "ci_hi": -0.005772355645262959,
+   "interval": "95.00%",
+   "significant": false,
+   "delta_auprc": 2.292989880280094e-05
+  }
+ },
+ "verdict": {
+  "success": false,
+  "controls_ok": true
+ },
+ "n_boot": 1000,
+ "exploratory": {
+  "primary~refit": {
+   "auroc": 0.7687066411618787,
+   "raw_auroc": 0.7708916727816879
+  },
+  "primary+flat-hour": {
+   "delta_vs_refit": 0.0020762388397597142,
+   "ci": [
+    -0.0031194558315636306,
+    0.00678285875054186
+   ],
+   "significant": false,
+   "per_fold_delta": [
+    -0.0047105022690338005,
+    -0.0005417200371644615,
+    -0.005431627445830811
+   ],
+   "delta_detect_at_far15": -0.04712812960235635,
+   "detect_significant": false
+  },
+  "primary+flat-patient": {
+   "delta_vs_refit": 0.0023752681602996484,
+   "ci": [
+    -0.0028771588820540516,
+    0.007454194074839754
+   ],
+   "significant": false,
+   "per_fold_delta": [
+    -0.004483230653979597,
+    0.0015090797098300524,
+    -0.005845499120213482
+   ],
+   "delta_detect_at_far15": -0.023564064801178175,
+   "detect_significant": false
+  },
+  "primary+segmented-hour": {
+   "delta_vs_refit": 7.64208385765075e-05,
+   "ci": [
+    -0.004300283824995513,
+    0.004142925844387274
+   ],
+   "significant": false,
+   "per_fold_delta": [
+    -0.007381580298316925,
+    0.00016114269081113353,
+    -0.005545060956718473
+   ],
+   "delta_detect_at_far15": -0.053019145802650935,
+   "detect_significant": false
+  },
+  "primary+segmented-patient": {
+   "delta_vs_refit": 0.0009730439637354316,
+   "ci": [
+    -0.003928850738597086,
+    0.0055531274769701966
+   ],
+   "significant": false,
+   "per_fold_delta": [
+    -0.006609570036535173,
+    0.002375324562752801,
+    -0.005567323568352989
+   ],
+   "delta_detect_at_far15": -0.032400589101620025,
+   "detect_significant": false
+  },
+  "primary+control-noise": {
+   "delta_vs_refit": 4.734003053885605e-05,
+   "ci": [
+    -0.0002800519301315446,
+    0.00036562003352959006
+   ],
+   "significant": false,
+   "per_fold_delta": [
+    -5.18496456214379e-05,
+    0.0007511209241551908,
+    -0.0003005966619807898
+   ]
+  },
+  "shipped~refit": {
+   "auroc": 0.7504182863732108,
+   "raw_auroc": 0.7605163888275996
+  },
+  "shipped+flat-hour": {
+   "delta_vs_refit": 0.012157140823542245,
+   "ci": [
+    0.0072506276830570275,
+    0.016928442990016553
+   ],
+   "significant": true,
+   "per_fold_delta": [
+    0.004803801105709105,
+    0.013093251738837908,
+    0.004983944189067668
+   ],
+   "delta_detect_at_far15": -0.030927835051546393,
+   "detect_significant": false
+  },
+  "shipped+flat-patient": {
+   "delta_vs_refit": 0.01070008545129486,
+   "ci": [
+    0.006073764076373765,
+    0.015020481510472342
+   ],
+   "significant": true,
+   "per_fold_delta": [
+    0.0030613942733590527,
+    0.012617661685880077,
+    0.003774639296428517
+   ],
+   "delta_detect_at_far15": -0.014727540500736436,
+   "detect_significant": false
+  },
+  "shipped+segmented-hour": {
+   "delta_vs_refit": 0.010524835765772123,
+   "ci": [
+    0.006321135690228229,
+    0.014706133070927975
+   ],
+   "significant": true,
+   "per_fold_delta": [
+    0.002270889469259907,
+    0.01356740018481084,
+    0.0039851295692564515
+   ],
+   "delta_detect_at_far15": -0.02356406480117823,
+   "detect_significant": false
+  },
+  "shipped+segmented-patient": {
+   "delta_vs_refit": 0.009760969984513146,
+   "ci": [
+    0.00564942454430679,
+    0.013636643126110713
+   ],
+   "significant": true,
+   "per_fold_delta": [
+    0.0014594020569593802,
+    0.013642326960602746,
+    0.0035449728486953713
+   ],
+   "delta_detect_at_far15": -0.022091310751104598,
+   "detect_significant": false
+  },
+  "shipped+control-noise": {
+   "delta_vs_refit": 0.0015580351972951378,
+   "ci": [
+    0.000658748983251864,
+    0.0024375722127430444
+   ],
+   "significant": true,
+   "per_fold_delta": [
+    0.0002848484152522257,
+    -0.00048570889241583703,
+    9.732663774020267e-06
+   ]
+  }
+ }
+}
