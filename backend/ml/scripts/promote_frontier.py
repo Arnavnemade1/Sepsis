@@ -221,6 +221,8 @@ def main() -> None:
                     default="balanced",
                     help="objective for roster members that do not name their own")
     ap.add_argument("--promote", action="store_true")
+    ap.add_argument("--calibration", choices=["isotonic", "centred"], default="isotonic",
+                    help="the candidate's final map from meta score to probability")
     ap.add_argument("--incumbent", choices=["manifest", "deployed"], default="manifest",
                     help="manifest: refit the SHIPPED configuration on the same training "
                          "patients (a configuration comparison). deployed: score the "
@@ -255,12 +257,16 @@ def main() -> None:
         "incumbent": dict(shipped["configs"]["candidate"]),
         "candidate": dict(objective=args.objective, roster=cand_roster),
     }
+    if args.calibration != "isotonic":
+        configs["candidate"]["calibration"] = args.calibration
     refit = args.incumbent == "deployed"
-    if refit != (configs["candidate"] == configs["incumbent"]):
+    same = all(configs["candidate"][k] == configs["incumbent"][k] for k in ("objective", "roster"))
+    if refit != same:
         raise SystemExit(
-            "a candidate with the shipped configuration is a REFIT and is judged against "
-            "the deployed artifact (--incumbent deployed); a different configuration is "
-            "judged against the shipped one refitted on the same patients (the default)")
+            "a candidate with the shipped roster and objective is a REFIT (its calibrator "
+            "may differ) and is judged against the deployed artifact (--incumbent "
+            "deployed); a different configuration is judged against the shipped one "
+            "refitted on the same patients (the default)")
     mk = lambda name: StackedEnsembleDetector(
         channels=list(cfg.channels), use_hdc=False, params=params, **configs[name])
     print(f"incumbent roster: {configs['incumbent']['roster']} "
@@ -511,7 +517,8 @@ def main() -> None:
 
 def _detector_id(cfg: dict, fit: Optional[str] = None) -> str:
     """The identity a threshold is only meaningful against: objective + roster + fit."""
-    return opmod.detector_key(cfg["roster"], cfg["objective"], fit)
+    return opmod.detector_key(cfg["roster"], cfg["objective"], fit,
+                              cfg.get("calibration", "isotonic"))
 
 
 def manifest_stub(scores, filters, configs, args, accuracy_ok) -> dict:

@@ -186,6 +186,10 @@ def check_a_refit_on_other_patients_is_refused():
     new_key = opmod.manifest_key(dict(man, fit_digest=d0))
     check("a manifest's key carries its fit, and only the fit separates the two keys",
           new_key != old_key and opmod.config_of(new_key) == old_key, new_key)
+    cen = json.loads(json.dumps(man)); cen["configs"]["candidate"]["calibration"] = "centred"
+    cen_key = opmod.manifest_key(dict(cen, fit_digest=d0))
+    check("the same fit read through another calibrator is another detector",
+          cen_key != new_key and opmod.config_of(cen_key) == old_key, cen_key)
 
     band = cf.CellBand(stratum="marginal", lo=0.05, hi=0.01, q_pos=0.95, q_neg=0.01,
                        n_hours_pos=100, n_hours_neg=100, n_patients_pos=30, n_patients_neg=30,

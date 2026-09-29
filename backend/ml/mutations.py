@@ -320,7 +320,17 @@ def digest_is_random(mod):
                "bands and threshold are accepted for the new one")
 def key_ignores_fit(mod):
     import backend.ml.operating_point as O
-    O.detector_key = lambda roster, objective, fit=None: "%s:%s" % (objective, "+".join(roster))
+    O.detector_key = (lambda roster, objective, fit=None, calibration="isotonic":
+                      "%s:%s" % (objective, "+".join(roster)))
+
+
+@mutation("fit-identity", FID, ["the same fit read through another calibrator is another detector"],
+          note="a key blind to the calibrator: the centred and the isotonic map of one fit "
+               "share a threshold and bands, though their scores differ")
+def key_ignores_calibration(mod):
+    import backend.ml.operating_point as O
+    orig = O.detector_key
+    O.detector_key = lambda roster, objective, fit=None, calibration="isotonic": orig(roster, objective, fit)
 
 
 @mutation("fit-identity", FID, ["changes with one patient, the source, or the split seed"],

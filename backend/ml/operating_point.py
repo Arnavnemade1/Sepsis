@@ -336,9 +336,12 @@ def load(path: str = DEFAULT_PATH) -> Optional[OperatingPoint]:
         return None
 
 
-def detector_key(roster: Sequence[str], objective: str, fit: Optional[str] = None) -> str:
+def detector_key(roster: Sequence[str], objective: str, fit: Optional[str] = None,
+                 calibration: str = "isotonic") -> str:
     """The identity string an operating point records: ``"objective:a+b+c"``, and
-    ``"objective:a+b+c#<fit>"`` once the training set is known.
+    ``"objective:a+b+c#<fit>"`` once the training set is known. A calibrator other than
+    the historic isotonic one is part of it too (``"objective:a+b+c~centred#<fit>"``):
+    the same fit read through another map is another score distribution.
 
     The configuration alone was the identity until the data lever: refitting the SAME
     roster and objective on four times the patients kept the same key, so thresholds
@@ -346,18 +349,22 @@ def detector_key(roster: Sequence[str], objective: str, fit: Optional[str] = Non
     accepted for the new one. ``fit`` is the training-set digest the promoter records
     in ``detector_manifest.json``."""
     key = "%s:%s" % (objective, "+".join(roster))
+    if calibration and calibration != "isotonic":
+        key += "~" + calibration
     return "%s#%s" % (key, fit) if fit else key
 
 
 def config_of(key: str) -> str:
-    """A detector key without its fit: the configuration a study can rebuild."""
-    return key.split("#", 1)[0]
+    """A detector key without its fit (and calibrator): the roster and objective a
+    study can rebuild."""
+    return key.split("#", 1)[0].split("~", 1)[0]
 
 
 def manifest_key(manifest: dict) -> str:
     """The identity of the detector that SHIPPED, read out of its manifest."""
     cand = manifest["configs"]["candidate"]
-    return detector_key(cand["roster"], cand["objective"], manifest.get("fit_digest"))
+    return detector_key(cand["roster"], cand["objective"], manifest.get("fit_digest"),
+                        cand.get("calibration", "isotonic"))
 
 
 def require_shipped_detector(op: Optional[OperatingPoint],

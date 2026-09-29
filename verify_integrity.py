@@ -88,7 +88,8 @@ class Fixture:
         _mk = lambda: StackedEnsembleDetector(
             channels=list(cfg.channels), use_hdc=False,
             objective=_promoted.get("objective", "balanced"),
-            roster=list(_promoted.get("roster") or []) or None)
+            roster=list(_promoted.get("roster") or []) or None,
+            calibration=_promoted.get("calibration", "isotonic"))
         _fit_kw = dict(hour_index=None, onset_hour=None)
 
         # honest OOF over train + a deployed fit + held-out predictions, computed once.

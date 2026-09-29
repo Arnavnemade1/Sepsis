@@ -97,8 +97,12 @@ The live session (the demo patient the shell streams every 3 s) cost **109.5 ms*
 and 89 ms of it was the production detector scoring one row: each of the histogram
 boosters' ~700 trees opened an OpenMP parallel region for that row, and the extra-trees
 member spun up a joblib thread pool to average it. Scored single-threaded, the ensemble
-is bit-identical to the threaded batch path (300/300 rows) and costs ~6 ms; the session
-tick is **19.2 ms**. On a 0.1-CPU host the server's steady load falls from roughly 40% of
+costs ~6 ms and the session tick is **19.2 ms**. The served probability matched the
+threaded batch path on 300/300 rows. That match was first reported as bit-identical, but it
+held only because the isotonic calibrator maps nearby scores to one step. Underneath, the
+raw ensemble score differs by up to 8e-17, because the extra-trees forest sums its trees' votes in
+thread-completion order. The check now holds the raw score to 1e-15 and has a planted
+defect (2026-09-29). On a 0.1-CPU host the server's steady load falls from roughly 40% of
 the machine to roughly 10%.
 
 The session's clinical story is a hash-chained causal graph that is persisted and

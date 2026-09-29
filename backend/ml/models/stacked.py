@@ -118,6 +118,10 @@ class StackedEnsembleDetector:
     #: "utility" (the target the official scoring function implies). Needs
     #: ``hour_index``/``onset_hour`` at fit time.
     objective: str = "balanced"
+    #: The final map from meta score to probability: "isotonic" (a staircase, the
+    #: historic default) or "centred" (centred isotonic regression: the same
+    #: calibration without the steps; docs/CALIBRATION_RESOLUTION.md).
+    calibration: str = "isotonic"
 
     # ------------------------------------------------------------------ #
     # Attribute access is routed through these helpers rather than read
@@ -306,7 +310,8 @@ class StackedEnsembleDetector:
             max_iter=2000, C=float(self._p("meta")["C"]))
         self.meta_.fit(OOF[fit_idx], target[fit_idx],
                        sample_weight=None if weight is None else weight[fit_idx])
-        self.calibrator_ = ProbabilityCalibrator().fit(
+        self.calibrator_ = ProbabilityCalibrator(
+            method=str(getattr(self, "calibration", None) or "isotonic")).fit(
             self.meta_.predict_proba(OOF[cal_idx])[:, 1], y[cal_idx])
 
         # --- refit every base learner on ALL data for inference ---------- #

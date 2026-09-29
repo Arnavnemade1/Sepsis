@@ -22,8 +22,9 @@ defect has to turn it red before its green is believed.
                  every tick, through a camera artifact and a crisis jump
   7. clocks      bed clocks are phase-staggered: no tick recomputes the whole ward
   8. wire        one encode per broadcast is byte-identical to Starlette's send_json
-  9. detector    the single-threaded one-row path scores exactly what the threaded batch
-                 path scores, and restores the forest's thread setting
+  9. detector    the single-threaded one-row path scores what the threaded batch path
+                 scores to 1e-15 (raw and served; the forest's threaded vote order moves
+                 the last bits), and restores the forest's thread setting
  10. chain       the live incremental integrity check agrees with the full replay, reports
                  a tampered past entry within its scrub bound, and the recent-events read
                  equals the slice of the full serialisation
@@ -277,8 +278,20 @@ def main() -> int:
         batch = det.predict_proba(X)                       # > SERIAL_ROWS rows: threaded
         one = np.array([det.predict_proba(X.iloc[[i]])[0] for i in range(300)])
         jobs = [getattr(m, "n_jobs", None) for m in det.base_models_.values()]
-        check("one-row serial scores == threaded batch scores, bit for bit",
-              np.array_equal(one, batch), f"300 rows, max |diff| {np.abs(one - batch).max():.1e}")
+        # This compared SERVED probabilities for bit equality and passed, but only
+        # because the isotonic staircase maps nearby scores to one step. Underneath,
+        # the raw ensemble score differs by ~1e-16: the extra-trees forest sums its
+        # trees' votes in thread-completion order, and BLAS sums a 1-row and a 300-row
+        # product differently. A strictly increasing calibrator shows it. So the
+        # guarantee is stated on the RAW score, at a tolerance with a measured basis.
+        raw_b = det.meta_.predict_proba(det._base_matrix(X))[:, 1]
+        raw_1 = np.array([_serial_raw(det, X.iloc[[i]]) for i in range(300)])
+        check("one-row serial raw score == threaded batch raw score, to 1e-15",
+              np.abs(raw_1 - raw_b).max() <= 1e-15, f"300 rows, max |diff| {np.abs(raw_1 - raw_b).max():.1e}")
+        check("...and the served probability, to 1e-15",
+              np.abs(one - batch).max() <= 1e-15, f"max |diff| {np.abs(one - batch).max():.1e}")
+        can_fail("a serial path that drops the forest member", lambda: np.abs(
+            np.array([_serial_raw(det, X.iloc[[i]], drop="et") for i in range(20)]) - raw_b[:20]).max() <= 1e-15)
         det2 = joblib.load(path)
         check("the forest's thread setting is restored after a serial call",
               jobs == [getattr(m, "n_jobs", None) for m in det2.base_models_.values()])
@@ -318,6 +331,25 @@ def main() -> int:
     print("\n" + ("ALL %d FAST-PATH CHECKS PASSED" % len(_results) if ok else
                   "FAILED: %d of %d" % (len(_results) - sum(_results), len(_results))))
     return 0 if ok else 1
+
+
+def _serial_raw(det, row, drop=None) -> float:
+    """The raw meta score of one row through the serial serving path (OpenMP pinned to
+    one thread, forests at n_jobs=1) — the path ``predict_proba`` takes for a bed."""
+    from threadpoolctl import threadpool_limits
+    forests = [m for m in det.base_models_.values() if hasattr(m, "estimators_")]
+    saved = [m.n_jobs for m in forests]
+    try:
+        with threadpool_limits(limits=1, user_api="openmp"):
+            for m in forests:
+                m.n_jobs = 1
+            B = det._base_matrix(row)
+    finally:
+        for m, j in zip(forests, saved):
+            m.n_jobs = j
+    if drop is not None:
+        B[:, det.base_order_.index(drop)] = 0.0
+    return float(det.meta_.predict_proba(B)[0, 1])
 
 
 def _scrubless_misses(replace) -> bool:
