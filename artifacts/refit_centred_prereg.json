@@ -1,0 +1,20 @@
+{
+  "registered": "2026-09-29",
+  "question": "Should the deployed detector be replaced by the 24k-patient refit of its configuration read through the centred calibrator, the two changes that each passed their own registered test?",
+  "components_and_their_evidence": {
+    "more patients": "artifacts/data_lever.json (registration ac684ff): pooled AUROC +0.0296 [+0.0256, +0.0334]",
+    "centred calibration": "artifacts/calibration_resolution.json (registration 4c5a6ac): pooled AUROC +0.0021 [+0.0006, +0.0036], ECE kept, detection +0.037 at 5% and +0.041 at 20%, nothing regressed"
+  },
+  "incumbent": "the DEPLOYED artifact (patient:hgb+hgb2+et+lr+xgb@utility, isotonic, 5,996 patients), scored not refitted",
+  "candidate": "patient:hgb+hgb2+et+lr+xgb@utility~centred fitted on the same 24,206 training patients (wearable_genesis_dev, split seed 42, holdout 0.25, training digest 7fbbdd0ad322). The fit is deterministic and identical to the refused refit's up to the final map: its raw ranking is that refit's, read through centred isotonic regression instead of the staircase.",
+  "judged_patients": "the same 6,852 holdout patients neither model trained on (495 septic)",
+  "protocol": "python -m backend.ml.scripts.promote_frontier --cache wearable_genesis_dev --objective patient --roster hgb,hgb2,et,lr,xgb@utility --calibration centred --incumbent deployed --jobs 6 --promote, at commit ba2247d or later with no change to promote_frontier.py, metrics.py, bench.py, calibration.py or stacked.py in between.",
+  "gates": "unchanged from b2de39c: discrimination (held-out AUROC delta >= 0), decisions (utility at each detector's own threshold, candidate >= deployed), alarm budget (no significant regression at 5/10/15/20%, metrics.budget_threshold, paired patient bootstrap 1,500 draws)",
+  "decision_rule": "Ship iff all three pass: the candidate fitted on the training patients, the operating point derived on its judged half, both stamped with the training digest and the calibrator. Then re-derive the conformal bands on the shipped fit's own holdout (derive_conformal --shipped --auto-alpha, refused if locked coverage misses nominal). Otherwise nothing is written.",
+  "disclosures": [
+    "These 6,852 patients have judged this refit twice already (08949bf through a broken budget rule, b2de39c honestly): the isotonic refit passed discrimination (+0.0562) and decisions (+0.4006 vs +0.3505), gained at 10/15/20%, and regressed at 5% (0.324 vs 0.413). This is the third look at the same patients, with a candidate whose ranking is already known to be strong; the gates are regression guards and the components' significance comes from their own registered studies, not from this split.",
+    "The mechanism predicted here, before running: the 5% regression came from the staircase (the refit's detection is flat from 15% to 20%, the deployed one's from 5% to 20%), so a map without steps should remove it. If it does not, the refit is not shipped in any form.",
+    "The refit's raw (pre-calibration) scores on these patients have not been computed."
+  ],
+  "rules": ["No gate, parameter or code path changes after the run.", "The result is reported whatever it is. If refused, this candidate is not re-tested on these patients."]
+}
