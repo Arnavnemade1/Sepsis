@@ -1,0 +1,25 @@
+{
+  "registered": "2026-09-28",
+  "question": "Should the deployed detector be replaced by the SAME configuration refitted on four times the patients?",
+  "why_a_separate_gate": "The configuration promoter compares two configurations refitted on the same patients, so it cannot ask whether more data helps, and its incumbent was hard-coded to the balanced four-member stack retired in September. Its run on 2026-09-28 refused the 24,206-patient refit of the shipped configuration against that retired configuration: held-out AUROC -0.0051 on a single split (zero tolerance), while the decisions gate (+0.3955 vs +0.3539 utility at each detector's own threshold) and the alarm-budget gate (significant gains at 5% and 15%) passed. That refusal stands and is reported as a result about objectives at 24k patients. This registration tests the question the data lever asked.",
+  "evidence_already_registered": "artifacts/data_lever.json (registration ac684ff, committed before its run): the same configuration trained on all training patients vs 6,000 per fold of the full cohort, 3 folds: pooled AUROC +0.0296 [+0.0256, +0.0334], per-fold +0.035 / +0.032 / +0.027; detection at a 15% false-alarm budget -0.001, not significant.",
+  "incumbent": "the DEPLOYED artifact, scored and not refitted: artifacts/gbm_wearable.joblib, patient:hgb+hgb2+et+lr+xgb@utility fitted on 5,996 patients (wearable_limit8000, promotion split seed 42, holdout 0.25)",
+  "candidate": "the same configuration fitted on the 24,206 training patients of wearable_genesis_dev (every CinC patient except GENESIS's locked 8,067), promotion split seed 42, holdout 0.25",
+  "judged_patients": "the candidate's 8,062 holdout patients minus the 1,210 the deployed artifact trained on: 6,852 patients (495 septic), seen by neither model",
+  "protocol": "python -m backend.ml.scripts.promote_frontier --cache wearable_genesis_dev --objective patient --roster hgb,hgb2,et,lr,xgb@utility --incumbent deployed --jobs 6 --promote. Each detector's alarm threshold is derived on one patient-half of the judged set (false-alarm cap 0.15 on its bootstrap upper bound) and judged on the other half; detection inside 5/10/15/20% alarm budgets is compared with a paired patient bootstrap (1,500 draws).",
+  "gates": {
+    "discrimination": "held-out AUROC(candidate) - AUROC(deployed) >= 0 on the judged patients: the promoter's zero-tolerance regression guard, with significance supplied by the registered study above",
+    "decisions": "normalized utility at each detector's own threshold on the judged half: candidate >= deployed",
+    "alarm_budget": "no budget with a significant regression (95% interval upper bound < 0). A significant gain is NOT required: a refit claims better ranking, which the discrimination gate guards; the data lever registered detection at the 15% budget as unchanged"
+  },
+  "decision_rule": "Ship iff all three gates pass: the candidate fitted on the training patients (never a refit on the holdout), the operating point derived on its judged half, both stamped with the training-set digest. Then re-derive the conformal bands on the shipped fit's own holdout scores (make conformal --save), refusing them if locked coverage misses nominal. Otherwise nothing is written and the refusal is reported.",
+  "disclosures": [
+    "Seen before registering: the refused run's numbers for this candidate on the full 8,062-patient holdout (AUROC 0.7992, AUPRC 0.0900) and on its 4,036 judged patients (utility +0.3955 at its own threshold 0.0450). The deployed artifact has not been scored on these patients.",
+    "The alarm-budget rule for a refit (regression guard, no gain required) was chosen after the data lever registered detection at the 15% budget as unchanged; requiring a gain would test a claim the refit does not make.",
+    "A 1,000-patient smoke test of the refit code path was run before registering; its numbers (64 judged patients) are uninformative and were discarded."
+  ],
+  "rules": [
+    "No gate or parameter changes after the run.",
+    "The result is reported whatever it is."
+  ]
+}
