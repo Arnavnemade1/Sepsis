@@ -1,0 +1,195 @@
+{
+ "preregistration": {
+  "registered": "2026-09-29",
+  "question": "Does replacing the stack's final isotonic calibration with centred isotonic regression, which keeps the calibration but not the staircase, raise pooled out-of-fold AUROC without losing calibration or detection at an alarm budget?",
+  "mechanism": "Isotonic regression maps the meta-learner's score through a staircase (22 steps on the deployed stack), so hours on one step tie and the ranking made inside the step is discarded. Centred isotonic regression (Oron & Flournoy 2017; backend/ml/models/calibration.py centred_transform) interpolates through each step's centre, taken as the midpoint of the step's raw-score span from the fitted thresholds, with a 1e-7 tie-break slope beyond the outer centres.",
+  "benchmark": {
+   "spec": "dev",
+   "patients": 8000,
+   "folds": 3,
+   "seed": 42,
+   "harness": "backend/ml/eval/bench.py"
+  },
+  "detector": "the shipped configuration, patient:hgb+hgb2+et+lr+xgb@utility, one fit per fold; every arm reads the same fitted stack and differs only in the final map",
+  "arms": {
+   "isotonic": "the current calibrator (baseline)",
+   "centred": "centred isotonic regression from the same fitted isotonic map (the candidate)",
+   "sigmoid": "Platt scaling fitted on the same calibration slice (secondary)",
+   "raw": "the uncalibrated meta score (reference only)"
+  },
+  "primary_endpoint": "delta pooled OOF AUROC (centred - isotonic); paired patient bootstrap, 1,000 draws (multinomial patient counts as row weights, one draw shared by all arms); 95% interval.",
+  "safety": {
+   "max_ece_increase": 0.002,
+   "rule": "pooled ECE(centred) - ECE(isotonic) <= 0.002"
+  },
+  "budget_guard": "no significant regression in detection at 5/10/15/20% alarm budgets (bench.compare_alarm_budget, metrics.budget_threshold, 1,000 paired patient draws; regression = 95% interval upper bound < 0)",
+  "decision_rule": "SUCCESS iff the primary interval's lower bound > 0 AND the safety rule holds AND no budget regresses. A success licenses registering a promotion of the calibrator; it ships nothing by itself.",
+  "secondary": [
+   "per-fold AUROC deltas (pooled AUROC is reported beside them, per the stacking-test lesson)",
+   "hour-matched AUROC",
+   "AUPRC",
+   "distinct scores per arm",
+   "the sigmoid arm on the same endpoints"
+  ],
+  "disclosures": [
+   "On the deployed artifact (a single 5,996-patient fit) scored on 6,852 unseen patients: raw meta score AUROC 0.7476 vs isotonic 0.7425, hour-matched 0.6445 vs 0.6383. Centred isotonic has not been scored anywhere.",
+   "Any strictly increasing map ranks exactly like the raw score within a fold, so within-fold AUROC(centred) = AUROC(raw); the pooled endpoint also depends on how each fold's map scales its scores."
+  ],
+  "rules": [
+   "No arm, endpoint or bar changes after the run.",
+   "The result is reported whatever it is."
+  ]
+ },
+ "prereg_sha256_16": "dcac2bf43907e197",
+ "arms": {
+  "isotonic": {
+   "auroc": 0.7605163888275996,
+   "hour_matched_auroc": 0.6741746732423027,
+   "auprc": 0.08343492551568069,
+   "ece": 0.0015735536360408954,
+   "distinct_scores": 296,
+   "per_fold_auroc": [
+    0.7673675235740003,
+    0.7695219313946823,
+    0.7699057605700627
+   ],
+   "per_fold_ece": [
+    0.003651513602353461,
+    0.005950327165307288,
+    0.005472193552148054
+   ]
+  },
+  "centred": {
+   "auroc": 0.7625690488188698,
+   "hour_matched_auroc": 0.6763728684155161,
+   "auprc": 0.0870124987000954,
+   "ece": 0.0014402975703203325,
+   "distinct_scores": 310048,
+   "per_fold_auroc": [
+    0.7701833576155965,
+    0.7778152963468024,
+    0.7721655805750699
+   ],
+   "per_fold_ece": [
+    0.0033523019357470357,
+    0.0052310327411432345,
+    0.006156587978366494
+   ]
+  },
+  "sigmoid": {
+   "auroc": 0.7607812330147984,
+   "hour_matched_auroc": 0.6720859136196012,
+   "auprc": 0.08910095853402077,
+   "ece": 0.0016459450850663134,
+   "distinct_scores": 310048,
+   "per_fold_auroc": [
+    0.7701833576155965,
+    0.7778152963468024,
+    0.7721655805750699
+   ],
+   "per_fold_ece": [
+    0.0017284721849018755,
+    0.004837844021247365,
+    0.004471519871419182
+   ]
+  },
+  "raw": {
+   "auroc": 0.7734020744548111,
+   "hour_matched_auroc": 0.6970906170479394,
+   "auprc": 0.0905525668736591,
+   "ece": 0.37390680619794087,
+   "distinct_scores": 310048,
+   "per_fold_auroc": [
+    0.7701833576155965,
+    0.7778152963468024,
+    0.7721655805750699
+   ],
+   "per_fold_ece": [
+    0.36679916573458904,
+    0.36854478828320375,
+    0.38632545285928444
+   ]
+  }
+ },
+ "comparisons": {
+  "centred": {
+   "delta_auroc": 0.0020526599912701338,
+   "ci95": [
+    0.0006317504980201449,
+    0.0035624156822065597
+   ],
+   "per_fold_delta": [
+    0.0028158340415962435,
+    0.008293364952120075,
+    0.0022598200050072403
+   ],
+   "delta_ece": -0.0001332560657205629,
+   "delta_hour_matched": 0.002198195173213402,
+   "detection_at_budget": {
+    "5%": {
+     "delta_detection": 0.03681885125184092,
+     "ci_lo": 0.022091310751104598,
+     "ci_hi": 0.0868924889543446
+    },
+    "10%": {
+     "delta_detection": 0.004418262150220897,
+     "ci_lo": -0.004418262150220897,
+     "ci_hi": 0.017709867452135507
+    },
+    "15%": {
+     "delta_detection": 0.010309278350515427,
+     "ci_lo": -0.0014727540500736325,
+     "ci_hi": 0.038291605301914555
+    },
+    "20%": {
+     "delta_detection": 0.04123711340206182,
+     "ci_lo": 0.01914580265095733,
+     "ci_hi": 0.05743740795287189
+    }
+   }
+  },
+  "sigmoid": {
+   "delta_auroc": 0.0002648441871987428,
+   "ci95": [
+    -0.0023109898949588313,
+    0.003194631164297479
+   ],
+   "per_fold_delta": [
+    0.0028158340415962435,
+    0.008293364952120075,
+    0.0022598200050072403
+   ],
+   "delta_ece": 7.239144902541797e-05,
+   "delta_hour_matched": -0.002088759622701497,
+   "detection_at_budget": {
+    "5%": {
+     "delta_detection": 0.04565537555228277,
+     "ci_lo": 0.025036818851251863,
+     "ci_hi": 0.1045655375552283
+    },
+    "10%": {
+     "delta_detection": 0.013254786450662748,
+     "ci_lo": -0.002982326951399158,
+     "ci_hi": 0.02945508100147276
+    },
+    "15%": {
+     "delta_detection": 0.01767304860088359,
+     "ci_lo": 0.005854197349042694,
+     "ci_hi": 0.04565537555228283
+    },
+    "20%": {
+     "delta_detection": 0.022091310751104487,
+     "ci_lo": 0.0,
+     "ci_hi": 0.04270986745213545
+    }
+   }
+  }
+ },
+ "verdict": {
+  "auroc_gain": true,
+  "calibration_kept": true,
+  "no_budget_regression": true,
+  "success": true
+ },
+ "n_boot": 1000
+}

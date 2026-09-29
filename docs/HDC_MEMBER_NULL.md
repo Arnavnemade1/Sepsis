@@ -41,6 +41,11 @@ significant (+0.071) and the noise control did not, so the test could have succe
 benchmark's per-fold mean AUROC; the pooled out-of-fold AUROC this endpoint measures is
 0.7709. The comparison is unaffected.
 
+> **Measurement note (2026-09-29).** The detection-at-budget deltas in this report used a
+> threshold rule that alarmed every patient tied at the budget's peak (`DATA_LEVER.md` §4).
+> The registered verdict rests on AUROC and is unaffected; the detection deltas are
+> unverified.
+
 ## What the member is on its own
 
 The strongest HDC result in the project, and well decorrelated:

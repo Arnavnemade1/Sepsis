@@ -74,6 +74,14 @@ reporting it without this control is reporting a clock.
 
 ## 2. The lever: supervision density
 
+> **Measurement note (2026-09-29).** The detection-at-budget numbers in this section were
+> measured with a threshold rule that alarmed every patient tied at the budget's peak
+> (`DATA_LEVER.md` §4). Re-checked under the corrected rule (`metrics.budget_threshold`),
+> the claim holds: significant at 5 of 5 budgets with the sham control intact
+> (`verify_supervision` 15/15), and on the dev benchmark the patient-trained stack beats
+> the balanced one at every budget (+0.05 to +0.09). The table's exact values have not
+> been re-measured.
+
 The challenge label marks an hour positive when `t ≥ t_sepsis − 6h`. On this cohort
 that is 2.1% of hours — even though **12.8% of the patients become septic**. The
 extreme class imbalance that shapes every other decision in this project is

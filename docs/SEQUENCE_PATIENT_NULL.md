@@ -34,6 +34,12 @@ was not the problem; the TCN simply is not strong enough on this cohort.
 
 ## The result that was significant, and why it is not claimed
 
+> **Measurement note (2026-09-29).** The detection losses below were measured with a budget
+> threshold rule that alarmed every patient tied at the budget's peak (`DATA_LEVER.md` §4),
+> which flatters a tied baseline like the calibrated stack. They are unverified. The
+> refusal still stands on its second ground, which does not depend on that rule: the gain
+> exists only at the boundary blend weight.
+
 `stack + tcn-patient` at blend weight 0.2 gives **ΔAUROC +0.0038, CI [+0.0006, +0.0070]**.
 It is refused on two grounds.
 
