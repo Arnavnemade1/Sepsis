@@ -145,9 +145,7 @@ def _budget_peaks(y, p, g, o, h):
 
 
 def _detect_at(ns, sep, i_ns, i_sep, far):
-    peaks = np.sort(ns[i_ns])
-    k = int(np.ceil((1.0 - far) * len(peaks))) - 1
-    return float((sep[i_sep] >= peaks[min(max(k, 0), len(peaks) - 1)]).mean())
+    return float((sep[i_sep] >= metrics.budget_threshold(ns[i_ns], far)).mean())
 
 
 def _budget_delta(y, p_cand, p_base, g, o, h, far, n_boot=1500, seed=0):

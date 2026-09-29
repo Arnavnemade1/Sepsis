@@ -514,8 +514,10 @@ def _cov(covered: np.ndarray, y: np.ndarray, groups: np.ndarray) -> Dict[str, fl
     def macro(mask):
         if not mask.any():
             return float("nan")
+        from backend.ml.eval.runs import patient_runs
         g, c = groups[mask], covered[mask]
-        per = [c[g == u].mean() for u in set(g.tolist())]
+        order, starts, ends = patient_runs(g)
+        per = np.add.reduceat(c[order].astype(np.float64), starts) / (ends - starts)
         return round(float(np.mean(per)), 4)
 
     pos, neg = y == 1, y == 0

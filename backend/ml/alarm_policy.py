@@ -153,14 +153,11 @@ class PatientSeries:
 
 def to_series(scores: np.ndarray, groups: np.ndarray, hours: np.ndarray,
               onset: np.ndarray) -> List[PatientSeries]:
-    out: List[PatientSeries] = []
-    for g in sorted(set(groups.tolist())):
-        m = groups == g
-        order = np.argsort(hours[m])
-        out.append(PatientSeries(np.asarray(scores)[m][order],
-                                 np.asarray(hours)[m][order],
-                                 int(np.asarray(onset)[m][0])))
-    return out
+    from backend.ml.eval.runs import first_rows, patient_runs
+    order, starts, ends = patient_runs(groups, hours)      # one sort, not a scan per patient
+    s, h, o = np.asarray(scores), np.asarray(hours), np.asarray(onset)
+    return [PatientSeries(s[order[a:b]], h[order[a:b]], int(o[f]))
+            for a, b, f in zip(starts, ends, first_rows(order, starts))]
 
 
 # --------------------------------------------------------------------------- #

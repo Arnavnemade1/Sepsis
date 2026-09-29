@@ -224,7 +224,7 @@ class Benchmark:
         """
         d = self.ds
         pts = np.array(sorted(set(d.groups.tolist())))
-        idx_by_pt = {g: np.flatnonzero(d.groups == g) for g in pts}
+        idx_by_pt = metrics._rows_by_patient(d.groups, pts)
         rng = np.random.default_rng(seed)
         deltas = np.empty(n_boot)
         for b in range(n_boot):
@@ -294,10 +294,7 @@ class Benchmark:
         rng = np.random.default_rng(seed)
 
         def detect(ns, sep, i_ns, i_sep):
-            peaks = np.sort(ns[i_ns])
-            k = int(np.ceil((1.0 - target_far) * len(peaks))) - 1
-            thr = peaks[min(max(k, 0), len(peaks) - 1)]
-            return float((sep[i_sep] >= thr).mean())
+            return float((sep[i_sep] >= metrics.budget_threshold(ns[i_ns], target_far)).mean())
 
         point = detect(ns_c, sep_c, np.arange(len(ns_c)), np.arange(len(sep_c))) - \
                 detect(ns_b, sep_b, np.arange(len(ns_b)), np.arange(len(sep_b)))

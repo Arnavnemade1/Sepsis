@@ -27,6 +27,10 @@ defect has to turn it red before its green is believed.
  10. chain       the live incremental integrity check agrees with the full replay, reports
                  a tampered past entry within its scrub bound, and the recent-events read
                  equals the slice of the full serialisation
+ 11. metrics     the per-patient metrics grouped by one sort (early warning, utility,
+                 alarm burden, patient bootstrap, alarm-policy series, conformal macro
+                 coverage) vs the scan-per-patient loops they replaced, on shuffled
+                 patients with NaN scores; and the alarm-budget threshold on tied scores
 """
 from __future__ import annotations
 
@@ -307,6 +311,9 @@ def main() -> int:
           calls <= bound and g.verify_chain() is False, f"{calls} calls, bound {bound}")
     can_fail("a scrub that never re-hashes old entries", lambda: _scrubless_misses(replace))
 
+    print("\n11. per-patient metrics")
+    _check_metrics()
+
     ok = all(_results)
     print("\n" + ("ALL %d FAST-PATH CHECKS PASSED" % len(_results) if ok else
                   "FAILED: %d of %d" % (len(_results) - sum(_results), len(_results))))
@@ -360,6 +367,165 @@ def _max_hour_change_fraction(cl: CohortCluster, ticks: int = 30) -> float:
         worst = max(worst, sum(now[b] != prev[b] for b in now) / len(now))
         prev = now
     return worst
+
+
+
+
+# --------------------------------------------------------------------------- #
+# 11. the scan-per-patient loops the metrics used to run, kept as references
+# --------------------------------------------------------------------------- #
+def _ref_early_warning(y, p, groups, onset_hour, hour_index, threshold, strict=False):
+    lead, det, sep, fa, ns = [], 0, 0, 0, 0
+    for g in set(groups.tolist()):
+        m = groups == g
+        order = np.argsort(hour_index[m])
+        pg, hg = p[m][order], hour_index[m][order]
+        onset = int(onset_hour[m][0])
+        alarm_hours = hg[pg >= threshold]
+        if onset >= 0:
+            sep += 1
+            pre = alarm_hours[(alarm_hours < onset) if strict else (alarm_hours <= onset)]
+            if pre.size:
+                det += 1
+                lead.append(float(onset - pre.min()))
+        else:
+            ns += 1
+            fa += bool(alarm_hours.size)
+    return {"detection_rate": det / max(sep, 1),
+            "median_lead_time_hours": float(np.median(lead)) if lead else 0.0,
+            "mean_lead_time_hours": float(np.mean(lead)) if lead else 0.0,
+            "false_alarm_rate": fa / max(ns, 1), "septic_patients": sep, "nonseptic_patients": ns}
+
+
+def _ref_utility(y, pred, groups, hour_index):
+    from backend.ml.eval.metrics import compute_prediction_utility as cpu
+    obs = inact = best = 0.0
+    for g in set(groups.tolist()):
+        m = groups == g
+        order = np.argsort(hour_index[m])
+        yl, pl = y[m][order].astype(int), pred[m][order].astype(int)
+        obs += cpu(yl, pl)
+        inact += cpu(yl, np.zeros_like(yl))
+        best += cpu(yl, yl)
+    return float((obs - inact) / (best - inact))
+
+
+def _ref_burden(y, p, groups, thresholds, peak=None):
+    uniq = list(set(groups.tolist()))
+    pos = {g: int(y[groups == g].max()) for g in uniq}
+    det, far = [], []
+    for t in thresholds:
+        a_pos = a_neg = 0
+        for g in uniq:
+            m = groups == g
+            hit = (np.max(p[m]) >= t) if peak == "max" else bool((p[m] >= t).any())
+            a_pos += bool(pos[g] and hit)
+            a_neg += bool(not pos[g] and hit)
+        det.append(a_pos / max(sum(1 for g in uniq if pos[g]), 1))
+        far.append(a_neg / max(sum(1 for g in uniq if not pos[g]), 1))
+    return det, far
+
+
+def _ref_series(scores, groups, hours, onset, sort_hours=True):
+    out = []
+    for g in sorted(set(groups.tolist())):
+        m = groups == g
+        order = np.argsort(hours[m]) if sort_hours else np.arange(int(m.sum()))
+        out.append((scores[m][order], hours[m][order], int(onset[m][0])))
+    return out
+
+
+def _synthetic_ward(seed: int = 7, n: int = 400):
+    """Shuffled rows of ``n`` string-id patients: unique hours per stay, ~15% septic
+    (some with onset past their last hour), scores with NaN holes."""
+    rng = np.random.default_rng(seed)
+    rows = []
+    for i in rng.permutation(n):
+        L = int(rng.integers(3, 70))
+        onset = int(rng.integers(0, L + 6)) if rng.random() < 0.15 else -1
+        h = np.arange(L) + int(rng.integers(0, 3))
+        y = ((h >= onset - 6) & (onset >= 0)).astype(int)
+        rows.append((np.full(L, f"p{i:06d}"), h, y, np.full(L, onset)))
+    g, h, y, o = (np.concatenate(c) for c in zip(*rows))
+    perm = rng.permutation(len(g))
+    g, h, y, o = g[perm], h[perm], y[perm], o[perm]
+    p = rng.random(len(g)) * 0.2 + 0.1 * y
+    p[rng.random(len(g)) < 0.03] = np.nan
+    return y, p, g, h, o
+
+
+def _check_metrics() -> None:
+    from backend.ml import alarm_policy as AP
+    from backend.ml import conformal as cf
+    from backend.ml.eval import metrics as M
+    y, p, g, h, o = _synthetic_ward()
+    grid = [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 1.0]
+    check("early warning == scan-per-patient reference at every threshold",
+          all(M.early_warning(y, p, g, o, h, t) == _ref_early_warning(y, p, g, o, h, t) for t in grid),
+          f"{len(set(g.tolist()))} patients, {len(y):,} shuffled rows, {int(np.isnan(p).sum())} NaN")
+    can_fail("an alarm AT onset not counted (< for <=)", lambda: all(
+        M.early_warning(y, p, g, o, h, t) == _ref_early_warning(y, p, g, o, h, t, strict=True)
+        for t in grid))
+    pred = (np.nan_to_num(p) >= 0.1).astype(int)
+    u_new, u_ref = M.normalized_utility(y, pred, g, h), _ref_utility(y, pred, g, h)
+    check("normalized utility == reference (to summation order)", abs(u_new - u_ref) < 1e-12,
+          f"|diff| {abs(u_new - u_ref):.1e}")
+    b = M.alarm_burden(y, p, g, np.array(grid))
+    check("alarm burden == reference, NaN rows ignored as before",
+          (b["detection_rate"], b["false_alarm_rate"]) == _ref_burden(y, p, g, grid))
+    can_fail("a peak that lets NaN win (max for fmax)",
+             lambda: _ref_burden(y, p, g, grid, peak="max") == (b["detection_rate"], b["false_alarm_rate"]))
+    q = np.nan_to_num(p)
+    ref_ci = _ref_bootstrap(y, q, g)
+    check("patient bootstrap == reference draw for draw", M.bootstrap_ci(y, q, g, n_boot=40) == ref_ci)
+    new_s = [(s.scores, s.hours, s.onset) for s in AP.to_series(q, g, h, o)]
+
+    def same_series(a, c):
+        return len(a) == len(c) and all(np.array_equal(x[0], z[0]) and np.array_equal(x[1], z[1])
+                                        and x[2] == z[2] for x, z in zip(a, c))
+    check("alarm-policy series == reference (id order, hour order, first-row onset)",
+          same_series(new_s, _ref_series(q, g, h, o)))
+    can_fail("series left in stored row order", lambda: same_series(new_s, _ref_series(q, g, h, o, False)))
+    cov = np.random.default_rng(2).random(len(y)) < 0.9
+    macro_ref = round(float(np.mean([cov[g == u].mean() for u in set(g.tolist())])), 4)
+    check("conformal macro coverage == reference", cf._cov(cov, y, g)["macro"] == macro_ref)
+
+    # Not an optimisation but a correction, held here with the rest of the metric
+    # layer: the alarm-budget threshold must honour its budget when scores TIE, which
+    # calibrated stacks make the rule (a few hundred distinct scores per fit).
+    rr = np.random.default_rng(5)
+    cases = [(np.round(rr.random(int(rr.integers(1, 60))), int(rr.integers(0, 3))),
+              float(rr.choice([0.0, 0.05, 0.1, 0.15, 0.2, 1.0]))) for _ in range(2000)]
+
+    def lawful(rule) -> bool:
+        for pk, far in cases:
+            t, cap = rule(pk, far), np.floor(far * len(pk) + 1e-9)
+            n_alarm = (pk >= t).sum()
+            if n_alarm > cap or any(n_alarm < (pk >= c).sum() <= cap for c in np.unique(pk)):
+                return False
+        return True
+
+    def kth_peak(pk, far):                      # the rule four modules used to share
+        srt = np.sort(pk)
+        return srt[min(max(int(np.ceil((1 - far) * len(srt))) - 1, 0), len(srt) - 1)]
+    check("budget threshold: never over budget, and the largest lawful alarm set, on ties",
+          lawful(M.budget_threshold), "2000 tied cases")
+    can_fail("the k-th sorted peak as threshold", lambda: lawful(kth_peak))
+
+
+def _ref_bootstrap(y, p, groups, n_boot=40, seed=0, alpha=0.05):
+    from backend.ml.eval.metrics import auroc
+    rng = np.random.default_rng(seed)
+    uniq = np.array(sorted(set(groups.tolist())))
+    idx_by = {g: np.where(groups == g)[0] for g in uniq}
+    vals = []
+    for _ in range(n_boot):
+        rows = np.concatenate([idx_by[g] for g in rng.choice(uniq, size=len(uniq), replace=True)])
+        if len(np.unique(y[rows])) > 1:
+            v = auroc(y[rows], p[rows])
+            if not np.isnan(v):
+                vals.append(v)
+    return (float(np.percentile(vals, 100 * alpha / 2)), float(np.percentile(vals, 100 * (1 - alpha / 2))))
 
 
 if __name__ == "__main__":

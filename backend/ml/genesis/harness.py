@@ -45,6 +45,7 @@ import numpy as np
 from sklearn.model_selection import StratifiedKFold
 
 from backend.ml import config
+from backend.ml.eval.metrics import budget_threshold
 from backend.ml.eval.utility import best_threshold_utility, utility_terms
 from backend.ml.genesis import features as feat
 from backend.ml.genesis import rawstore
@@ -279,8 +280,7 @@ def score(c: Cohort, p: np.ndarray, rows: Optional[np.ndarray] = None,
     ns_peak = np.sort(peak[c.plabel[pts] == 0])
     sep_peak = peak_pre[(c.plabel[pts] == 1) & has_pre]
     for far in (0.05, 0.15):
-        k = int(np.ceil((1.0 - far) * len(ns_peak))) - 1
-        thr = ns_peak[min(max(k, 0), len(ns_peak) - 1)]
+        thr = budget_threshold(ns_peak, far)
         out[f"detect_far{int(far*100)}"] = float((sep_peak >= thr).mean())
     if with_utility:
         terms = utility_terms(y, seg, hour, onset)

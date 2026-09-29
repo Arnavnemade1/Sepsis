@@ -23,6 +23,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 from sklearn.metrics import average_precision_score, roc_auc_score, brier_score_loss
 
+from backend.ml.eval.runs import first_rows, patient_runs
+
 
 # --------------------------------------------------------------------------- #
 # Threshold-free ranking + calibration
@@ -119,36 +121,29 @@ def early_warning(
     * detection_rate: fraction of septic patients alarmed on at/before onset.
     * false_alarm_rate: fraction of non-septic patients ever alarmed.
     """
-    lead_times: List[float] = []
-    detected = 0
-    septic_total = 0
-    false_alarms = 0
-    nonseptic_total = 0
-
-    for g in set(groups.tolist()):
-        mask = groups == g
-        pg = p[mask]
-        hg = hour_index[mask]
-        order = np.argsort(hg)
-        pg, hg = pg[order], hg[order]
-        onset = int(onset_hour[mask][0])
-        alarm_hours = hg[pg >= threshold]
-
-        if onset >= 0:  # septic patient
-            septic_total += 1
-            pre = alarm_hours[alarm_hours <= onset]
-            if pre.size:
-                detected += 1
-                lead_times.append(float(onset - pre.min()))
-        else:           # non-septic patient
-            nonseptic_total += 1
-            if alarm_hours.size:
-                false_alarms += 1
+    # One sort instead of a scan per patient (backend/ml/eval/runs.py). Only the
+    # EARLIEST alarm at or before onset and WHETHER a non-septic stay ever alarmed
+    # matter, so both are per-patient reductions and hour order within a stay is moot.
+    order, starts, ends = patient_runs(groups)
+    onset = np.asarray(onset_hour)[first_rows(order, starts)].astype(np.int64)
+    hs = np.asarray(hour_index)[order]
+    alarm = np.asarray(p)[order] >= threshold
+    septic = onset >= 0
+    seg = np.repeat(np.arange(len(starts)), ends - starts)
+    pre = alarm & septic[seg] & (hs <= onset[seg])
+    first_alarm = (np.minimum.reduceat(np.where(pre, hs, np.inf), starts)
+                   if len(starts) else np.zeros(0))
+    hit = septic & (first_alarm < np.inf)
+    lead_times = (onset[hit] - first_alarm[hit]).astype(float)
+    detected, septic_total = int(hit.sum()), int(septic.sum())
+    nonseptic_total = int((~septic).sum())
+    false_alarms = (int((~septic & np.logical_or.reduceat(alarm, starts)).sum())
+                    if len(starts) else 0)
 
     return {
         "detection_rate": detected / max(septic_total, 1),
-        "median_lead_time_hours": float(np.median(lead_times)) if lead_times else 0.0,
-        "mean_lead_time_hours": float(np.mean(lead_times)) if lead_times else 0.0,
+        "median_lead_time_hours": float(np.median(lead_times)) if lead_times.size else 0.0,
+        "mean_lead_time_hours": float(np.mean(lead_times)) if lead_times.size else 0.0,
         "false_alarm_rate": false_alarms / max(nonseptic_total, 1),
         "septic_patients": septic_total,
         "nonseptic_patients": nonseptic_total,
@@ -292,6 +287,29 @@ def lead_time_vs_null(
     }
 
 
+def budget_threshold(nonseptic_peaks: np.ndarray, far: float) -> float:
+    """The smallest threshold whose alarmed fraction of non-septic patients is at most
+    ``far``, alarming at ``score >= threshold``.
+
+    Four copies of this used to take the k-th sorted non-septic peak as the threshold.
+    That alarms every patient TIED at that peak, and one patient too many even without
+    ties. Calibrated stacks emit a few hundred distinct scores, so ties are the rule:
+    on the deployed artifact one isotonic step held 46% of non-septic peaks, and its
+    "5% budget" alarmed 50.8% of non-septic patients. When the budget falls inside a
+    tie, the honest threshold sits just above it and alarms fewer patients than the
+    budget allows: a detector with a coarse score cannot use that budget."""
+    pk = np.sort(np.asarray(nonseptic_peaks, dtype=float))
+    n = len(pk)
+    if n == 0:
+        return float("nan")
+    j = n - int(np.floor(far * n + 1e-9))        # peaks that must fall below threshold
+    if j <= 0:
+        return float(pk[0])
+    if j >= n:
+        return float(np.nextafter(pk[-1], np.inf))
+    return float(pk[j] if pk[j - 1] < pk[j] else np.nextafter(pk[j], np.inf))
+
+
 def detection_at_false_alarm_rate(
     y: np.ndarray,
     p: np.ndarray,
@@ -333,9 +351,7 @@ def detection_at_false_alarm_rate(
                 "median_lead_time_hours": float("nan"), "realised_far": float("nan")}
 
     peaks = np.sort(np.asarray(nonseptic_peak))
-    # Smallest threshold whose alarmed fraction is <= the budget.
-    k = int(np.ceil((1.0 - target_far) * len(peaks))) - 1
-    thr = float(peaks[min(max(k, 0), len(peaks) - 1)])
+    thr = budget_threshold(peaks, target_far)
     realised = float((peaks >= thr).mean())
 
     detected, leads = 0, []
@@ -414,11 +430,14 @@ def normalized_utility(
         (observed - inaction) / (best_possible - inaction)
     where inaction = predict all-zeros and best = predict the true labels."""
     obs = inact = best = 0.0
-    for g in set(groups.tolist()):
-        mask = groups == g
-        order = np.argsort(hour_index[mask])
-        yl = y[mask][order].astype(int)
-        pl = pred_binary[mask][order].astype(int)
+    # Patients in id order, each stay in hour order, from one sort. The scan this
+    # replaced visited patients in set() order, which for string ids follows the
+    # per-process hash seed, so its float sum was never reproducible across runs.
+    order, starts, ends = patient_runs(groups, hour_index)
+    ys = np.asarray(y)[order].astype(int)
+    ps = np.asarray(pred_binary)[order].astype(int)
+    for a, b in zip(starts, ends):
+        yl, pl = ys[a:b], ps[a:b]
         obs += compute_prediction_utility(yl, pl)
         inact += compute_prediction_utility(yl, np.zeros_like(yl))
         best += compute_prediction_utility(yl, yl)
@@ -465,27 +484,33 @@ def alarm_burden(y: np.ndarray, p: np.ndarray, groups: np.ndarray,
     a clinician cares about as much as sensitivity."""
     if thresholds is None:
         thresholds = np.linspace(0.02, 0.6, 30)
-    uniq = list(set(groups.tolist()))
-    pos_g = {g: int(y[groups == g].max()) for g in uniq}
-    npos = sum(1 for g in uniq if pos_g[g])
-    nneg = sum(1 for g in uniq if not pos_g[g])
+    # A patient alarms at t iff its peak score reaches t: one reduction per patient
+    # (fmax ignores NaN rows, as ``(p >= t).any()`` did), then one comparison per t.
+    order, starts, _ = patient_runs(groups)
+    pos = np.maximum.reduceat(np.asarray(y)[order], starts) != 0
+    peak = np.fmax.reduceat(np.asarray(p, dtype=float)[order], starts)
+    npos, nneg = int(pos.sum()), int((~pos).sum())
     neg_hours = int((y == 0).sum())
     det, far, burden = [], [], []
     for t in thresholds:
-        alarmed_pos = alarmed_neg = 0
-        for g in uniq:
-            m = groups == g
-            any_alarm = bool((p[m] >= t).any())
-            if pos_g[g] and any_alarm:
-                alarmed_pos += 1
-            elif not pos_g[g] and any_alarm:
-                alarmed_neg += 1
+        any_alarm = peak >= t
+        alarmed_pos = int((pos & any_alarm).sum())
+        alarmed_neg = int((~pos & any_alarm).sum())
         det.append(alarmed_pos / max(npos, 1))
         far.append(alarmed_neg / max(nneg, 1))
         fp_hours = int(((p >= t) & (y == 0)).sum())
         burden.append(100.0 * fp_hours / max(neg_hours, 1))
     return {"thresholds": [float(t) for t in thresholds], "detection_rate": det,
             "false_alarm_rate": far, "false_alerts_per_100h": burden}
+
+
+def _rows_by_patient(groups: np.ndarray, uniq: np.ndarray) -> Dict[object, np.ndarray]:
+    """``{g: np.where(groups == g)[0]}`` for every ``g`` in ``uniq`` (sorted), from one
+    stable sort: the same arrays, ascending, without a scan per patient."""
+    order, starts, ends = patient_runs(groups)
+    if not np.array_equal(np.asarray(groups)[order[starts]], uniq):
+        raise ValueError("patient ids do not sort the way sorted() orders them")
+    return {g: order[a:b] for g, a, b in zip(uniq, starts, ends)}
 
 
 def bootstrap_ci(y: np.ndarray, p: np.ndarray, groups: np.ndarray,
@@ -496,7 +521,7 @@ def bootstrap_ci(y: np.ndarray, p: np.ndarray, groups: np.ndarray,
     fn = {"auroc": auroc, "auprc": auprc, "brier": brier}[stat]
     rng = np.random.default_rng(seed)
     uniq = np.array(sorted(set(groups.tolist())))
-    idx_by = {g: np.where(groups == g)[0] for g in uniq}
+    idx_by = _rows_by_patient(groups, uniq)
     vals: List[float] = []
     for _ in range(n_boot):
         samp = rng.choice(uniq, size=len(uniq), replace=True)

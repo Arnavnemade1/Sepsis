@@ -234,7 +234,7 @@ def bootstrap_delta_ci(y: np.ndarray, pa: np.ndarray, pb: np.ndarray,
     """
     rng = np.random.default_rng(seed)
     uniq = np.array(sorted(set(groups.tolist())))
-    idx_by_g = {g: np.where(groups == g)[0] for g in uniq}
+    idx_by_g = metrics._rows_by_patient(groups, uniq)
     deltas: List[float] = []
     for _ in range(n_boot):
         pick = rng.choice(uniq, size=len(uniq), replace=True)
