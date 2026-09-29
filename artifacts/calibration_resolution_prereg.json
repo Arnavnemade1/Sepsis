@@ -1,0 +1,18 @@
+{
+  "registered": "2026-09-29",
+  "question": "Does replacing the stack's final isotonic calibration with centred isotonic regression, which keeps the calibration but not the staircase, raise pooled out-of-fold AUROC without losing calibration or detection at an alarm budget?",
+  "mechanism": "Isotonic regression maps the meta-learner's score through a staircase (22 steps on the deployed stack), so hours on one step tie and the ranking made inside the step is discarded. Centred isotonic regression (Oron & Flournoy 2017; backend/ml/models/calibration.py centred_transform) interpolates through each step's centre, taken as the midpoint of the step's raw-score span from the fitted thresholds, with a 1e-7 tie-break slope beyond the outer centres.",
+  "benchmark": {"spec": "dev", "patients": 8000, "folds": 3, "seed": 42, "harness": "backend/ml/eval/bench.py"},
+  "detector": "the shipped configuration, patient:hgb+hgb2+et+lr+xgb@utility, one fit per fold; every arm reads the same fitted stack and differs only in the final map",
+  "arms": {"isotonic": "the current calibrator (baseline)", "centred": "centred isotonic regression from the same fitted isotonic map (the candidate)", "sigmoid": "Platt scaling fitted on the same calibration slice (secondary)", "raw": "the uncalibrated meta score (reference only)"},
+  "primary_endpoint": "delta pooled OOF AUROC (centred - isotonic); paired patient bootstrap, 1,000 draws (multinomial patient counts as row weights, one draw shared by all arms); 95% interval.",
+  "safety": {"max_ece_increase": 0.002, "rule": "pooled ECE(centred) - ECE(isotonic) <= 0.002"},
+  "budget_guard": "no significant regression in detection at 5/10/15/20% alarm budgets (bench.compare_alarm_budget, metrics.budget_threshold, 1,000 paired patient draws; regression = 95% interval upper bound < 0)",
+  "decision_rule": "SUCCESS iff the primary interval's lower bound > 0 AND the safety rule holds AND no budget regresses. A success licenses registering a promotion of the calibrator; it ships nothing by itself.",
+  "secondary": ["per-fold AUROC deltas (pooled AUROC is reported beside them, per the stacking-test lesson)", "hour-matched AUROC", "AUPRC", "distinct scores per arm", "the sigmoid arm on the same endpoints"],
+  "disclosures": [
+    "On the deployed artifact (a single 5,996-patient fit) scored on 6,852 unseen patients: raw meta score AUROC 0.7476 vs isotonic 0.7425, hour-matched 0.6445 vs 0.6383. Centred isotonic has not been scored anywhere.",
+    "Any strictly increasing map ranks exactly like the raw score within a fold, so within-fold AUROC(centred) = AUROC(raw); the pooled endpoint also depends on how each fold's map scales its scores."
+  ],
+  "rules": ["No arm, endpoint or bar changes after the run.", "The result is reported whatever it is."]
+}
