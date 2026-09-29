@@ -1,0 +1,14 @@
+{
+  "registered": "2026-09-29",
+  "question": "Should the deployed detector be replaced by the same configuration refitted on four times the patients, with the alarm-budget gate measured by a threshold rule that honours its budget?",
+  "why_a_retest": "The first registration (08949bf) was refused by its alarm-budget gate (result 93f7653). That gate's threshold rule took the k-th sorted non-septic peak and alarmed at >=, which alarms every patient tied at that peak. The deployed artifact's scores tie heavily (219 distinct values on the judged rows; one isotonic step holds 1,469 of 3,181 judged non-septic peaks), so its '5% budget' was a 50.8% realised false-alarm rate. The first verdict stays on record as a refusal produced by a broken instrument. The rule was corrected and verified in 688dedf (metrics.budget_threshold: the smallest threshold whose alarmed fraction is at most the budget; 0 violations in 5,000 random tied cases; the old rule is a planted defect in verify_fastpaths).",
+  "unchanged_from_the_first_registration": ["incumbent: the DEPLOYED artifact, scored not refitted", "candidate: patient:hgb+hgb2+et+lr+xgb@utility fitted on the 24,206 training patients of wearable_genesis_dev, split seed 42, holdout 0.25 (fit digest 7fbbdd0ad322)", "judged patients: the 6,852 holdout patients neither model trained on", "the three gates and their rules", "the decision rule (ship iff all three pass; then re-derive the conformal bands on the shipped fit, refused if locked coverage misses nominal)"],
+  "the_one_change": "Alarm-budget detection for both detectors, point estimate and every bootstrap draw, uses metrics.budget_threshold instead of the k-th sorted peak.",
+  "protocol": "python -m backend.ml.scripts.promote_frontier --cache wearable_genesis_dev --objective patient --roster hgb,hgb2,et,lr,xgb@utility --incumbent deployed --jobs 6 --promote, at commit 688dedf or later with no change to promote_frontier.py, metrics.py or bench.py in between.",
+  "disclosures": [
+    "Seen before registering: the whole first run (candidate AUROC 0.7987 vs 0.7425; utility at each own threshold +0.4006 vs +0.3505; the tie-inflated budget numbers).",
+    "Seen before registering, for the deployed artifact only: honest detection on the full judged set of 0.386 / 0.410 / 0.410 / 0.410 at 5 / 10 / 15 / 20% (realised 3.2% / 5.1% / 5.1% / 5.1%), and 0.413 at 4.6% on the judged half. The candidate's honest budget detection has not been computed.",
+    "Seen: on the same patients the deployed artifact's raw ensemble score (before isotonic calibration) has AUROC 0.7476 against 0.7425 calibrated. That is a separate question and is not part of this test."
+  ],
+  "rules": ["No gate, parameter or code path changes after the run.", "The result is reported whatever it is."]
+}
