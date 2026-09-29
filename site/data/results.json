@@ -1,6 +1,6 @@
 {
  "generatedFrom": "artifacts/*.json",
- "syncedAt": "2026-09-28",
+ "syncedAt": "2026-09-29",
  "meta": {
   "protocol": "cross-hospital external validation (train one site, test the other)",
   "featureSet": "wearable",
@@ -2555,19 +2555,19 @@
   "claim": "Post-hoc calibration is what makes the probability mean what it says — and it survives the move to a different hospital."
  },
  "operatingPoint": {
-  "high": 0.03,
-  "medium": 0.015,
+  "high": 0.0525,
+  "medium": 0.0262,
   "objective": "constrained",
-  "maxFalseAlarmRate": 0.2,
+  "maxFalseAlarmRate": 0.15,
   "oof": {
-   "utility": 0.3671,
-   "detectionRate": 0.4079,
-   "falseAlarmRate": 0.0617,
-   "medianLeadHours": 40
+   "utility": 0.3912,
+   "detectionRate": 0.4355,
+   "falseAlarmRate": 0.0856,
+   "medianLeadHours": 54.5
   },
-  "probP95": 0.0479,
-  "probP99": 0.15702,
-  "nPatients": 1000,
+  "probP95": 0.06945,
+  "probP99": 0.14166,
+  "nPatients": 3424,
   "heldOut": {
    "derivedThreshold": 0.0725,
    "auroc": 0.7334,
@@ -3265,36 +3265,36 @@
   ]
  },
  "conformal": {
-  "alpha": 0.08,
-  "nominal": 0.92,
-  "detector": "patient:hgb+hgb2+et+lr+xgb@utility",
-  "lockedCovPos": 0.9025,
-  "lockedCovNeg": 0.936,
-  "lockedMacroPos": 0.9044,
-  "abstainRate": 0.638,
-  "miscoverageRatio": 1.22,
+  "alpha": 0.03,
+  "nominal": 0.97,
+  "detector": "patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322",
+  "lockedCovPos": 0.9727,
+  "lockedCovNeg": 0.9668,
+  "lockedMacroPos": 0.9728,
+  "abstainRate": 0.8,
+  "miscoverageRatio": 1.11,
   "overrunLimit": 1.5,
   "conversion": [
    {
     "policy": "shipped (p >= thr)",
-    "utility": 0.4179,
-    "detection": 0.688,
-    "falseAlarm": 0.265,
-    "leadHours": 37
+    "utility": 0.4348,
+    "detection": 0.51,
+    "falseAlarm": 0.088,
+    "leadHours": 33.5
    },
    {
     "policy": "UNCERTAIN silenced",
-    "utility": 0.3968,
-    "detection": 0.537,
-    "falseAlarm": 0.141,
-    "leadHours": 37
+    "utility": 0.2652,
+    "detection": 0.353,
+    "falseAlarm": 0.016,
+    "leadHours": 40
    },
    {
     "policy": "UNCERTAIN escalated",
-    "utility": -0.0923,
-    "detection": 0.963,
-    "falseAlarm": 0.943,
-    "leadHours": 27.5
+    "utility": -0.3423,
+    "detection": 1,
+    "falseAlarm": 0.991,
+    "leadHours": 35
    }
   ],
   "external": {

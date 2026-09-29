@@ -113,8 +113,13 @@ excluded from the Bonferroni family. It is a hypothesis about where to look next
 not an established disparity. The honest next step is to test it on a site whose
 data has not been examined — which is what the MIMIC-IV / eICU adapters are for.
 
+**Superseded detector (2026-09-29).** The shipped detector has since been refitted on
+24,206 patients and calibrated with centred isotonic regression, at a new threshold
+(`DATA_LEVER.md`). Everything below describes the previous detector's score set; the
+audit has not been re-run on the refit.
+
 **A regime caveat on the absolute numbers.** These scores come from grouped
-cross-validation over 8,000 patients, while the shipped detector is a single fit on
+cross-validation over 8,000 patients, while the shipped detector was a single fit on
 5,996. This ensemble's output scale is not stable across fits — holding the threshold
 and the patients fixed, its false-alarm rate measures 0.085 / 0.178 / 0.209 / 0.165
 for fits on 750 / 1500 / 2250 / 3000 patients — so the *absolute* FA levels in the

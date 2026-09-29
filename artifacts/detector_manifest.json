@@ -1,103 +1,105 @@
 {
-  "created": "2026-08-28T21:56:46",
+  "created": "2026-09-29T00:24:43",
   "feature_set": "wearable",
-  "limit": 8000,
+  "limit": 0,
+  "cache": "wearable_genesis_dev",
   "seed": 42,
-  "n_rows": 310061,
-  "n_patients": 8000,
+  "n_rows": 1242939,
+  "n_patients": 32268,
   "holdout_metrics": {
     "incumbent": {
-      "auroc": 0.7622488843405567,
-      "auprc": 0.07205229998079882,
-      "ece": 0.0028063707425180114,
-      "brier": 0.01851223769608385,
-      "utility": 0.333273362536504,
-      "utility_best": 0.3449989570296204,
-      "detect_at_far15": 0.4768211920529801,
-      "lead_at_far15": 29.0,
-      "detection_at_spec90": 0.5562913907284768,
-      "false_alarm_at_spec90": 0.2822450080949811,
-      "median_lead_at_spec90": 30.5
+      "auroc": 0.7424818430853606,
+      "auprc": 0.06881976124291501,
+      "ece": 0.005953480865084256,
+      "brier": 0.01679223706205302,
+      "utility": 0.30851038261872854,
+      "utility_best": 0.3579824392744986,
+      "detect_at_far15": 0.4101010101010101,
+      "lead_at_far15": 47.0,
+      "detection_at_spec90": 0.6989898989898989,
+      "false_alarm_at_spec90": 0.5032247915683499,
+      "median_lead_at_spec90": 42.0
     },
     "candidate": {
-      "auroc": 0.7673396084701563,
-      "auprc": 0.0734256156680643,
-      "ece": 0.0009907542433391402,
-      "brier": 0.01787886363554256,
-      "utility": 0.3425818731748013,
-      "utility_best": 0.3425818731748018,
-      "detect_at_far15": 0.7284768211920529,
-      "lead_at_far15": 26.0,
-      "detection_at_spec90": 0.7284768211920529,
-      "false_alarm_at_spec90": 0.452779276848354,
-      "median_lead_at_spec90": 26.0
+      "auroc": 0.7996100850557621,
+      "auprc": 0.09374018616463867,
+      "ece": 0.0031394656633919964,
+      "brier": 0.016595513434775583,
+      "utility": 0.41137761968852227,
+      "utility_best": 0.4240098058065759,
+      "detect_at_far15": 0.5252525252525253,
+      "lead_at_far15": 44.0,
+      "detection_at_spec90": 0.5333333333333333,
+      "false_alarm_at_spec90": 0.1691049237061507,
+      "median_lead_at_spec90": 46.0
     }
   },
   "temporal_filters": {
     "ema": {
-      "auroc": 0.7703598203620934,
-      "auprc": 0.09011917411667734,
-      "ece": 0.001787734651125965,
-      "brier": 0.017926466383283116,
-      "utility": 0.32890331664580713,
-      "utility_best": 0.3446182728410513,
-      "detect_at_far15": 0.543046357615894,
-      "lead_at_far15": 32.0,
-      "detection_at_spec90": 0.5562913907284768,
-      "false_alarm_at_spec90": 0.25310307609282245,
-      "median_lead_at_spec90": 34.0
+      "auroc": 0.7942968381896529,
+      "auprc": 0.0870511616023211,
+      "ece": 0.0029472788099428487,
+      "brier": 0.016654361167699718,
+      "utility": 0.3951011023521125,
+      "utility_best": 0.40447109530218567,
+      "detect_at_far15": 0.5131313131313131,
+      "lead_at_far15": 48.5,
+      "detection_at_spec90": 0.4666666666666667,
+      "false_alarm_at_spec90": 0.10004719207173195,
+      "median_lead_at_spec90": 47.0
     },
     "blend": {
-      "auroc": 0.7756780505358545,
-      "auprc": 0.0922165972979917,
-      "ece": 0.001408228986254474,
-      "brier": 0.017887810373268843,
-      "utility": 0.33348977889027887,
-      "utility_best": 0.3498748435544431,
-      "detect_at_far15": 0.5496688741721855,
-      "lead_at_far15": 34.0,
-      "detection_at_spec90": 0.5629139072847682,
-      "false_alarm_at_spec90": 0.2558014031300594,
-      "median_lead_at_spec90": 34.0
+      "auroc": 0.8000964197348654,
+      "auprc": 0.0908946572703164,
+      "ece": 0.002903445658216158,
+      "brier": 0.016609419179088272,
+      "utility": 0.4121170608216376,
+      "utility_best": 0.4228433634557458,
+      "detect_at_far15": 0.509090909090909,
+      "lead_at_far15": 48.0,
+      "detection_at_spec90": 0.4888888888888889,
+      "false_alarm_at_spec90": 0.12207015887997483,
+      "median_lead_at_spec90": 47.5
     },
     "cummax": {
-      "auroc": 0.744248050290502,
-      "auprc": 0.06902757623224857,
-      "ece": 0.011696587520506518,
-      "brier": 0.0180356382943809,
-      "utility": 0.13360450563204052,
-      "utility_best": 0.33850125156445554,
-      "detect_at_far15": 0.7284768211920529,
-      "lead_at_far15": 26.0,
-      "detection_at_spec90": 0.7284768211920529,
-      "false_alarm_at_spec90": 0.452779276848354,
-      "median_lead_at_spec90": 26.0
+      "auroc": 0.7811286285016676,
+      "auprc": 0.08897580533246656,
+      "ece": 0.013177108833656227,
+      "brier": 0.016871553952572144,
+      "utility": 0.39395629045696406,
+      "utility_best": 0.39594549125168255,
+      "detect_at_far15": 0.5252525252525253,
+      "lead_at_far15": 44.0,
+      "detection_at_spec90": 0.44646464646464645,
+      "false_alarm_at_spec90": 0.08054113575585968,
+      "median_lead_at_spec90": 46.0
     },
     "hazard": {
-      "auroc": 0.6616333995858763,
-      "auprc": 0.0268265688987984,
-      "ece": 0.04572170349692692,
-      "brier": 0.02778152699433036,
-      "utility": -0.10539476428871129,
-      "utility_best": 0.03772945348352119,
-      "detect_at_far15": 0.3443708609271523,
-      "lead_at_far15": 34.0,
+      "auroc": 0.7043464463251213,
+      "auprc": 0.03038276961307903,
+      "ece": 0.04282221224190599,
+      "brier": 0.025392300811497473,
+      "utility": -0.037334166506417674,
+      "utility_best": 0.08453502531564461,
+      "detect_at_far15": 0.2868686868686869,
+      "lead_at_far15": 26.0,
       "detection_at_spec90": 1.0,
       "false_alarm_at_spec90": 1.0,
-      "median_lead_at_spec90": 23.0
+      "median_lead_at_spec90": 30.0
     }
   },
-  "auroc_delta": 0.005090724129599544,
-  "auprc_delta": 0.0013733156872654806,
-  "utility_delta": 0.009308510638297296,
+  "auroc_delta": 0.05712824197040156,
+  "auprc_delta": 0.024920424921723652,
+  "utility_delta": 0.10286723706979373,
   "configs": {
     "incumbent": {
-      "objective": "balanced",
+      "objective": "patient",
       "roster": [
         "hgb",
         "hgb2",
         "et",
-        "lr"
+        "lr",
+        "xgb@utility"
       ]
     },
     "candidate": {
@@ -108,7 +110,8 @@
         "et",
         "lr",
         "xgb@utility"
-      ]
+      ],
+      "calibration": "centred"
     }
   },
   "gates": {
@@ -118,37 +121,37 @@
   },
   "alarm_budget": {
     "incumbent": {
-      "det5": 0.36,
-      "det10": 0.36,
-      "det15": 0.4266666666666667,
-      "det20": 0.4533333333333333
+      "det5": 0.41295546558704455,
+      "det10": 0.41295546558704455,
+      "det15": 0.41295546558704455,
+      "det20": 0.41295546558704455
     },
     "candidate": {
-      "det5": 0.3333333333333333,
-      "det10": 0.7066666666666667,
-      "det15": 0.7066666666666667,
-      "det20": 0.7066666666666667
+      "det5": 0.42105263157894735,
+      "det10": 0.47368421052631576,
+      "det15": 0.5506072874493927,
+      "det20": 0.5748987854251012
     },
     "bootstrap": {
       "det5": {
-        "delta": -0.026666666666666672,
-        "lo": -0.07999999999999996,
-        "hi": 0.5333333333333333
+        "delta": 0.0080971659919028,
+        "lo": -0.020242914979757054,
+        "hi": 0.04858299595141702
       },
       "det10": {
-        "delta": 0.3466666666666667,
-        "lo": 0.24000000000000005,
-        "hi": 0.4603333333333315
+        "delta": 0.06072874493927122,
+        "lo": 0.028340080971659937,
+        "hi": 0.10121457489878546
       },
       "det15": {
-        "delta": 0.27999999999999997,
-        "lo": 0.18666666666666665,
-        "hi": 0.38666666666666666
+        "delta": 0.13765182186234814,
+        "lo": 0.08906882591093118,
+        "hi": 0.17813765182186242
       },
       "det20": {
-        "delta": 0.25333333333333335,
-        "lo": 0.1333333333333333,
-        "hi": 0.36000000000000004
+        "delta": 0.16194331983805665,
+        "lo": 0.11740890688259109,
+        "hi": 0.21052631578947364
       }
     },
     "significant_gains": [
@@ -159,15 +162,21 @@
     "significant_regressions": []
   },
   "shipped_fit": {
-    "train_patients": 5996,
-    "threshold_derived_on_same_fit": true
+    "train_patients": 24206,
+    "threshold_derived_on_same_fit": true,
+    "digest": "7fbbdd0ad322"
   },
+  "holdout": 0.25,
+  "fit_digest": "7fbbdd0ad322",
+  "detector_id": "patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322",
+  "incumbent_source": "deployed artifact, scored on holdout patients it never trained on",
+  "judged_patients": 6852,
   "operating_point": {
-    "high": 0.03,
-    "medium": 0.015,
-    "incumbent_high": 0.06,
-    "gated_utility": 0.2677361666316011,
-    "incumbent_utility": 0.2333683989059543
+    "high": 0.0525,
+    "medium": 0.0262,
+    "incumbent_high": 0.03,
+    "gated_utility": 0.4026971086485797,
+    "incumbent_utility": 0.3505254107756973
   },
   "promoted": true
 }

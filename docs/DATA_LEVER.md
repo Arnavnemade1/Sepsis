@@ -1,7 +1,8 @@
 # More patients: a registered win, two refusals, and the four bugs shipping it exposed
 
 **Dates:** 2026-09-28 to 29 · **Registrations, each committed before its run:** `ac684ff`
-(data lever), `08949bf` (refit), `b2de39c` (refit re-test), `4c5a6ac` (calibration) ·
+(data lever), `08949bf` (refit), `b2de39c` (refit re-test), `4c5a6ac` (calibration),
+`20ec206` (refit with the centred calibrator: **promoted**) ·
 **Results:** `artifacts/data_lever.json`, `artifacts/promotion_attempt.json` (latest
 attempt; each attempt's record is in the commit that reported it)
 
@@ -123,8 +124,42 @@ patients:
 The step discards 0.005 AUROC and leaves the shipped model with no operating point
 between a 5% and a 51% false-alarm rate. Its threshold, 0.03, sits 0.00004 above the step
 holding 46% of non-septic peaks. Whether a calibrator without steps keeps the calibration
-and recovers the ranking is registered as its own question (`4c5a6ac`): see
-[CALIBRATION_RESOLUTION](CALIBRATION_RESOLUTION.md).
+and recovers the ranking was registered as its own question (`4c5a6ac`). It did: pooled
+AUROC +0.0021 [+0.0006, +0.0036], ECE unchanged, and +0.037 detection at 5%
+([CALIBRATION_RESOLUTION](CALIBRATION_RESOLUTION.md)).
+
+## 7 · What shipped
+
+The refit read through the centred calibrator (`20ec206`) composes the two changes that
+each passed their own registered test. Registered before it ran, with its prediction: the
+5% regression came from the staircase, so a map without steps should remove it. It did.
+The same 6,852 patients, the same deployed incumbent, the same gates:
+
+| gate | deployed | shipped | |
+|---|---|---|---|
+| AUROC | 0.7425 | **0.7996** | +0.0571, pass |
+| utility at each own threshold | +0.3505 | **+0.4027** | pass |
+| detection @ 5% budget | 0.413 | 0.421 | +0.008 [−0.020, +0.049] |
+| detection @ 10% | 0.413 | **0.474** | +0.061 [+0.028, +0.101] |
+| detection @ 15% | 0.413 | **0.551** | +0.138 [+0.089, +0.178] |
+| detection @ 20% | 0.413 | **0.575** | +0.162 [+0.117, +0.211] |
+
+**Promoted.** The artifact is the fit on the 24,206 training patients (12.9 MB), with its
+threshold derived on half the judged patients: HIGH 0.0525, MEDIUM 0.0262. At that threshold,
+on the other half, it flags 46.2% of septic patients and 8.5% of non-septic ones. Its key,
+`patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322`, is on the model, the threshold,
+the manifest and the conformal bands. The bands were re-derived on the shipped fit's own
+8,062 holdout patients. The strongest level on the grid now holds: α = 0.03, locked
+coverage 0.973 septic and 0.967 non-septic, where only 0.08 held before. Serving checks all of
+it at load. Pointed at the old model file, it reports the mismatch and turns abstention off.
+
+A caveat that matters: these 6,852 patients judged this refit three times. Each component's
+significance comes from its own registered cross-validated study, and the gates here are
+regression guards. The number to quote for the detector is the cross-validated one; the
+held-out 0.800 is its confirmation on unseen patients, not an independent discovery.
+
+Still to re-run on the new detector: the subgroup audit, the alarm-policy search, the
+conformal cross-hospital study, and the external validation.
 
 ## Lessons
 
@@ -134,4 +169,5 @@ and recovers the ranking is registered as its own question (`4c5a6ac`): see
   which score distribution it produces.
 - Every refusal here found a real defect before it could ship: the frozen incumbent, the
   configuration-only key, the hand-rebuilt audit split, the tied threshold. The gate did
-  its job twice by saying no.
+  its job twice by saying no, and the third registration shipped only after the
+  mechanism it predicted was confirmed.
