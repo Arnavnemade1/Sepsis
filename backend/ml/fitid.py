@@ -105,6 +105,20 @@ def from_manifest(manifest: Dict[str, Any], spec: str = "unknown",
         n_patients=n_patients or manifest.get("n_patients"))
 
 
+def training_digest(train_groups: Sequence[Any], source: str, seed: int) -> str:
+    """Which patients a fit saw: 12 hex of sha256 over the sorted training patient ids,
+    the data source and the split seed.
+
+    ``FitId`` describes a fit by its configuration and dataset size, which cannot tell
+    two fits apart when only the patients changed. This can: it is the suffix the
+    promoter puts on the served detector's key, and anything that recomputes the split
+    can prove it reproduced the shipped training set by recomputing this."""
+    ids = sorted({str(g) for g in train_groups})
+    payload = json.dumps({"source": source, "seed": int(seed), "patients": ids},
+                         separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()[:12]
+
+
 # --------------------------------------------------------------------------- #
 def stamp(artifact: Dict[str, Any], fit: FitId) -> Dict[str, Any]:
     """Write the ``fit`` block into an artifact dict, in place."""

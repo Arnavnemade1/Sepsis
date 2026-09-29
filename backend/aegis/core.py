@@ -135,6 +135,16 @@ class AegisCore:
         # shipped StackedEnsembleDetector exposes `feature_names_`, not
         # `feature_names`, so `model_feature_names` is None for it and any check
         # keyed on that list would silently never run.
+        # The threshold and the bands are readings of ONE fit's scores. The promoter
+        # stamps the model with its training-set digest and puts the same digest on the
+        # operating point's key, so a model file from another fit (a restored backup, a
+        # retrain in place) is caught here instead of being read at the wrong cut points.
+        self.fit_mismatch = self._fit_mismatch()
+        if self.fit_mismatch:
+            print(f"[aegis] MODEL/THRESHOLD MISMATCH: {self.fit_mismatch}. Abstention "
+                  f"layer OFF and the alarm threshold is unvalidated for this model; "
+                  f"re-run promote_frontier.")
+            self.conformal = None
 
         # Lazy heavy/optional collaborators.
         self._optimizer = None
@@ -440,6 +450,17 @@ class AegisCore:
         a.narrative_source = narr["source"]
 
     # ------------------------------------------------------------------ #
+    def _fit_mismatch(self) -> Optional[str]:
+        """Why the loaded model is not the fit the operating point was derived on, or None."""
+        if self.model is None or self.operating_point is None:
+            return None
+        key = getattr(self.operating_point, "detector", "") or ""
+        want = key.split("#", 1)[1] if "#" in key else None
+        have = getattr(self.model, "fit_digest_", None)
+        if want == have:
+            return None
+        return f"operating point derived on fit {want}, loaded model is fit {have}"
+
     def _load_model(self, model_path: Optional[str], feature_set: str):
         if model_path is None:
             model_path = os.path.join(config.ARTIFACTS_DIR, f"gbm_{feature_set}.joblib")

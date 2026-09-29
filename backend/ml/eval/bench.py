@@ -47,6 +47,36 @@ SPECS: Dict[str, List[str]] = {
 Candidate = Callable[[FeatureMatrix, np.ndarray, np.ndarray], np.ndarray]
 
 
+#: Every CinC patient except the 20% GENESIS locked before any architecture work (its
+#: one untouched test set). The shipped detector is trained on these.
+GENESIS_DEV = "wearable_genesis_dev"
+
+
+def genesis_dev() -> FeatureMatrix:
+    """The ``full`` cohort minus GENESIS's locked patients, built once and cached.
+
+    Filtered from the ``full`` shards rather than re-featurised, so its rows are the
+    ones every other result here was measured on. The lock is drawn with its own seed
+    before the dev folds, so it does not depend on the fold arguments below."""
+    import os
+    from backend.ml import config
+    path = os.path.join(config.ARTIFACTS_DIR, "feature_cache", f"{GENESIS_DEV}.npz")
+    if not os.path.exists(path):
+        from backend.ml.genesis import harness, rawstore
+        raw = rawstore.load()
+        locked = raw.pid[harness.patient_folds(raw, 5, 20260923) < 0]
+        full = concat([_load_cached(k) for k in SPECS["full"]])
+        keep = ~np.isin(full.groups, locked)
+        # If the two id formats ever diverge, isin matches nothing and every locked
+        # patient walks into the training set; so every one of them must be found.
+        if len(np.unique(full.groups[~keep])) != len(locked):
+            raise AssertionError("not every locked GENESIS patient was found in the cohort")
+        np.savez(path, X=full.X[keep], y=full.y[keep], groups=full.groups[keep],
+                 hour_index=full.hour_index[keep], onset_hour=full.onset_hour[keep],
+                 feature_names=np.array(full.feature_names))
+    return _load_cached(GENESIS_DEV)
+
+
 def _load_cached(key: str) -> FeatureMatrix:
     import os
     from backend.ml import config

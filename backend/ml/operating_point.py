@@ -336,9 +336,28 @@ def load(path: str = DEFAULT_PATH) -> Optional[OperatingPoint]:
         return None
 
 
-def detector_key(roster: Sequence[str], objective: str) -> str:
-    """The identity string an operating point records: ``"objective:a+b+c"``."""
-    return "%s:%s" % (objective, "+".join(roster))
+def detector_key(roster: Sequence[str], objective: str, fit: Optional[str] = None) -> str:
+    """The identity string an operating point records: ``"objective:a+b+c"``, and
+    ``"objective:a+b+c#<fit>"`` once the training set is known.
+
+    The configuration alone was the identity until the data lever: refitting the SAME
+    roster and objective on four times the patients kept the same key, so thresholds
+    and conformal bands cut on the old fit's score distribution would have been
+    accepted for the new one. ``fit`` is the training-set digest the promoter records
+    in ``detector_manifest.json``."""
+    key = "%s:%s" % (objective, "+".join(roster))
+    return "%s#%s" % (key, fit) if fit else key
+
+
+def config_of(key: str) -> str:
+    """A detector key without its fit: the configuration a study can rebuild."""
+    return key.split("#", 1)[0]
+
+
+def manifest_key(manifest: dict) -> str:
+    """The identity of the detector that SHIPPED, read out of its manifest."""
+    cand = manifest["configs"]["candidate"]
+    return detector_key(cand["roster"], cand["objective"], manifest.get("fit_digest"))
 
 
 def require_shipped_detector(op: Optional[OperatingPoint],
@@ -356,6 +375,10 @@ def require_shipped_detector(op: Optional[OperatingPoint],
     entire output would be mislabelled, so there is no sensible way to continue. A
     missing artifact is equally fatal here — the question this study asks is "how
     does the policy behave AT THE SHIPPED POINT", which cannot be asked without one.
+
+    Only the CONFIGURATION is compared, not the fit suffix: a study that refits builds
+    a different fit by construction, so the most it can prove is that it rebuilt the
+    shipped roster and objective. The cross-fit caveat is the study's to disclose.
     """
     expect = detector_key(roster, objective)
     if op is None:
@@ -363,7 +386,7 @@ def require_shipped_detector(op: Optional[OperatingPoint],
             "no operating point on disk (%s). Run `make operating-point` first; this "
             "study measures policy behaviour AT the shipped threshold and must not "
             "invent one." % DEFAULT_PATH)
-    if op.detector != expect:
+    if config_of(op.detector) != expect:
         raise SystemExit(
             "operating-point/detector MISMATCH: the artifact was derived on %r but the "
             "promoted detector is %r. A threshold does not transfer between fits — "

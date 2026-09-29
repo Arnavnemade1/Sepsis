@@ -15,11 +15,15 @@ the diverse member, not on all of them.
     python -m backend.ml.scripts.promote_frontier --limit 8000 --jobs 6 --promote  # ship
     ... --roster hgb,hgb2,et,lr            # or reproduce the incumbent as the candidate
 
-Deliberately cheap: exactly **three** ensemble fits, no cross-validation sweep.
+Deliberately cheap: at most **two** ensemble fits, no cross-validation sweep.
 
-  1. incumbent objective on the training patients   (what we ship today)
-  2. utility objective on the same patients         (the candidate)
-  3. the winner refit on everything                 (only if the gates pass)
+  1. the shipped configuration on the training patients   (read from the manifest)
+  2. the candidate configuration on the same patients
+
+``--incumbent deployed`` asks the other question — the SAME configuration refitted on
+more patients. Nothing is refitted for the incumbent then: the deployed artifact itself
+is scored, only on holdout patients it never trained on, and the alarm-budget gate
+becomes a regression guard (a refit claims better ranking, not better alarms).
 
 Everything else — the temporal-filter comparison, the alarm operating point, the
 held-out gate — is computed from predictions those fits already produced, because a
@@ -56,7 +60,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 
-from backend.ml import config
+from backend.ml import config, fitid
 from backend.ml import operating_point as opmod
 from backend.ml.data.cinc2019 import load_patients
 from backend.ml.data.features import FeatureConfig, build_dataset_cached
@@ -64,6 +68,8 @@ from backend.ml.eval import metrics
 from backend.ml.eval.splits import stratified_group_split
 from backend.ml.eval.utility import best_threshold_utility, utility_terms
 from backend.ml.models.stacked import StackedEnsembleDetector
+
+MANIFEST = os.path.join(config.ARTIFACTS_DIR, "detector_manifest.json")
 
 #: Held-out AUROC the candidate is allowed to give up. Significance is established on
 #: the cross-validated benchmark (paired patient bootstrap), not by this single split,
@@ -169,6 +175,35 @@ def _budget_delta(y, p_cand, p_base, g, o, h, far, n_boot=1500, seed=0):
     return {"delta": float(point), "lo": float(lo), "hi": float(hi)}
 
 
+def load_source(feature_set: str, limit: int, cache: str = ""):
+    """(dataset, source name) — the name is part of the fit digest."""
+    if cache:
+        from backend.ml.eval import bench
+        return (bench.genesis_dev() if cache == bench.GENESIS_DEV
+                else bench._load_cached(cache)), cache
+    cfg = (FeatureConfig.wearable_only if feature_set == "wearable"
+           else FeatureConfig.lab_augmented)()
+    source = f"{feature_set}_limit{limit or 'all'}"
+    return build_dataset_cached(lambda: load_patients(limit=limit), cfg, source), source
+
+
+def promotion_split(manifest: dict):
+    """(dataset, train rows, holdout rows) of the split the shipped detector was
+    promoted under, rebuilt from its manifest and PROVEN to be that split: the training
+    patients must hash to the manifest's fit digest. The holdout is then patients the
+    deployed artifact never saw, which is the only place its own threshold and bands
+    can be measured. Manifests from before the digest existed are rebuilt unproven."""
+    ds, source = load_source(manifest.get("feature_set", "wearable"),
+                             manifest.get("limit") or 0, manifest.get("cache", ""))
+    seed = int(manifest.get("seed", 42))
+    tr, te = stratified_group_split(ds.groups, ds.y, float(manifest.get("holdout", 0.25)), seed)
+    want = manifest.get("fit_digest")
+    if want and fitid.training_digest(ds.groups[tr], source, seed) != want:
+        raise SystemExit(f"the rebuilt split does not reproduce the shipped fit {want}: "
+                         f"its holdout may contain patients the detector trained on")
+    return ds, tr, te
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--feature-set", choices=["wearable", "lab"], default="wearable")
@@ -188,12 +223,21 @@ def main() -> None:
                     default="balanced",
                     help="objective for roster members that do not name their own")
     ap.add_argument("--promote", action="store_true")
+    ap.add_argument("--incumbent", choices=["manifest", "deployed"], default="manifest",
+                    help="manifest: refit the SHIPPED configuration on the same training "
+                         "patients (a configuration comparison). deployed: score the "
+                         "deployed artifact itself, only on holdout patients it never "
+                         "trained on (a refit of the same configuration on more data)")
+    ap.add_argument("--cache", default="",
+                    help="train from this feature cache instead of loading --limit patients "
+                         "(e.g. wearable_genesis_dev: every CinC patient except GENESIS's locked 8,067)")
     args = ap.parse_args()
 
     cfg = (FeatureConfig.wearable_only if args.feature_set == "wearable"
            else FeatureConfig.lab_augmented)()
-    ds = build_dataset_cached(lambda: load_patients(limit=args.limit), cfg,
-                              f"{args.feature_set}_limit{args.limit or 'all'}")
+    if args.cache:
+        args.limit = 0
+    ds, source = load_source(args.feature_set, args.limit, args.cache)
     feats = pd.DataFrame(ds.X, columns=ds.feature_names)
     print(f"Dataset: {len(ds.y):,} rows / {len(set(ds.groups.tolist())):,} patients / "
           f"hour-prevalence {ds.y.mean():.4f}")
@@ -202,14 +246,23 @@ def main() -> None:
               if args.jobs else {})
     if args.jobs:
         print(f"capping CPU to {args.jobs} threads (joblib + OpenMP)")
-    from backend.ml.models.stacked import DEFAULT_ROSTER
     cand_roster = [r.strip() for r in args.roster.split(",") if r.strip()]
+    # The shipped detector, read from its manifest, so the comparison is against what
+    # is actually running rather than against a fresh idea of it. This was hard-coded
+    # to the balanced four-member stack and stayed that way after the patient-objective
+    # stack replaced it, so every run since compared candidates with a retired model.
+    with open(MANIFEST) as fh:
+        shipped = json.load(fh)
     configs = {
-        # The shipped detector, reproduced exactly, so the comparison is against what
-        # is actually running rather than against a fresh idea of it.
-        "incumbent": dict(objective="balanced", roster=list(DEFAULT_ROSTER)),
+        "incumbent": dict(shipped["configs"]["candidate"]),
         "candidate": dict(objective=args.objective, roster=cand_roster),
     }
+    refit = args.incumbent == "deployed"
+    if refit != (configs["candidate"] == configs["incumbent"]):
+        raise SystemExit(
+            "a candidate with the shipped configuration is a REFIT and is judged against "
+            "the deployed artifact (--incumbent deployed); a different configuration is "
+            "judged against the shipped one refitted on the same patients (the default)")
     mk = lambda name: StackedEnsembleDetector(
         channels=list(cfg.channels), use_hdc=False, params=params, **configs[name])
     print(f"incumbent roster: {configs['incumbent']['roster']} "
@@ -218,10 +271,35 @@ def main() -> None:
           f"[objective={configs['candidate']['objective']}]")
 
     tr, te = stratified_group_split(ds.groups, ds.y, args.holdout, args.seed)
+    deployed = None
+    if refit:
+        # A refit is judged against the artifact actually serving, on patients NEITHER
+        # model trained on: the deployed fit's own training patients are rebuilt from
+        # its manifest (and proven, where it records a digest) and dropped from the
+        # holdout.
+        prod_path = os.path.join(config.ARTIFACTS_DIR, f"gbm_{args.feature_set}.joblib")
+        deployed = StackedEnsembleDetector.load(prod_path)
+        if getattr(deployed, "fit_digest_", None) != shipped.get("fit_digest"):
+            raise SystemExit("the deployed artifact is not the fit its manifest records")
+        dep_ds, dep_tr, _ = promotion_split(shipped)
+        seen = np.unique(dep_ds.groups[dep_tr])
+        if len(seen) != shipped["shipped_fit"]["train_patients"]:
+            raise SystemExit(f"rebuilt {len(seen):,} deployed training patients, the manifest "
+                             f"records {shipped['shipped_fit']['train_patients']:,}")
+        n_hold = len(np.unique(ds.groups[te]))
+        te = te[~np.isin(ds.groups[te], seen)]
+        print(f"refit: the deployed artifact trained on {len(seen):,} patients; "
+              f"{n_hold - len(np.unique(ds.groups[te])):,} of the holdout are among them "
+              f"and are not judged")
     ytr, gtr, htr, otr = ds.y[tr], ds.groups[tr], ds.hour_index[tr], ds.onset_hour[tr]
     yte, gte, hte, ote = ds.y[te], ds.groups[te], ds.hour_index[te], ds.onset_hour[te]
-    print(f"train {len(set(gtr.tolist())):,} patients / holdout {len(set(gte.tolist())):,} "
-          f"patients (disjoint by construction)\n")
+    print(f"train {len(set(gtr.tolist())):,} patients / {'judged' if refit else 'holdout'} "
+          f"{len(set(gte.tolist())):,} patients (disjoint by construction)")
+    # The training set is part of the detector's identity: the same roster refitted on
+    # other patients has another score distribution, and a threshold or conformal band
+    # cut on one must not be accepted for the other.
+    fit = fitid.training_digest(gtr, source, args.seed)
+    print(f"fit digest {fit}\n")
 
     # ---------------- fit 1 + 2: the same ensemble under both objectives -------- #
     scores: Dict[str, Dict[str, float]] = {}
@@ -229,9 +307,11 @@ def main() -> None:
     models: Dict[str, object] = {}
     for name in ("incumbent", "candidate"):
         t0 = time.time()
-        print(f"fitting {name} ...", flush=True)
+        print(f"{'scoring the deployed' if deployed is not None and name == 'incumbent' else 'fitting'}"
+              f" {name} ...", flush=True)
         with _cpu_cap(args.jobs):
-            m = mk(name).fit(feats.iloc[tr], ytr, groups=gtr, hour_index=htr, onset_hour=otr)
+            m = (deployed if deployed is not None and name == "incumbent" else
+                 mk(name).fit(feats.iloc[tr], ytr, groups=gtr, hour_index=htr, onset_hour=otr))
         models[name] = m
         preds[name] = m.predict_proba(feats.iloc[te])
         scores[name] = _score(yte, preds[name], gte, hte, ote)
@@ -278,10 +358,10 @@ def main() -> None:
             points[_n] = opmod.derive(
                 yte[ha], preds[_n][ha], gte[ha], hte[ha], ote[ha],
                 objective="constrained", max_false_alarm_rate=args.max_far,
-                seed=args.seed, detector=_detector_id(configs[_n]))
+                seed=args.seed, detector=_detector_id(configs[_n], fit))
     except opmod.Infeasible as e:
         print(f"\nthe detector with no lawful operating point is: {_infeasible_for.upper()}"
-              f"  [{_detector_id(configs[_infeasible_for])}]")
+              f"  [{_detector_id(configs[_infeasible_for], fit)}]")
         # Not a crash and not something to tune around. The alarm budget is a clinical
         # values judgement, so an unsatisfiable one is a question for a person: here is
         # what each budget would actually buy, and which of them need a threshold out
@@ -348,16 +428,20 @@ def main() -> None:
     # interval are noise and are treated as such in both directions — this is a
     # stricter test than the old point-estimate rule (a candidate that merely drifts
     # upward everywhere no longer passes) as well as a fairer one.
+    #
+    # A REFIT is the exception: it claims better ranking, not better alarms. That claim
+    # is what the discrimination gate guards (significance: the registered data-lever
+    # study, artifacts/data_lever.json), so here the budget is a regression guard only.
     sig_gain = [k for k, v in boots.items() if v["lo"] > 0]
     sig_reg = [k for k, v in boots.items() if v["hi"] < 0]
-    detect_ok = bool(sig_gain) and not sig_reg
+    detect_ok = (bool(sig_gain) or refit) and not sig_reg
     print(f"ALARM-BUDGET GATE: {'PASS' if detect_ok else 'FAIL'} "
           f"(significant gains at {sorted(sig_gain) or 'none'}; "
           f"significant regressions at {sorted(sig_reg) or 'none'})")
 
     manifest = {
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "feature_set": args.feature_set, "limit": args.limit, "seed": args.seed,
+        "feature_set": args.feature_set, "limit": args.limit, "cache": args.cache, "seed": args.seed,
         "n_rows": int(len(ds.y)), "n_patients": int(len(set(ds.groups.tolist()))),
         "holdout_metrics": scores, "temporal_filters": filters,
         "auroc_delta": float(delta), "auprc_delta": float(d_auprc),
@@ -372,7 +456,12 @@ def main() -> None:
         # Recorded so a later reader can tell whether the shipped model and the shipped
         # threshold came from the same fit. They must, or the alarm numbers are fiction.
         "shipped_fit": {"train_patients": int(len(set(gtr.tolist()))),
-                        "threshold_derived_on_same_fit": True},
+                        "threshold_derived_on_same_fit": True, "digest": fit},
+        "holdout": args.holdout, "fit_digest": fit,
+        "detector_id": _detector_id(configs["candidate"], fit),
+        "incumbent_source": ("deployed artifact, scored on holdout patients it never "
+                             "trained on" if refit else "refit on the same training patients"),
+        "judged_patients": int(len(np.unique(gte))),
         "operating_point": {"high": float(op.high), "medium": float(op.medium),
                             "incumbent_high": float(points["incumbent"].high),
                             "gated_utility": float(u_new),
@@ -408,8 +497,9 @@ def main() -> None:
     # data, and in exchange the operating point beside it means what it claims.
     prod = os.path.join(config.ARTIFACTS_DIR, f"gbm_{args.feature_set}.joblib")
     if os.path.exists(prod):
-        os.replace(prod, prod + ".balanced.bak")
-        print(f"  backed up the incumbent -> {prod}.balanced.bak")
+        os.replace(prod, prod + ".prev.bak")
+        print(f"  backed up the incumbent -> {prod}.prev.bak")
+    models["candidate"].fit_digest_ = fit      # serving checks this against the threshold
     models["candidate"].save(prod)
     n_train = len(set(gtr.tolist()))
     print(f"\n  PROMOTED -> {prod} ({os.path.getsize(prod)/1e6:.1f} MB)")
@@ -421,16 +511,17 @@ def main() -> None:
     _write_manifest(manifest, promoted=True)
 
 
-def _detector_id(cfg: dict) -> str:
-    """The identity a threshold is only meaningful against: objective + roster."""
-    return f"{cfg['objective']}:{'+'.join(cfg['roster'])}"
+def _detector_id(cfg: dict, fit: Optional[str] = None) -> str:
+    """The identity a threshold is only meaningful against: objective + roster + fit."""
+    return opmod.detector_key(cfg["roster"], cfg["objective"], fit)
 
 
 def manifest_stub(scores, filters, configs, args, accuracy_ok) -> dict:
     """The manifest for a run that never reached a shippable point."""
     return {
         "created": time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "feature_set": args.feature_set, "limit": args.limit, "seed": args.seed,
+        "feature_set": args.feature_set, "limit": args.limit, "cache": args.cache, "seed": args.seed,
+        "holdout": args.holdout,
         "holdout_metrics": scores, "temporal_filters": filters,
         "configs": configs,
         "gates": {"discrimination": bool(accuracy_ok), "decisions": False},

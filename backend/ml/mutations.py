@@ -314,6 +314,34 @@ def digest_is_random(mod):
     mod.fitid = F
 
 
+@mutation("fit-identity", FID, ["bands cut on the old fit are refused for the refit"],
+          note="the configuration-only key the data lever exposed: the same roster refitted "
+               "on four times the patients reads as the same detector, so the old fit's "
+               "bands and threshold are accepted for the new one")
+def key_ignores_fit(mod):
+    import backend.ml.operating_point as O
+    O.detector_key = lambda roster, objective, fit=None: "%s:%s" % (objective, "+".join(roster))
+
+
+@mutation("fit-identity", FID, ["changes with one patient, the source, or the split seed"],
+          note="a digest of the training set's SIZE, not its members: swapping patients "
+               "for others is invisible")
+def digest_counts_patients(mod):
+    import hashlib
+    import backend.ml.fitid as F
+    F.training_digest = lambda g, source, seed: hashlib.sha256(
+        f"{source}|{seed}|{len({str(x) for x in g})}".encode()).hexdigest()[:12]
+    mod.fitid = F
+
+
+@mutation("fit-identity", FID, ["serving flags a model file from another fit than its threshold"],
+          note="serving that trusts whatever model file is on disk: a restored backup or "
+               "an in-place retrain is read at another fit's cut points")
+def serving_trusts_model_file(mod):
+    import backend.aegis.core as C
+    C.AegisCore._fit_mismatch = lambda self: None
+
+
 # ═══════════════════════════════════════════════════════════════════════════ #
 # EXTENSION — the remaining suites that share the check contract.
 #

@@ -32,6 +32,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from backend.ml import config, conformal as cf
+from backend.ml import operating_point as opmod
 from backend.ml.eval import metrics
 from backend.ml.eval.bench import Benchmark, concat, _load_cached
 from backend.ml.eval.splits import stratified_group_split
@@ -62,12 +63,39 @@ def holds(rep: Dict, alpha: float) -> Tuple[bool, float]:
 
 
 def promoted() -> Tuple[str, str]:
-    """(detector identity, feature set) as actually shipped."""
+    """(detector identity, feature set) as actually shipped — the identity includes the
+    training set, so bands cut on another fit of the same roster are refused at load."""
     with open(MANIFEST) as fh:
         man = json.load(fh)
-    cand = man["configs"]["candidate"]
-    ident = f"{cand['objective']}:{'+'.join(cand['roster'])}"
-    return ident, man.get("feature_set", "wearable")
+    return opmod.manifest_key(man), man.get("feature_set", "wearable")
+
+
+def shipped_scores():
+    """The DEPLOYED artifact's scores on the patients it was promoted without.
+
+    Bands are cut points on one fit's score distribution, so they belong on the fit
+    that serves. Cross-validated scores of the same configuration come from other fits
+    (on 5,333 patients each, for the dev benchmark) — close enough while the shipped
+    model was trained on 5,996, not once it was trained on 24,206."""
+    import joblib
+    import pandas as pd
+    from backend.ml.data.features import FeatureMatrix
+    from backend.ml.scripts.promote_frontier import promotion_split
+    with open(MANIFEST) as fh:
+        man = json.load(fh)
+    model = joblib.load(os.path.join(config.ARTIFACTS_DIR,
+                                     f"gbm_{man.get('feature_set', 'wearable')}.joblib"))
+    fit = getattr(model, "fit_digest_", None)
+    if fit != man.get("fit_digest"):
+        raise SystemExit(f"the artifact on disk is fit {fit} but the manifest records "
+                         f"{man.get('fit_digest')}: these are not the same detector")
+    ds, _, te = promotion_split(man)
+    sub = FeatureMatrix(X=ds.X[te], y=ds.y[te], groups=ds.groups[te],
+                        feature_names=list(ds.feature_names),
+                        hour_index=ds.hour_index[te], onset_hour=ds.onset_hour[te])
+    p = np.asarray(model.predict_proba(pd.DataFrame(sub.X, columns=sub.feature_names)), float)
+    n = len(set(sub.groups.tolist()))
+    return sub, p, f"deployed artifact [fit {fit}] on its {n:,} promotion-holdout patients"
 
 
 def channels_for(feature_set: str) -> List[str]:
@@ -254,6 +282,7 @@ def external(args) -> None:
     """
     from backend.ml.scripts.frontier import REGISTRY
     detector, feature_set = promoted()
+    detector = opmod.config_of(detector)          # its own fit, never the served one
     chans = channels_for(feature_set)
     A = _load_cached("wearable_training_setA_limitall")
     B = _load_cached("wearable_training_setB_limitall")
@@ -344,6 +373,9 @@ def main() -> None:
     ap.add_argument("--jobs", type=int, default=0,
                     help="cap worker threads; n_jobs alone leaves the OpenMP pools "
                          "under HistGradientBoosting unbounded, so this caps both")
+    ap.add_argument("--shipped", action="store_true",
+                    help="calibrate on the deployed artifact's own scores for the patients "
+                         "it was promoted without, instead of cross-validated scores")
     ap.add_argument("--save", action="store_true")
     ap.add_argument("--out", default=cf.DEFAULT_PATH)
     args = ap.parse_args()
@@ -357,17 +389,28 @@ def main() -> None:
     if args.external:
         external(args)
         return
-    if not args.candidate and not args.oof:
-        ap.error("give --candidate to fit fresh, or --oof to reuse saved scores")
+    if not (args.candidate or args.oof or args.shipped):
+        ap.error("give --shipped to calibrate the deployed artifact, --candidate to fit "
+                 "fresh, or --oof to reuse saved scores")
 
     detector, feature_set = promoted()
-    bench = Benchmark.load(args.spec, n_folds=args.folds, seed=args.seed)
-    ds = bench.ds
-    print(f"dataset : {bench.describe()}")
+    if not args.shipped:
+        # Cross-validated scores come from fits of the configuration, not from the fit
+        # that serves, so the bands carry the configuration's key and nothing more:
+        # stamping them with the served fit's key would launder exactly the cross-fit
+        # read that key exists to refuse.
+        detector = opmod.config_of(detector)
     print(f"detector: {detector}  (artifacts/detector_manifest.json)")
-
-    p, source = (load_oof(args.oof, len(ds.y)) if args.oof
-                 else run_candidate(bench, args.candidate))
+    if args.shipped:
+        ds, p, source = shipped_scores()
+        print(f"dataset : {len(ds.y):,} rows · {len(set(ds.groups.tolist())):,} patients · "
+              f"hour-prevalence {ds.y.mean():.4f}")
+    else:
+        bench = Benchmark.load(args.spec, n_folds=args.folds, seed=args.seed)
+        ds = bench.ds
+        print(f"dataset : {bench.describe()}")
+        p, source = (load_oof(args.oof, len(ds.y)) if args.oof
+                     else run_candidate(bench, args.candidate))
     if np.isnan(p).any():
         raise SystemExit("scores contain NaN — every row must be scored out-of-fold")
     print(f"scores  : {source}")
@@ -429,6 +472,10 @@ def main() -> None:
     if not args.save:
         print("not saved (pass --save to install)")
         return
+    if detector != promoted()[0]:
+        raise SystemExit(f"refused to save: these bands are cut on '{detector}', but the "
+                         f"served detector is '{promoted()[0]}'. Serving would refuse them; "
+                         f"calibrate the deployed fit with --shipped")
     if not ok:
         raise SystemExit("refused to save: coverage already misses nominal on patients "
                          "we can see; installing it would ship a guarantee we have "

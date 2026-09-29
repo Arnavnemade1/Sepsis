@@ -221,6 +221,17 @@ def main() -> None:
               f"held-out FAR is {far_inc_holdout:.3f}.")
 
     if args.save:
+        # This point was read off THIS script's own fits. Once the manifest names the
+        # shipped fit, installing it would pair a threshold with a model it was never
+        # read off, which is the threshold/fit coupling the promoter exists to respect;
+        # the promoter derives the point on the shipped fit and ships both together.
+        with open(MANIFEST) as fh:
+            shipped_fit = json.load(fh).get("fit_digest")
+        if shipped_fit:
+            print(f"\nREFUSED to save: the shipped detector is fit {shipped_fit} and this "
+                  f"point comes from this script's own fits. Thresholds do not transfer "
+                  f"between fits; re-run promote_frontier to derive one on the shipped fit.")
+            return
         # THE refusal that was missing. The false-alarm cap was enforced only on the
         # scores used to CHOOSE the threshold, and never re-checked on patients held
         # back from that choice — so a point could be saved, and its cap advertised,

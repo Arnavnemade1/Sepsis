@@ -395,10 +395,11 @@ verify-conformal:
 
 # alpha is a REQUEST, not a result: on correlated ICU hours the delivered coverage
 # does not track it, so the level is chosen on a select split and confirmed on a
-# locked one. Reports only; add --save to write artifacts/conformal.json.
+# locked one. Calibrated on the DEPLOYED artifact's own scores for the patients it
+# was promoted without, because bands do not transfer between fits. Reports only;
+# add --save to write artifacts/conformal.json.
 conformal:
-	$(PY) -m backend.ml.scripts.derive_conformal \
-		--oof artifacts/subgroup_oof_dev_stack-patient.npz:stack-patient \
+	$(PY) -m backend.ml.scripts.derive_conformal --shipped \
 		--auto-alpha --sweep 0.03,0.04,0.05,0.06,0.08,0.10
 
 # Exchangeability is what the guarantee trades on, and a different hospital is the

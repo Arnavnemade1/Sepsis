@@ -249,8 +249,7 @@ def check_shipped_operating_point(fx: Fixture) -> None:
     # written a perfectly self-consistent file. A threshold is a reading of one score
     # distribution; this asserts it is a reading of the RIGHT one.
     with open(os.path.join("artifacts", "detector_manifest.json")) as fh:
-        promoted = json.load(fh)["configs"]["candidate"]
-    expect = f"{promoted['objective']}:{'+'.join(promoted['roster'])}"
+        expect = opmod.manifest_key(json.load(fh))      # configuration AND training set
     _detail(f"artifact detector '{op.detector}' vs promoted '{expect}'")
     assert op.detector == expect, (
         f"the operating point was derived on detector '{op.detector}' but the promoted "
@@ -268,22 +267,29 @@ def check_shipped_operating_point(fx: Fixture) -> None:
     #
     # So it now scores the ARTIFACT ON DISK — the model actually deployed — on the
     # holdout patients of the split it was promoted under, which are disjoint from its
-    # training set by construction.
+    # training set by construction. That split is rebuilt from the manifest and proven
+    # by its training-set digest: this check once hard-coded the 8,000-patient split,
+    # which after the 32k-patient refit would have scored the model on its own training
+    # patients and still printed "never trained on".
     import joblib
-    from backend.ml.eval.bench import _load_cached
+    from backend.ml.scripts.promote_frontier import promotion_split
     art = os.path.join("artifacts", "gbm_wearable.joblib")
     assert os.path.exists(art), f"{art} missing — nothing is deployed to audit"
     shipped = joblib.load(art)
-    ds8 = _load_cached("wearable_limit8000")
-    s_tr, s_te = stratified_group_split(ds8.groups, ds8.y, 0.25, SEED)
-    held = pd.DataFrame(ds8.X, columns=ds8.feature_names).iloc[s_te]
+    with open(os.path.join("artifacts", "detector_manifest.json")) as fh:
+        man = json.load(fh)
+    assert getattr(shipped, "fit_digest_", None) == man.get("fit_digest"), (
+        f"the deployed artifact is fit {getattr(shipped, 'fit_digest_', None)} but the "
+        f"manifest records {man.get('fit_digest')} — not the model the threshold was cut on")
+    dsp, s_tr, s_te = promotion_split(man)
+    held = pd.DataFrame(dsp.X[s_te], columns=dsp.feature_names)
     p_held = shipped.predict_proba(held)
-    _detail(f"scoring the DEPLOYED artifact on {len(set(ds8.groups[s_te].tolist())):,} "
+    _detail(f"scoring the DEPLOYED artifact on {len(set(dsp.groups[s_te].tolist())):,} "
             f"holdout patients it never trained on")
     u_new = metrics.normalized_utility(
-        ds8.y[s_te], (p_held >= op.high).astype(int), ds8.groups[s_te], ds8.hour_index[s_te])
+        dsp.y[s_te], (p_held >= op.high).astype(int), dsp.groups[s_te], dsp.hour_index[s_te])
     u_old = metrics.normalized_utility(
-        ds8.y[s_te], (p_held >= 0.12).astype(int), ds8.groups[s_te], ds8.hour_index[s_te])
+        dsp.y[s_te], (p_held >= 0.12).astype(int), dsp.groups[s_te], dsp.hour_index[s_te])
     _detail(f"held-out utility: derived {u_new:+.4f}  vs  shipped-guess 0.12 {u_old:+.4f}")
     assert u_new >= u_old, (
         f"derived point {u_new:+.4f} no longer beats the old 0.12 guess {u_old:+.4f} on "

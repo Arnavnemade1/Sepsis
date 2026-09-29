@@ -158,12 +158,68 @@ def check_the_three_false_findings_are_now_impossible():
     check("...while a genuinely matched pair still compares cleanly", ok)
 
 
+def check_a_refit_on_other_patients_is_refused():
+    """7. The data-lever case. Refitting the SAME roster and objective on four times the
+    patients kept the configuration-only key, so bands and a threshold cut on the old
+    fit would have been accepted for the new one. The training digest must tell the two
+    apart, the conformal loader must refuse across it, and serving must notice a model
+    file that is not the fit its threshold was cut on."""
+    from types import SimpleNamespace
+    from backend.aegis.core import AegisCore
+    from backend.ml import conformal as cf
+    from backend.ml import operating_point as opmod
+
+    pts = [f"p{i:06d}" for i in range(6000)]
+    d0 = fitid.training_digest(pts, "wearable_limit8000", 42)
+    check("the training digest ignores row order",
+          fitid.training_digest(list(reversed(pts)) + pts[:10], "wearable_limit8000", 42) == d0)
+    swapped = pts[:-1] + ["p999999"]
+    diffs = [fitid.training_digest(swapped, "wearable_limit8000", 42),
+             fitid.training_digest(pts, "wearable_genesis_dev", 42),
+             fitid.training_digest(pts, "wearable_limit8000", 7)]
+    check("...and changes with one patient, the source, or the split seed",
+          all(d != d0 for d in diffs), f"{d0} vs {', '.join(diffs)}")
+
+    roster, objective = ["hgb", "hgb2", "et", "lr", "xgb@utility"], "patient"
+    man = {"configs": {"candidate": {"roster": roster, "objective": objective}}}
+    old_key = opmod.manifest_key(man)                         # written before digests
+    new_key = opmod.manifest_key(dict(man, fit_digest=d0))
+    check("a manifest's key carries its fit, and only the fit separates the two keys",
+          new_key != old_key and opmod.config_of(new_key) == old_key, new_key)
+
+    band = cf.CellBand(stratum="marginal", lo=0.05, hi=0.01, q_pos=0.95, q_neg=0.01,
+                       n_hours_pos=100, n_hours_neg=100, n_patients_pos=30, n_patients_neg=30,
+                       fallback_pos=False, fallback_neg=False)
+    bands = cf.ConformalBands(alpha=0.08, spec=cf.StratumSpec([], [], ["HR"]), cells={},
+                              marginal=band, detector=old_key)
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "conformal.json")
+        cf.save(bands, p)
+        refused = cf.load(p, expect_detector=new_key) is None      # PLANTED: old bands
+        bands.detector = new_key
+        cf.save(bands, p)
+        accepted = cf.load(p, expect_detector=new_key) is not None
+    check("bands cut on the old fit are refused for the refit (planted)", refused)
+    check("...while bands cut on the refit itself load", accepted)
+
+    op = SimpleNamespace(detector=new_key)
+    stale = AegisCore._fit_mismatch(SimpleNamespace(model=SimpleNamespace(), operating_point=op))
+    same = AegisCore._fit_mismatch(SimpleNamespace(model=SimpleNamespace(fit_digest_=d0),
+                                                   operating_point=op))
+    old_op = AegisCore._fit_mismatch(SimpleNamespace(model=SimpleNamespace(fit_digest_=d0),
+                                                     operating_point=SimpleNamespace(detector=old_key)))
+    check("serving flags a model file from another fit than its threshold (planted)",
+          bool(stale) and bool(old_op), stale)
+    check("...and stays quiet when the model is the threshold's own fit", same is None)
+
+
 def main() -> None:
     print("Fit fingerprints — adversarial checks\n")
     for fn in (check_digest_is_stable_and_sensitive, check_mismatch_is_refused,
                check_unknown_is_not_compatible, check_stamp_roundtrip,
                check_manifest_is_read_not_retyped,
-               check_the_three_false_findings_are_now_impossible):
+               check_the_three_false_findings_are_now_impossible,
+               check_a_refit_on_other_patients_is_refused):
         fn()
     ok, n = sum(results), len(results)
     print(f"\n{ok}/{n} checks passed")
