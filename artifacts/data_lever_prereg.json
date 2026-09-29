@@ -1,0 +1,15 @@
+{
+  "registered": "2026-09-28",
+  "question": "Does training the SHIPPED detector architecture on all available CinC patients, instead of the ~6,000 it was fitted on, raise AUROC on unseen patients?",
+  "evidence_before": ["The shipped artifact was fitted on 5,996 patients (artifacts/detector_manifest.json).",
+                      "GENESIS learning curve: +~0.02 AUROC per doubling of training patients (docs/GENESIS.md section 8).",
+                      "GENESIS locked evaluation: this architecture refit on 32,268 patients scored 0.8051 on the locked set (a different, one-time measurement; not re-used here)."],
+  "data": {"spec": "full (CinC setA + setB)", "patients": 40335, "rows": 1552192, "features": "the shipped detector's 94 wearable features",
+           "folds": 3, "fold_seed": 42, "harness": "backend/ml/eval/bench.py"},
+  "model": "StackedEnsembleDetector, objective 'patient', roster hgb, hgb2, et, lr, xgb@utility (the shipped configuration, backend/ml/scripts/frontier.py 'stack-patient')",
+  "arms": {"small": "each fold's model fitted on 6,000 of its training patients (uniform, seed 0)",
+           "all": "each fold's model fitted on all of its training patients (~26,900)"},
+  "primary_endpoint": "delta pooled out-of-fold AUROC (all - small); paired patient bootstrap, 1000 draws; SUCCESS iff the 95% lower bound > 0",
+  "secondary": ["per-fold AUROC deltas", "delta detection at a 15% false-alarm budget (paired bootstrap)", "delta AUPRC", "hour-matched AUROC of each arm"],
+  "rules": ["Reported whatever it shows.", "The locked GENESIS patients are not touched: this runs on the full cohort's cross-validation folds, and those patients are not scored as a lock."]
+}
