@@ -1,0 +1,22 @@
+{
+  "registered": "2026-09-28",
+  "question": "Does HDC case retrieval, added to the detector as a disagreeing stack member, raise pooled out-of-fold AUROC on the fixed CinC dev benchmark?",
+  "benchmark": {"spec": "dev", "patients": 8000, "rows": 310061, "folds": 3, "seed": 42,
+                "harness": "backend/ml/eval/bench.py (identical patient-grouped folds)"},
+  "member": {"module": "backend/ml/models/hdc_knn.py", "dim": 4096, "levels": 32, "k": 64,
+             "per_patient": 8, "seed": 0,
+             "bank": "training folds only: up to 8 evenly spaced hours per patient + up to 8 of each septic patient's positive hours",
+             "vote": "similarity-weighted (relu cosine) mean of the k nearest bank hours' labels"},
+  "variants": ["flat-hour", "flat-patient", "segmented-hour", "segmented-patient"],
+  "baselines": {"primary": "stack+xgb@utility (artifacts/frontier/mixed_dev_oof.npz; the benchmark's best AUROC, 0.7811)",
+                "secondary": "stack-patient (artifacts/subgroup_oof_dev_stack-patient.npz; the shipped detector, 0.7605)"},
+  "combiner": "per fold k: logistic regression on [logit(baseline OOF), z-scored member OOF] fitted on the other two folds' out-of-fold rows only, applied to fold k; pooled",
+  "primary_endpoint": "delta pooled AUROC (baseline + member) - (baseline), primary baseline; paired patient bootstrap, 1000 draws; Bonferroni over the 4 variants (98.75% interval). SUCCESS iff the corrected lower bound > 0 for at least one variant.",
+  "secondary": ["the same against the shipped detector", "delta AUPRC (point)", "delta detection at a 15% false-alarm budget (paired patient bootstrap)",
+                "standalone member AUROC", "Spearman rank correlation of the member with the primary baseline"],
+  "controls": {"oracle": "member = label + N(0,1) noise must come out significant (the test can succeed)",
+               "noise": "member = N(0,1) must NOT come out significant (the combiner cannot manufacture a gain)"},
+  "disclosures": ["Before registering, a smoke test scored standalone AUROC of the flat and segmented members on 20,000 rows of fold 0 (hour vote 0.737 / 0.731, patient vote 0.751 / 0.745). No combination result has been computed."],
+  "rules": ["No parameter above changes after results are seen; anything further is labelled exploratory.",
+            "The result is reported whatever it is."]
+}
