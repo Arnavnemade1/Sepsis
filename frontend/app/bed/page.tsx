@@ -5,6 +5,7 @@ import { Suspense, useMemo } from "react";
 
 import { RiskChart, type RiskSeries } from "@/components/bed/chart";
 import { Consult, DecisionCard, Organs, Reasoning, RiskHero, Vitals } from "@/components/bed/panels";
+import { Orders } from "@/components/bed/orders";
 import { BedSelector } from "@/components/bed/selector";
 import { FeedPill } from "@/components/feed";
 import { Page } from "@/components/shell";
@@ -197,9 +198,16 @@ function Bedside() {
                 <Empty>{timeline.data?.refused ?? "Collecting history. A trend needs more than two readings."}</Empty>
               )}
             </Plate>
-            <Plate title="Decision" eyebrow="What the system recommends, and why">
-              <DecisionCard d={decision.data} />
-            </Plate>
+            <div className="flex min-w-0 flex-col gap-5">
+              <Plate title="Decision" eyebrow="What the system recommends, and why">
+                <DecisionCard d={decision.data} />
+              </Plate>
+              {bed && (
+                <Plate title="Orders" eyebrow="Each write is applied only if the Z3 cage certifies it">
+                  <Orders bed={bed} />
+                </Plate>
+              )}
+            </div>
           </div>
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
