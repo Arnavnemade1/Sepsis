@@ -1,14 +1,17 @@
 # Deploying AegisOS
 
-AegisOS is **three deployables** with different hosting needs:
+AegisOS is **four deployables**. What runs where today:
 
 | Piece | What it is | Where it runs |
 |-------|------------|---------------|
-| **Clinical app** (`frontend/`) | The role-routed Next.js app: Command, Bedside, Pharmacy, Lab, System. A static export that talks to the backend from the browser | **Cloudflare Pages** (static, **unlimited bandwidth**) |
-| **Backend** (`backend/`) | FastAPI: the REST surface (`backend/api/routes/`), the `/aegis/stream` and `/aegis/cluster/stream` **WebSockets**, the kernel, the ICU wing, real-data ingest, Supabase persistence | **Render** (persistent web service, from [`render.yaml`](../render.yaml)) |
-| **Legacy shell** (`webui/`) | The previous single-page OS shell, kept deployed until every feature has a home in `frontend/` | Cloudflare Pages (being retired) |
+| **Clinical app** (`frontend/`) | The role-routed Next.js app: Command, Bedside, Pharmacy, Lab, System. A static export that talks to the backend from the browser | **Vercel**, project `aegis-clinical` → https://aegis-clinical-beryl.vercel.app |
+| **Backend** (`backend/`) | FastAPI: the REST surface (`backend/api/routes/`), the `/aegis/stream` and `/aegis/cluster/stream` **WebSockets**, the kernel, the ICU wing, real-data ingest, Supabase persistence | **Render**, from [`render.yaml`](../render.yaml) → https://sepsis-backend-omd1.onrender.com |
+| **Legacy shell** (`webui/`) | The previous single-page OS shell, kept deployed until every feature has a home in `frontend/` ([`PARITY.md`](../frontend/PARITY.md)) | **Vercel**, project `sepsis` → https://sepsis-three.vercel.app (being retired) |
+| **Public site** (`site/`) | The marketing site ([`site/README.md`](../site/README.md)) | **Vercel**, project `sepsis-jwf1` → https://sepsis-jwf1.vercel.app |
 
-> **Why split this way?** The backend must run somewhere persistent: a serverless host cannot hold a WebSocket open or run the background drive loop. The frontends are static; the anatomical twin alone is ~18 MB of organ meshes, and serving that from the backend burns its bandwidth quota, so both live on **Cloudflare Pages**, the only major free host with *uncapped* bandwidth. See **Bandwidth budget** below.
+All three Vercel projects are git-linked to `main`: a push redeploys them (the clinical app only when the push touches `frontend/`, see `ignoreCommand` in [`frontend/vercel.json`](../frontend/vercel.json)). Render redeploys only for backend changes (`buildFilter` in `render.yaml`).
+
+> **Why split this way?** The backend must run somewhere persistent: a serverless host cannot hold a WebSocket open or run the background drive loop. The frontends are static; the anatomical twin alone is ~18 MB of organ meshes, and serving that from the backend would burn its bandwidth quota, so they live on a static host. Vercel's free tier allows 100 GB a month; the meshes are cached `immutable`, so a returning visitor downloads them once. If bandwidth ever becomes the constraint, **Cloudflare Pages** (uncapped) is the documented fallback below, and `frontend/public/_headers` is kept for it. See **Bandwidth budget**.
 
 ---
 
@@ -44,7 +47,20 @@ AegisOS is **three deployables** with different hosting needs:
 
 > The backend also serves the legacy shell (`webui/`) at its root, so the Render URL is a working app on its own. The clinical app (`frontend/`) is deployed separately, below.
 
-## 2 · Deploy the clinical app (`frontend/`) to Cloudflare Pages
+## 2 · Deploy the clinical app (`frontend/`)
+
+### On Vercel (how it runs today)
+
+The project `aegis-clinical` builds `frontend/` with the Next.js preset (Node 24), git-linked to `main`. Everything a build needs is in the repo:
+
+- [`frontend/.env.production`](../frontend/.env.production) sets `NEXT_PUBLIC_AEGIS_BACKEND` to the Render URL. It is public (the browser calls it directly) and baked in at build time; a local `.env.local` still wins for development.
+- [`frontend/vercel.json`](../frontend/vercel.json) caches the organ meshes for a year, sets the security headers, allows camera and microphone on the app's own origin (the optical biosensor and the voice consult), and skips the build when a push does not touch `frontend/`.
+
+To recreate it: **vercel.com → Add New → Project → import `Arnavnemade1/Sepsis` → Root Directory `frontend`** (the preset is detected), no environment variables needed. From a terminal the same thing is `POST /v11/projects` with `{"name", "framework": "nextjs", "rootDirectory": "frontend", "gitRepository": {"type": "github", "repo": "Arnavnemade1/Sepsis"}}` via `vercel api`.
+
+Deployment Protection stays on **Standard**: the production domain is public, per-commit preview URLs require a Vercel login.
+
+### On Cloudflare Pages (the uncapped-bandwidth fallback)
 
 1. **dash.cloudflare.com → Workers & Pages → Create → Pages → Connect to Git**, select this repo.
 2. Build settings:
@@ -56,18 +72,18 @@ AegisOS is **three deployables** with different hosting needs:
    - **Node:** 20.9 or newer (`NODE_VERSION=20` if the image defaults lower).
 3. Deploy. Every route is pre-rendered (`/`, `/command/`, `/bed/`, `/pharmacy/`, `/lab/`, `/os/`); per-patient pages take the patient as a query string (`/bed/?id=bed_6`), which is why no server is needed.
 
-Cloudflare reads [`frontend/public/_headers`](../frontend/public/_headers): the organ meshes and hashed build output are cached `immutable` for a year, pages revalidate so a deploy lands immediately, and camera/microphone are allowed on the app's own origin (the optical biosensor and the voice consult). CORS on the backend is already `*`.
+Cloudflare reads [`frontend/public/_headers`](../frontend/public/_headers), which mirrors the headers in `vercel.json`. CORS on the backend is already `*`.
 
 > **Point a deployed app at a different backend without rebuilding:** in the browser console,
 > `localStorage.setItem('aegis_backend','https://<service>.onrender.com'); location.reload()`
 
 ### The legacy shell (`webui/`), while it is being retired
 
-Same Pages flow with **Framework preset** `None`, **Build command** empty, **Build output directory** `webui`. It reads its backend from [`webui/config.js`](../webui/config.js) and its cache policy from [`webui/_headers`](../webui/_headers).
+It runs as the Vercel project `sepsis` (root `webui`, no build step). It reads its backend from [`webui/config.js`](../webui/config.js). On Cloudflare Pages it would be **Framework preset** `None`, **Build command** empty, **Build output directory** `webui`, with its cache policy in [`webui/_headers`](../webui/_headers).
 
 ## 3 · Verify the live site
 
-Open the Pages URL and confirm:
+Open https://aegis-clinical-beryl.vercel.app and confirm:
 - The launcher lists the demo staff (it reads `/aegis/sys/accounts`). If it says the backend is waking, a free-tier Render service is cold-starting (~30–60 s); the page retries on its own.
 - Sign in as **Priya Patel, RN**: **Command** shows twelve beds and the ward-feed pill reads **live**.
 - Open a bed: the anatomical twin loads and the risk, vitals and decision populate.

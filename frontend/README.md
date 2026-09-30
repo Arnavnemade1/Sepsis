@@ -2,7 +2,7 @@
 
 The product's face: five role workspaces over one running AegisOS backend. Next.js 16
 (App Router), React 19, Tailwind v4 and three.js r160, built as a **static export** and
-deployed to Cloudflare Pages.
+deployed to Vercel.
 
 ```bash
 cp .env.example .env.local   # NEXT_PUBLIC_AEGIS_BACKEND=http://127.0.0.1:8100 (make serve)
@@ -35,7 +35,8 @@ components/   shell.tsx (top bar, nav, backend status, user) · ui.tsx (plates, 
 engine/       twin3d.js — the anatomical twin, ported from webui/twin3d.js
 lib/          api.ts (backend + gate token) · hooks.ts (useFeed, usePoll, useSession)
               types.ts (backend contracts) · clinical.ts (tone + formatting) · ecosystem.ts
-public/       vendor/models (organ meshes, CC BY 4.0) · _headers (Cloudflare)
+public/       vendor/models (organ meshes, CC BY 4.0) · _headers (Cloudflare fallback)
+vercel.json   headers, ignored-build step (Vercel)
 ```
 
 ## Rules this code keeps
@@ -76,5 +77,8 @@ public/       vendor/models (organ meshes, CC BY 4.0) · _headers (Cloudflare)
 
 ## Deploying
 
-Cloudflare Pages, root directory `frontend`, build `npm run build`, output `out`, with
-`NEXT_PUBLIC_AEGIS_BACKEND` set to the Render URL. See [`../deploy/README.md`](../deploy/README.md).
+Live at **https://aegis-clinical-beryl.vercel.app**: the Vercel project `aegis-clinical`,
+root directory `frontend`, git-linked to `main`. The backend URL comes from `.env.production`
+and the headers from `vercel.json`, so a build needs no dashboard configuration. A push that
+does not touch `frontend/` skips the build. Cloudflare Pages is the documented fallback
+(`public/_headers` mirrors `vercel.json`). See [`../deploy/README.md`](../deploy/README.md).

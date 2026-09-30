@@ -53,12 +53,13 @@ Thirteen findings, strongest first, and the published nulls are in
 
 | Service | URL |
 |:--|:--|
-| Clinical app (`frontend/`) | Cloudflare Pages — connect the project with [`deploy/README.md`](deploy/README.md) §2 |
+| **Clinical app** (`frontend/`) | **https://aegis-clinical-beryl.vercel.app** |
 | Backend REST (Render) | https://sepsis-backend-omd1.onrender.com |
 | Health | https://sepsis-backend-omd1.onrender.com/aegis/health |
 | Live patient stream (WebSocket) | `wss://sepsis-backend-omd1.onrender.com/aegis/stream` |
 | Ward stream (WebSocket) | `wss://sepsis-backend-omd1.onrender.com/aegis/cluster/stream` |
-| Legacy OS shell (`webui/`) | served at the backend root, and on Cloudflare Pages while it is retired |
+| Legacy OS shell (`webui/`) | https://sepsis-three.vercel.app (and at the backend root) — being retired |
+| Public site (`site/`) | https://sepsis-jwf1.vercel.app |
 
 The backend runs on Render's free tier: after 15 idle minutes it sleeps, and the first request
 takes 30–60 s to wake it. The app says so and retries.
@@ -126,7 +127,7 @@ a socket). Never in a query string: URLs end up in logs.
 ## Architecture
 
 ```text
-Browser (frontend/, static on Cloudflare Pages)
+Browser (frontend/, static on Vercel)
   │
   ├─ REST ─────────► FastAPI  backend.aegis.server:app  (Render)
   │                    │
@@ -302,7 +303,7 @@ Every layer has its own `verify_*.py`. Run them all with `make verify-os`.
 │   ├── llm/              Dr. Aegis: grounded consult, voice relay, provider failover
 │   ├── hostresponse/     the pre-registered GEO gene-expression study
 │   └── core/             the original primitives: HDC, simulator, neurosymbolic rules, Z3 verifier
-├── deploy/               how each piece is deployed (Render, Cloudflare Pages, Supabase)
+├── deploy/               how each piece is deployed (Vercel, Render, Supabase)
 ├── webui/                the previous OS shell, being retired
 ├── site/                 the public Next.js site
 ├── docs/                 FINDINGS.md and one report per finding
@@ -354,7 +355,8 @@ make mimic-demo     # the whole MIMIC-IV pipeline on the demo, ~3.5 min
 
 | Piece | Where | Notes |
 |:--|:--|:--|
-| Clinical app (`frontend/`) | Cloudflare Pages | Root `frontend`, build `npm run build`, output `out`. Static export: per-patient pages take the patient as `?id=`, so no server is needed. Organ meshes cached immutable |
+| Clinical app (`frontend/`) | Vercel (`aegis-clinical`) | Root `frontend`, git-linked to `main`; a push that touches `frontend/` redeploys it. Static export: per-patient pages take the patient as `?id=`, so no server is needed. Organ meshes cached immutable |
+| Legacy shell · public site | Vercel (`sepsis` · `sepsis-jwf1`) | Roots `webui` and `site`, both git-linked to `main` |
 | Backend (`backend/`) | Render, from [`render.yaml`](render.yaml) | FastAPI, the WebSockets and the live drive loops. Commits touching only `frontend/`, `webui/`, `site/` or docs do not redeploy it |
 | Persistence | Supabase | Real camera telemetry (raw 7 days, 1-minute rollups kept), the kernel journal and files |
 | CI | GitHub Actions | `verify-os` on every push, and a keep-warm ping inside a fixed daily window that fits Render's free tier |
