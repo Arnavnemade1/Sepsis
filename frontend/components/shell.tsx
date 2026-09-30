@@ -67,6 +67,18 @@ function UserChip() {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
+  // The kernel's session secret is random per boot, so a backend restart signs
+  // everyone out. Ask the kernel who we are; if it no longer knows this token,
+  // drop it rather than keep showing a name the gate treats as a guest.
+  useEffect(() => {
+    if (!s) return;
+    api<{ credential: { username: string } }>("/aegis/sys/whoami")
+      .then((w) => {
+        if (w.credential.username !== s.credential.username) writeSession(null);
+      })
+      .catch(() => {});
+  }, [s]);
+
   if (!s)
     return (
       <Link href="/" className="rounded-md border border-line bg-s2 px-3 py-1.5 text-[12.5px] text-ink hover:bg-s3">
