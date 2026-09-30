@@ -22,6 +22,74 @@ from backend.aegis.server import (
 router = APIRouter()
 
 
+@router.get("/aegis/lab/evidence")
+def lab_evidence() -> Dict[str, Any]:
+    """What is deployed, and the evidence behind it, read from the artifacts.
+
+    The detector block comes from ``detector_manifest.json``, the record the
+    promotion gate writes when it ships a model, so it describes the model that
+    is actually loaded. Every other block carries the detector it was measured
+    on and ``matches_detector``: an artifact scored on an earlier fit is still
+    shown, but never silently presented as describing this one.
+    """
+    from backend.ml import config as _cfg
+    import os as _os
+
+    def art(name: str) -> Any:
+        return _read_json(_os.path.join(_cfg.ARTIFACTS_DIR, name))
+
+    man = art("detector_manifest.json") or {}
+    det_id = man.get("detector_id")
+    keep = ("auroc", "auprc", "ece", "utility", "detect_at_far15", "lead_at_far15",
+            "detection_at_spec90", "false_alarm_at_spec90")
+    hold = man.get("holdout_metrics") or {}
+    out: Dict[str, Any] = {"detector": None, "operating_point": None,
+                           "conformal": None, "falsification": None}
+    if man:
+        out["detector"] = {
+            "id": det_id, "promoted": bool(man.get("promoted")), "created": man.get("created"),
+            "feature_set": man.get("feature_set"),
+            "roster": (man.get("configs") or {}).get("candidate", {}).get("roster"),
+            "calibration": (man.get("configs") or {}).get("candidate", {}).get("calibration"),
+            "train_patients": (man.get("shipped_fit") or {}).get("train_patients"),
+            "judged_patients": man.get("judged_patients"),
+            "judged_on": man.get("incumbent_source"),
+            "shipped": {k: (hold.get("candidate") or {}).get(k) for k in keep},
+            "predecessor": {k: (hold.get("incumbent") or {}).get(k) for k in keep},
+            "gates": man.get("gates"),
+        }
+    op = art("operating_point.json")
+    if op:
+        out["operating_point"] = {
+            "high": op.get("high"), "medium": op.get("medium"),
+            "max_false_alarm_rate": op.get("max_false_alarm_rate"),
+            "detection_rate": op.get("oof_detection_rate"),
+            "false_alarm_rate": op.get("oof_false_alarm_rate"),
+            "false_alarm_upper": op.get("oof_false_alarm_upper"),
+            "median_lead_hours": op.get("oof_median_lead_hours"),
+            "n_patients": op.get("n_patients"),
+            "detector": op.get("detector"), "matches_detector": op.get("detector") == det_id,
+        }
+    cf = art("conformal.json")
+    if cf:
+        locked = (cf.get("coverage") or {}).get("locked") or {}
+        overall = locked.get("overall") or {}
+        out["conformal"] = {
+            "alpha": cf.get("alpha"), "nominal": locked.get("nominal"),
+            "coverage_septic": overall.get("micro_pos"), "coverage_non_septic": overall.get("micro_neg"),
+            "abstain_rate": locked.get("abstain_rate"), "n_patients": locked.get("n_patients"),
+            "detector": cf.get("detector"), "matches_detector": cf.get("detector") == det_id,
+        }
+    fz = art("falsification.json")
+    if fz:
+        out["falsification"] = {
+            "generated": fz.get("generated"), "mutations": fz.get("n_mutations"),
+            "killed": fz.get("n_killed"), "skipped": fz.get("n_skipped"),
+            "coverage": fz.get("coverage"), "survivors": fz.get("survivors"),
+        }
+    return out
+
+
 @router.get("/aegis/lab")
 def lab_state() -> Dict[str, Any]:
     """The Lab: agents propose, a locked gate adjudicates, refusals are the record.

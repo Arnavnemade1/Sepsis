@@ -1150,6 +1150,14 @@
    "path": "/aegis/os/stream",
    "cap": "view:public",
    "class": "stream"
+  },
+  {
+   "nr": 144,
+   "name": "lab.evidence",
+   "method": "GET",
+   "path": "/aegis/lab/evidence",
+   "cap": "view:public",
+   "class": "read"
   }
  ]
 }
