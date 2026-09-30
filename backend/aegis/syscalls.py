@@ -145,7 +145,15 @@ class SyscallTable:
         return self.interventions.setdefault(bed, Intervention())
 
     def _profile(self, bed: str):
-        return getattr(self.cluster, "profiles", {}).get(bed)
+        """The bed's profile carrying the risk the board shows. Treat grades its
+        risk level, escalate computes the band the cage checks against, and the
+        bundle is generated, all from this profile's ``fused_risk``; reading the
+        raw population profile let the prover certify an escalation to CRITICAL
+        for a patient the unit itself called WATCH."""
+        cl = self.cluster
+        if bed not in getattr(cl, "profiles", {}):
+            return None
+        return cl.effective_profile(bed) if hasattr(cl, "effective_profile") else cl.profiles[bed]
 
     # ------------------------------------------------------------------ #
     # The public trap entry point.

@@ -13,6 +13,9 @@ Proves the cockpit runs on real ICU data, not synthetic beds:
   5. One risk per bed: the board, effective_risk() and the profile handed to the
      bundle engine agree, including after a chart's prior shift — and the check
      only counts because a bed exists where population and effective risk differ.
+  6. The write path grades the same risk: an escalation's band (what the Z3
+     cage checks it against) comes from the effective risk, on a bed where the
+     population risk would put it in a different band.
 
     .venv/bin/python -m backend.aegis.verify_cohort
 """
@@ -111,6 +114,26 @@ def test_one_risk_per_bed() -> None:
         f"{board[worst]:.3f}; board, effective_risk and the bundle agree (also with uplift)")
 
 
+def test_write_path_grades_effective_risk() -> None:
+    print("[6] the write path grades the same risk the board shows")
+    from backend.aegis.kernel import BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
+    from backend.aegis.syscalls import SyscallTable, _band
+    cl = CohortCluster(n=12, lane_budget=160, seed=7)
+    cl.run(60)
+    board = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
+    split = [nid for nid in board if _band(cl.profiles[nid].fused_risk) != _band(board[nid])]
+    # Without a bed whose population band differs from its effective band, this
+    # check could not tell the two risks apart.
+    assert split, "no bed where population and effective risk fall in different bands"
+    nid = split[0]
+    table = SyscallTable(cl, SepsisBundleEngine(), NeuroSymbolicRuntime())
+    res = table.invoke("escalate", nid, {}, caller="verify")
+    band = res.to_dict()["result"].get("band")
+    assert band == _band(board[nid]), (nid, band, _band(board[nid]), _band(cl.profiles[nid].fused_risk))
+    _ok(f"{nid}: escalate graded band {band} from effective {board[nid]:.3f} "
+        f"(population {cl.profiles[nid].fused_risk:.3f} would be band {_band(cl.profiles[nid].fused_risk)})")
+
+
 def main() -> None:
     print("=" * 64)
     print("AegisOS — real-patient cohort engine (CinC-2019) verification")
@@ -120,6 +143,7 @@ def main() -> None:
     test_end_to_end_lead_time()
     test_roster_and_chart()
     test_one_risk_per_bed()
+    test_write_path_grades_effective_risk()
     print("-" * 64)
     print("ALL COHORT CHECKS PASSED")
 
