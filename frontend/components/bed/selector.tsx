@@ -6,8 +6,16 @@ import { useEffect, useRef, useState } from "react";
 import { cx } from "@/components/ui";
 import type { RosterPatient } from "@/lib/types";
 
-/** The patient switcher that sits in the top bar on the Bedside workspace. */
-export function BedSelector({ roster, current }: { roster: RosterPatient[]; current: RosterPatient | null }) {
+/** The patient switcher that sits in the top bar of any per-patient workspace. */
+export function BedSelector({
+  roster,
+  current,
+  hrefFor = (id) => `/bed/?id=${encodeURIComponent(id)}`,
+}: {
+  roster: RosterPatient[];
+  current: RosterPatient | null;
+  hrefFor?: (id: string) => string;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -53,7 +61,7 @@ export function BedSelector({ roster, current }: { roster: RosterPatient[]; curr
               aria-selected={p.id === current?.id}
               onClick={() => {
                 setOpen(false);
-                router.push(`/bed/?id=${encodeURIComponent(p.id)}`);
+                router.push(hrefFor(p.id));
               }}
               className={cx(
                 "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left",
