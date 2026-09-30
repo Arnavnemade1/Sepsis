@@ -57,6 +57,11 @@ def lab_evidence() -> Dict[str, Any]:
             "shipped": {k: (hold.get("candidate") or {}).get(k) for k in keep},
             "predecessor": {k: (hold.get("incumbent") or {}).get(k) for k in keep},
             "gates": man.get("gates"),
+            # the share of septic patients caught when the alarm may fire on at most
+            # k% of non-septic patients (the README's "inside a 15% alarm budget")
+            "alarm_budget": {
+                side: {k: v for k, v in ((man.get("alarm_budget") or {}).get(side) or {}).items()}
+                for side in ("candidate", "incumbent")},
         }
     op = art("operating_point.json")
     if op:

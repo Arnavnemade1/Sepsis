@@ -10,8 +10,11 @@ what is experimental, and what exists to preserve research history.
 | `README.md` | Project overview, validated claims, quickstart. |
 | `Makefile` | Common local workflows: setup, verify, serve, train, evaluate. |
 | `verify_full_system.py` | End-to-end smoke and subsystem verification. |
-| `backend/aegis/server.py` | Main FastAPI app and static `webui/` shell server. |
-| `webui/` | Current AegisOS shell frontend. |
+| `backend/aegis/server.py` | The FastAPI app's composition root: kernel bring-up, session, cohort, drive loops, and the static `webui/` mount. |
+| `backend/api/routes/` | Every REST/WebSocket endpoint, one router per domain; request bodies in `backend/api/schemas.py`. |
+| `frontend/` | The clinical app: role workspaces (`/command`, `/bed`, `/pharmacy`, `/lab`, `/os`). See `frontend/README.md`. |
+| `deploy/` | How each piece is deployed. |
+| `webui/` | The previous single-page OS shell, kept until the clinical app reaches parity. |
 
 ## Backend Surfaces
 
@@ -24,7 +27,7 @@ what is experimental, and what exists to preserve research history.
 | `backend/vision/` | Active sensor subsystem | rPPG, camera vitals, motion robustness, distress/perfusion signs. |
 | `backend/llm/` | Optional narrative layer | Deterministic fallback is required; the system must not depend on LLM availability. |
 | `backend/core/` | Legacy + primitives | Original HDC, simulator, neurosymbolic rules, Z3 verifier used by tests/runtime. |
-| `backend/api/` + `frontend/` | Legacy demo | Simulator-era UI/API. Keep for comparison, but do not treat as the primary app. |
+| `backend/api/` | Active REST surface | The domain routers and request schemas the server composes. (The simulator-era `app.py` that lived here was removed 2026-09-29.) |
 
 ## ML Truth Table
 

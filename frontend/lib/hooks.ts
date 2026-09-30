@@ -54,9 +54,26 @@ export function useFeed<T>(path: string | null): { data: T | null; status: FeedS
       timer = setTimeout(open, backoff);
       backoff = Math.min(backoff * 2, 15_000);
     };
-    open();
+    // A backgrounded tab must not keep draining the backend's bandwidth (Render
+    // free tier): close the socket while hidden, reopen when visible again.
+    const onVis = () => {
+      if (document.hidden) {
+        closed = true;
+        clearTimeout(timer);
+        clearInterval(ping);
+        ws?.close();
+      } else if (closed) {
+        closed = false;
+        backoff = 1000;
+        open();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+    if (!document.hidden) open();
+    else closed = true;
     return () => {
       closed = true;
+      document.removeEventListener("visibilitychange", onVis);
       clearTimeout(timer);
       clearInterval(ping);
       ws?.close();
@@ -99,12 +116,21 @@ export function usePoll<T>(path: string | null, everyMs = 0): {
         if (alive) setError(e instanceof Error ? e.message : String(e));
       } finally {
         if (alive) setLoading(false);
-        if (alive && everyMs > 0) timer = setTimeout(run, everyMs);
+        if (alive && everyMs > 0 && !document.hidden) timer = setTimeout(run, everyMs);
       }
     };
+    // Polling stops while the tab is hidden and refreshes once on return.
+    const onVis = () => {
+      if (!document.hidden && alive && everyMs > 0) {
+        clearTimeout(timer);
+        run();
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
     run();
     return () => {
       alive = false;
+      document.removeEventListener("visibilitychange", onVis);
       clearTimeout(timer);
     };
   }, [path, everyMs, nonce]);

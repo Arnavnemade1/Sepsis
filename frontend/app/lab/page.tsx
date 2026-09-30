@@ -28,6 +28,7 @@ type Evidence = {
     shipped: Metrics;
     predecessor: Metrics;
     gates: Record<string, boolean>;
+    alarm_budget?: { candidate?: Record<string, number>; incumbent?: Record<string, number> };
   };
   operating_point: null | {
     high: number;
@@ -109,7 +110,12 @@ export default function LabPage() {
             <>
               <div className="grid grid-cols-2 gap-6 md:grid-cols-3 xl:grid-cols-6">
                 <Stat label="AUROC" value={d.shipped.auroc.toFixed(3)} size="lg" sub={`was ${d.predecessor.auroc.toFixed(3)}`} />
-                <Stat label="Caught within a 15% alarm budget" value={pct(d.shipped.detect_at_far15, 0)} size="lg" sub={`was ${pct(d.predecessor.detect_at_far15, 0)}`} />
+                <Stat
+                  label="Caught within a 15% alarm budget"
+                  value={pct(d.alarm_budget?.candidate?.det15, 0)}
+                  size="lg"
+                  sub={`was ${pct(d.alarm_budget?.incumbent?.det15, 0)}`}
+                />
                 <Stat label="Calibration error (ECE)" value={d.shipped.ece.toFixed(3)} size="lg" sub={`was ${d.predecessor.ece.toFixed(3)}`} />
                 <Stat label="Clinical utility" value={d.shipped.utility.toFixed(3)} size="lg" sub={`was ${d.predecessor.utility.toFixed(3)}`} />
                 <Stat label="Trained on" value={d.train_patients.toLocaleString()} unit="patients" size="lg" />

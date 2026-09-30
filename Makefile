@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -59,6 +59,8 @@ help:
 	@echo "  make verify-agent  Agent plane: catalogue, read confinement, gated writes"
 	@echo "  make verify-llm    LLM transport: fallback chain, cooldown, cache, budget"
 	@echo "  make serve        Start the AegisOS API + web shell"
+	@echo "  make web          Start the clinical app (frontend/) on http://localhost:3000"
+	@echo "  make web-build    Typecheck and static-export the clinical app to frontend/out"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
 	@echo "  make frontier     Benchmark every detector technology on identical folds"
@@ -436,6 +438,13 @@ lab-registry:
 # the shader, and the browser blames the .replace() call. Twice now.
 check-webui:
 	./scripts/check_webui_syntax.sh
+
+# The clinical app. `make serve` in one terminal, `make web` in another.
+web:
+	cd frontend && npm install --no-audit --no-fund && npm run dev
+
+web-build:
+	cd frontend && npm ci --no-audit --no-fund && npm run typecheck && npm run build
 
 verify-timeline:
 	PYTHONPATH=. $(PY) -m backend.aegis.verify_risk_timeline
