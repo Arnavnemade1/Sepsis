@@ -17,6 +17,7 @@ from backend.api.schemas import (
     TrackIn,
 )
 from backend.aegis.server import (
+    _effective_profile,
     DATA_MODE,
     EXEC,
     _bed_snapshot,
@@ -114,7 +115,7 @@ def cohort_bundle(bed_id: str) -> Dict[str, Any]:
     if bed_id not in getattr(cluster, "profiles", {}):
         return {"status": "error", "detail": f"unknown bed '{bed_id}'"}
     return bundle_engine.generate(
-        cluster.profiles[bed_id], getattr(cluster, "histories", {}).get(bed_id, {}))
+        _effective_profile(bed_id), getattr(cluster, "histories", {}).get(bed_id, {}))
 
 
 @router.get("/aegis/cohort/{bed_id}/chart")

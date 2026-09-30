@@ -28,7 +28,7 @@ from __future__ import annotations
 import contextlib
 import glob
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Dict, List, Iterable, Optional, Tuple
 
 import numpy as np
@@ -712,6 +712,37 @@ class CohortCluster:
         return d
 
     # -- views ---------------------------------------------------------- #
+    def _history_uplift(self, nid: str) -> float:
+        """The imported chart's log-odds prior shift for a bed (0 without a history)."""
+        prov = getattr(self, "susceptibility_provider", None)
+        if prov is None:
+            return 0.0
+        try:
+            return float(prov(nid) or 0.0)
+        except Exception:
+            return 0.0
+
+    def effective_risk(self, nid: str) -> float:
+        """THE risk for a bed: population fusion, then the patient's own-baseline
+        personalization, then the imported chart's prior shift.
+
+        This is the number the board, the tier badge and the scheduler act on.
+        ``profiles[nid].fused_risk`` is only the POPULATION input to it, and reading
+        that instead made two screens disagree about one patient: the focus bundle
+        certified a patient as CRITICAL at 1.00 while the board, from this same
+        cluster, called him WATCH at 0.62. Every consumer reads this method."""
+        risk = self.personalized.get(nid, {}).get("risk", self.profiles[nid].fused_risk)
+        uplift = self._history_uplift(nid)
+        if uplift:
+            from backend.aegis.patient_records import personalize_risk
+            risk = personalize_risk(risk, uplift)
+        return float(risk)
+
+    def effective_profile(self, nid: str):
+        """The bed's profile carrying its effective risk (for the bundle engine,
+        which reads ``fused_risk``)."""
+        return replace(self.profiles[nid], fused_risk=self.effective_risk(nid))
+
     def _bed_dict(self, nid: str) -> Dict[str, Any]:
         prof = self.profiles[nid]
         p = self._by[nid]
@@ -740,16 +771,8 @@ class CohortCluster:
         # comorbidity-history personalization (imported/linked chart) — layered on top of
         # the baseline-learning risk so the WHOLE UI (grid + dossier) reflects it. The
         # provider is injected by the server; beds with no history return 0 (no-op).
-        prov = getattr(self, "susceptibility_provider", None)
-        if prov is not None:
-            try:
-                uplift = float(prov(nid) or 0.0)
-            except Exception:
-                uplift = 0.0
-            if uplift:
-                from backend.aegis.patient_records import personalize_risk
-                d["history_uplift"] = round(uplift, 3)
-                d["fused_risk"] = personalize_risk(d["fused_risk"], uplift)
+        d["history_uplift"] = round(self._history_uplift(nid), 3)
+        d["fused_risk"] = self.effective_risk(nid)
         return d
 
     def _ews_at(self, nid: str, h: int) -> Dict[str, Any]:

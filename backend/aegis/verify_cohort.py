@@ -10,6 +10,9 @@ Proves the cockpit runs on real ICU data, not synthetic beds:
      and at least one severe septic patient crosses the critical threshold near
      its TRUE onset — i.e. genuine early-warning lead time on real data.
   4. The roster + per-bed chart expose real demographics, labels and trajectories.
+  5. One risk per bed: the board, effective_risk() and the profile handed to the
+     bundle engine agree, including after a chart's prior shift — and the check
+     only counts because a bed exists where population and effective risk differ.
 
     .venv/bin/python -m backend.aegis.verify_cohort
 """
@@ -83,6 +86,31 @@ def test_roster_and_chart() -> None:
         f"across {len(ch['series'])} channels + ground-truth labels")
 
 
+def test_one_risk_per_bed() -> None:
+    print("[5] one risk per bed: board == effective_risk == bundle input")
+    from backend.aegis.kernel.bundle import SepsisBundleEngine
+    cl = CohortCluster(n=12, lane_budget=160, seed=7)
+    cl.run(60)
+    board = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
+    gaps = {nid: abs(cl.profiles[nid].fused_risk - board[nid]) for nid in board}
+    # Without a bed whose population risk differs from its effective risk, every
+    # assertion below would pass even if a consumer read the population number.
+    worst = max(gaps, key=gaps.get)
+    assert gaps[worst] > 0.05, f"no divergent bed; the check would be vacuous ({gaps})"
+    for nid, r in board.items():
+        assert abs(cl.effective_risk(nid) - r) < 1e-9, (nid, cl.effective_risk(nid), r)
+        assert abs(cl.effective_profile(nid).fused_risk - r) < 1e-9, nid
+    bundle = SepsisBundleEngine().generate(cl.effective_profile(worst), cl.histories.get(worst, {}))
+    assert abs(bundle["fused_risk"] - round(board[worst], 3)) < 1e-3, (bundle["fused_risk"], board[worst])
+    # a chart's prior shift moves the board and effective_risk together
+    cl.susceptibility_provider = lambda nid: 1.0 if nid == worst else 0.0
+    shifted = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
+    assert shifted[worst] > board[worst] + 1e-3, "uplift did not move the board"
+    assert abs(cl.effective_risk(worst) - shifted[worst]) < 1e-9
+    _ok(f"{worst}: population {cl.profiles[worst].fused_risk:.3f} vs effective "
+        f"{board[worst]:.3f}; board, effective_risk and the bundle agree (also with uplift)")
+
+
 def main() -> None:
     print("=" * 64)
     print("AegisOS — real-patient cohort engine (CinC-2019) verification")
@@ -91,6 +119,7 @@ def main() -> None:
     test_feed_replays_real_values()
     test_end_to_end_lead_time()
     test_roster_and_chart()
+    test_one_risk_per_bed()
     print("-" * 64)
     print("ALL COHORT CHECKS PASSED")
 

@@ -897,11 +897,11 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
     # Personalisation: an imported/linked chart shifts the alerting PRIOR for a
     # high-risk host (immunosuppression, CKD, …). Population risk is preserved; the
     # band is taken from the personalised risk so the OS alerts these patients sooner.
-    from backend.aegis.patient_records import personalize_risk as _personalize
+    # The effective risk already carries both personalisations (own-baseline and the
+    # chart's prior shift) and is the number the ward board shows for this bed.
+    personalized = round(_effective_risk(bed), 4) if prof else 0.0
     _hobj = patient_terminal.get_history(bed)
     _susc = (_hobj or {}).get("susceptibility") or {}
-    _uplift = float(_susc.get("logit_uplift", 0.0) or 0.0)
-    personalized = _personalize(fused, _uplift) if _uplift else round(fused, 4)
     level = "HIGH" if personalized >= 0.6 else "MEDIUM" if personalized >= 0.35 else "LOW"
     wbc = float(hist.get("wbc", 7.5)); gcs = int(hist.get("gcs", 15))
     sirs = (int(v["skin_temp"] > 38 or v["skin_temp"] < 36) + int(v["heart_rate"] > 90)
@@ -1371,16 +1371,31 @@ def _certify_cluster_headline(decision) -> None:
     })
 
 
+def _effective_risk(bed: str) -> float:
+    """The risk the system acts on for a bed (see CohortCluster.effective_risk).
+    Falls back to the raw fused risk on a cluster that does not personalize."""
+    if hasattr(cluster, "effective_risk"):
+        return cluster.effective_risk(bed)
+    return float(cluster.profiles[bed].fused_risk)
+
+
+def _effective_profile(bed: str):
+    if hasattr(cluster, "effective_profile"):
+        return cluster.effective_profile(bed)
+    return cluster.profiles[bed]
+
+
 def _focus_bundle() -> Optional[Dict[str, Any]]:
     """Compile + certify the Hour-1 bundle for the critical focus bed (the preempt
     owner, else the highest-risk bed once it breaches). Throttled so the Z3 prover
     runs at most ~every 2.5 s per bed rather than every broadcast tick."""
     owner = cluster.sched.last.owner if cluster.sched.last else None
+    risk = {nid: _effective_risk(nid) for nid in cluster.profiles}
     focus = None
-    if owner and owner in cluster.profiles and cluster.profiles[owner].fused_risk >= 0.70:
+    if owner and risk.get(owner, 0.0) >= 0.70:
         focus = owner
     else:
-        crit = [(p.fused_risk, nid) for nid, p in cluster.profiles.items() if p.fused_risk >= 0.70]
+        crit = [(r, nid) for nid, r in risk.items() if r >= 0.70]
         if crit:
             focus = max(crit)[1]
     if not focus:
@@ -1389,7 +1404,7 @@ def _focus_bundle() -> Optional[Dict[str, Any]]:
     now = time.time()
     if _bundle["bed"] != focus or now - _bundle["ts"] > 2.5:
         _bundle["data"] = bundle_engine.generate(
-            cluster.profiles[focus], getattr(cluster, "histories", {}).get(focus, {}))
+            _effective_profile(focus), getattr(cluster, "histories", {}).get(focus, {}))
         _bundle["bed"] = focus
         _bundle["ts"] = now
     return _bundle["data"]
@@ -1545,7 +1560,7 @@ def _pk_context(bed: Optional[str]):
             return None
         patient, hist = _pk_patient(bed)
         prof = cluster.profiles[bed]
-        risk = float(getattr(prof, "fused_risk", 0.0) or 0.0)
+        risk = _effective_risk(bed)
         level = "HIGH" if risk >= 0.70 else "MEDIUM" if risk >= 0.40 else "LOW"
         return (_pk_protocol(bed), patient, hist, level,
                 getattr(prof, "name", bed))
