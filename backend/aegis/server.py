@@ -395,6 +395,17 @@ procfs.register("/proc/models", lambda: mlctl.status())
 from backend.aegis.patient_terminal import PatientTerminal as _PatientTerminal
 patient_terminal = _PatientTerminal(llm_client=_llm_client)
 
+# --- The paging OS: nurse + detector alerts, triaged, routed, certified, escalated --- #
+from backend.aegis.paging import PagingOS as _PagingOS
+PAGING = _PagingOS(llm=_llm_client)
+_paging_clients: List[WebSocket] = []
+# A sepsis page is the start of the Hour-1 bundle; the sentinel watches whether a
+# certified antibiotic order (the treat syscall) followed. None = not a ward bed.
+PAGING.bundle_started = lambda bed: (bool(getattr(syscalls.interventions.get(bed), "treated", False))
+                                     if bed else None)
+# The brief a clinician reads is grounded in the same dossier the consult uses.
+PAGING.dossier_text = lambda bed: (_doctor_dossier(bed) or {}).get("text")
+
 
 def _bed_susceptibility(bed: str) -> float:
     """Comorbidity risk-prior uplift for a bed (0 when no history imported). Injected
@@ -685,6 +696,9 @@ async def _fanout(clients: List[Any], payload: Dict[str, Any]) -> None:
 async def _broadcast(snapshot: Dict[str, Any]) -> None:
     OS_HUB.publish("snapshot", snapshot)
     await _fanout(_clients, snapshot)
+    # simulator ticks and real ingest both pass through here; the pager grades the
+    # live patient (room 402) off the loop, since opening a case certifies with Z3
+    asyncio.get_running_loop().run_in_executor(None, PAGING.observe_live, snapshot)
 
 
 def _apply_treatment_from(snapshot: Dict[str, Any]) -> None:
@@ -745,6 +759,26 @@ async def _drive_loop() -> None:
         await asyncio.sleep(TICK_SECONDS)
 
 
+async def _paging_loop() -> None:
+    """Once a second: the queue's clock (timeouts, escalation, holds, review
+    fail-safes, simulated staff, demo traffic, the sentinel), then one batch of
+    events to every paging socket."""
+    _pid = PROCS.spawn("paging", KTHREAD, uid="kernel", cadence_s=1.0,
+                       drives="page queue: timeouts, escalation, sentinel").pid
+    def tick() -> None:
+        with PROCS.slice(_pid):
+            PAGING.tick()
+    while True:
+        try:
+            await asyncio.to_thread(tick)
+            events = PAGING.drain()
+            if events:
+                await _fanout(_paging_clients, {"type": "batch", "events": events})
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] paging loop error: {exc}")
+        await asyncio.sleep(1.0)
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     # Become ready IMMEDIATELY: start the realtime loops and return so uvicorn
@@ -757,6 +791,7 @@ async def _startup() -> None:
     _MAIN_LOOP = asyncio.get_event_loop()
     asyncio.create_task(_drive_loop())
     asyncio.create_task(_cluster_loop())
+    asyncio.create_task(_paging_loop())
     asyncio.create_task(OS_HUB.run())
 
     # The persistence init makes BLOCKING Supabase calls — never run them on the
@@ -1465,7 +1500,13 @@ async def _cluster_loop() -> None:
                 ppg_monitor.tick(CLUSTER_TICK_SECONDS)  # advance the live PPG waveform
             _certify_cluster_headline(decision)
             _reconcile_kernel()
-            return _cluster_payload()
+            payload = _cluster_payload()
+            try:
+                hist = {r["id"]: r.get("history") or {} for r in _patient_roster() if r.get("kind") == "cohort"}
+                PAGING.observe_ward(payload.get("beds") or [], payload.get("topology"), hist)
+            except Exception as exc:  # pragma: no cover
+                print(f"[aegis] paging observe error: {exc}")
+            return payload
 
     while True:
         try:

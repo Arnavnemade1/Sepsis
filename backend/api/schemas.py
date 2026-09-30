@@ -243,3 +243,32 @@ class FsWriteIn(BaseModel):
 class FsPathIn(BaseModel):
     path: str
 
+
+
+# --- the paging OS ------------------------------------------------------------ #
+class PagingAlertIn(BaseModel):
+    text: str
+    room: Optional[str] = None
+    source: str = "nurse"                  # nurse | voice
+
+
+class PagingRespondIn(BaseModel):
+    action: str                            # accept | decline
+    reason: Optional[str] = None
+    clinician: Optional[str] = None        # only an operator may answer for someone else
+
+
+class PagingApproveIn(BaseModel):
+    clinician: Optional[str] = None        # override the planned assignee
+
+
+class PagingCancelIn(BaseModel):
+    reason: str = ""
+
+
+class PagingStatusIn(BaseModel):
+    status: str                            # available | in_procedure | on_case | off_shift
+
+
+class PagingSettingsIn(BaseModel):
+    patch: Dict[str, Any]

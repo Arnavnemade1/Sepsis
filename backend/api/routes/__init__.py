@@ -11,6 +11,7 @@ from backend.api.routes import (  # noqa: F401
     kernel,
     system,
     ai,
+    paging,
 )
 
-ROUTERS = [health, research, live, patients, causal, pharmacy, governance, devices, kernel, system, ai]
+ROUTERS = [health, research, live, patients, causal, pharmacy, governance, devices, kernel, system, ai, paging]

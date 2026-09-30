@@ -74,6 +74,10 @@ CAP_MIN_RING: Dict[str, int] = {
     # ring 4 — chief / system administration
     "view:cohort": 4, "svc:control": 4, "pkg:install": 4, "proc:signal": 4,
     "session:admin": 4, "breakglass:review": 4, "policy:write": 4,
+    # the paging OS: raising an alert and answering your own page are bedside acts;
+    # running the dispatch console is the charge nurse's; the paging POLICY (which
+    # pages need review, how long they ring) is governance, like the safety policy
+    "page:raise": 1, "page:respond": 1, "page:dispatch": 1, "page:configure": 4,
 }
 CAPABILITIES = frozenset(CAP_MIN_RING)
 
@@ -92,20 +96,23 @@ GRANTS: Dict[str, frozenset] = {
     "guest": PUBLIC_CAPS,
     "nurse": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
                                       "ack:alarm", "annotate", "sim:control",
-                                      "device:manage", "breakglass:invoke"}),
+                                      "device:manage", "breakglass:invoke",
+                                      "page:raise", "page:respond", "page:dispatch"}),
     "remote_specialist": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin",
                                                   "view:narrative", "annotate",
-                                                  "breakglass:invoke"}),
+                                                  "breakglass:invoke", "page:raise", "page:respond"}),
     "pharmacist": PUBLIC_CAPS | frozenset({"view:meds", "view:interactions",
                                            "view:narrative", "pharm:countersign",
-                                           "pharm:veto", "annotate", "breakglass:invoke"}),
+                                           "pharm:veto", "annotate", "breakglass:invoke",
+                                           "page:raise", "page:respond"}),
     "attending": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
                                           "view:meds", "view:interactions", "ack:alarm",
                                           "order:treat", "order:escalate", "order:clear",
                                           "order:approve_protocol", "drill:crisis",
                                           "override:alarm", "annotate", "sim:control",
                                           "device:manage", "drill:device", "record:import",
-                                          "ml:train", "view:audit", "view:sessions"}),
+                                          "ml:train", "view:audit", "view:sessions",
+                                          "page:raise", "page:respond", "page:dispatch"}),
     # The chief administers the system and oversees the whole ICU but does NOT
     # prescribe (order:treat) or rewrite a patient's order (order:clear): separation
     # of duties. The one who can change the safety policy cannot also be the one
@@ -116,7 +123,8 @@ GRANTS: Dict[str, frozenset] = {
                                       "record:import", "ml:train", "view:audit",
                                       "view:sessions", "svc:control", "pkg:install",
                                       "proc:signal", "session:admin", "breakglass:review",
-                                      "policy:write"}),
+                                      "policy:write", "page:raise", "page:respond",
+                                      "page:dispatch", "page:configure"}),
 }
 
 #: Break-glass: what an emergency elevation ADDS for its duration — read access to

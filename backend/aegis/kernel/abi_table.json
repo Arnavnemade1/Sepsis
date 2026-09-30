@@ -1158,6 +1158,134 @@
    "path": "/aegis/lab/evidence",
    "cap": "view:public",
    "class": "read"
+  },
+  {
+   "nr": 145,
+   "name": "paging.clinicians",
+   "method": "GET",
+   "path": "/aegis/paging/clinicians",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 146,
+   "name": "paging.hospital",
+   "method": "GET",
+   "path": "/aegis/paging/hospital",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 147,
+   "name": "paging.pages[page_id]",
+   "method": "GET",
+   "path": "/aegis/paging/pages/{page_id}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 148,
+   "name": "paging.rooms[room]",
+   "method": "GET",
+   "path": "/aegis/paging/rooms/{room}",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 149,
+   "name": "paging.settings",
+   "method": "GET",
+   "path": "/aegis/paging/settings",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 150,
+   "name": "paging.snapshot",
+   "method": "GET",
+   "path": "/aegis/paging/snapshot",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 151,
+   "name": "paging.alerts",
+   "method": "POST",
+   "path": "/aegis/paging/alerts",
+   "cap": "page:raise",
+   "class": "write"
+  },
+  {
+   "nr": 152,
+   "name": "paging.clinicians[clinician_id].status",
+   "method": "POST",
+   "path": "/aegis/paging/clinicians/{clinician_id}/status",
+   "cap": "page:respond",
+   "class": "write"
+  },
+  {
+   "nr": 153,
+   "name": "paging.pages[page_id].approve",
+   "method": "POST",
+   "path": "/aegis/paging/pages/{page_id}/approve",
+   "cap": "page:dispatch",
+   "class": "write"
+  },
+  {
+   "nr": 154,
+   "name": "paging.pages[page_id].cancel",
+   "method": "POST",
+   "path": "/aegis/paging/pages/{page_id}/cancel",
+   "cap": "page:dispatch",
+   "class": "write"
+  },
+  {
+   "nr": 155,
+   "name": "paging.pages[page_id].escalate",
+   "method": "POST",
+   "path": "/aegis/paging/pages/{page_id}/escalate",
+   "cap": "page:dispatch",
+   "class": "write"
+  },
+  {
+   "nr": 156,
+   "name": "paging.pages[page_id].resolve",
+   "method": "POST",
+   "path": "/aegis/paging/pages/{page_id}/resolve",
+   "cap": "page:respond",
+   "class": "write"
+  },
+  {
+   "nr": 157,
+   "name": "paging.pages[page_id].respond",
+   "method": "POST",
+   "path": "/aegis/paging/pages/{page_id}/respond",
+   "cap": "page:respond",
+   "class": "write"
+  },
+  {
+   "nr": 158,
+   "name": "paging.recs[rec_id].ack",
+   "method": "POST",
+   "path": "/aegis/paging/recs/{rec_id}/ack",
+   "cap": "page:dispatch",
+   "class": "write"
+  },
+  {
+   "nr": 159,
+   "name": "paging.settings.set",
+   "method": "POST",
+   "path": "/aegis/paging/settings",
+   "cap": "page:configure",
+   "class": "write"
+  },
+  {
+   "nr": 160,
+   "name": "paging.stream",
+   "method": "WS",
+   "path": "/aegis/paging/stream",
+   "cap": "view:public",
+   "class": "stream"
   }
  ]
 }

@@ -102,6 +102,22 @@ DEMO_STAFF = (
             title="Chief of critical care"),
     Account(1005, "dr.lindqvist", "Dr. Anna Lindqvist", "remote_specialist", demo=True,
             title="Remote infectious-disease consult"),
+    # the rest of the paging roster (backend/aegis/paging/hospital.py): every
+    # clinician who can receive a page is a user of the OS, so answering one is an
+    # authenticated act the gate can check and the journal can attribute
+    Account(1006, "dr.okafor", "Dr. Daniel Okafor", "attending", demo=True, title="Intensivist"),
+    Account(1007, "dr.nakamura", "Dr. Kenji Nakamura", "attending", demo=True, title="Hospitalist"),
+    Account(1008, "dr.reyes", "Dr. Maria Reyes", "attending", demo=True, title="Hospitalist"),
+    Account(1009, "dr.shah", "Dr. Anika Shah", "attending", demo=True, title="Emergency physician"),
+    Account(1010, "dr.brennan", "Dr. Liam Brennan", "attending", demo=True, title="Emergency physician"),
+    Account(1011, "dr.adeyemi", "Dr. Tolu Adeyemi", "attending", demo=True, title="Cardiologist"),
+    Account(1012, "dr.kowalski", "Dr. Ewa Kowalski", "attending", demo=True, title="Neurologist"),
+    Account(1013, "dr.moreau", "Dr. Julien Moreau", "attending", demo=True, title="General surgeon"),
+    Account(1014, "dr.fischer", "Dr. Hannah Fischer", "attending", demo=True, title="Anesthesiologist"),
+    Account(1015, "dr.haddad", "Dr. Rami Haddad", "attending", demo=True, title="Infectious disease"),
+    Account(1016, "rn.ortiz", "Luis Ortiz, RN", "nurse", demo=True, title="Rapid response nurse"),
+    Account(1017, "rn.kim", "Grace Kim, RN", "nurse", demo=True, title="Rapid response nurse"),
+    Account(1018, "rx.silva", "Ana Silva, PharmD", "pharmacist", demo=True, title="ICU pharmacist"),
 )
 SYSTEM_ACCOUNTS = (
     Account(0, KERNEL_USER, "AegisOS kernel", "chief", kind="kernel", loginable=False),
