@@ -3,63 +3,61 @@
 import { cx } from "@/components/ui";
 import { initials, PRIORITY_LABEL, SOURCE_LABEL, STATUS_LABEL, type Source, type StaffStatus } from "@/lib/paging";
 
-export const P_RGB: Record<number, string> = { 1: "229 72 77", 2: "240 106 29", 3: "226 163 54", 4: "139 144 154" };
-export const P_INK: Record<number, string> = { 1: "#c32a2f", 2: "#b8500c", 3: "#926000", 4: "#5b616b" };
+/** Priority colour as an "r g b" triple (for alpha) and as text on the console's grey. */
+export const P_RGB: Record<number, string> = { 1: "229 72 77", 2: "245 118 46", 3: "238 177 42", 4: "120 129 141" };
+export const P_INK: Record<number, string> = { 1: "#ff6b70", 2: "#ff9357", 3: "#f4c55a", 4: "#a8afb8" };
+const P_SOLID: Record<number, { bg: string; fg: string }> = {
+  1: { bg: "#e5484d", fg: "#ffffff" },
+  2: { bg: "#f5762e", fg: "#1f1206" },
+  3: { bg: "#eeb12a", fg: "#1f1704" },
+  4: { bg: "#4b525b", fg: "#dfe3e8" },
+};
 export const ST_RGB: Record<StaffStatus, string> = {
-  available: "43 154 102",
-  paging: "28 126 240",
-  in_procedure: "139 92 246",
-  on_case: "217 146 26",
-  off_shift: "163 167 174",
+  available: "47 182 124",
+  paging: "61 142 245",
+  in_procedure: "156 109 240",
+  on_case: "31 179 166",
+  off_shift: "95 102 111",
 };
 
+/** A solid priority badge: the one place a priority's colour is spent at full strength. */
 export function PriorityChip({ p, size = "md", label = false }: { p: number; size?: "sm" | "md" | "lg"; label?: boolean }) {
-  const sz = size === "lg" ? "h-7 px-2.5 text-[13px]" : size === "sm" ? "h-[18px] px-1.5 text-[10.5px]" : "h-[22px] px-2 text-[11.5px]";
+  const c = P_SOLID[p] ?? P_SOLID[4];
+  const sz = size === "lg" ? "h-6 px-2 text-[12px]" : size === "sm" ? "h-[18px] px-1 text-[10.5px]" : "h-5 px-1.5 text-[11px]";
   return (
     <span
-      className={cx("inline-flex shrink-0 items-center gap-1 rounded-md font-mono font-semibold tracking-tight", sz)}
-      style={{ background: `rgb(${P_RGB[p]} / ${p === 4 ? 0.12 : 0.13})`, color: P_INK[p], boxShadow: `inset 0 0 0 1px rgb(${P_RGB[p]} / 0.22)` }}
+      className={cx("inline-flex shrink-0 items-center gap-1.5 rounded-[4px] font-mono font-semibold leading-none", sz)}
+      style={{ background: c.bg, color: c.fg }}
       title={`P${p} · ${PRIORITY_LABEL[p]}`}
     >
       P{p}
-      {label && <span className="font-sans font-medium tracking-normal">{PRIORITY_LABEL[p]}</span>}
+      {label && <span className="font-sans font-medium">{PRIORITY_LABEL[p]}</span>}
     </span>
   );
 }
 
-export function StatusDot({ status, size = 8, pulse = false }: { status: StaffStatus; size?: number; pulse?: boolean }) {
-  const c = `rgb(${ST_RGB[status]})`;
+export function StatusDot({ status, size = 8, ring, still = false }: { status: StaffStatus; size?: number; ring?: string; still?: boolean }) {
   return (
-    <span className="relative inline-flex shrink-0" style={{ width: size, height: size }} title={STATUS_LABEL[status]}>
-      {(pulse || status === "paging") && (
-        <span className="absolute inset-0 rounded-full" style={{ background: c, animation: "ring 1.6s cubic-bezier(.16,1,.3,1) infinite" }} />
-      )}
-      <span className="relative rounded-full" style={{ width: size, height: size, background: c, boxShadow: "0 0 0 1.5px #fff" }} />
-    </span>
+    <span
+      className={cx("inline-block shrink-0 rounded-full", status === "paging" && !still && "blink")}
+      style={{ width: size, height: size, background: `rgb(${ST_RGB[status]})`, boxShadow: ring ? `0 0 0 2px ${ring}` : undefined }}
+      title={STATUS_LABEL[status]}
+    />
   );
 }
 
-export function Avatar({ name, status, size = 28, present }: { name: string; status?: StaffStatus; size?: number; present?: boolean }) {
-  // a stable, quiet tint per person (never a signal colour)
-  let h = 0;
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
-  const hue = [210, 225, 245, 265, 190, 175][h % 6];
+export function Avatar({ name, status, size = 24, present, ring = "var(--color-s1)" }: { name: string; status?: StaffStatus; size?: number; present?: boolean; ring?: string }) {
   return (
     <span className="relative inline-flex shrink-0">
-      <span
-        className="grid place-items-center rounded-full font-medium text-ink"
-        style={{ width: size, height: size, fontSize: size * 0.36, background: `hsl(${hue} 30% 92%)`, boxShadow: "inset 0 0 0 1px rgb(17 20 24 / 0.06)" }}
-      >
+      <span className="grid place-items-center rounded-full bg-s4 font-semibold text-muted" style={{ width: size, height: size, fontSize: Math.max(9, size * 0.36) }}>
         {initials(name)}
       </span>
       {status && (
-        <span className="absolute -bottom-0.5 -right-0.5">
-          <StatusDot status={status} size={Math.max(7, size * 0.3)} />
+        <span className="absolute -bottom-px -right-px">
+          <StatusDot status={status} size={Math.max(6, Math.round(size * 0.3))} ring={ring} />
         </span>
       )}
-      {present && (
-        <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-accent" title="Device online" />
-      )}
+      {present && <span className="absolute -left-px -top-px h-2 w-2 rounded-full bg-accent" style={{ boxShadow: `0 0 0 2px ${ring}` }} title="Pager open on a device" />}
     </span>
   );
 }
@@ -77,7 +75,7 @@ export function SourceTag({ source, synthetic }: { source: Source; synthetic?: b
       </svg>
     ) : null;
   return (
-    <span className={cx("inline-flex items-center gap-1 text-[11px]", source === "detector" ? "text-accent-ink" : "text-dim")}>
+    <span className={cx("inline-flex shrink-0 items-center gap-1 text-[11px]", source === "detector" ? "text-accent-ink" : "text-dim")}>
       {icon}
       {SOURCE_LABEL[source]}
       {synthetic && source !== "demo" && <span className="text-faint">· synthetic</span>}
@@ -85,33 +83,30 @@ export function SourceTag({ source, synthetic }: { source: Source; synthetic?: b
   );
 }
 
-/** Time left before a page escalates, as a ring that empties. */
-export function Countdown({ remaining, total, size = 34, priority = 2 }: { remaining: number; total: number; size?: number; priority?: number }) {
-  const r = (size - 4) / 2;
-  const c = 2 * Math.PI * r;
-  const frac = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
+export function fmtClock(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+/** Time left before a page escalates: m:ss, red in the last ten seconds. */
+export function Countdown({ remaining, className }: { remaining: number; total?: number; size?: number; priority?: number; className?: string }) {
   const urgent = remaining <= 10;
-  const s = Math.max(0, Math.round(remaining));
   return (
-    <span className="relative inline-grid shrink-0 place-items-center" style={{ width: size, height: size }} title={`${s}s before it escalates`}>
-      <svg width={size} height={size} className="-rotate-90" aria-hidden>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgb(17 20 24 / 0.08)" strokeWidth="2.5" />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          fill="none"
-          stroke={urgent ? "rgb(229 72 77)" : `rgb(${P_RGB[priority]})`}
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeDasharray={c}
-          strokeDashoffset={c * (1 - frac)}
-          style={{ transition: "stroke-dashoffset 1s linear" }}
-        />
-      </svg>
-      <span className={cx("num absolute font-mono text-[10px] font-medium", urgent ? "text-high-ink" : "text-muted")}>
-        {s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`}
-      </span>
+    <span className={cx("num font-mono font-medium", urgent ? "text-high-ink" : "text-ink", className)} title={`${Math.max(0, Math.round(remaining))} s before it escalates`}>
+      {fmtClock(remaining)}
+    </span>
+  );
+}
+
+/** The same deadline as a draining line, under a row or a pager. */
+export function TimerBar({ remaining, total, priority, className }: { remaining: number; total: number; priority: number; className?: string }) {
+  const frac = total > 0 ? Math.max(0, Math.min(1, remaining / total)) : 0;
+  return (
+    <span className={cx("block h-[2px] overflow-hidden bg-s3", className)} aria-hidden>
+      <span
+        className="block h-full"
+        style={{ width: `${frac * 100}%`, background: remaining <= 10 ? "#e5484d" : `rgb(${P_RGB[priority]})`, transition: "width 1s linear" }}
+      />
     </span>
   );
 }

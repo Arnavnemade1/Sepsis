@@ -20,6 +20,8 @@ const config: NextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
   images: { unoptimized: true },
+  // no framework badge floating over the console, in development either
+  devIndicators: false,
   // Pin the build root: Next otherwise walks up, finds site/'s lockfile, and warns.
   turbopack: { root: path.resolve(__dirname) },
 };

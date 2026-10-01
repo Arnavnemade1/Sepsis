@@ -1,20 +1,19 @@
 @import "tailwindcss";
 
 /* ============================================================
-   AEGIS — the clinical design system
+   AEGIS — operations console design system
    ------------------------------------------------------------
-   Light, calm and exact: a tool a charge nurse can read across a
-   room at 3 a.m. and a pitch deck can screenshot.
+   A hospital command-center console: read at a glance, trusted at
+   3 a.m., identical on a wall display and a laptop.
 
-   1. COLOUR IS SIGNAL. Red/orange/amber mark page priority, the
-      status palette marks where staff are. Nothing decorative uses
-      them. Chrome is ink on paper; the one accent (indigo) is for
-      selection, focus and the primary action.
-   2. PAPER, NOT GLASS. White surfaces on a warm canvas, a hairline
-      border and one soft shadow. Depth comes from the building view.
-   3. NUMBERS ARE TABULAR. Timers, counts and scores never jitter.
-   4. MOTION EXPLAINS. Things move when something happened (a page
-      arrives, escalates, is accepted), never to decorate.
+   1. COLOUR IS SIGNAL. Red / orange / amber / grey are page priority;
+      green / blue / violet / teal / grey are staff status. Chrome is
+      graphite. Nothing decorative is coloured.
+   2. FLAT AND EXACT. Hairline borders, small radii, no gradients, no
+      glass. Depth is reserved for overlays (menus, the inspector).
+   3. NUMBERS ARE TABULAR, identifiers are mono, time is 24-hour.
+   4. MOTION CONFIRMS, IT DOES NOT DECORATE. Short fades and slides,
+      no springs.
 
    The stock Tailwind palette is deleted (--color-*: initial), so an
    off-system colour does not compile.
@@ -23,79 +22,72 @@
 @theme {
   --color-*: initial;
 
-  /* canvas + surfaces */
-  --color-bg: #f6f6f3;
-  --color-s1: #ffffff;
-  --color-s2: #f3f3f0;
-  --color-s3: #e9e9e5;
-  --color-line: rgb(17 20 24 / 0.09);
-  --color-line-soft: rgb(17 20 24 / 0.055);
-  --color-line-bright: rgb(17 20 24 / 0.16);
+  /* canvas + surfaces: stealth grey, not black */
+  --color-bg: #212429;
+  --color-s1: #282c32;
+  --color-s2: #2e3238;
+  --color-s3: #353a41;
+  --color-s4: #3e444c;
+  --color-line: #363b42;
+  --color-line-soft: #30343b;
+  --color-line-bright: #444a52;
 
   /* ink */
-  --color-ink: #121419;
-  --color-muted: #4f555e;
-  --color-dim: #858b94;
-  --color-faint: #b6bac1;
+  --color-ink: #e8eaed;
+  --color-muted: #b1b7bf;
+  --color-dim: #868d97;
+  --color-faint: #5f666f;
 
-  /* clinical state (kept under their original names so older views follow) */
-  --color-low: #2b9a66;
-  --color-low-ink: #1d7a4f;
-  --color-med: #e2a336;
-  --color-med-ink: #926000;
-  --color-dys: #ef7a2b;
-  --color-dys-ink: #b8500c;
+  /* clinical state (names kept so every view follows) */
+  --color-low: #2fb67c;
+  --color-low-ink: #4fd197;
+  --color-med: #eeb12a;
+  --color-med-ink: #f4c55a;
+  --color-dys: #f5762e;
+  --color-dys-ink: #ff9357;
   --color-high: #e5484d;
-  --color-high-ink: #c32a2f;
-  --color-nodata: #a3a7ae;
+  --color-high-ink: #ff6b70;
+  --color-nodata: #565d68;
 
   /* page priority */
   --color-p1: #e5484d;
-  --color-p2: #f06a1d;
-  --color-p3: #e2a336;
-  --color-p4: #8b909a;
+  --color-p2: #f5762e;
+  --color-p3: #eeb12a;
+  --color-p4: #78818d;
 
   /* staff status */
-  --color-st-available: #2b9a66;
-  --color-st-paging: #1c7ef0;
-  --color-st-procedure: #8b5cf6;
-  --color-st-case: #d9921a;
-  --color-st-off: #a3a7ae;
+  --color-st-available: #2fb67c;
+  --color-st-paging: #3d8ef5;
+  --color-st-procedure: #9c6df0;
+  --color-st-case: #1fb3a6;
+  --color-st-off: #4d545e;
 
-  /* the one accent */
-  --color-accent: #4453d6;
-  --color-accent-ink: #3440b8;
-  --color-accent-soft: #eef0fd;
-
-  /* brand (identity moments only) */
-  --color-brand-a: #4453d6;
-  --color-brand-b: #6d4fd8;
-  --color-brand-c: #9b5de5;
+  /* the one accent: selection, focus, links */
+  --color-accent: #3d8ef5;
+  --color-accent-ink: #6eaaff;
+  --color-accent-soft: #2a3447;
 
   --color-transparent: transparent;
   --color-black: #000;
   --color-white: #fff;
-  --color-night: #0c0e13;
+  --color-night: #17191c;
 
   --font-sans: var(--font-geist), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
-  --font-serif: var(--font-serif-display), "Iowan Old Style", Georgia, serif;
 
-  --radius-xl: 20px;
-  --radius-lg: 14px;
-  --radius-md: 10px;
-  --radius-sm: 8px;
-  --radius-xs: 6px;
+  --radius-xl: 10px;
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
+  --radius-xs: 3px;
 
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  --shadow-card: 0 1px 2px rgb(16 18 24 / 0.04), 0 8px 24px -16px rgb(16 18 24 / 0.14);
-  --shadow-pop: 0 1px 2px rgb(16 18 24 / 0.06), 0 24px 60px -20px rgb(16 18 24 / 0.28);
+  --shadow-pop: 0 0 0 1px #444a52, 0 18px 44px -14px rgb(0 0 0 / 0.55);
 }
 
 :root {
-  --brand: linear-gradient(135deg, #4453d6 0%, #6d4fd8 55%, #9b5de5 100%);
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
@@ -108,131 +100,99 @@ body {
   background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 1.45;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.006em;
+  font-feature-settings: "cv11" 1, "ss01" 1;
 }
 
 ::selection {
-  background: rgb(68 83 214 / 0.18);
+  background: rgb(61 142 245 / 0.35);
 }
 
 .num {
-  font-variant-numeric: tabular-nums slashed-zero;
-  font-feature-settings: "tnum" 1, "zero" 1;
-}
-
-.serif {
-  font-family: var(--font-serif);
-  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* ---- surfaces ---- */
-.plate {
+.panel {
   background: var(--color-s1);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
-}
-.plate-float {
-  background: rgb(255 255 255 / 0.82);
-  border: 1px solid var(--color-line);
-  backdrop-filter: blur(14px) saturate(1.4);
-  -webkit-backdrop-filter: blur(14px) saturate(1.4);
 }
 .pop {
   background: var(--color-s1);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-pop);
-}
-.brand-text {
-  background: var(--brand);
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-}
-.brand-fill {
-  background: var(--brand);
-}
-.hairline {
-  border-color: var(--color-line);
 }
 .kbd {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  border: 1px solid var(--color-line);
-  border-bottom-width: 2px;
-  border-radius: 5px;
-  padding: 0 5px;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-line-bright);
+  border-radius: 4px;
+  padding: 0 4px;
   font-family: var(--font-mono);
   font-size: 10.5px;
-  line-height: 17px;
   color: var(--color-muted);
-  background: var(--color-s1);
+  background: var(--color-s2);
 }
 
 /* quiet scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(17 20 24 / 0.16) transparent;
+  scrollbar-color: #4a5058 transparent;
 }
 
 :focus-visible {
-  outline: 2px solid rgb(68 83 214 / 0.55);
-  outline-offset: 2px;
+  outline: 2px solid rgb(61 142 245 / 0.7);
+  outline-offset: 1px;
+}
+
+/* native controls follow the theme */
+select,
+input,
+textarea {
+  color-scheme: dark;
 }
 
 /* ---- motion ---- */
-@keyframes live-pulse {
-  0% { box-shadow: 0 0 0 0 currentColor; }
-  70% { box-shadow: 0 0 0 6px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
-}
-.live-dot {
-  animation: live-pulse 2s var(--ease-out) infinite;
-}
-@keyframes rise {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: none; }
-}
-.rise {
-  animation: rise 420ms var(--ease-out) both;
-}
 @keyframes ring {
-  0% { transform: scale(1); opacity: 0.55; }
-  100% { transform: scale(2.6); opacity: 0; }
+  0% { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.4); opacity: 0; }
 }
 @keyframes dash {
   to { stroke-dashoffset: -24; }
 }
-@keyframes blink-soft {
+@keyframes blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
+  50% { opacity: 0.35; }
 }
-.blink-soft {
-  animation: blink-soft 1.6s ease-in-out infinite;
+.blink {
+  animation: blink 1.2s ease-in-out infinite;
 }
-@keyframes shimmer {
+@keyframes sweep {
   from { background-position: -200% 0; }
   to { background-position: 200% 0; }
 }
-.shimmer {
-  background: linear-gradient(90deg, transparent, rgb(68 83 214 / 0.12), transparent);
+.working {
+  background: linear-gradient(90deg, transparent, rgb(61 142 245 / 0.16), transparent);
   background-size: 200% 100%;
-  animation: shimmer 1.8s linear infinite;
+  animation: sweep 1.6s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .live-dot, .rise, .blink-soft, .shimmer { animation: none; }
+  .blink, .working { animation: none; }
 }
 
-/* ---- the anatomical twin: a dark viewport inside the light app ---- */
+/* ---- the anatomical twin: its own stage ---- */
 .twin-viewport {
-  background: radial-gradient(120% 90% at 50% 30%, #1a1d26 0%, #0c0e13 70%);
-  border-radius: var(--radius-lg);
+  background: radial-gradient(110% 85% at 50% 32%, #23272d 0%, #17191c 72%);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 .twin-stage { position: relative; width: 100%; height: 100%; min-height: 320px; cursor: grab; }
@@ -243,19 +203,19 @@ body {
   mask-image: radial-gradient(ellipse 62% 58% at 50% 50%, #000 62%, transparent 100%);
 }
 .twin-hud {
-  position: absolute; left: 14px; top: 12px; z-index: 4; display: none; align-items: center; gap: 10px;
-  padding: 9px 14px 9px 12px; border-radius: 14px; pointer-events: none;
-  background: rgb(13 15 21 / 0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  border: 1px solid color-mix(in srgb, var(--tc, #f0a76a) 42%, transparent);
-  color: #f4f5f8;
+  position: absolute; left: 12px; top: 12px; z-index: 4; display: none; align-items: center; gap: 10px;
+  padding: 8px 12px 8px 10px; border-radius: 6px; pointer-events: none;
+  background: rgb(23 25 28 / 0.86);
+  border: 1px solid color-mix(in srgb, var(--tc, #f0a76a) 45%, transparent);
+  color: #e6e9ed;
 }
-.twin-hud-pip { width: 8px; height: 8px; border-radius: 50%; background: var(--tc, #f0a76a); flex: 0 0 auto; }
+.twin-hud-pip { width: 8px; height: 8px; border-radius: 2px; background: var(--tc, #f0a76a); flex: 0 0 auto; }
 .twin-hud-body { display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }
-.twin-hud-k { font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+.twin-hud-k { font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
   color: color-mix(in srgb, var(--tc, #f0a76a) 78%, #fff 22%); }
-.twin-hud-nm { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #f4f5f8; }
+.twin-hud-nm { font-size: 14px; font-weight: 600; color: #e6e9ed; }
 .twin-flags { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
 .twin-flag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; opacity: 0;
-  font-size: 11px; color: #f4f5f8; transition: opacity 0.3s; }
+  font-size: 11px; color: #e6e9ed; transition: opacity 0.3s; }
 .twin-flag.in { opacity: 1; }
-.twin-flag i { width: 5px; height: 5px; border-radius: 50%; background: #8f94ff; flex: 0 0 auto; }
+.twin-flag i { width: 5px; height: 5px; border-radius: 1px; background: #6eaaff; flex: 0 0 auto; }

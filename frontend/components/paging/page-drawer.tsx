@@ -3,18 +3,17 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
-import { Button, cx, Drawer } from "@/components/ui";
+import { Button, CloseIcon, cx, Drawer, IconButton, Tag } from "@/components/ui";
 import {
   CATEGORY_LABEL,
   clock,
   PAGE_STATUS_LABEL,
-  since,
   type Clinician,
   type Page,
 } from "@/lib/paging";
 
-import { Avatar, Countdown, P_RGB, PriorityChip, SourceTag, StatusText } from "./bits";
-import { pageAction } from "./queue";
+import { Avatar, Countdown, P_RGB, PriorityChip, SourceTag, StatusText, TimerBar } from "./bits";
+import { age, pageAction, statusLine } from "./queue";
 
 export function PageDrawer({ page, clinicians, invariants, now, canDispatch, onClose }: {
   page: Page | null;
@@ -25,23 +24,41 @@ export function PageDrawer({ page, clinicians, invariants, now, canDispatch, onC
   onClose: () => void;
 }) {
   return (
-    <Drawer open={!!page} onClose={onClose} width={560}>
+    <Drawer open={!!page} onClose={onClose} width={500}>
       {page && <Body page={page} clinicians={clinicians} invariants={invariants} now={now} canDispatch={canDispatch} onClose={onClose} />}
     </Drawer>
   );
 }
 
+const VITAL_LABEL: Record<string, string> = {
+  spo2: "SpO₂ %", hr: "Heart rate", rr: "Resp. rate", sbp: "Systolic", dbp: "Diastolic", map: "MAP", temp_c: "Temp °C",
+  lactate: "Lactate", gcs: "GCS", glucose: "Glucose", nihss: "NIHSS", resp_rate: "Resp. rate", wbc: "WBC",
+};
+
 function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t border-line-soft px-5 py-4">
+    <section className="border-t border-line px-4 py-3.5">
       <div className="mb-2.5 flex items-center gap-2">
-        <h3 className="font-mono text-[10.5px] font-medium uppercase tracking-[0.12em] text-dim">{title}</h3>
+        <h3 className="text-[11.5px] font-semibold text-muted">{title}</h3>
         {right && <div className="ml-auto">{right}</div>}
       </div>
       {children}
     </section>
   );
 }
+
+const Check = ({ ok }: { ok: boolean }) =>
+  ok ? (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0 text-low">
+      <circle cx="7" cy="7" r="6.25" fill="currentColor" fillOpacity=".14" stroke="currentColor" strokeOpacity=".5" />
+      <path d="M4.3 7.2 6.1 9l3.6-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0 text-high">
+      <circle cx="7" cy="7" r="6.25" fill="currentColor" fillOpacity=".16" stroke="currentColor" strokeOpacity=".55" />
+      <path d="M4.8 4.8l4.4 4.4M9.2 4.8 4.8 9.2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
 
 function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
   page: Page;
@@ -58,6 +75,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
   const c = who ? clinicians[who] : null;
   const att = page.attempts[page.attempts.length - 1];
   const cert = page.certificate;
+  const st = statusLine(page, now);
   const act = async (a: "approve" | "escalate" | "cancel" | "resolve", body: Record<string, unknown> = {}) => {
     setBusy(a);
     setErr(null);
@@ -72,100 +90,130 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
   };
 
   const steps: { label: string; agent: string; value: ReactNode; ms?: number; state: "done" | "active" | "fail" | "wait" }[] = [
-    { label: "Triage", agent: "Priority Handler", value: <>P{page.triage.rules_priority ?? page.priority}{page.triage.rules_priority ? ` → P${page.priority}` : ""} · {CATEGORY_LABEL[page.category]}</>, ms: page.timings.triage_ms, state: "done" },
-    { label: "Locate", agent: "Operator", value: page.room ? `Room ${page.room} · ${page.zone_name}` : "room not identified", ms: page.timings.locate_ms, state: page.room ? "done" : "fail" },
-    { label: "Route", agent: "Case Handler", value: page.decision.assignee ? clinicians[page.decision.assignee]?.name ?? page.decision.assignee : "no eligible clinician", ms: page.timings.route_ms, state: page.decision.assignee ? "done" : "fail" },
-    { label: "Verify", agent: "Z3", value: cert ? (cert.certified ? "all invariants hold (unsat)" : `refused: ${cert.violations.join(", ")}`) : page.status === "review" ? "waits for review" : "—", ms: page.timings.certify_ms, state: cert ? (cert.certified ? "done" : "fail") : "wait" },
-    { label: "Page", agent: "Queue", value: PAGE_STATUS_LABEL[page.status], state: page.status === "accepted" || page.status === "resolved" ? "done" : page.status === "paging" ? "active" : page.status === "cancelled" ? "wait" : "wait" },
+    {
+      label: "Triage",
+      agent: "Priority Handler",
+      value: `P${page.priority} · ${CATEGORY_LABEL[page.category] ?? page.category}${page.triage.rules_priority && page.triage.rules_priority !== page.priority ? ` (rules said P${page.triage.rules_priority})` : ""}`,
+      ms: page.timings.triage_ms,
+      state: "done",
+    },
+    { label: "Locate", agent: "Operator", value: page.room ? `Room ${page.room} · ${page.zone_name}` : "Room not identified", ms: page.timings.locate_ms, state: page.room ? "done" : "fail" },
+    {
+      label: "Route",
+      agent: "Case Handler",
+      value: page.decision.assignee ? clinicians[page.decision.assignee]?.name ?? page.decision.assignee : "No eligible clinician",
+      ms: page.timings.route_ms,
+      state: page.decision.assignee ? "done" : "fail",
+    },
+    {
+      label: "Verify",
+      agent: "Z3",
+      value: cert ? (cert.certified ? "All invariants hold" : `Refused: ${cert.violations.join(", ")}`) : page.status === "review" ? "Waits for review" : "—",
+      ms: page.timings.certify_ms,
+      state: cert ? (cert.certified ? "done" : "fail") : "wait",
+    },
+    {
+      label: "Page",
+      agent: "Queue",
+      value: PAGE_STATUS_LABEL[page.status],
+      state: page.status === "accepted" || page.status === "resolved" ? "done" : page.status === "paging" ? "active" : "wait",
+    },
   ];
 
   return (
     <>
-      <header className="flex items-start gap-3 px-5 pb-4 pt-5">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <PriorityChip p={page.priority} size="lg" label />
-            <span className="font-mono text-[12px] text-dim">{page.id}</span>
-            <SourceTag source={page.source} synthetic={page.synthetic} />
-          </div>
-          <h2 className="mt-3 text-[19px] font-semibold leading-snug tracking-tight text-ink">
-            {page.room ? `Room ${page.room}` : "Unknown room"}
-            <span className="font-normal text-dim"> · {page.zone_name ?? "—"}</span>
-          </h2>
-          {page.patient?.name && (
-            <div className="mt-0.5 text-[13px] text-muted">
-              {page.patient.name}
-              {page.patient.age ? `, ${page.patient.age}${page.patient.sex ?? ""}` : ""}
-              {page.patient.synthetic ? " · synthetic demo record" : page.patient.monitored ? " · monitored, real replayed record" : ""}
-            </div>
-          )}
+      <header className="shrink-0 px-4 pb-3.5 pt-3.5">
+        <div className="flex items-center gap-2">
+          <PriorityChip p={page.priority} label />
+          <span className="font-mono text-[11.5px] text-dim">{page.id}</span>
+          <span className="text-faint">·</span>
+          <SourceTag source={page.source} synthetic={page.synthetic} />
+          <span className="text-faint">·</span>
+          <span className="num font-mono text-[11.5px] text-dim">{age(page.created_at, now)} ago</span>
+          <IconButton label="Close" onClick={onClose} className="ml-auto -mr-1">
+            <CloseIcon />
+          </IconButton>
         </div>
-        <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-dim hover:bg-s2 hover:text-ink" aria-label="Close">
-          <svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
-        </button>
+        <h2 className="mt-2.5 text-[17px] font-semibold tracking-[-0.01em] text-ink">
+          {page.room ? `Room ${page.room}` : "Unknown room"}
+          <span className="font-normal text-dim"> · {page.zone_name ?? "—"}</span>
+        </h2>
+        {page.patient?.name && (
+          <div className="mt-0.5 text-[12.5px] text-muted">
+            {page.patient.name}
+            {page.patient.age ? `, ${page.patient.age}${page.patient.sex ?? ""}` : ""}
+            <span className="text-dim">{page.patient.synthetic ? " · synthetic record" : page.patient.monitored ? " · monitored · replayed real record" : ""}</span>
+          </div>
+        )}
+        <div className={cx("mt-1.5 text-[12px]", st.tone)}>{st.text}</div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="px-5 pb-4">
-          <blockquote className="rounded-xl border border-line bg-s2/60 px-4 py-3 text-[14px] leading-relaxed text-ink">
-            “{page.text}”
-            <div className="mt-1.5 text-[11.5px] text-dim">
-              {page.reporter ?? page.source} · {since(page.created_at, now)}
+        <div className="px-4 pb-3.5">
+          <div className="rounded-md border border-line bg-s2 px-3 py-2.5">
+            <p className="text-[13px] leading-relaxed text-ink">{page.text}</p>
+            <div className="mt-1.5 font-mono text-[11px] text-dim">
+              {page.reporter ?? page.source} · {clock(page.created_at)}
             </div>
-          </blockquote>
+          </div>
         </div>
 
         <Section title="Dispatch" right={page.timings.total_ms != null && <span className="num font-mono text-[11px] text-dim">{page.timings.total_ms.toFixed(1)} ms end to end</span>}>
-          <ol className="relative space-y-3 pl-6">
-            <span className="absolute bottom-2 left-[7px] top-2 w-px bg-line" />
+          <div className="divide-y divide-line-soft rounded-md border border-line">
             {steps.map((s) => (
-              <li key={s.label} className="relative">
-                <span
-                  className={cx(
-                    "absolute -left-6 top-0.5 grid h-[15px] w-[15px] place-items-center rounded-full border-2 bg-s1",
-                    s.state === "done" && "border-low bg-low",
-                    s.state === "active" && "border-st-paging",
-                    s.state === "fail" && "border-high bg-high",
-                    s.state === "wait" && "border-line-bright",
-                  )}
-                >
-                  {s.state === "done" && <svg width="8" height="8" viewBox="0 0 8 8"><path d="M1.5 4.2 3.2 6 6.5 2" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" /></svg>}
-                  {s.state === "active" && <span className="blink-soft h-1.5 w-1.5 rounded-full bg-st-paging" />}
-                </span>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-[13px] font-medium text-ink">{s.label}</span>
-                  <span className="text-[11px] text-dim">{s.agent}</span>
-                  {s.ms != null && <span className="num ml-auto font-mono text-[11px] text-dim">{s.ms < 1 ? "<1" : s.ms.toFixed(1)} ms</span>}
+              <div key={s.label} className="grid grid-cols-[16px_88px_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5 py-2">
+                {s.state === "done" ? (
+                  <Check ok />
+                ) : s.state === "fail" ? (
+                  <Check ok={false} />
+                ) : (
+                  <span className={cx("mx-auto h-2 w-2 rounded-full", s.state === "active" ? "blink bg-st-paging" : "border border-line-bright")} />
+                )}
+                <div className="leading-tight">
+                  <div className="text-[12.5px] font-medium text-ink">{s.label}</div>
+                  <div className="text-[10.5px] text-dim">{s.agent}</div>
                 </div>
-                <div className="text-[12.5px] text-muted">{s.value}</div>
-              </li>
+                <div className="truncate text-[12px] text-muted">{s.value}</div>
+                <div className="num w-12 text-right font-mono text-[11px] text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</div>
+              </div>
             ))}
-          </ol>
+          </div>
         </Section>
 
-        <Section title="Triage" right={<span className="text-[11px] text-dim">{page.triage.source === "detector" ? "sepsis detector" : page.triage.source === "llm+rules" ? `rules + ${page.triage.model ?? "model"}` : "rules"}</span>}>
+        <Section
+          title="Triage"
+          right={
+            <span className="text-[11px] text-dim">
+              {page.triage.source === "detector" ? "Sepsis detector" : page.triage.source === "llm+rules" ? `Rules + ${page.triage.model ?? "model"}` : "Rules"}
+            </span>
+          }
+        >
           {page.triage.red_flags.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {page.triage.red_flags.map((f) => (
-                <span key={f} className="rounded-md px-2 py-0.5 text-[11.5px] font-medium" style={{ background: `rgb(${P_RGB[1]} / .09)`, color: "#c32a2f" }}>
+                <Tag key={f} tone="high">
                   {f}
-                </span>
+                </Tag>
               ))}
             </div>
           )}
           <p className="text-[12.5px] leading-relaxed text-muted">{page.triage.rationale}</p>
           {Object.keys(page.triage.vitals).length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11.5px] text-muted">
+            <div className="mt-2.5 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
               {Object.entries(page.triage.vitals).map(([k, v]) => (
-                <span key={k}>
-                  <span className="text-dim">{k.replace("_", " ")}</span> {typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(1)) : v}
-                </span>
+                <div key={k} className="bg-s1 px-2.5 py-1.5">
+                  <div className="text-[10.5px] text-dim">{VITAL_LABEL[k] ?? k.replace(/_/g, " ")}</div>
+                  <div className="num font-mono text-[12.5px] text-ink">{typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(1)) : v}</div>
+                </div>
+              ))}
+              {Array.from({ length: (3 - (Object.keys(page.triage.vitals).length % 3)) % 3 }, (_, i) => (
+                <div key={`pad${i}`} className="bg-s1" />
               ))}
             </div>
           )}
-          {page.refining && <div className="shimmer mt-3 rounded-lg px-3 py-2 text-[12px] text-accent-ink">The model is reviewing this page. It may raise the priority; it cannot lower it.</div>}
+          {page.refining && <div className="working mt-2.5 rounded-md px-2.5 py-2 text-[12px] text-accent-ink">The model is reviewing this page. It may raise the priority; it cannot lower it.</div>}
           {page.refinement && (
-            <div className={cx("mt-3 rounded-lg border px-3 py-2 text-[12px] leading-snug", page.refinement.outcome === "raised" ? "border-dys/30 bg-dys/5 text-dys-ink" : "border-line bg-s2/60 text-muted")}>
+            <div className={cx("mt-2.5 rounded-md border px-2.5 py-2 text-[12px] leading-snug", page.refinement.outcome === "raised" ? "border-dys/40 bg-dys/10 text-dys-ink" : "border-line bg-s2 text-muted")}>
               <span className="font-medium">
                 {page.refinement.outcome === "raised"
                   ? `Model raised P${page.refinement.from} → P${page.refinement.to}`
@@ -182,53 +230,68 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
 
         <Section title="Routing" right={<span className="text-[11px] text-dim">Case Handler</span>}>
           {c ? (
-            <div className="flex items-center gap-3 rounded-xl border border-line p-3">
-              <Avatar name={c.name} status={c.status} size={36} present={c.present} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[13.5px] font-medium text-ink">{c.name}</div>
-                <div className="text-[12px] text-dim">
-                  {c.specialty_label} · {c.title}
+            <div className="relative overflow-hidden rounded-md border border-line">
+              <div className="flex items-center gap-3 px-3 py-2.5">
+                <Avatar name={c.name} status={c.status} size={30} present={c.present} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-ink">{c.name}</div>
+                  <div className="truncate text-[11.5px] text-dim">
+                    {c.specialty_label} · {c.title}
+                  </div>
                 </div>
-                <StatusText status={c.status} />
+                <div className="text-right">
+                  <StatusText status={c.status} />
+                  {page.status === "paging" && att && (
+                    <div className="mt-0.5 text-[11px] text-dim">
+                      escalates in <Countdown remaining={att.deadline - now} className="text-[11.5px]" />
+                    </div>
+                  )}
+                </div>
               </div>
-              {page.status === "paging" && att && <Countdown remaining={att.deadline - now} total={att.deadline - att.sent_at} priority={page.priority} size={40} />}
+              {page.status === "paging" && att && <TimerBar remaining={att.deadline - now} total={att.deadline - att.sent_at} priority={page.priority} />}
             </div>
           ) : (
-            <div className="rounded-xl border border-dashed border-line-bright p-3 text-[12.5px] text-dys-ink">{page.review_reason ?? "No clinician assigned."}</div>
+            <div className="rounded-md border border-dashed border-line-bright px-3 py-2.5 text-[12.5px] text-dys-ink">{page.review_reason ?? "No clinician assigned."}</div>
           )}
           <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{page.decision.reasoning}</p>
           {page.decision.guardrails.length > 0 && (
             <ul className="mt-2 space-y-1">
               {page.decision.guardrails.map((g) => (
                 <li key={g} className="flex gap-2 text-[12px] text-accent-ink">
-                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
+                  <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-accent" />
                   {g}
                 </li>
               ))}
             </ul>
           )}
-          <div className="mt-3 space-y-1.5">
+          <div className="mt-3 overflow-hidden rounded-md border border-line">
+            <div className="grid grid-cols-[minmax(0,1fr)_64px] gap-2 border-b border-line bg-s2 px-2.5 py-1.5 text-[10.5px] font-medium text-dim">
+              <span>Candidate</span>
+              <span className="text-right">Score</span>
+            </div>
             {page.decision.candidates.slice(0, 6).map((cand, i) => {
               const max = Math.max(1, ...page.decision.candidates.map((x) => x.score));
+              const top = i === 0 && !cand.excluded;
               return (
-                <div key={cand.id} className={cx("rounded-lg px-2.5 py-2", i === 0 && !cand.excluded ? "bg-accent-soft/70" : "bg-s2/50")}>
-                  <div className="flex items-center gap-2">
-                    <span className={cx("text-[12.5px] font-medium", cand.excluded ? "text-dim line-through decoration-faint" : "text-ink")}>{cand.name}</span>
-                    <span className="text-[11px] text-dim">{cand.specialty_label}</span>
-                    <span className="num ml-auto font-mono text-[11.5px] text-muted">{cand.excluded ? "—" : cand.score.toFixed(0)}</span>
+                <div key={cand.id} className={cx("border-b border-line-soft px-2.5 py-2 last:border-b-0", top && "bg-accent-soft/60")}>
+                  <div className="grid grid-cols-[minmax(0,1fr)_64px] items-baseline gap-2">
+                    <span className="truncate">
+                      <span className={cx("text-[12.5px] font-medium", cand.excluded ? "text-dim line-through decoration-faint" : "text-ink")}>{cand.name}</span>
+                      <span className="ml-1.5 text-[11px] text-dim">{cand.specialty_label}</span>
+                    </span>
+                    <span className="num text-right font-mono text-[12px] text-muted">{cand.excluded ? "—" : cand.score.toFixed(0)}</span>
                   </div>
                   {cand.excluded ? (
                     <div className="mt-0.5 text-[11.5px] text-dys-ink">Excluded: {cand.excluded}</div>
                   ) : (
                     <>
-                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-s3">
-                        <div className="h-full rounded-full bg-accent/70" style={{ width: `${Math.max(4, (cand.score / max) * 100)}%` }} />
+                      <div className="mt-1 h-[3px] overflow-hidden rounded-[2px] bg-s3">
+                        <div className="h-full rounded-[2px] bg-accent/80" style={{ width: `${Math.max(3, (cand.score / max) * 100)}%` }} />
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px]">
+                      <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
                         {cand.factors.map((f) => (
-                          <span key={f.label} className={f.points >= 0 ? "text-muted" : "text-dys-ink"}>
-                            {f.points >= 0 ? "+" : ""}
-                            {f.points} {f.label}
+                          <span key={f.label} className={f.points >= 0 ? "text-dim" : "text-dys-ink"}>
+                            <span className="num font-mono">{f.points >= 0 ? "+" : ""}{f.points}</span> {f.label}
                           </span>
                         ))}
                       </div>
@@ -241,32 +304,28 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
         </Section>
 
         <Section
-          title="Certificate"
+          title="Policy certificate"
           right={
             cert ? (
-              <span className={cx("inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium", cert.certified ? "bg-low/10 text-low-ink" : "bg-high/10 text-high-ink")}>
-                {cert.certified ? "Proven · Z3 unsat" : `Refused · Z3 ${cert.z3_status}`}
-              </span>
+              <Tag tone={cert.certified ? "low" : "high"}>{cert.certified ? "Proven · Z3 unsat" : `Refused · Z3 ${cert.z3_status}`}</Tag>
             ) : (
-              <span className="text-[11px] text-dim">issued when the page is sent</span>
+              <span className="text-[11px] text-dim">Issued when the page is sent</span>
             )
           }
         >
           <ul className="space-y-1.5">
-            {invariants.map((inv) => {
+            {invariants.map((inv, i) => {
               const bad = cert?.violations.includes(inv.id) || page.blocked.includes(inv.id);
               return (
                 <li key={inv.id} className="flex gap-2 text-[12px] leading-snug">
-                  <span className={cx("mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold", !cert ? "bg-s3 text-dim" : bad ? "bg-high text-white" : "bg-low/15 text-low-ink")}>
-                    {!cert ? "·" : bad ? "✕" : "✓"}
-                  </span>
+                  {cert ? <span className="mt-px"><Check ok={!bad} /></span> : <span className="num mt-px w-3.5 shrink-0 text-center font-mono text-[11px] text-faint">{i + 1}</span>}
                   <span className={bad ? "text-high-ink" : "text-muted"}>{inv.text}</span>
                 </li>
               );
             })}
           </ul>
           {cert && (
-            <p className="mt-2 break-words font-mono text-[10.5px] leading-relaxed text-dim">
+            <p className="mt-2.5 break-words rounded-md bg-s2 px-2.5 py-2 font-mono text-[10.5px] leading-relaxed text-dim">
               {cert.proof} · {cert.ms} ms
             </p>
           )}
@@ -274,28 +333,25 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
 
         {(page.attempts.length > 0 || page.escalation_log.length > 0) && (
           <Section title="Timeline">
-            <ol className="space-y-2">
-              <li className="flex gap-2 text-[12px]">
-                <span className="num w-16 shrink-0 font-mono text-dim">{clock(page.created_at)}</span>
+            <ol className="space-y-1.5">
+              <li className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[12px]">
+                <span className="num font-mono text-[11px] text-dim">{clock(page.created_at)}</span>
                 <span className="text-muted">Alert raised by {page.reporter ?? page.source}</span>
               </li>
               {page.attempts.map((a, i) => (
-                <li key={i} className="flex gap-2 text-[12px]">
-                  <span className="num w-16 shrink-0 font-mono text-dim">{clock(a.sent_at)}</span>
+                <li key={i} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[12px]">
+                  <span className="num font-mono text-[11px] text-dim">{clock(a.sent_at)}</span>
                   <span className="text-muted">
-                    Paged <span className="font-medium text-ink">{a.name}</span>
+                    Paged <span className="text-ink">{a.name}</span>
                     {a.outcome ? (
                       <>
-                        {" "}
-                        →{" "}
-                        <span className={a.outcome === "accepted" ? "text-low-ink" : "text-dys-ink"}>
-                          {a.outcome === "timeout" ? "no answer" : a.outcome}
-                        </span>
-                        {a.at ? ` after ${Math.round(a.at - a.sent_at)}s` : ""}
+                        {" → "}
+                        <span className={a.outcome === "accepted" ? "text-low-ink" : "text-dys-ink"}>{a.outcome === "timeout" ? "no answer" : a.outcome}</span>
+                        {a.at ? ` after ${Math.round(a.at - a.sent_at)} s` : ""}
                         {a.reason ? ` (${a.reason})` : ""}
                       </>
                     ) : (
-                      <span className="blink-soft text-accent-ink"> · ringing</span>
+                      <span className="blink text-accent-ink"> · ringing</span>
                     )}
                   </span>
                 </li>
@@ -308,21 +364,24 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
           <Section title="Also notified">
             {page.co_notified.map((n) => (
               <div key={n.clinician} className="flex items-center gap-2.5 text-[12.5px]">
-                <Avatar name={n.name} size={22} />
-                <span className="font-medium text-ink">{n.name}</span>
-                <span className="text-dim">{n.why}</span>
+                <Avatar name={n.name} size={20} />
+                <span className="text-ink">{n.name}</span>
+                <span className="truncate text-dim">{n.why}</span>
               </div>
             ))}
           </Section>
         )}
 
         {page.sbar && (
-          <Section title="Brief (SBAR)" right={<span className="text-[11px] text-dim">{page.sbar_refining ? "model writing…" : page.sbar.source === "llm" ? page.sbar.model ?? "model" : "template"} · {page.sbar.words} words</span>}>
-            <dl className="space-y-2">
+          <Section
+            title="Brief (SBAR)"
+            right={<span className="text-[11px] text-dim">{page.sbar_refining ? "model writing…" : page.sbar.source === "llm" ? page.sbar.model ?? "model" : "template"} · {page.sbar.words} words</span>}
+          >
+            <dl className="divide-y divide-line-soft rounded-md border border-line">
               {(["situation", "background", "assessment", "request"] as const).map((k) => (
-                <div key={k} className="grid grid-cols-[22px_1fr] gap-2">
-                  <dt className="grid h-5 w-5 place-items-center rounded bg-ink font-mono text-[10.5px] font-semibold text-white">{k[0].toUpperCase()}</dt>
-                  <dd className="text-[12.5px] leading-relaxed text-ink">{page.sbar![k]}</dd>
+                <div key={k} className="grid grid-cols-[22px_minmax(0,1fr)] gap-2.5 px-2.5 py-2">
+                  <dt className="grid h-5 w-5 place-items-center rounded-[3px] bg-s3 font-mono text-[10.5px] font-semibold text-muted">{k[0].toUpperCase()}</dt>
+                  <dd className={cx("text-[12.5px] leading-relaxed", k === "request" ? "text-ink" : "text-ink/85")}>{page.sbar![k]}</dd>
                 </div>
               ))}
             </dl>
@@ -331,19 +390,25 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
 
         {page.bed && (
           <Section title="Patient">
-            <Link href={`/patient/?id=${encodeURIComponent(page.bed)}`} className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5 text-[13px] text-ink transition hover:border-line-bright hover:bg-s2">
+            <Link
+              href={`/patient/?id=${encodeURIComponent(page.bed)}`}
+              className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
+            >
               <span>
-                Open {page.patient?.name ?? "the patient"}: twin, risk trend, orders
+                Open {page.patient?.name ?? "the patient"}
                 {page.patient?.risk != null && <span className="ml-2 font-mono text-[11.5px] text-dim">risk {page.patient.risk.toFixed(2)}</span>}
               </span>
-              <span aria-hidden>→</span>
+              <span className="text-dim" aria-hidden>
+                ↗
+              </span>
             </Link>
           </Section>
         )}
+        <div className="h-4" />
       </div>
 
       {canDispatch && !["resolved", "cancelled"].includes(page.status) && (
-        <footer className="border-t border-line bg-s2/60 px-5 py-3">
+        <footer className="shrink-0 border-t border-line bg-s1 px-4 py-3">
           {err && <div className="mb-2 text-[12px] text-high-ink">{err}</div>}
           <div className="flex flex-wrap items-center gap-2">
             {["review", "held", "unassigned"].includes(page.status) && (
@@ -351,7 +416,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
                 <select
                   value={reassign}
                   onChange={(e) => setReassign(e.target.value)}
-                  className="h-8 min-w-0 flex-1 rounded-lg border border-line bg-s1 px-2 text-[12.5px] text-ink"
+                  className="h-8 min-w-0 flex-1 rounded-md border border-line-bright bg-s2 px-2 text-[12.5px] text-ink"
                   aria-label="Page someone else"
                 >
                   <option value="">{page.planned ? `Planned: ${clinicians[page.planned]?.name ?? page.planned}` : "Best available"}</option>
@@ -378,7 +443,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
                 Mark resolved
               </Button>
             )}
-            <Button variant="danger" disabled={!!busy} onClick={() => act("cancel")}>
+            <Button variant="danger" disabled={!!busy} onClick={() => act("cancel")} className="ml-auto">
               Cancel page
             </Button>
           </div>
@@ -387,3 +452,5 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
     </>
   );
 }
+
+export { P_RGB };

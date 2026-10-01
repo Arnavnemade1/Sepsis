@@ -10,7 +10,7 @@ import type { RosterPatient } from "@/lib/types";
 export function BedSelector({
   roster,
   current,
-  hrefFor = (id) => `/bed/?id=${encodeURIComponent(id)}`,
+  hrefFor = (id) => `/patient/?id=${encodeURIComponent(id)}`,
 }: {
   roster: RosterPatient[];
   current: RosterPatient | null;
@@ -35,7 +35,7 @@ export function BedSelector({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2.5 rounded-full border border-line bg-s2 py-1.5 pl-3 pr-2.5 text-[13px] hover:border-line-bright"
+        className="flex h-8 items-center gap-2.5 rounded-md border border-line-bright bg-s2 pl-2.5 pr-2 text-[12.5px] transition-colors hover:bg-s3"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -53,7 +53,7 @@ export function BedSelector({
         </svg>
       </button>
       {open && (
-        <div role="listbox" className="plate-float absolute left-1/2 top-11 z-50 max-h-[70vh] w-80 -translate-x-1/2 overflow-y-auto rounded-lg p-1.5 shadow-2xl">
+        <div role="listbox" className="pop absolute left-0 top-10 z-50 max-h-[70vh] w-80 overflow-y-auto p-1">
           {roster.map((p) => (
             <button
               key={p.id}
@@ -64,7 +64,7 @@ export function BedSelector({
                 router.push(hrefFor(p.id));
               }}
               className={cx(
-                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left",
+                "flex w-full items-center gap-2.5 rounded-[4px] px-2.5 py-1.5 text-left",
                 p.id === current?.id ? "bg-s3" : "hover:bg-s2",
               )}
             >

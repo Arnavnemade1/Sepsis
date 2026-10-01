@@ -35,12 +35,12 @@ export default function OsPage() {
 
   return (
     <Page>
-      <PageHead eyebrow="System" title="The operating system underneath">
-        One process table, one hash-chained journal, one syscall gate. Every workspace in this app reads the kernel through
-        the same gate; this is the view from inside it.
+      <PageHead title="System">
+        The kernel behind the console: process table, hash-chained journal, syscall gate, boot record and verified device drivers. Every request
+        from this application passes through the same gate.
       </PageHead>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Tile loading={!boot.data}>
           {boot.data && (
             <Stat label="Boot" value={`${boot.data.boot_seconds.toFixed(1)}`} unit="s" sub={`${boot.data.phases} phases · ${boot.data.failed.length} failed`} tone={boot.data.failed.length ? "high" : "neutral"} />
@@ -86,7 +86,7 @@ export default function OsPage() {
         </Tile>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <Plate title="Shell" eyebrow="Every command is a syscall; the gate decides what you may read">
           <Terminal />
         </Plate>
@@ -129,7 +129,7 @@ export default function OsPage() {
         </Plate>
       </div>
 
-      <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+      <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
         <Plate title="Process table" eyebrow="Sorted by CPU time" bodyClass="p-0">
           {!ps.data ? (
             <div className="p-4">
@@ -165,7 +165,7 @@ export default function OsPage() {
           )}
         </Plate>
 
-        <div className="flex min-w-0 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-3">
           <Plate title="Boot record" eyebrow={boot.data ? `${boot.data.platform} · Python ${boot.data.python}` : "Measured, not scripted"}>
             {!boot.data ? (
               <Skeleton className="h-40" />
@@ -230,7 +230,7 @@ export default function OsPage() {
 }
 
 function Tile({ loading, children }: { loading: boolean; children: React.ReactNode }) {
-  return <div className="plate rise px-4 py-3">{loading ? <Skeleton className="h-[58px]" /> : children}</div>;
+  return <div className="panel px-3.5 py-3">{loading ? <Skeleton className="h-[58px]" /> : children}</div>;
 }
 
 function summarize(d: Record<string, unknown>): string {

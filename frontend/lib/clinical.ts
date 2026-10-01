@@ -22,15 +22,15 @@ export const TONE_BG: Record<Tone, string> = {
   dys: "bg-dys",
   high: "bg-high",
   nodata: "bg-nodata",
-  neutral: "bg-muted",
+  neutral: "bg-dim",
 };
 export const TONE_RGB: Record<Tone, string> = {
-  low: "43 154 102",
-  med: "226 163 54",
-  dys: "239 122 43",
+  low: "47 182 124",
+  med: "238 177 42",
+  dys: "245 118 46",
   high: "229 72 77",
-  nodata: "163 167 174",
-  neutral: "79 85 94",
+  nodata: "86 93 104",
+  neutral: "162 169 179",
 };
 
 export function tierTone(t: Tier | WardTier | string | null | undefined): Tone {

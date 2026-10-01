@@ -79,19 +79,21 @@ request takes 30–60 s to wake it. The app says so and retries.
 
 ## App routes
 
-Every role has its own route, and all of them read one running hospital.
+There is no front page: the product is the console. `/` opens it directly, signed in as the
+charge nurse of the demo hospital (switch users from the menu at the top right). Every screen
+shares one system bar, showing connection latency, prover health and a 24-hour clock, and one
+section bar.
 
 | Route | Who | What it is |
 |:--|:--|:--|
-| `/` | everyone | What it does, live numbers from the running hospital, and a way in. Sign in as a staff member, or pick up any clinician's pager |
-| `/operator/` | charge nurse · chief | **The operator console**, with six views. **Floor** shows the building in isometric: each open page on its room in its priority's colour, each clinician where they are, a ringing page as an arc. **Queue** lists open pages by priority with live countdowns, and approve, escalate and cancel. **Cases** is every page. **Staff** is who is where. **Insights** has the Sentinel's recommendations and the numbers. **Policy** holds the autonomy grid, the guardrails and the invariants; the chief can change them. `⌘K` raises an alert by text or by voice |
-| `/clinician/?id=<user>` | any clinician | **The pager.** Pages for that clinician ring here with sound and vibration. Accept, and the brief is waiting. Decline (in a procedure, with another patient, not my service), and the next clinician is paged at once. On a phone the page is the pager. While it is open, nobody answers for that clinician |
+| `/operator/` | charge nurse · chief | **The operator console.** **Overview** has the live KPIs and the building in isometric: each active page on its room in its priority's colour, each clinician where they are, a ringing page as an arc from clinician to room. Beside it are the active-page queue (live countdowns; approve, escalate, cancel) and the event log. **Pages** (`?view=pages`) lists every page with filters. **Staff** is the roster by service. **Sentinel** has the system-wide recommendations and dispatch performance. **Policy** holds the autonomy matrix, the guardrails and the six invariants; the chief can change them. `⌘K` raises an alert by text or by voice. Selecting a page opens its inspector: the dispatch pipeline with timings, triage, the ranked routing table, the Z3 certificate, the timeline and the brief |
+| `/clinician/?id=<user>` | any clinician | **The pager.** Pages for that clinician ring here with sound and vibration. Accept, and the brief is waiting. Decline (in a procedure, with another patient, not my service), and the next clinician is paged at once. On a phone the page is the pager. While it is open, nobody answers for that clinician. `/clinician/` lists every pager |
 | `/patient/?id=<bed>` | from a page | One patient: the risk the unit acts on, vitals with trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line with its 8 h projection, the decision and its limits, orders through the Z3 cage, the specialist panel, and Dr. Aegis |
 | `/pharmacy/?id=<bed>` | from a patient | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
 | `/lab/` | research · chief | The deployed detector read from its promotion manifest, the operating point, conformal abstention, the falsification record, and every change the gate refused |
 | `/os/` | chief · operators | A shell on the kernel (every verb a syscall through the gate), the process table, the hash-chained journal (paging events included), the measured boot, services and verified drivers |
 
-The older routes still resolve: `/command/` goes to `/operator/` and `/bed/` to `/patient/`.
+The older routes still resolve: `/command/` goes to `/operator/`, `/bed/` to `/patient/`, and the old `?tab=` names map onto the new views.
 
 ### Aegis Memorial, the demo hospital
 

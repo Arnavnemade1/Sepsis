@@ -17,8 +17,8 @@ npm run build                # → out/
 
 | Route | File | Reads |
 |:--|:--|:--|
-| `/` | `app/page.tsx` | `WS /aegis/paging/stream` (live numbers), `POST /aegis/sys/login` |
-| `/operator/` | `app/operator/page.tsx` | `WS /aegis/paging/stream`, `/aegis/paging/hospital`; writes `POST /aegis/paging/alerts`, `…/pages/{id}/approve · escalate · cancel · resolve`, `…/clinicians/{id}/status`, `…/recs/{id}/ack`, `…/settings` |
+| `/` | `app/page.tsx` | nothing: it redirects to `/operator/` (at the edge on Vercel via `vercel.json`, client-side elsewhere) |
+| `/operator/?view=overview·pages·staff·sentinel·policy` | `app/operator/page.tsx` | `WS /aegis/paging/stream`, `/aegis/paging/hospital`; writes `POST /aegis/paging/alerts`, `…/pages/{id}/approve · escalate · cancel · resolve`, `…/clinicians/{id}/status`, `…/recs/{id}/ack`, `…/settings` |
 | `/clinician/?id=` | `app/clinician/page.tsx` | `WS /aegis/paging/stream?clinician=<id>` (the pager is open), its own device session; writes `…/pages/{id}/respond`, `…/resolve`, `…/clinicians/{id}/status` |
 | `/patient/?id=` | `app/patient/page.tsx` | `WS /aegis/stream` (live patient) or `/aegis/patient/snapshot?bed=` (cohort bed), `/aegis/cohort/{bed}/chart`, `/aegis/timeline`, `/aegis/decision`, `/aegis/doctor/*` |
 | `/pharmacy/?id=` | `app/pharmacy/page.tsx` | `/aegis/pk/options?bed=`, `POST /aegis/pharmacopoeia/screen` |
@@ -36,7 +36,7 @@ components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue,
                     page-drawer.tsx (dispatch, triage, routing, certificate, timeline, SBAR)
                     composer.tsx (⌘K, text or voice) · panels.tsx (KPIs, cases, staff,
                     insights, policy, room drawer) · bits.tsx (priority chips, countdowns, avatars)
-components/         shell.tsx (app bar, user menu) · ui.tsx (plates, buttons, drawer, modal)
+components/         shell.tsx (system bar, section bar, session, user menu) · ui.tsx (panels, tags, buttons, inspector sheet, modal)
                     feed.tsx · twin.tsx · terminal.tsx · bed/ (patient panels, chart, orders)
 engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js
 lib/                paging.ts (types, the event reducer, usePaging, labels, clock) ·
@@ -56,14 +56,18 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
 
 ## Rules this code keeps
 
+- **An operations console, not a website.** There is no landing page, no hero, no serif display
+  type, no gradients or glass, and no decorative icons. One system bar (connection latency,
+  prover health, clock, user) and one section bar frame every screen. The palette is stealth
+  grey (`#212429` canvas, `#282c32` panels): dark enough for a wall display, not black.
 - **Colour is signal.** The stock Tailwind palette is deleted in `globals.css`
   (`--color-*: initial`), so `bg-blue-500` does not compile. Red, orange, amber and grey are
   page priority (P1–P4). Green, blue, violet, amber and grey are staff status. Indigo is the
   one accent, for selection, focus and the primary action. A healthy reading is neutral, not
   green.
-- **Paper, not glass.** White plates on a warm canvas, one hairline border, one soft shadow.
-  Depth belongs to the building view, and the terminal and the anatomical twin keep dark
-  stages of their own.
+- **Flat and exact.** Panels are a hairline border on a slightly lighter grey with 6–8 px radii.
+  Depth is kept for overlays (menus, the inspector, the composer). The terminal and the
+  anatomical twin have darker stages of their own.
 - **Numbers are tabular** (`.num`), so timers and counts never jitter. Wall-clock time is
   24-hour (`clock()` in `lib/paging.ts`).
 - **Say what a number is.** A cohort bed's score is the fused, personalized cohort risk, not
@@ -79,6 +83,10 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
   with no device mockup.
 
 ## Traps found building it
+
+- **The demo opens signed in, and sign-out has to stick.** `useEnsureSession()` signs in as the
+  charge nurse when there is no session, unless the person signed out (the `aegis_signed_out`
+  flag). Without that flag, signing out would undo itself on the next render.
 
 - **A backend restart forgets every session** unless `AEGIS_SESSION_SECRET` is set (the
   secret is random per boot). A forgotten token is served as *guest* in audit mode, so a

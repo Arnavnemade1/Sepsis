@@ -115,7 +115,6 @@ function Pharmacy() {
       }
     >
       <PageHead
-        eyebrow="Clinical pharmacy"
         title={patient ? `Treatment options · ${patient.name}` : "Treatment options"}
         right={
           data && (
@@ -127,12 +126,12 @@ function Pharmacy() {
           )
         }
       >
-        Every candidate order is projected through a physiologically based pharmacokinetic model of this patient, scored
-        against cited adverse-event rates, and checked against the safety invariants by Z3 before anyone can give it.
+        Each candidate order is projected through a pharmacokinetic model of this patient, scored against cited adverse-event rates, and
+        checked against the safety invariants by Z3 before it can be given.
       </PageHead>
 
       {opts.loading && !data ? (
-        <div className="grid gap-5">
+        <div className="grid gap-3">
           <Skeleton className="h-64 rounded-lg" />
           <Skeleton className="h-96 rounded-lg" />
         </div>
@@ -141,7 +140,7 @@ function Pharmacy() {
           <Empty>{opts.data?.detail ?? opts.error ?? "Choose a patient."}</Empty>
         </Plate>
       ) : (
-        <div className="grid gap-5">
+        <div className="grid gap-3">
           <Plate title="Compare the paths" eyebrow={data.comparison.headline} bodyClass="p-0">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] border-collapse text-[12.5px]">
@@ -212,7 +211,7 @@ function Pharmacy() {
 function OptionDetail({ o }: { o: Option }) {
   const events = [...o.adverse.events].sort((a, b) => b.probability - a.probability).slice(0, 6);
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <Plate
         title={o.label}
         eyebrow={o.note}
@@ -230,7 +229,7 @@ function OptionDetail({ o }: { o: Option }) {
         {o.arms.length === 0 ? (
           <Empty>No drug is given on this path.</Empty>
         ) : (
-          <div className="grid gap-5 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2">
             {o.arms.map((a) => (
               <div key={a.drug} className="min-w-0">
                 <div className="flex items-baseline gap-2">
@@ -262,7 +261,7 @@ function OptionDetail({ o }: { o: Option }) {
           </div>
         )}
         {(o.upsides.length > 0 || o.downsides.length > 0) && (
-          <div className="mt-5 grid gap-4 border-t border-line-soft pt-4 md:grid-cols-2">
+          <div className="mt-3 grid gap-4 border-t border-line-soft pt-4 md:grid-cols-2">
             <PointList title="For" points={o.upsides} />
             <PointList title="Against" points={o.downsides} warn />
           </div>
@@ -346,21 +345,21 @@ function ConcChart({ arm }: { arm: Arm }) {
   const d = y.map((v, i) => `${i ? "L" : "M"}${X(t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 h-auto w-full" aria-label={`${arm.label} plasma concentration`}>
-      <path d={`${d}L${W},${H}L0,${H}Z`} fill="rgb(68 83 214 / .07)" />
-      <path d={d} fill="none" stroke="#4453d6" strokeWidth={1.5} />
+      <path d={`${d}L${W},${H}L0,${H}Z`} fill="rgb(61 142 245 / .12)" />
+      <path d={d} fill="none" stroke="#6eaaff" strokeWidth={1.5} />
       {mic != null && (
         <>
           <line x1={0} x2={W} y1={Y(mic)} y2={Y(mic)} stroke={`rgb(${TONE_RGB.med} / .7)`} strokeDasharray="4 3" />
           {/* above the line, but never down on the time axis labels */}
-          <text x={W - 2} y={Math.min(Y(mic) - 4, H - 15)} textAnchor="end" fontSize="9.5" fill="#926000">
+          <text x={W - 2} y={Math.min(Y(mic) - 4, H - 15)} textAnchor="end" fontSize="9.5" fill="#f4c55a">
             MIC {mic} {arm.unit}
           </text>
         </>
       )}
-      <text x={2} y={H - 3} fontSize="9.5" fill="#858b94">
+      <text x={2} y={H - 3} fontSize="9.5" fill="#868d97">
         0 h
       </text>
-      <text x={W - 2} y={H - 3} textAnchor="end" fontSize="9.5" fill="#858b94">
+      <text x={W - 2} y={H - 3} textAnchor="end" fontSize="9.5" fill="#868d97">
         {t[t.length - 1]} h
       </text>
     </svg>
@@ -459,7 +458,7 @@ function InteractionScreen({ seed, renal }: { seed: string[]; renal: boolean }) 
       </div>
       {err && <div className="mt-3 text-[12.5px] text-high-ink">{err}</div>}
       {res && (
-        <div className="mt-4 grid gap-5 lg:grid-cols-2">
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
           <div>
             <div className="mb-2 text-[11.5px] text-dim">Proof tree · hard constraints</div>
             {res.proof_tree.length === 0 ? (

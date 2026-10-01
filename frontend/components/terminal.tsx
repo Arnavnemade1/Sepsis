@@ -222,14 +222,11 @@ export function Terminal() {
   // ink tokens are for paper)
   return (
     <div
-      className="flex h-[440px] flex-col overflow-hidden rounded-xl border border-[#1d2027] bg-night font-mono text-[12px] leading-[1.55] shadow-[0_24px_60px_-28px_rgb(12_14_19/.6)]"
+      className="flex h-[440px] flex-col overflow-hidden rounded-lg border border-line-bright bg-night font-mono text-[12px] leading-[1.55] "
       onClick={() => field.current?.focus()}
     >
-      <div className="flex items-center gap-1.5 border-b border-[#1d2027] px-3 py-2">
-        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
-        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
-        <span className="ml-2 text-[11px] text-[#6b717c]">aegis-sh · {user}@aegis</span>
+      <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
+        <span className="text-[11px] text-[#868d97]">aegis-sh · {user}@aegis · every command is a syscall through the gate</span>
       </div>
       <div ref={box} className="min-h-0 flex-1 overflow-auto whitespace-pre p-3">
         {lines.map((l, i) => (
@@ -241,7 +238,7 @@ export function Terminal() {
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 border-t border-[#1d2027] px-3 py-2">
+      <div className="flex items-center gap-2 border-t border-line px-3 py-2">
         <span className="shrink-0 text-[#7ee2a8]">
           {user}@aegis:{cwd}$
         </span>

@@ -91,12 +91,12 @@ export default function LabPage() {
 
   return (
     <Page>
-      <PageHead eyebrow="Research" title="The evidence behind the numbers">
-        Every number on the ward comes from a model that was fitted on one set of patients and judged on patients it never
-        saw. This workspace shows what is deployed, how it was judged, and every change the gate refused.
+      <PageHead title="Evidence">
+        The sepsis detector that raises pages: what is deployed, how it was validated on patients it never saw, where its alarm is set, and every
+        proposed change the promotion gate refused.
       </PageHead>
 
-      <div className="grid gap-5">
+      <div className="grid gap-3">
         <Plate
           title="Deployed detector"
           eyebrow={d ? `${d.promoted ? "Promoted" : "Candidate"} ${d.created?.slice(0, 10)} · ${d.feature_set} features` : "From the promotion gate's manifest"}
@@ -144,7 +144,7 @@ export default function LabPage() {
           )}
         </Plate>
 
-        <div className="grid gap-5 xl:grid-cols-3">
+        <div className="grid gap-3 xl:grid-cols-3">
           <Plate title="Operating point" eyebrow="Where the alarm is set, derived on out-of-fold patients" right={ev.data?.operating_point && <Stamp ok={ev.data.operating_point.matches_detector} />}>
             {!ev.data ? (
               <Skeleton className="h-32" />

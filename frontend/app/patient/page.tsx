@@ -123,24 +123,24 @@ function Bedside() {
       }
     >
       {!snap ? (
-        <div className="grid gap-5">
+        <div className="grid gap-3">
           <Skeleton className="h-36 rounded-lg" />
-          <div className="grid gap-5 xl:grid-cols-3">
+          <div className="grid gap-3 xl:grid-cols-3">
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
           </div>
         </div>
       ) : (
-        <div className="grid gap-5">
+        <div className="grid gap-3">
           {/* identity + the one number */}
-          <section className="plate rise flex flex-wrap items-end gap-x-10 gap-y-5 p-5">
+          <section className="panel flex flex-wrap items-end gap-x-10 gap-y-5 p-4">
             <div className="min-w-[240px]">
               <div className="text-[12px] text-dim">
                 {live ? "Live monitored patient" : `${title(bed ?? "")} · ICU wing`}
                 {snap.source && <span className="ml-2 text-faint">source · {snap.source}</span>}
               </div>
-              <h1 className="mt-1 text-[28px] font-semibold tracking-tight">{snap.patient.name}</h1>
+              <h1 className="mt-1 text-[24px] font-semibold tracking-[-0.01em]">{snap.patient.name}</h1>
               <div className="num mt-1 text-[13px] text-muted">
                 {snap.patient.age != null && `${Math.round(snap.patient.age)} y`}
                 {snap.patient.gender && ` · ${snap.patient.gender}`}
@@ -161,7 +161,7 @@ function Bedside() {
             </div>
           </section>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
             <Plate title="Vitals" eyebrow={recorded ? "Hourly record, last 24 h" : "Streaming"}>
               <Vitals channels={(snap.body_state.channels ?? []) as never} trends={trends} />
             </Plate>
@@ -180,10 +180,10 @@ function Bedside() {
             </Plate>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Plate
               title="Risk over time"
-              eyebrow={recorded ? "Black: the risk the unit acts on · grey: population fusion · indigo: its 8 h projection" : "Calibrated detector probability"}
+              eyebrow={recorded ? "White: the risk the unit acts on · grey: population fusion · blue: its 8 h projection" : "Calibrated detector probability"}
               right={
                 recorded && chart.data?.forecast ? (
                   <span className="text-[11.5px] text-dim">
@@ -200,7 +200,7 @@ function Bedside() {
                 <Empty>{timeline.data?.refused ?? "Collecting history. A trend needs more than two readings."}</Empty>
               )}
             </Plate>
-            <div className="flex min-w-0 flex-col gap-5">
+            <div className="flex min-w-0 flex-col gap-3">
               <Plate title="Decision" eyebrow="What the system recommends, and why">
                 <DecisionCard d={decision.data} />
               </Plate>
@@ -212,7 +212,7 @@ function Bedside() {
             </div>
           </div>
 
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Plate
               title="Specialist panel"
               eyebrow={`${snap.reasoning?.opinions?.length ?? 0} reasoning agents deliberate on every tick`}

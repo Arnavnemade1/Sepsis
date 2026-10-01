@@ -31,18 +31,9 @@ function quad(rect: number[], inset: number, s: number, p: Pos): Pt[] {
 }
 const center = (rect: number[], s: number, p: Pos): Pt => proj(rect[0] + rect[2] / 2, rect[1] + rect[3] / 2, s, p);
 
-// calm unit tints: never a priority or status colour
-const ZONE_TINT: Record<string, string> = {
-  icu: "rgb(68 83 214 / 0.16)",
-  ed: "rgb(28 126 240 / 0.13)",
-  stepdown: "rgb(20 160 150 / 0.15)",
-  ward: "rgb(100 116 139 / 0.11)",
-  obs: "rgb(100 116 139 / 0.09)",
-  or: "rgb(139 92 246 / 0.13)",
-  pacu: "rgb(139 92 246 / 0.10)",
-  support: "rgb(17 20 24 / 0.06)",
-  imaging: "rgb(17 20 24 / 0.05)",
-};
+// structure is monochrome: colour on the plan means a page, a watch or a person.
+// Critical-care and emergency units read a shade lighter so the eye finds them.
+const ZONE_FILL = (critical: boolean) => (critical ? "rgb(255 255 255 / 0.05)" : "rgb(255 255 255 / 0.025)");
 
 function hash(s: string): number {
   let h = 2166136261;
@@ -86,7 +77,7 @@ export function FloorView(props: Props) {
         </motion.div>
       </AnimatePresence>
       {tip && (
-        <div className="pop pointer-events-none absolute z-20 max-w-[260px] px-3 py-2" style={{ left: tip.x + 14, top: tip.y + 14 }}>
+        <div className="pop pointer-events-none absolute z-20 max-w-[280px] px-3 py-2" style={{ left: tip.x + 14, top: tip.y + 14 }}>
           <div className="text-[12.5px] font-semibold text-ink">{tip.title}</div>
           {tip.lines.map((l) => (
             <div key={l} className="text-[11.5px] leading-snug text-muted">
@@ -152,32 +143,32 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
   };
   return (
     <g>
-      <polygon points={pts(shadow)} fill="rgb(17 20 24 / .05)" style={{ filter: `blur(${detail ? 10 : 6}px)` }} />
-      <polygon points={pts(front)} fill="#d9d9d2" />
-      <polygon points={pts(side)} fill="#c4c4bc" />
-      <polygon points={pts(top)} fill="#ffffff" stroke={hover ? "rgb(68 83 214 / .7)" : "rgb(17 20 24 / .2)"} strokeWidth={hover ? 1.5 : 1} style={{ transition: "stroke .2s" }} />
+      <polygon points={pts(shadow)} fill="rgb(0 0 0 / .28)" style={{ filter: `blur(${detail ? 10 : 6}px)` }} />
+      <polygon points={pts(front)} fill="#1d2024" />
+      <polygon points={pts(side)} fill="#191b1f" />
+      <polygon points={pts(top)} fill="#33383f" stroke={hover ? "rgb(110 170 255 / .8)" : "rgb(255 255 255 / .16)"} strokeWidth={hover ? 1.4 : 1} style={{ transition: "stroke .2s" }} />
       {floor.zones.map((zid) => {
         const zn = layout.zones[zid];
         return (
           <g key={zid}>
-            <polygon points={pts(quad(zn.rect, 0.55, s, pos))} fill={ZONE_TINT[zn.kind] ?? ZONE_TINT.ward} stroke="rgb(17 20 24 / .12)" strokeWidth={0.7} />
+            <polygon points={pts(quad(zn.rect, 0.55, s, pos))} fill={ZONE_FILL(zn.critical)} stroke="rgb(255 255 255 / .18)" strokeWidth={0.7} />
             {zn.rooms.map((rid) => {
               const room = layout.rooms[rid];
               const pg = roomPages[rid];
               const mon = monitor[rid];
               const occ = occupancy[rid];
-              let fill = occ ? "rgb(255 255 255 / .96)" : "rgb(255 255 255 / .42)";
-              let stroke = "rgb(17 20 24 / .2)";
+              let fill = occ ? "rgb(255 255 255 / .09)" : "rgb(255 255 255 / .025)";
+              let stroke = "rgb(255 255 255 / .15)";
               let dash: string | undefined;
               let sw = 0.6;
               if (mon?.watch && !pg) {
-                fill = "rgb(226 163 54 / .14)";
-                stroke = "rgb(226 163 54 / .95)";
+                fill = "rgb(238 177 42 / .14)";
+                stroke = "rgb(238 177 42 / .9)";
                 dash = "3 2";
                 sw = 1;
               }
               if (pg) {
-                fill = `rgb(${P_RGB[pg.priority]} / ${pg.status === "accepted" ? 0.18 : 0.3})`;
+                fill = `rgb(${P_RGB[pg.priority]} / ${pg.status === "accepted" ? 0.16 : 0.32})`;
                 stroke = `rgb(${P_RGB[pg.priority]})`;
                 sw = 1.2;
               }
@@ -201,21 +192,21 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                   }
                   onMouseLeave={() => setTip(null)}
                 >
-                  <polygon points={pts(q)} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash} className="transition-[fill] duration-300 hover:brightness-95" />
+                  <polygon points={pts(q)} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash} className="transition-[fill] duration-300 hover:brightness-125" />
                   {pg && (pg.status === "paging" || pg.status === "review" || pg.status === "unassigned") && pg.priority <= 2 && (
                     <circle cx={c[0]} cy={c[1]} r={detail ? 6 : 3.5} fill={`rgb(${P_RGB[pg.priority]})`} className="pointer-events-none">
                       <animate attributeName="r" values={detail ? "4;16;4" : "2.5;10;2.5"} dur="1.8s" repeatCount="indefinite" />
                       <animate attributeName="opacity" values=".75;0;.75" dur="1.8s" repeatCount="indefinite" />
                     </circle>
                   )}
-                  {mon && !pg && <circle cx={c[0] + (detail ? 10 : 4.5)} cy={c[1] - (detail ? 3.5 : 1.6)} r={detail ? 2.4 : 1.5} fill="rgb(68 83 214 / .9)" className="pointer-events-none" />}
+                  {mon && !pg && <circle cx={c[0] + (detail ? 10 : 4.5)} cy={c[1] - (detail ? 3.5 : 1.6)} r={detail ? 2.6 : 1.6} fill="none" stroke="rgb(255 255 255 / .7)" strokeWidth={detail ? 1.1 : 0.8} className="pointer-events-none" />}
                   {detail && (
-                    <text x={c[0]} y={c[1] + 3.2} textAnchor="middle" fontSize={9} fontFamily="var(--font-geist-mono)" fill={pg ? P_INK[pg.priority] : "rgb(17 20 24 / .6)"} fontWeight={pg ? 700 : 500} className="pointer-events-none">
+                    <text x={c[0]} y={c[1] + 3.2} textAnchor="middle" fontSize={9} fontFamily="var(--font-geist-mono)" fill={pg ? P_INK[pg.priority] : "rgb(255 255 255 / .55)"} fontWeight={pg ? 700 : 500} className="pointer-events-none">
                       {rid}
                     </text>
                   )}
                   {detail && mon?.risk != null && (
-                    <text x={c[0]} y={c[1] + 13} textAnchor="middle" fontSize={7.5} fontFamily="var(--font-geist-mono)" fill={mon.watch || pg ? "#926000" : "rgb(17 20 24 / .42)"} className="pointer-events-none">
+                    <text x={c[0]} y={c[1] + 13} textAnchor="middle" fontSize={7.5} fontFamily="var(--font-geist-mono)" fill={mon.watch || pg ? "#f4c55a" : "rgb(255 255 255 / .38)"} className="pointer-events-none">
                       {mon.risk.toFixed(2)}
                     </text>
                   )}
@@ -227,7 +218,7 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                 const [x, y, w] = zn.rect;
                 const p = proj(x + w / 2, y + 0.4, s, pos);
                 return (
-                  <text x={p[0]} y={p[1] - 6} textAnchor="middle" fontSize={9.5} letterSpacing="0.1em" fontFamily="var(--font-geist-mono)" fill="rgb(17 20 24 / .55)" className="pointer-events-none uppercase">
+                  <text x={p[0]} y={p[1] - 6} textAnchor="middle" fontSize={9.5} letterSpacing="0.08em" fontFamily="var(--font-geist-mono)" fill="rgb(255 255 255 / .5)" className="pointer-events-none uppercase">
                     {zn.name}
                   </text>
                 );
@@ -259,10 +250,10 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                   <animate attributeName="opacity" values=".6;0;.6" dur="1.4s" repeatCount="indefinite" />
                 </circle>
               )}
-              <circle cx={px} cy={py + 1.2} r={r} fill="rgb(17 20 24 / .15)" />
-              <circle cx={px} cy={py} r={r} fill={`rgb(${ST_RGB[c.status]})`} stroke="#fff" strokeWidth={detail ? 2 : 1.5} />
+              <circle cx={px} cy={py + 1.2} r={r} fill="rgb(0 0 0 / .35)" />
+              <circle cx={px} cy={py} r={r} fill={`rgb(${ST_RGB[c.status]})`} stroke="#1d2024" strokeWidth={detail ? 2 : 1.5} />
               {detail && (
-                <text x={px + r + 3.5} y={py + 3} fontSize={9} fill="rgb(17 20 24 / .72)" fontWeight={500} className="pointer-events-none">
+                <text x={px + r + 3.5} y={py + 3} fontSize={9} fill="rgb(255 255 255 / .75)" fontWeight={500} className="pointer-events-none">
                   {c.name.replace(/^Dr\.\s*/, "").split(/[ ,]/)[0]}
                 </text>
               )}
@@ -274,19 +265,16 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
           const p = proj(0, D, s, pos);
           return (
             <g className="pointer-events-none">
-              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={11} fontFamily="var(--font-geist-mono)" fontWeight={600} letterSpacing="0.08em" fill="rgb(17 20 24 / .78)">
+              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={10.5} fontFamily="var(--font-geist-mono)" fontWeight={600} letterSpacing="0.06em" fill="rgb(255 255 255 / .82)">
                 {`FLOOR ${fid}`}
               </text>
-              <text x={p[0] - 18} y={p[1] + 10} textAnchor="end" fontSize={10.5} fill="rgb(17 20 24 / .46)">
+              <text x={p[0] - 18} y={p[1] + 10} textAnchor="end" fontSize={10} fill="rgb(255 255 255 / .42)">
                 {floor.label}
               </text>
               {summary && summary.n > 0 && summary.top != null && (
-                <g>
-                  <rect x={p[0] - 18 - 56} y={p[1] + 16} width={56} height={15} rx={7.5} fill={`rgb(${P_RGB[summary.top]} / .14)`} />
-                  <text x={p[0] - 18 - 28} y={p[1] + 26.5} textAnchor="middle" fontSize={9.5} fontWeight={600} fill={P_INK[summary.top]}>
-                    {summary.n} open
-                  </text>
-                </g>
+                <text x={p[0] - 18} y={p[1] + 24} textAnchor="end" fontSize={9.5} fontFamily="var(--font-geist-mono)" fontWeight={600} fill={P_INK[summary.top]}>
+                  {`${summary.n} ACTIVE`}
+                </text>
               )}
             </g>
           );
@@ -325,9 +313,9 @@ function Arcs({ layout, pages, spots, s, posOf, only, selected }: {
         const d = `M${a[0].toFixed(1)},${a[1].toFixed(1)} Q${cx.toFixed(1)},${cy.toFixed(1)} ${b[0].toFixed(1)},${b[1].toFixed(1)}`;
         return (
           <g key={p.id}>
-            <path d={d} fill="none" stroke={col} strokeOpacity={0.18} strokeWidth={5} strokeLinecap="round" />
-            <path d={d} fill="none" stroke={col} strokeWidth={1.6} strokeDasharray="5 7" strokeLinecap="round" style={{ animation: "dash 0.9s linear infinite" }} />
-            <circle cx={b[0]} cy={b[1]} r={2.8} fill={col} stroke="#fff" strokeWidth={1} />
+            <path d={d} fill="none" stroke={col} strokeOpacity={0.22} strokeWidth={5} strokeLinecap="round" />
+            <path d={d} fill="none" stroke={col} strokeWidth={1.5} strokeDasharray="5 7" strokeLinecap="round" style={{ animation: "dash 0.9s linear infinite" }} />
+            <circle cx={b[0]} cy={b[1]} r={2.8} fill={col} stroke="#1d2024" strokeWidth={1} />
           </g>
         );
       })}
@@ -414,8 +402,7 @@ export function FloorChips({ layout, floor, onFloor, counts }: {
 }) {
   const ids: (string | "all")[] = ["all", ...layout.floors.map((f) => f.id)];
   return (
-    <div className="flex items-center gap-1">
-      <span className="mr-1 font-mono text-[10.5px] uppercase tracking-[0.12em] text-dim">Floor</span>
+    <div className="inline-flex items-center rounded-md border border-line bg-bg p-0.5" role="tablist" aria-label="Floor">
       {ids.map((id) => {
         const active = floor === id;
         const n = id === "all" ? 0 : counts[id] ?? 0;
@@ -423,14 +410,16 @@ export function FloorChips({ layout, floor, onFloor, counts }: {
           <button
             key={id}
             onClick={() => onFloor(id)}
+            role="tab"
+            aria-selected={active}
             className={cx(
-              "relative grid h-7 min-w-7 place-items-center rounded-full px-2 font-mono text-[11.5px] font-medium transition",
-              active ? "bg-ink text-white shadow-sm" : "text-muted hover:bg-s2 hover:text-ink",
+              "relative grid h-6 min-w-7 place-items-center rounded-[4px] px-1.5 font-mono text-[11.5px] font-medium transition-colors",
+              active ? "bg-s3 text-ink" : "text-dim hover:text-ink",
             )}
             title={id === "all" ? "All floors" : layout.floors.find((f) => f.id === id)?.label}
           >
             {id === "all" ? "All" : id}
-            {n > 0 && !active && <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full border-2 border-bg bg-p1" />}
+            {n > 0 && !active && <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-p1" />}
           </button>
         );
       })}

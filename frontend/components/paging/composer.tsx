@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { Button, Modal } from "@/components/ui";
+import { Button, cx, Kbd, Modal } from "@/components/ui";
 import { api } from "@/lib/api";
 import { CATEGORY_LABEL, PAGE_STATUS_LABEL, type Clinician, type Layout, type Occupant, type Page } from "@/lib/paging";
 
@@ -15,7 +15,7 @@ const EXAMPLES = [
   "Chest pain in 409, diaphoretic, history of CABG",
   "Fall in 503, no head strike, alert and oriented",
   "603 new facial droop, last known well 30 min ago",
-  "Pt in 611 asking for something to help sleep",
+  "605 desaturating to 84% on room air, RR 30",
 ];
 
 // the same room patterns the backend uses, so the preview matches the pipeline
@@ -54,7 +54,6 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
   const [result, setResult] = useState<Page | null>(null);
   const [listening, setListening] = useState(false);
   const [voiceUsed, setVoiceUsed] = useState(false);
-  const [placeholder, setPlaceholder] = useState(EXAMPLES[0]);
   const rec = useRef<SpeechRec | null>(null);
   const field = useRef<HTMLTextAreaElement>(null);
 
@@ -64,10 +63,7 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
     setResult(null);
     setErr(null);
     setVoiceUsed(false);
-    setTimeout(() => field.current?.focus(), 60);
-    let i = 0;
-    const t = setInterval(() => setPlaceholder(EXAMPLES[++i % EXAMPLES.length]), 3200);
-    return () => clearInterval(t);
+    setTimeout(() => field.current?.focus(), 50);
   }, [open, presetRoom]);
 
   const room = useMemo(() => (layout ? detectRoom(text, layout.rooms) : null), [text, layout]);
@@ -120,15 +116,13 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
   };
 
   return (
-    <Modal open={open} onClose={onClose} width={680}>
+    <Modal open={open} onClose={onClose} width={640}>
       {!result ? (
         <div>
-          <div className="flex items-center gap-2 border-b border-line-soft px-5 py-3">
-            <span className="text-[13px] font-semibold text-ink">New alert</span>
-            <span className="text-[12px] text-dim">Describe what is happening. Triage, routing and the page are automatic.</span>
-            <span className="kbd ml-auto">esc</span>
-          </div>
-          <div className="px-5 pt-4">
+          <div className="flex items-start gap-3 px-4 pb-2 pt-4">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-[3px] shrink-0 text-dim" aria-hidden>
+              <path d="M8 1.5v13M1.5 8h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
             <textarea
               ref={field}
               value={text}
@@ -136,48 +130,61 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
               }}
-              placeholder={placeholder}
-              rows={4}
-              className="w-full resize-none bg-transparent text-[18px] leading-relaxed text-ink outline-none placeholder:text-faint"
+              placeholder="Describe the situation: room, what you see, any readings"
+              rows={3}
+              className="min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint"
+              aria-label="Alert"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2 px-5 pb-4">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 text-[12px]">
+            <span className="text-dim">Room</span>
             {room && zone ? (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-s2 px-2.5 py-1 text-[12px] text-ink">
-                <span className="font-mono font-semibold">{room}</span>
-                <span className="text-dim">{zone.name}</span>
-                {occ && <span className="text-muted">· {occ.name}</span>}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="font-mono font-semibold text-ink">{room}</span>
+                <span className="text-muted">{zone.name}</span>
+                {occ && <span className="truncate text-dim">· {occ.name}</span>}
                 {occ?.monitored && <span className="text-accent-ink">· monitored</span>}
               </span>
             ) : (
-              <span className="rounded-full border border-dashed border-line-bright px-2.5 py-1 text-[12px] text-dim">
-                {text.trim() ? "No room detected yet (the operator will be asked)" : "Mention a room, e.g. 512 or A4"}
-              </span>
+              <span className="text-faint">{text.trim() ? "not detected: the operator will be asked" : "mention a room, e.g. 512 or A4"}</span>
             )}
             {listening && (
-              <span className="inline-flex items-center gap-1.5 text-[12px] text-high-ink">
-                <span className="live-dot h-2 w-2 rounded-full bg-high" style={{ color: "rgb(229 72 77 / .5)" }} />
-                Listening…
+              <span className="ml-auto inline-flex items-center gap-1.5 text-high-ink">
+                <span className="blink h-1.5 w-1.5 rounded-full bg-high" />
+                Listening
               </span>
             )}
           </div>
-          {err && <div className="mx-5 mb-3 rounded-lg bg-high/8 px-3 py-2 text-[12.5px] text-high-ink">{err}</div>}
-          <div className="flex items-center gap-2 border-t border-line-soft bg-s2/50 px-5 py-3">
+          {!text.trim() && (
+            <div className="border-t border-line px-2 py-1.5">
+              {EXAMPLES.slice(0, 3).map((x) => (
+                <button key={x} onClick={() => setText(x)} className="block w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] text-dim transition-colors hover:bg-s2 hover:text-ink">
+                  {x}
+                </button>
+              ))}
+            </div>
+          )}
+          {err && <div className="border-t border-line bg-high/10 px-4 py-2 text-[12.5px] text-high-ink">{err}</div>}
+          <div className="flex items-center gap-2 border-t border-line bg-s2/60 px-3 py-2">
             {speechOK && (
-              <Button variant={listening ? "danger" : "ghost"} onClick={toggleVoice} title="Dictate the alert">
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+              <Button size="sm" variant={listening ? "danger" : "quiet"} onClick={toggleVoice} title="Dictate the alert">
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
                   <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
                   <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
-                {listening ? "Stop" : "Voice"}
+                {listening ? "Stop" : "Dictate"}
               </Button>
             )}
-            {!canRaise && <span className="text-[12px] text-dys-ink">Sign in as staff to raise alerts; guests are view-only.</span>}
-            <div className="ml-auto flex items-center gap-2">
-              <span className="hidden text-[11.5px] text-dim sm:inline">
-                <span className="kbd">⌘</span> <span className="kbd">↵</span> to send
+            {!canRaise && <span className="text-[12px] text-dys-ink">View only. Switch to a staff user to raise alerts.</span>}
+            <div className="ml-auto flex items-center gap-3">
+              <span className="hidden items-center gap-1 text-[11.5px] text-dim sm:flex">
+                <Kbd>esc</Kbd> close
               </span>
-              <Button variant="primary" onClick={submit} disabled={!text.trim() || busy}>
+              <span className="hidden items-center gap-1 text-[11.5px] text-dim sm:flex">
+                <Kbd>⌘</Kbd>
+                <Kbd>↵</Kbd> send
+              </span>
+              <Button size="sm" variant="primary" onClick={submit} disabled={!text.trim() || busy}>
                 {busy ? "Dispatching…" : "Send alert"}
               </Button>
             </div>
@@ -202,49 +209,53 @@ function Result({ page, clinicians, onClose, onOpenPage, onAnother }: {
   const who = page.assignee ?? page.planned;
   const c = who ? clinicians[who] : null;
   const steps = [
-    { k: "Triage", v: `P${page.priority} · ${CATEGORY_LABEL[page.category]}${page.triage.red_flags[0] ? ` · ${page.triage.red_flags[0]}` : ""}`, ms: page.timings.triage_ms },
-    { k: "Locate", v: page.room ? `Room ${page.room} · ${page.zone_name}` : "room not identified", ms: page.timings.locate_ms },
-    { k: "Route", v: c ? `${c.name} · ${c.specialty_label}` : "no eligible clinician", ms: page.timings.route_ms },
-    { k: "Verify", v: page.certificate ? (page.certificate.certified ? "Z3: every invariant holds" : `Z3 refused: ${page.certificate.violations.join(", ")}`) : "held for the operator's review", ms: page.timings.certify_ms },
-    { k: "Page", v: PAGE_STATUS_LABEL[status], ms: undefined },
+    { k: "Triage", v: `P${page.priority} · ${CATEGORY_LABEL[page.category]}${page.triage.red_flags[0] ? ` · ${page.triage.red_flags[0]}` : ""}`, ms: page.timings.triage_ms, ok: true },
+    { k: "Locate", v: page.room ? `Room ${page.room} · ${page.zone_name}` : "Room not identified", ms: page.timings.locate_ms, ok: !!page.room },
+    { k: "Route", v: c ? `${c.name} · ${c.specialty_label}` : "No eligible clinician", ms: page.timings.route_ms, ok: !!c },
+    {
+      k: "Verify",
+      v: page.certificate ? (page.certificate.certified ? "Z3: every invariant holds" : `Z3 refused: ${page.certificate.violations.join(", ")}`) : "Held for the operator's review",
+      ms: page.timings.certify_ms,
+      ok: page.certificate ? page.certificate.certified : true,
+    },
+    { k: "Page", v: PAGE_STATUS_LABEL[status], ms: undefined, ok: true },
   ];
   return (
-    <div className="p-6">
-      <div className="flex items-center gap-2">
-        <PriorityChip p={page.priority} size="lg" label />
-        <span className="font-mono text-[12px] text-dim">{page.id}</span>
-        {page.timings.total_ms != null && <span className="num ml-auto font-mono text-[12px] text-dim">dispatched in {page.timings.total_ms.toFixed(1)} ms</span>}
+    <div>
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <PriorityChip p={page.priority} label />
+        <span className="font-mono text-[11.5px] text-dim">{page.id}</span>
+        {page.timings.total_ms != null && <span className="num ml-auto font-mono text-[11.5px] text-dim">dispatched in {page.timings.total_ms.toFixed(1)} ms</span>}
       </div>
-      <ol className="mt-5 space-y-2.5">
+      <ol className="divide-y divide-line-soft">
         {steps.map((s, i) => (
           <motion.li
             key={s.k}
-            initial={{ opacity: 0, x: -6 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.12 * i, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-            className="flex items-center gap-3"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.06 * i, duration: 0.15 }}
+            className="grid grid-cols-[14px_64px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2"
           >
-            <span className="grid h-6 w-6 place-items-center rounded-full bg-low/12 text-low-ink">
-              <svg width="11" height="11" viewBox="0 0 8 8"><path d="M1.5 4.2 3.2 6 6.5 2" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" /></svg>
-            </span>
-            <span className="w-14 text-[13px] font-medium text-ink">{s.k}</span>
-            <span className="min-w-0 flex-1 truncate text-[13px] text-muted">{s.v}</span>
-            {s.ms != null && <span className="num font-mono text-[11px] text-dim">{s.ms < 1 ? "<1" : s.ms.toFixed(1)} ms</span>}
+            <span className={cx("h-1.5 w-1.5 justify-self-center rounded-full", s.ok ? "bg-low" : "bg-high")} />
+            <span className="text-[12.5px] font-medium text-ink">{s.k}</span>
+            <span className="truncate text-[12.5px] text-muted">{s.v}</span>
+            <span className="num font-mono text-[11px] text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</span>
           </motion.li>
         ))}
       </ol>
       {c && (
-        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="mt-5 flex items-center gap-3 rounded-xl border border-line p-3">
-          <Avatar name={c.name} status={c.status} size={36} />
+        <div className="flex items-center gap-3 border-t border-line px-4 py-3">
+          <Avatar name={c.name} status={c.status} size={28} />
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium text-ink">
+            <div className="text-[13px] text-ink">
               {status === "paging" ? "Paging " : status === "review" ? "Ready to page " : status === "held" ? "Queued for " : ""}
-              {c.name}
+              <span className="font-medium">{c.name}</span>
             </div>
-            <div className="truncate text-[12px] text-dim">{page.decision.reasoning}</div>
+            <div className="truncate text-[11.5px] text-dim">{page.decision.reasoning}</div>
           </div>
           {status === "review" && (
             <Button
+              size="sm"
               variant="primary"
               disabled={busy}
               onClick={async () => {
@@ -257,28 +268,28 @@ function Result({ page, clinicians, onClose, onOpenPage, onAnother }: {
               {busy ? "Paging…" : "Approve & page"}
             </Button>
           )}
-        </motion.div>
+        </div>
       )}
-      {page.review_reason && status === "review" && <p className="mt-3 text-[12.5px] text-dys-ink">{page.review_reason}</p>}
-      {page.refining && <p className="shimmer mt-3 rounded-lg px-3 py-2 text-[12px] text-accent-ink">Sent on the rules. The model is reviewing it now and may raise the priority.</p>}
-      <div className="mt-6 flex items-center justify-end gap-2">
-        <Button variant="quiet" onClick={onAnother}>
+      {page.review_reason && status === "review" && <p className="border-t border-line px-4 py-2 text-[12px] text-dys-ink">{page.review_reason}</p>}
+      {page.refining && <p className="working border-t border-line px-4 py-2 text-[12px] text-accent-ink">Sent on the rules. A model is reviewing it and may raise the priority.</p>}
+      <div className="flex items-center justify-end gap-2 border-t border-line bg-s2/60 px-3 py-2">
+        <Button size="sm" variant="quiet" onClick={onAnother}>
           New alert
         </Button>
         <Button
+          size="sm"
           variant="ghost"
           onClick={() => {
             onOpenPage(page.id);
             onClose();
           }}
         >
-          Open the page
+          Open page
         </Button>
-        <Button variant="primary" onClick={onClose}>
+        <Button size="sm" variant="primary" onClick={onClose}>
           Done
         </Button>
       </div>
     </div>
   );
 }
-
