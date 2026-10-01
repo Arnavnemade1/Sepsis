@@ -2,30 +2,38 @@
 
 # AegisOS
 
-**An operating system for sepsis in critical care, and the research program that measured, honestly, how far it can see.**
+**Hospital paging that thinks. Every alert, whether a nurse's words or the sepsis detector's, reaches the right clinician in seconds, carrying a formal proof that the page obeys the hospital's policy.**
 
 [![verify-os](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml/badge.svg)](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
-![Verification](https://img.shields.io/badge/verification-89%20suites-2ea44f)
+![Verification](https://img.shields.io/badge/verification-91%20suites-2ea44f)
 ![MIMIC-IV](https://img.shields.io/badge/MIMIC--IV-pipeline%20ready-8957e5)
 ![Research only](https://img.shields.io/badge/research%20only-not%20a%20medical%20device-d73a49)
 
-[Workspaces](#workspaces) · [API](#key-api-endpoints) · [Architecture](#architecture) · [Subsystems](#subsystems) · [Quick start](#quick-start-local-dev) · [Deployment](#deployment) · [Findings](docs/FINDINGS.md) · [Verification](#how-a-claim-gets-in)
+[App routes](#app-routes) · [Agents](#agents) · [API](#key-api-endpoints) · [Architecture](#architecture) · [Subsystems](#subsystems) · [Quick start](#quick-start-local-dev) · [Deployment](#deployment) · [Findings](docs/FINDINGS.md) · [Verification](#how-a-claim-gets-in)
 
 </div>
 
 ---
 
-AegisOS turns continuous bedside signals (a wearable band, a plain camera, the electronic
-record) into a live model of one patient. That model has three outputs: a calibrated sepsis
-risk, an organ-by-organ body state, and treatment options that each carry a formal proof of
-safety. It is built as an operating system, with a kernel, schedulers, drivers, users, a
-filesystem and a shell. An ICU is a real-time, multi-tenant, safety-critical system, and it
-deserves to be engineered like one.
+AegisOS is a realtime paging operating system for hospital floors. Alerts arrive two ways.
+A nurse types or says what is happening in plain language, or the **sepsis detector** (a
+calibrated model watching every monitored bed) crosses its alarm line. Every alert then
+goes through the same steps:
 
-Around the runtime sits a research program with one rule: **no number ships without the
-dataset, the metric and the adversarial check that earned it.** It has published more nulls
-than wins. The nulls are why the wins can be believed.
+1. It is triaged P1–P4 and located to a room and unit.
+2. It is routed to the best clinician, with every factor in the decision shown.
+3. **Z3 proves it against the hospital's paging policy before it is sent.**
+4. It escalates automatically if nobody answers.
+
+Whoever accepts finds a brief (SBAR, under 100 words) waiting on their pager.
+
+Underneath is the operating system it grew out of. It has a kernel with a syscall gate,
+schedulers, verified drivers and a hash-chained journal, built around a live model of each
+patient. Around that runs a research program with one rule: **no number ships without the
+dataset, the metric and the adversarial check that earned it.** That program built the
+detector that pages. It has published more nulls than wins, and the nulls are why the wins
+can be believed.
 
 > [!IMPORTANT]
 > Research and educational use only. AegisOS is not a medical device and must not be used
@@ -36,13 +44,16 @@ than wins. The nulls are why the wins can be believed.
 
 | | Where it stands |
 |:--|:--|
+| **Paging** | A typed P1 is triaged, located, routed, certified and ringing in single-digit milliseconds. Rules decide first; a language model reviews afterwards and **may only raise** a priority, never lower one. The brief is a template at once and the model's version when it arrives |
+| **Policy, proven** | **Six invariants** are checked by Z3 on every page. A refused page is held for the operator with the broken rule named. If the prover itself is unhealthy, nothing is sent |
+| **Guardrails** | Autonomy by unit and priority. Consecutive-paging protection. A workload limit. Near-tie load sharing. Hold-for-the-right-person. Auto-escalation on decline or timeout. A review fail-safe that routes around a clinician who has become unavailable |
 | **Shipped detector** | A stacked ensemble trained on the patient label. Its members are two histogram boosters, extra-trees, logistic regression and a utility-aimed XGBoost. It was fitted on **24,206** CinC patients and calibrated without a staircase. On **6,852** held-out patients that neither it nor its predecessor saw: **AUROC 0.800** (predecessor 0.743), **ECE 0.003** |
 | **At the bedside** | On those patients, at the deployed threshold, it flags **46%** of septic patients and **8.5%** of non-septic patients at least once. Inside a 15% alarm budget it catches **55%** (predecessor 41%). Catching more without raising the burden is the open problem |
 | **Across hospitals** | **AUROC 0.68–0.70**, trained at one hospital and scored at the other. This is the honest deployment number |
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **89 suites**. The ones behind published claims plant known failures and require the guard to fire |
+| **Verification** | **91 suites**. The paging OS alone has 68 checks, and each guard was first seen failing on the code it fixes. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -53,61 +64,123 @@ Thirteen findings, strongest first, and the published nulls are in
 
 | Service | URL |
 |:--|:--|
-| **Clinical app** (`frontend/`) | **https://aegis-clinical-beryl.vercel.app** |
+| **The app** (`frontend/`) | **https://aegis-clinical-beryl.vercel.app** |
+| Operator console | https://aegis-clinical-beryl.vercel.app/operator/ |
+| A clinician's pager | https://aegis-clinical-beryl.vercel.app/clinician/?id=dr.alvarez |
 | Backend REST (Render) | https://sepsis-backend-omd1.onrender.com |
 | Health | https://sepsis-backend-omd1.onrender.com/aegis/health |
+| Paging stream (WebSocket) | `wss://sepsis-backend-omd1.onrender.com/aegis/paging/stream` |
 | Live patient stream (WebSocket) | `wss://sepsis-backend-omd1.onrender.com/aegis/stream` |
-| Ward stream (WebSocket) | `wss://sepsis-backend-omd1.onrender.com/aegis/cluster/stream` |
-| Legacy OS shell (`webui/`) | https://sepsis-three.vercel.app (and at the backend root) — being retired |
+| Legacy OS shell (`webui/`) | https://sepsis-three.vercel.app (and at the backend root), being retired |
 | Public site (`site/`) | https://sepsis-jwf1.vercel.app |
 
-The backend runs on Render's free tier: after 15 idle minutes it sleeps, and the first request
-takes 30–60 s to wake it. The app says so and retries.
+The backend runs on Render's free tier. After 15 idle minutes it sleeps, and the first
+request takes 30–60 s to wake it. The app says so and retries.
 
-## Workspaces
+## App routes
 
-Every role works in its own workspace, and all of them read one running system. Sign in at
-`/` as a staff member and you land in that role's home.
+Every role has its own route, and all of them read one running hospital.
 
 | Route | Who | What it is |
 |:--|:--|:--|
-| `/` | everyone | Sign in as a staff member; each role is a privilege ring the kernel gate enforces |
-| `/command/` | charge nurse · chief | The whole unit: every bed ranked by the risk the unit acts on, re-ranked each tick; scheduler attention and early-warning foresight per bed; the certified focus bundle with its Z3 proof; preemptions and verified egress |
-| `/bed/?id=<bed>` | nurse · attending · consult | One patient: identity and the one number (with the population risk beside it when personalization moved it), vitals with hourly trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line, the decision and its limits, the specialist panel, and Dr. Aegis |
-| `/pharmacy/?id=<bed>` | pharmacist · attending | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
+| `/` | everyone | What it does, live numbers from the running hospital, and a way in. Sign in as a staff member, or pick up any clinician's pager |
+| `/operator/` | charge nurse · chief | **The operator console**, with six views. **Floor** shows the building in isometric: each open page on its room in its priority's colour, each clinician where they are, a ringing page as an arc. **Queue** lists open pages by priority with live countdowns, and approve, escalate and cancel. **Cases** is every page. **Staff** is who is where. **Insights** has the Sentinel's recommendations and the numbers. **Policy** holds the autonomy grid, the guardrails and the invariants; the chief can change them. `⌘K` raises an alert by text or by voice |
+| `/clinician/?id=<user>` | any clinician | **The pager.** Pages for that clinician ring here with sound and vibration. Accept, and the brief is waiting. Decline (in a procedure, with another patient, not my service), and the next clinician is paged at once. On a phone the page is the pager. While it is open, nobody answers for that clinician |
+| `/patient/?id=<bed>` | from a page | One patient: the risk the unit acts on, vitals with trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line with its 8 h projection, the decision and its limits, orders through the Z3 cage, the specialist panel, and Dr. Aegis |
+| `/pharmacy/?id=<bed>` | from a patient | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
 | `/lab/` | research · chief | The deployed detector read from its promotion manifest, the operating point, conformal abstention, the falsification record, and every change the gate refused |
-| `/os/` | chief · operators | A shell on the kernel (every verb a syscall through the gate), the process table, the hash-chained journal, the measured boot, services and verified drivers |
+| `/os/` | chief · operators | A shell on the kernel (every verb a syscall through the gate), the process table, the hash-chained journal (paging events included), the measured boot, services and verified drivers |
 
-Example beds: `bed_0` … `bed_11` are replayed de-identified PhysioNet/CinC 2019 ICU stays;
-`aegis-demo-patient` is the live session (camera or wearable, or the simulator when neither
-is connected — every screen says which).
+The older routes still resolve: `/command/` goes to `/operator/` and `/bed/` to `/patient/`.
+
+### Aegis Memorial, the demo hospital
+
+The demo hospital has seven floors, 18 units and 98 rooms:
+
+| Floor | Units |
+|:--|:--|
+| A · Emergency | Emergency Department, Triage, Imaging |
+| 1 · Admissions | Observation Unit, Central Pharmacy, Admitting |
+| 2 · Surgery | Operating Rooms, Recovery (PACU) |
+| 3 · Critical Care | Medical ICU, ICU Station, Surgical ICU |
+| 4 · Cardiac | Step-down, Cardiac Telemetry |
+| 5 · Medical–Surgical | 5 East, 5 West |
+| 6 · Neuro & Oncology | Neuroscience, Oncology |
+
+ICU rooms **301–312** replay twelve real de-identified PhysioNet/CinC 2019 stays, and the
+detector watches them. Room **402** is the live monitored session (camera or wearable, or
+the simulator when neither is connected). Every other patient is synthetic and labelled so.
+Two demo behaviours run by default, and both can be switched off in Policy:
+
+- **Demo traffic:** a synthetic nurse alert every couple of minutes.
+- **Simulated responders:** they answer for any clinician whose pager is not open.
 
 ### Staff accounts
 
-| Username | Name | Role | Ring | Lands in |
-|:--|:--|:--|:--:|:--|
-| `rn.patel` | Priya Patel, RN | charge nurse | 1 | Command |
-| `rx.chen` | Wei Chen, PharmD | pharmacist | 2 | Pharmacy |
-| `dr.alvarez` | Dr. Sofia Alvarez | attending intensivist | 3 | Bedside |
-| `dr.whitfield` | Dr. James Whitfield | chief of critical care | 4 | Command |
-| `dr.lindqvist` | Dr. Anna Lindqvist | remote ID consult | 1 | Bedside |
-| `guest` | Guest | view only | 0 | Command |
+| Username | Name | Role · ring | On the roster as |
+|:--|:--|:--|:--|
+| `rn.patel` | Priya Patel, RN | nurse · 1 | Charge nurse, runs the operator console |
+| `dr.whitfield` | Dr. James Whitfield | chief · 4 | Chief of critical care; can change the paging policy |
+| `dr.alvarez` · `dr.okafor` | Dr. Sofia Alvarez · Dr. Daniel Okafor | attending · 3 | Critical care |
+| `dr.nakamura` · `dr.reyes` | Dr. Kenji Nakamura · Dr. Maria Reyes | attending · 3 | Hospital medicine |
+| `dr.shah` · `dr.brennan` | Dr. Anika Shah · Dr. Liam Brennan | attending · 3 | Emergency medicine |
+| `dr.adeyemi` | Dr. Tolu Adeyemi | attending · 3 | Cardiology |
+| `dr.kowalski` | Dr. Ewa Kowalski | attending · 3 | Neurology |
+| `dr.moreau` | Dr. Julien Moreau | attending · 3 | General surgery |
+| `dr.fischer` | Dr. Hannah Fischer | attending · 3 | Anesthesiology |
+| `dr.haddad` · `dr.lindqvist` | Dr. Rami Haddad · Dr. Anna Lindqvist | attending · 3 / remote consult · 1 | Infectious disease |
+| `rn.ortiz` · `rn.kim` | Luis Ortiz, RN · Grace Kim, RN | nurse · 1 | Rapid response |
+| `rx.chen` · `rx.silva` | Wei Chen, PharmD · Ana Silva, PharmD | pharmacist · 2 | Clinical pharmacy (notified on sepsis pages for the Hour-1 bundle) |
+| `guest` | Guest | guest · 0 | View only |
 
-Demo staff sign in without a passphrase (`AEGIS_DEMO_LOGIN=0` turns that off). The gate runs
-in `audit` mode by default: it records what it *would* refuse; `AEGIS_GATE_MODE=enforce`
-makes the refusals real.
+Paging capabilities are checked by the gate:
+
+| Capability | Who holds it |
+|:--|:--|
+| `page:raise` · `page:respond` | every signed-in role: nurse, pharmacist, remote consult, attending, chief |
+| `page:dispatch` (approve, escalate, cancel, reassign) | nurses, attendings and the chief |
+| `page:configure` (the policy screen) | the chief only |
+
+Demo staff sign in without a passphrase (`AEGIS_DEMO_LOGIN=0` turns that off). The gate
+runs in `audit` mode by default and records what it *would* refuse;
+`AEGIS_GATE_MODE=enforce` makes the refusals real. One exception holds in both modes: a
+session the kernel has rejected (forged, expired, or signed before a restart) never raises
+or answers a page. Otherwise it would act as guest and an alert would be recorded under the
+wrong name. The app renews a forgotten session and retries.
+
+## Agents
+
+| Agent | What it does | What it never does |
+|:--|:--|:--|
+| **Operator** | Runs each alert through triage → locate → route → certify → page, timing every step. Owns the escalation queue: ring timers by priority (P1 45 s · P2 90 s · P3 240 s · P4 480 s), holds, and the review fail-safe. Journals every decision | Leave a P1 waiting: a page held for review sends itself when the window ends, routing around a clinician who has become unavailable |
+| **Priority Handler** | Sets P1–P4 from rules and red flags. Vitals are parsed from free text (SpO₂ in any phrasing, BP and MAP, HR, RR, temperature in °C or °F, lactate, GCS, NIHSS), with a Sepsis-3 / qSOFA screen. A language model then reviews in the background | Lower a page. A P1 red flag never waits for the model, and is never sent to it |
+| **Case Handler** | Ranks every clinician with explicit points: service match, same unit, floors away, on call, caseload, procedures, whether their pager is open. Then it applies the guardrails as named steps: consecutive paging, workload, near-tie load sharing, off-shift, hold-for-the-right-person | Hide a factor. The drawer shows the whole table |
+| **Sentinel** | Every 30 s it looks across the whole system for surges on one unit (several rooms, not one patient re-alarming), coverage holes, overload, escalation storms, sepsis clusters, and the Hour-1 bundle clock on an accepted sepsis page | Page anyone. It recommends; the operator decides |
+
+The six invariants Z3 proves on every page (`backend/aegis/paging/policy.py`):
+
+1. Never page an off-shift clinician, unless it is a P1 and no on-shift clinician can take it.
+2. No clinician is paged twice within the consecutive window for different cases, unless it is a P1 with no alternative.
+3. A P3 or P4 never goes to someone already holding more than the hourly workload limit.
+4. The assignee's specialty is one the case accepts.
+5. Where policy requires review, nothing is sent until the operator approves (or the review fail-safe fires for a P1/P2).
+6. A P1 page escalates within 90 seconds if unanswered.
+
+`unsat` (no way to violate them) means the page is sent. `sat` means it is held, with the
+counterexample's invariant named.
 
 ## Key API endpoints
 
 The backend is one FastAPI app, `backend.aegis.server:app`. The server module is the
-composition root; every endpoint lives in a domain router under
+composition root. Every endpoint lives in a domain router under
 [`backend/api/routes/`](backend/api/routes/), and request bodies are in
-[`backend/api/schemas.py`](backend/api/schemas.py). All **144** routes are numbered syscalls
+[`backend/api/schemas.py`](backend/api/schemas.py). All **160** routes are numbered syscalls
 in [`abi_table.json`](backend/aegis/kernel/abi_table.json), each bound to a capability the
 gate checks (`abi` in the System shell lists them).
 
 | Router | Routes | Key endpoints |
 |:--|:--:|:--|
+| `paging` | 16 | `POST /aegis/paging/alerts` (text or voice transcript → the whole pipeline) · `WS /aegis/paging/stream` (snapshot, then event batches; `?clinician=` marks a pager open) · `GET /aegis/paging/snapshot` · `GET /aegis/paging/hospital` · `POST /aegis/paging/pages/{id}/respond` · `…/approve` · `…/escalate` · `…/cancel` · `…/resolve` · `POST /aegis/paging/clinicians/{id}/status` · `POST /aegis/paging/recs/{id}/ack` · `GET`/`POST /aegis/paging/settings` |
 | `live` | 8 | `WS /aegis/stream` (one snapshot per tick) · `GET /aegis/snapshot` · `POST /aegis/ingest` (real telemetry) · `GET /aegis/decision?bed=` · `GET /aegis/timeline` · `POST /aegis/simulate/{stage}` |
 | `patients` | 20 | `GET /aegis/patients` · `GET /aegis/patient/snapshot?bed=` · `WS /aegis/cluster/stream` (the ward) · `GET /aegis/cohort/{bed}/chart` · `GET /aegis/cohort/{bed}/bundle` · `GET /aegis/identity` |
 | `pharmacy` | 9 | `GET /aegis/pk/options?bed=` · `POST /aegis/pk/project` · `POST /aegis/pharmacopoeia/screen` · `POST /aegis/dsl/verify` |
@@ -121,20 +194,21 @@ gate checks (`abi` in the System shell lists them).
 | `health` | 4 | `GET /aegis/health` · `GET /aegis/health/system` · `GET /aegis/audit` |
 
 Auth: `POST /aegis/sys/login` returns a token. Send it as `Authorization: Bearer <token>` over
-HTTP, and as the WebSocket subprotocol `aegis.session.<token>` (browsers cannot set headers on
-a socket). Never in a query string: URLs end up in logs.
+HTTP, and as the WebSocket subprotocol `aegis.session.<token>`, because browsers cannot set
+headers on a socket. Never send it in a query string: URLs end up in logs.
 
 ## Architecture
 
 ```text
-Browser (frontend/, static on Vercel)
+Browser (frontend/, static on Vercel)          operator console · pagers · drill-downs
   │
   ├─ REST ─────────► FastAPI  backend.aegis.server:app  (Render)
   │                    │
   │                    ├─ kernel gate ── every call: resolve syscall → authenticate → decide (audit | enforce)
-  │                    ├─ backend/api/routes/*  (11 domain routers, 144 syscalls)
-  │                    └─ composition root: kernel · session · ICU wing · scheduler · orchestrator · journal
+  │                    ├─ backend/api/routes/*  (12 domain routers, 160 syscalls)
+  │                    └─ composition root: kernel · session · ICU wing · paging OS · scheduler · journal
   │
+  ├─ WS /aegis/paging/stream ──► the hospital: snapshot, then one batch of paging events a second
   ├─ WS /aegis/stream ─────────► the live patient, one snapshot per tick
   ├─ WS /aegis/cluster/stream ─► the ward: 12 beds, scheduler, certified egress
   └─ WS /aegis/doctor/live ────► voice consult, relayed to Gemini Live (the key never reaches the browser)
@@ -142,7 +216,26 @@ Browser (frontend/, static on Vercel)
 Persistence: Supabase (real telemetry, the kernel journal, causal graphs) · SQLite fallback
 ```
 
-Inside the backend, one tick flows through the layers:
+A page moves through the paging OS ([`backend/aegis/paging/`](backend/aegis/paging/)) like this:
+
+```mermaid
+flowchart LR
+    N["Nurse<br/>text or voice"] --> PH
+    D["Sepsis detector<br/>risk ≥ 0.70 on a monitored bed<br/>one page per patient"] --> PH
+    PH["Priority Handler<br/>rules + red flags → P1–P4"] --> LOC["Operator<br/>room · unit · patient"]
+    LOC --> CH["Case Handler<br/>ranked staff, every factor shown<br/>then the guardrails"]
+    CH --> AUT{"Autonomy policy<br/>this unit, this priority"}
+    AUT -- "review" --> REV["Operator approves<br/>(or the fail-safe fires)"]
+    AUT -- "auto" --> Z3
+    REV --> Z3{{"Z3: six invariants<br/>unsat → send · sat → hold, rule named"}}
+    Z3 --> PG["Pager rings<br/>45 s · 90 s · 240 s · 480 s"]
+    PG -- "accept" --> SB["SBAR brief<br/>template now, model's when ready"]
+    PG -- "decline / no answer" --> CH
+    PH -. "background: a model reviews,<br/>may only raise" .-> PG
+    SEN["Sentinel · every 30 s<br/>surges · coverage · overload · clusters · bundle clock"] -. "recommends" .-> OP["Operator console"]
+```
+
+Underneath the paging OS, one tick of the clinical runtime flows through the layers:
 
 ```mermaid
 flowchart TB
@@ -186,6 +279,25 @@ Everything that happens is appended to a tamper-evident journal.
 ## Subsystems
 
 Over forty subsystems, grouped by the layer they live in. Each has its own `verify_*.py`.
+
+<details>
+<summary><b>The paging OS</b> · <code>backend/aegis/paging/</code></summary>
+
+<br/>
+
+| Module | What it is |
+|:--|:--|
+| `triage.py` | The Priority Handler. Rules and red flags from free text: room extraction that won't read "HR 104" as room 104, vitals in any phrasing ("sats 86% on 4L", "desaturating to 84% on room air", the first reading in a plausible range), a Sepsis-3 / qSOFA screen. A model refinement step that may only raise |
+| `router.py` | The Case Handler: specialty and co-notification maps, explicit per-clinician points, then the guardrails as named steps |
+| `policy.py` | Autonomy by unit and priority, ring timers, the six invariants, and the Z3 certificate (`unsat` = send) |
+| `engine.py` | The Operator: the pipeline per alert, the escalation queue, holds, the review fail-safe, detector episodes (hysteresis 0.70 / 0.60, one page per patient while one is open), simulated responders and demo traffic, both labelled synthetic |
+| `sentinel.py` | Six patterns over the whole system, each with evidence, a recommendation and a clear condition |
+| `sbar.py` | The brief: facts first from the record, a template at once, the model's version when it arrives; under 100 words |
+| `hospital.py` · `demo.py` | Aegis Memorial (7 floors, 18 units, 98 rooms, 18 staff) and the demo scenarios |
+
+`make verify-paging` runs its 68 checks.
+
+</details>
 
 <details>
 <summary><b>The bio-kernel</b> · <code>backend/aegis/kernel/</code></summary>
@@ -286,14 +398,15 @@ Every layer has its own `verify_*.py`. Run them all with `make verify-os`.
 
 ```text
 .
-├── frontend/             the clinical app (Next.js 16 static export): /command /bed /pharmacy /lab /os
-│   ├── app/              one directory per workspace
-│   ├── components/       shell, glass UI primitives, bedside panels, the terminal
+├── frontend/             the app (Next.js 16 static export): /operator /clinician /patient /pharmacy /lab /os
+│   ├── app/              one directory per route
+│   ├── components/       paging/ (floor view, queue, drawer, composer, panels), shell, UI primitives, bedside panels, the terminal
 │   ├── engine/           the Three.js anatomical twin (ported from webui/twin3d.js)
-│   └── lib/              the API client (gate token), live-feed hooks, contracts, clinical colour rules
+│   └── lib/              the API client (gate token, session renewal), the paging store, live-feed hooks, clinical colour rules
 ├── backend/
-│   ├── api/              the REST surface: routes/ (11 domain routers) and schemas.py
+│   ├── api/              the REST surface: routes/ (12 domain routers) and schemas.py
 │   ├── aegis/            the operating system: runtime, clinical services, safety, platform
+│   │   ├── paging/       the paging OS: triage, routing, policy + Z3 certificate, queue, sentinel, SBAR
 │   │   ├── kernel/       /dev/bio, memory fabric, schedulers, egress cage, gate, ABI, journal, VFS
 │   │   ├── apps/         capability-confined apps and their SDK
 │   │   └── scale/        the bed-count load harness
@@ -324,7 +437,7 @@ preserve history.
 ```bash
 git clone https://github.com/Arnavnemade1/Sepsis.git && cd Sepsis
 make setup            # .venv + backend/requirements.txt
-make verify-os-fast   # the OS layer; needs no datasets (what CI runs)
+make verify-os-fast   # the OS layer and the paging OS; needs no datasets (what CI runs)
 make serve            # API + WebSockets on http://127.0.0.1:8100
 ```
 
@@ -337,8 +450,10 @@ npm install
 npm run dev                   # http://localhost:3000
 ```
 
-Open http://localhost:3000, sign in as **Priya Patel, RN**, and you land in Command. A bed
-opens at `/bed/?id=bed_6`.
+Open http://localhost:3000 and open the operator console as **Priya Patel, RN**. In a second
+window open a pager, for example http://localhost:3000/clinician/?id=dr.alvarez. Raise an
+alert with `⌘K` ("Room 305 BP 84/50, febrile 39.2, new confusion"), watch it route, and
+answer it on the pager. A patient opens at `/patient/?id=bed_6`.
 
 **3) Research lines** (need datasets, plus two libraries kept out of the serving image)
 
@@ -369,9 +484,9 @@ The full walkthrough is in [`deploy/README.md`](deploy/README.md).
 |:--|:--|:--|:--|
 | `NEXT_PUBLIC_AEGIS_BACKEND` | frontend (build time) | same origin | The backend URL the app talks to. A browser can override it with `localStorage.aegis_backend` |
 | `SUPABASE_URL` · `SUPABASE_KEY` | backend | unset → SQLite | Persistence (service-role key; never committed) |
-| `GEMINI_API_KEY` | backend | unset | Primary LLM, and the only provider that carries the voice consult |
+| `GEMINI_API_KEY` | backend | unset | Primary LLM: the voice consult, the paging model's triage review and the written brief. Without a key, paging runs on its rules and the template brief, and says so |
 | `OPENROUTER_API_KEY` · `OPENROUTER_MODEL` | backend | unset | Text-only backup provider, so a Gemini quota wall degrades the consult instead of removing it |
-| `AEGIS_SESSION_SECRET` | backend | random per boot | Signs session tokens. Set it in production, or every restart signs everyone out |
+| `AEGIS_SESSION_SECRET` | backend | random per boot | Signs session tokens. Set it in production: without it every restart forgets every session (the app renews demo sessions on reconnect, but a real deployment should not rely on that) |
 | `AEGIS_GATE_MODE` | backend | `audit` | `off` · `audit` (record would-be refusals) · `enforce` |
 | `AEGIS_DEMO_LOGIN` | backend | `1` | Demo staff sign in without a passphrase; `0` requires one |
 | `AEGIS_ACCOUNTS` | backend | built-in demo staff | Additional accounts (see `backend/aegis/kernel/users.py`) |
