@@ -69,7 +69,7 @@ type LabRecord = {
   status: string;
   accepted: boolean;
   observed_delta: number | null;
-  mde: number;
+  mde?: number | null; // absent on records that never reached the gate
   alpha_spent: number;
   protocol: string;
 };
@@ -281,7 +281,7 @@ export default function LabPage() {
                         <td className={cx("num px-4 py-2", (r.observed_delta ?? 0) > 0 ? "text-ink" : "text-muted")}>
                           {r.observed_delta == null ? "—" : `${r.observed_delta >= 0 ? "+" : ""}${r.observed_delta.toFixed(4)}`}
                         </td>
-                        <td className="num px-4 py-2 text-dim">+{r.mde}</td>
+                        <td className="num px-4 py-2 text-dim">{typeof r.mde === "number" && Number.isFinite(r.mde) ? `+${r.mde.toFixed(4)}` : "—"}</td>
                         <td className="px-4 py-2">
                           <Pill tone={r.accepted ? "low" : "neutral"}>{r.status}</Pill>
                         </td>

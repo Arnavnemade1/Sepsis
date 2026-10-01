@@ -171,7 +171,9 @@ function Bedside() {
               bodyClass="p-0"
               className="min-h-[460px]"
             >
-              <BioTwin snapshot={snap} className="h-[460px]" />
+              <div className="twin-viewport m-2 h-[444px]">
+                <BioTwin snapshot={snap} className="h-full" />
+              </div>
             </Plate>
             <Plate title="Organ systems" eyebrow="Unmeasured systems are shown as unknown, never as healthy">
               <Organs snap={snap} />
@@ -181,7 +183,7 @@ function Bedside() {
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Plate
               title="Risk over time"
-              eyebrow={recorded ? "White: the risk the unit acts on · grey: population fusion and its 8 h projection" : "Calibrated detector probability"}
+              eyebrow={recorded ? "Black: the risk the unit acts on · grey: population fusion · indigo: its 8 h projection" : "Calibrated detector probability"}
               right={
                 recorded && chart.data?.forecast ? (
                   <span className="text-[11.5px] text-dim">

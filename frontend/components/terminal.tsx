@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 import { api, readSession } from "@/lib/api";
+import { useSession } from "@/lib/hooks";
+import { clock } from "@/lib/paging";
 
 /**
  * A shell on the AegisOS kernel. Every verb is a real syscall through the gate
@@ -48,6 +50,7 @@ function pad(s: string | number, n: number): string {
 }
 
 export function Terminal() {
+  const session = useSession();
   const [lines, setLines] = useState<Line[]>([{ k: "dim", t: 'AegisOS shell. Type "help".' }]);
   const [cwd, setCwd] = useState("/");
   const [input, setInput] = useState("");
@@ -151,7 +154,7 @@ export function Terminal() {
           );
           print(
             r.entries
-              .map((e) => `[${new Date(e.ts * 1000).toLocaleTimeString()}] ${pad(e.facility, 8)} ${pad(e.severity_name, 7)} ${pad(e.event, 18)} ${JSON.stringify(e.detail).slice(0, 90)}`)
+              .map((e) => `[${clock(e.ts)}] ${pad(e.facility, 8)} ${pad(e.severity_name, 7)} ${pad(e.event, 18)} ${JSON.stringify(e.detail).slice(0, 90)}`)
               .join("\n") || "(no entries)",
           );
           break;
@@ -212,24 +215,34 @@ export function Terminal() {
     }
   };
 
-  const user = typeof window !== "undefined" ? readSession()?.credential.username ?? "guest" : "guest";
+  // from the session hook, not localStorage during render: the static HTML says "guest"
+  // and the first client render must match it
+  const user = session?.credential.username ?? "guest";
+  // a terminal stays a terminal on a light page: dark glass, literal colours (the theme's
+  // ink tokens are for paper)
   return (
     <div
-      className="flex h-[440px] flex-col rounded-lg border border-line bg-bg/80 font-mono text-[12px] leading-[1.55]"
+      className="flex h-[440px] flex-col overflow-hidden rounded-xl border border-[#1d2027] bg-night font-mono text-[12px] leading-[1.55] shadow-[0_24px_60px_-28px_rgb(12_14_19/.6)]"
       onClick={() => field.current?.focus()}
     >
+      <div className="flex items-center gap-1.5 border-b border-[#1d2027] px-3 py-2">
+        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
+        <span className="h-2.5 w-2.5 rounded-full bg-[#3a3e47]" />
+        <span className="ml-2 text-[11px] text-[#6b717c]">aegis-sh · {user}@aegis</span>
+      </div>
       <div ref={box} className="min-h-0 flex-1 overflow-auto whitespace-pre p-3">
         {lines.map((l, i) => (
           <div
             key={i}
-            className={l.k === "in" ? "text-accent-ink" : l.k === "err" ? "text-high-ink" : l.k === "dim" ? "text-dim" : "text-muted"}
+            className={l.k === "in" ? "text-[#a5b0ff]" : l.k === "err" ? "text-[#ff8a8f]" : l.k === "dim" ? "text-[#6b717c]" : "text-[#c9cdd4]"}
           >
             {l.t || " "}
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 border-t border-line-soft px-3 py-2">
-        <span className="shrink-0 text-accent-ink">
+      <div className="flex items-center gap-2 border-t border-[#1d2027] px-3 py-2">
+        <span className="shrink-0 text-[#7ee2a8]">
           {user}@aegis:{cwd}$
         </span>
         <input
@@ -241,9 +254,9 @@ export function Terminal() {
           autoCapitalize="off"
           autoComplete="off"
           aria-label="Shell command"
-          className="min-w-0 flex-1 bg-transparent text-ink outline-none"
+          className="min-w-0 flex-1 bg-transparent text-[#eef0f3] caret-[#a5b0ff] outline-none"
         />
-        {busy && <span className="text-dim">…</span>}
+        {busy && <span className="text-[#6b717c]">…</span>}
       </div>
     </div>
   );

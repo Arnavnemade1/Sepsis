@@ -79,38 +79,38 @@ export function RiskChart({ s, height = 220 }: { s: RiskSeries; height?: number 
       >
         {[0, 0.25, 0.5, 0.75, 1].map((g) => (
           <g key={g}>
-            <line x1={pad.l} x2={W - pad.r} y1={Y(g)} y2={Y(g)} stroke="rgb(255 255 255 / .05)" />
-            <text x={pad.l - 6} y={Y(g) + 3.5} textAnchor="end" fontSize="10" fill="#6e7482">
+            <line x1={pad.l} x2={W - pad.r} y1={Y(g)} y2={Y(g)} stroke="rgb(17 20 24 / .06)" />
+            <text x={pad.l - 6} y={Y(g) + 3.5} textAnchor="end" fontSize="10" fill="#858b94">
               {Math.round(g * 100)}
             </text>
           </g>
         ))}
         <line x1={pad.l} x2={W - pad.r} y1={Y(s.alarm)} y2={Y(s.alarm)} stroke={`rgb(${TONE_RGB.high} / .55)`} strokeDasharray="4 4" />
-        <text x={W - pad.r} y={Y(s.alarm) - 5} textAnchor="end" fontSize="10" fill="#ff9d97">
+        <text x={W - pad.r} y={Y(s.alarm) - 5} textAnchor="end" fontSize="10" fill="#c32a2f">
           alarm {Math.round(s.alarm * 100)}%
         </text>
-        {band && <path d={band} fill="rgb(164 169 182 / .08)" />}
+        {band && <path d={band} fill="rgb(68 83 214 / .07)" />}
         {s.forecast && s.forecast.length > 1 && (
           <path
             d={`M${s.forecast.map((f) => `${X(f.x).toFixed(1)},${Y(f.mean).toFixed(1)}`).join(" L")}`}
             fill="none"
-            stroke="rgb(164 169 182 / .6)"
+            stroke="rgb(68 83 214 / .55)"
             strokeDasharray="3 3"
             strokeWidth={1.4}
           />
         )}
-        {s.population && <path d={line(s.population)} fill="none" stroke="rgb(164 169 182 / .35)" strokeWidth={1.2} />}
-        <path d={line(s.risk)} fill="none" stroke="#f4f5f8" strokeWidth={1.8} strokeLinejoin="round" />
+        {s.population && <path d={line(s.population)} fill="none" stroke="rgb(17 20 24 / .22)" strokeWidth={1.2} />}
+        <path d={line(s.risk)} fill="none" stroke="#121419" strokeWidth={1.8} strokeLinejoin="round" />
         {s.risk[hi] != null && (
           <g>
-            <line x1={X(s.x[hi])} x2={X(s.x[hi])} y1={pad.t} y2={H - pad.b} stroke="rgb(255 255 255 / .12)" />
+            <line x1={X(s.x[hi])} x2={X(s.x[hi])} y1={pad.t} y2={H - pad.b} stroke="rgb(17 20 24 / .12)" />
             <circle cx={X(s.x[hi])} cy={Y(s.risk[hi]!)} r={3.5} fill={`rgb(${TONE_RGB[lvl(s.risk[hi])]})`} />
           </g>
         )}
-        <text x={pad.l} y={H - 6} fontSize="10" fill="#6e7482">
+        <text x={pad.l} y={H - 6} fontSize="10" fill="#858b94">
           {s.xLabel} {Math.round(x0)}
         </text>
-        <text x={W - pad.r} y={H - 6} textAnchor="end" fontSize="10" fill="#6e7482">
+        <text x={W - pad.r} y={H - 6} textAnchor="end" fontSize="10" fill="#858b94">
           {Math.round(x1)}
         </text>
       </svg>

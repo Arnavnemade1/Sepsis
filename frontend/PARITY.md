@@ -5,13 +5,13 @@
 
 | Legacy capability (`webui/`) | Where it lives now | Status |
 |:--|:--|:--|
-| Boot, sign-in, per-patient scoping (`AegisPatient`) | `/` launcher, top-bar patient selector on `/bed` and `/pharmacy` | ported |
-| Ward / tactical console (`tactical.html`) | `/command` (bed board, KPIs, focus bundle, unit log, services) | ported (bed board); the 3D tactical sphere is not |
-| Risk core, telemetry, organ systems, multi-agent panel | `/bed` (risk hero, vitals, organ systems, specialist panel) | ported |
+| Boot, sign-in, per-patient scoping (`AegisPatient`) | `/` launcher, top-bar patient selector on `/patient` and `/pharmacy` | ported |
+| Ward / tactical console (`tactical.html`) | `/operator`: the isometric building, page queue, KPIs, cases, staff, Sentinel insights, policy | replaced by the paging console; the bed board and focus bundle are not in it, and the 3D tactical sphere is not ported |
+| Risk core, telemetry, organ systems, multi-agent panel | `/patient` (risk hero, vitals, organ systems, specialist panel) | ported |
 | 3D anatomical twin (`twin3d.js`) | `engine/twin3d.js` + `components/twin.tsx` | ported (same renderer) |
-| Risk timeline, decision (`/aegis/timeline`, `/aegis/decision`) | `/bed` risk chart + decision card | ported |
-| Write syscalls: treat / escalate / crisis / clear | `/bed` Orders panel, capability-gated, with the bed's audit log | ported |
-| Dr. Aegis typed consult (`doctor.js`) | `/bed` consult panel (read-only, `agentic: false`) | ported |
+| Risk timeline, decision (`/aegis/timeline`, `/aegis/decision`) | `/patient` risk chart + decision card | ported |
+| Write syscalls: treat / escalate / crisis / clear | `/patient` Orders panel, capability-gated, with the bed's audit log | ported |
+| Dr. Aegis typed consult (`doctor.js`) | `/patient` consult panel (read-only, `agentic: false`) | ported |
 | Treatment options / PK comparison (`pktwin_ui.js`) | `/pharmacy` comparison table, curves, adverse events | ported (2D) |
 | Pharmacopoeia interaction screen (`AegisPharma`) | `/pharmacy` interaction screen | ported |
 | Lab (`lab.html`) | `/lab` refusal record | ported |
@@ -29,7 +29,7 @@
 | RBAC / access-control overlay (`AegisRBAC`), break-glass | sign-in only | partial |
 | Hyperscan situation report (`AegisHyperscan`) | — | not ported |
 | Simulator stage controls (Stable / Deteriorate / Sepsis / Recover) | — | not ported |
-| ⌘K palette, ⌥A ask-anywhere (`palette.js`, `summon.js`) | — | not ported |
+| ⌘K palette, ⌥A ask-anywhere (`palette.js`, `summon.js`) | `/operator` ⌘K raises an alert (text or voice); there is no command palette | partial |
 | Per-bed terminal, medical-history import, devices hub | — | not ported |
 
 The bold rows carry capability nothing else has (a real sensor path, voice, the 3D PK

@@ -1,85 +1,101 @@
 @import "tailwindcss";
 
 /* ============================================================
-   AEGIS — CLINICAL GLASS (the frontend's one design identity)
+   AEGIS — the clinical design system
    ------------------------------------------------------------
-   Carried over from webui/os.css. Four rules:
+   Light, calm and exact: a tool a charge nurse can read across a
+   room at 3 a.m. and a pitch deck can screenshot.
 
-   1. COLOUR IS SIGNAL. Green / amber / orange / red mean clinical state and
-      nothing else. The brand gradient (sky → iris → lilac) is cool on purpose
-      so it can never read as a tier, and it appears only on identity moments:
-      the mark, the wordmark, a primary call to action.
-   2. DEPTH IS LIGHT. Glass plates: a translucent fill, a top-lit hairline, a
-      long soft shadow. Blur only on things that float (bars, menus, modals).
-   3. NUMBERS ARE THE HERO. Large, light, tabular Geist numerals. Mono only for
-      telemetry, identifiers and code. Titles are sentence case.
-   4. MOTION IS EXPO-OUT. Nothing bounces; pulses only on things that are live.
+   1. COLOUR IS SIGNAL. Red/orange/amber mark page priority, the
+      status palette marks where staff are. Nothing decorative uses
+      them. Chrome is ink on paper; the one accent (indigo) is for
+      selection, focus and the primary action.
+   2. PAPER, NOT GLASS. White surfaces on a warm canvas, a hairline
+      border and one soft shadow. Depth comes from the building view.
+   3. NUMBERS ARE TABULAR. Timers, counts and scores never jitter.
+   4. MOTION EXPLAINS. Things move when something happened (a page
+      arrives, escalates, is accepted), never to decorate.
 
-   The stock Tailwind palette is deleted below (--color-*: initial), so
-   `bg-blue-500` does not compile. Every colour in this app is one of these.
+   The stock Tailwind palette is deleted (--color-*: initial), so an
+   off-system colour does not compile.
    ============================================================ */
 
 @theme {
   --color-*: initial;
 
-  /* ground + surfaces */
-  --color-bg: #050609;
-  --color-bg2: #08090d;
-  --color-s1: #0d0f14;
-  --color-s2: #13161d;
-  --color-s3: #1b1f28;
-  --color-line: rgb(255 255 255 / 0.075);
-  --color-line-soft: rgb(255 255 255 / 0.045);
-  --color-line-bright: rgb(255 255 255 / 0.15);
+  /* canvas + surfaces */
+  --color-bg: #f6f6f3;
+  --color-s1: #ffffff;
+  --color-s2: #f3f3f0;
+  --color-s3: #e9e9e5;
+  --color-line: rgb(17 20 24 / 0.09);
+  --color-line-soft: rgb(17 20 24 / 0.055);
+  --color-line-bright: rgb(17 20 24 / 0.16);
 
-  /* text */
-  --color-ink: #f4f5f8;
-  --color-muted: #a4a9b6;
-  --color-dim: #6e7482;
-  --color-faint: #4a505c;
+  /* ink */
+  --color-ink: #121419;
+  --color-muted: #4f555e;
+  --color-dim: #858b94;
+  --color-faint: #b6bac1;
 
-  /* clinical state — the only saturated colour in the product */
-  --color-low: rgb(64 184 128);
-  --color-med: rgb(226 163 60);
-  --color-dys: rgb(222 131 58);
-  --color-high: rgb(229 84 76);
-  --color-nodata: rgb(75 79 86);
-  --color-low-ink: #7fdcae;
-  --color-med-ink: #f0c46a;
-  --color-dys-ink: #f0a76a;
-  --color-high-ink: #ff9d97;
+  /* clinical state (kept under their original names so older views follow) */
+  --color-low: #2b9a66;
+  --color-low-ink: #1d7a4f;
+  --color-med: #e2a336;
+  --color-med-ink: #926000;
+  --color-dys: #ef7a2b;
+  --color-dys-ink: #b8500c;
+  --color-high: #e5484d;
+  --color-high-ink: #c32a2f;
+  --color-nodata: #a3a7ae;
 
-  /* affordance: focus, selection, active nav (never "urgent") */
-  --color-accent: rgb(143 148 255);
-  --color-accent-ink: #c3c6ff;
+  /* page priority */
+  --color-p1: #e5484d;
+  --color-p2: #f06a1d;
+  --color-p3: #e2a336;
+  --color-p4: #8b909a;
 
-  /* brand — identity moments only */
-  --color-brand-a: #7cc4ff;
-  --color-brand-b: #8f8bff;
-  --color-brand-c: #c49bff;
+  /* staff status */
+  --color-st-available: #2b9a66;
+  --color-st-paging: #1c7ef0;
+  --color-st-procedure: #8b5cf6;
+  --color-st-case: #d9921a;
+  --color-st-off: #a3a7ae;
+
+  /* the one accent */
+  --color-accent: #4453d6;
+  --color-accent-ink: #3440b8;
+  --color-accent-soft: #eef0fd;
+
+  /* brand (identity moments only) */
+  --color-brand-a: #4453d6;
+  --color-brand-b: #6d4fd8;
+  --color-brand-c: #9b5de5;
 
   --color-transparent: transparent;
   --color-black: #000;
   --color-white: #fff;
+  --color-night: #0c0e13;
 
   --font-sans: var(--font-geist), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-serif: var(--font-serif-display), "Iowan Old Style", Georgia, serif;
 
   --radius-xl: 20px;
-  --radius-lg: 16px;
-  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-md: 10px;
   --radius-sm: 8px;
   --radius-xs: 6px;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --shadow-card: 0 1px 2px rgb(16 18 24 / 0.04), 0 8px 24px -16px rgb(16 18 24 / 0.14);
+  --shadow-pop: 0 1px 2px rgb(16 18 24 / 0.06), 0 24px 60px -20px rgb(16 18 24 / 0.28);
 }
 
 :root {
-  --glass: linear-gradient(180deg, rgb(255 255 255 / 0.042), rgb(255 255 255 / 0.012) 60%);
-  --glass-float: rgb(13 15 21 / 0.72);
-  --plate-shadow: inset 0 1px 0 rgb(255 255 255 / 0.055), 0 22px 50px -34px rgb(0 0 0 / 0.95);
-  --brand: linear-gradient(135deg, #7cc4ff 0%, #8f8bff 52%, #c49bff 100%);
-  color-scheme: dark;
+  --brand: linear-gradient(135deg, #4453d6 0%, #6d4fd8 55%, #9b5de5 100%);
+  color-scheme: light;
 }
 
 html,
@@ -89,40 +105,47 @@ body {
 
 body {
   margin: 0;
-  background:
-    radial-gradient(1400px 820px at 50% -22%, rgb(143 139 255 / 0.12), transparent 62%),
-    radial-gradient(900px 700px at 108% 118%, rgb(124 196 255 / 0.04), transparent 60%),
-    var(--color-bg);
-  background-attachment: fixed;
+  background: var(--color-bg);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 14px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  letter-spacing: -0.005em;
+  letter-spacing: -0.006em;
 }
 
 ::selection {
-  background: rgb(143 148 255 / 0.3);
+  background: rgb(68 83 214 / 0.18);
 }
 
-/* Tabular, slashed-zero figures wherever a reading can appear. */
 .num {
   font-variant-numeric: tabular-nums slashed-zero;
   font-feature-settings: "tnum" 1, "zero" 1;
 }
 
-/* ---- the glass plate every panel sits on ---- */
+.serif {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
+}
+
+/* ---- surfaces ---- */
 .plate {
-  background: var(--glass), var(--color-s1);
+  background: var(--color-s1);
   border: 1px solid var(--color-line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--plate-shadow);
+  box-shadow: var(--shadow-card);
 }
 .plate-float {
-  background: var(--glass-float);
+  background: rgb(255 255 255 / 0.82);
   border: 1px solid var(--color-line);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+}
+.pop {
+  background: var(--color-s1);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-pop);
 }
 .brand-text {
   background: var(--brand);
@@ -133,20 +156,36 @@ body {
 .brand-fill {
   background: var(--brand);
 }
-
-/* thin, quiet scrollbars */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+.hairline {
+  border-color: var(--color-line);
+}
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 17px;
+  color: var(--color-muted);
+  background: var(--color-s1);
 }
 
-/* focus is the accent, never a state hue */
+/* quiet scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(17 20 24 / 0.16) transparent;
+}
+
 :focus-visible {
-  outline: 2px solid rgb(143 148 255 / 0.7);
+  outline: 2px solid rgb(68 83 214 / 0.55);
   outline-offset: 2px;
 }
 
-/* live indicator: the only thing allowed to pulse */
+/* ---- motion ---- */
 @keyframes live-pulse {
   0% { box-shadow: 0 0 0 0 currentColor; }
   70% { box-shadow: 0 0 0 6px transparent; }
@@ -155,7 +194,6 @@ body {
 .live-dot {
   animation: live-pulse 2s var(--ease-out) infinite;
 }
-
 @keyframes rise {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: none; }
@@ -163,12 +201,40 @@ body {
 .rise {
   animation: rise 420ms var(--ease-out) both;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .live-dot, .rise { animation: none; }
+@keyframes ring {
+  0% { transform: scale(1); opacity: 0.55; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+@keyframes dash {
+  to { stroke-dashoffset: -24; }
+}
+@keyframes blink-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.blink-soft {
+  animation: blink-soft 1.6s ease-in-out infinite;
+}
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgb(68 83 214 / 0.12), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s linear infinite;
 }
 
-/* ---- the anatomical twin (engine/twin3d.js mounts these; carried from webui/os.css) ---- */
+@media (prefers-reduced-motion: reduce) {
+  .live-dot, .rise, .blink-soft, .shimmer { animation: none; }
+}
+
+/* ---- the anatomical twin: a dark viewport inside the light app ---- */
+.twin-viewport {
+  background: radial-gradient(120% 90% at 50% 30%, #1a1d26 0%, #0c0e13 70%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
 .twin-stage { position: relative; width: 100%; height: 100%; min-height: 320px; cursor: grab; }
 .twin-stage:active { cursor: grabbing; }
 .twin-stage canvas {
@@ -179,24 +245,17 @@ body {
 .twin-hud {
   position: absolute; left: 14px; top: 12px; z-index: 4; display: none; align-items: center; gap: 10px;
   padding: 9px 14px 9px 12px; border-radius: 14px; pointer-events: none;
-  background: var(--glass-float); backdrop-filter: blur(16px) saturate(1.2); -webkit-backdrop-filter: blur(16px) saturate(1.2);
-  border: 1px solid color-mix(in srgb, var(--tc, var(--color-dys-ink)) 42%, transparent);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.06), 0 14px 34px -16px #000;
+  background: rgb(13 15 21 / 0.72); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--tc, #f0a76a) 42%, transparent);
+  color: #f4f5f8;
 }
-.twin-hud-pip {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--tc, var(--color-dys-ink)); flex: 0 0 auto;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tc, var(--color-dys-ink)) 18%, transparent);
-}
+.twin-hud-pip { width: 8px; height: 8px; border-radius: 50%; background: var(--tc, #f0a76a); flex: 0 0 auto; }
 .twin-hud-body { display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }
-.twin-hud-k {
-  font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
-  color: color-mix(in srgb, var(--tc, var(--color-dys-ink)) 78%, #fff 22%);
-}
-.twin-hud-nm { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: var(--color-ink); }
+.twin-hud-k { font-size: 10.5px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--tc, #f0a76a) 78%, #fff 22%); }
+.twin-hud-nm { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #f4f5f8; }
 .twin-flags { position: absolute; inset: 0; pointer-events: none; z-index: 6; }
-.twin-flag {
-  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; opacity: 0;
-  font-size: 11px; color: var(--color-ink); transition: opacity 0.3s;
-}
+.twin-flag { position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 6px; opacity: 0;
+  font-size: 11px; color: #f4f5f8; transition: opacity 0.3s; }
 .twin-flag.in { opacity: 1; }
-.twin-flag i { width: 5px; height: 5px; border-radius: 50%; background: var(--color-accent); flex: 0 0 auto; }
+.twin-flag i { width: 5px; height: 5px; border-radius: 50%; background: #8f94ff; flex: 0 0 auto; }

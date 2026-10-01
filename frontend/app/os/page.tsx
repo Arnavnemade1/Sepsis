@@ -7,6 +7,7 @@ import { Terminal } from "@/components/terminal";
 import { cx, Empty, Pill, Plate, Skeleton, Stat } from "@/components/ui";
 import { title } from "@/lib/clinical";
 import { usePoll } from "@/lib/hooks";
+import { clock } from "@/lib/paging";
 
 type Proc = { pid: number; ppid: number; name: string; kind: string; uid: string; state: string; cpu_ms: number; duty: number; uptime_s: number };
 type Ps = { processes: Proc[]; status: { processes: number; uptime_s: number; by_kind: Record<string, number>; cpu_ms_total: number } };
@@ -117,7 +118,7 @@ export default function OsPage() {
             <ul className="h-[472px] divide-y divide-line-soft overflow-y-auto font-mono text-[11.5px]">
               {[...journal.data.entries].reverse().map((e) => (
                 <li key={e.seq} className="flex gap-3 px-4 py-1.5">
-                  <span className="num shrink-0 text-faint">{new Date(e.ts * 1000).toLocaleTimeString()}</span>
+                  <span className="num shrink-0 text-faint">{clock(e.ts)}</span>
                   <span className={cx("w-16 shrink-0", e.severity <= 3 ? "text-high-ink" : e.severity <= 4 ? "text-med-ink" : "text-dim")}>{e.facility}</span>
                   <span className="shrink-0 text-ink">{e.event}</span>
                   <span className="min-w-0 truncate text-muted">{summarize(e.detail)}</span>

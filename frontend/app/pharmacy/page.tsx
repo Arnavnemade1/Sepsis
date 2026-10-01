@@ -346,20 +346,21 @@ function ConcChart({ arm }: { arm: Arm }) {
   const d = y.map((v, i) => `${i ? "L" : "M"}${X(t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 h-auto w-full" aria-label={`${arm.label} plasma concentration`}>
-      <path d={`${d}L${W},${H}L0,${H}Z`} fill="rgb(143 148 255 / .07)" />
-      <path d={d} fill="none" stroke="rgb(195 198 255 / .9)" strokeWidth={1.5} />
+      <path d={`${d}L${W},${H}L0,${H}Z`} fill="rgb(68 83 214 / .07)" />
+      <path d={d} fill="none" stroke="#4453d6" strokeWidth={1.5} />
       {mic != null && (
         <>
           <line x1={0} x2={W} y1={Y(mic)} y2={Y(mic)} stroke={`rgb(${TONE_RGB.med} / .7)`} strokeDasharray="4 3" />
-          <text x={W - 2} y={Y(mic) - 4} textAnchor="end" fontSize="9.5" fill="#f0c46a">
+          {/* above the line, but never down on the time axis labels */}
+          <text x={W - 2} y={Math.min(Y(mic) - 4, H - 15)} textAnchor="end" fontSize="9.5" fill="#926000">
             MIC {mic} {arm.unit}
           </text>
         </>
       )}
-      <text x={2} y={H - 3} fontSize="9.5" fill="#6e7482">
+      <text x={2} y={H - 3} fontSize="9.5" fill="#858b94">
         0 h
       </text>
-      <text x={W - 2} y={H - 3} textAnchor="end" fontSize="9.5" fill="#6e7482">
+      <text x={W - 2} y={H - 3} textAnchor="end" fontSize="9.5" fill="#858b94">
         {t[t.length - 1]} h
       </text>
     </svg>
