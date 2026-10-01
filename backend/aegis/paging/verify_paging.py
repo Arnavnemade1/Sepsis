@@ -249,6 +249,21 @@ def test_queue() -> None:
         clk.advance(policy.ack_timeout(os_.settings, p["priority"]) + 1)
         os_.tick()
     ok(os_.pages[p["id"]]["status"] == "unassigned", "an exhausted chain lands with the operator, not in silence")
+    # demo realism: synthetic traffic nobody can take is closed by the simulated unit team;
+    # a real page with no owner stays with the operator
+    os_, clk = fresh(sim=True)
+    for c in os_.roster.values():
+        if c.pageable:
+            c.status = "off_shift"
+    demo_p = os_.raise_alert("503 fall, no head strike", source="demo", synthetic=True)["page"]
+    real_p = os_.raise_alert("505 fall, no head strike", source="nurse")["page"]
+    ok(os_.pages[demo_p["id"]]["status"] == "unassigned" and os_.pages[real_p["id"]]["status"] == "unassigned",
+       "setup: neither page has an eligible clinician")
+    os_.tick()                               # the server ticks every second; the first sees them unowned
+    clk.advance(301)
+    os_.tick()
+    ok(os_.pages[demo_p["id"]]["status"] == "resolved" and os_.pages[real_p["id"]]["status"] == "unassigned",
+       "an unowned DEMO page is closed by the simulated unit team; a real one stays with the operator")
     os_, clk = fresh()
     p = os_.raise_alert("Code blue 305", source="nurse")["page"]
     clk.advance(policy.DEFAULT_SETTINGS["review_failsafe_s"]["1"] + 1)

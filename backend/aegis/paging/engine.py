@@ -797,6 +797,17 @@ class PagingOS:
                         self._finish_case(page)
                         self._set_status(page, "resolved")
                         self.emit("page", page)
+                elif st == "unassigned" and s["simulated_responders"] and page.get("synthetic"):
+                    # a synthetic page nobody could take is handled by the (simulated) unit team
+                    # after a few minutes, as a charge nurse would, so demo traffic never piles
+                    # up as "needs an owner". Real nurse and detector pages wait for the operator.
+                    handled_at = page.setdefault("sim_operator_at", now + self.rng.uniform(150, 300))
+                    if now >= handled_at:
+                        page["escalation_log"].append({"at": now, "why": "handled by the unit team (simulated)", "to": None})
+                        page["resolved_at"] = now
+                        self._set_status(page, "resolved")
+                        _journal("resolved", "info", uid="sim:operator", page=page["id"], by="unit team")
+                        self.emit("page", page)
             for c in self.roster.values():
                 if c.status in ("in_procedure", "on_case") and c.busy_until and now >= c.busy_until:
                     if not any(p["status"] == "accepted" and p.get("assignee") == c.id for p in self.pages.values()):
@@ -806,7 +817,7 @@ class PagingOS:
             if s["simulated_responders"] and now >= self.next_roster_churn:
                 self._churn(now)
             if s["demo_traffic"] and now >= self.next_demo_at:
-                self.next_demo_at = now + self.rng.uniform(75, 150)
+                self.next_demo_at = now + self.rng.uniform(120, 240)
                 occupied = {r: p for r, p in self.synthetic.items()}
                 demo_alert = demo.pick_scenario(self.rng, occupied)
             if now - self.last_sentinel >= SENTINEL_PERIOD_S:
