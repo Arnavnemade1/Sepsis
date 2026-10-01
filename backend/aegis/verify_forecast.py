@@ -55,17 +55,50 @@ def test_band_ordering() -> None:
     print("[3] uncertainty band ordered + widening")
     w = _window({"hr": (85, 100), "temp_c": (37.4, 38.2), "resp_rate": (17, 23),
                  "spo2": (97, 94), "map": (86, 74), "wbc": (9, 13), "lactate": (1.4, 2.6)})
+    # a perfect ramp has zero residuals, hence a zero-width band that "widens" 0 -> 0;
+    # measured vitals are noisy, so the window is too
+    for ch, amp in (("hr", 4.0), ("map", 5.0), ("resp_rate", 1.5), ("lactate", 0.25)):
+        w[ch] = [v + (amp if i % 2 else -amp) for i, v in enumerate(w[ch])]
     f = TrajectoryForecaster(8).forecast(w, start_hour=30)
     for h in range(f["horizon"]):
         assert f["risk_lo"][h] <= f["risk_mean"][h] + 1e-9 <= f["risk_hi"][h] + 1e-9
     widths = [f["risk_hi"][h] - f["risk_lo"][h] for h in range(f["horizon"])]
-    assert widths[-1] >= widths[0]
+    assert widths[0] > 0.01 and widths[-1] > widths[0], widths
     _ok(f"lo≤mean≤hi for all horizons; band widens {widths[0]:.2f} -> {widths[-1]:.2f}")
 
 
-def test_real_lead() -> None:
+def test_band_two_sided() -> None:
+    print("[3b] a two-sided channel: 'better' never crosses into the other abnormality")
+    # WBC drifting down to ~4.4 with noise: pushing "better" further DOWN would be
+    # leukopenia (a SIRS criterion) and score worse than the mean — the band would
+    # then exclude its own mean. Better moves toward normal and stops at its centre.
+    w = _window({"hr": (70, 69), "temp_c": (39.0, 38.7), "resp_rate": (19, 18),
+                 "spo2": (99, 99), "map": (72, 68), "wbc": (6.5, 4.4), "lactate": (3.6, 3.4)})
+    w["wbc"] = [v + (0.9 if i % 2 else -0.9) for i, v in enumerate(w["wbc"])]
+    f = TrajectoryForecaster(8).forecast(w, start_hour=13)
+    for h in range(f["horizon"]):
+        assert f["risk_lo"][h] <= f["risk_mean"][h] + 1e-9 <= f["risk_hi"][h] + 1e-9, \
+            (h, f["risk_lo"][h], f["risk_mean"][h], f["risk_hi"][h])
+    _ok("lo≤mean≤hi with WBC near the leukopenia line")
+
+
+def test_band_real(cl: CohortCluster) -> None:
+    print("[3c] the band is ordered on every hour of every replayed patient")
+    fc, n, bad = TrajectoryForecaster(8), 0, []
+    for p in cl.patients:
+        for hi in range(2, p._ff.shape[0] + 1):
+            w = {ch: [float(p._ff[t, k]) for t in range(max(0, hi - 12), hi)] for k, ch in enumerate(CHANNELS)}
+            f = fc.forecast(w, start_hour=hi - 1)
+            n += 1
+            if any(not (f["risk_lo"][h] <= f["risk_mean"][h] + 1e-9 <= f["risk_hi"][h] + 1e-9)
+                   for h in range(f["horizon"])):
+                bad.append((p.bed_id, hi - 1))
+    assert not bad, f"{len(bad)}/{n} forecasts have a band that excludes its mean, e.g. {bad[:3]}"
+    _ok(f"{n} forecasts, every band contains its mean")
+
+
+def test_real_lead(cl: CohortCluster) -> None:
     print("[4] real CinC patients — forecast adds lead time before onset")
-    cl = CohortCluster(n=12, lane_budget=160, seed=7)
     early = 0
     septic = [p for p in cl.patients if p.is_septic and p.onset_hour and p.onset_hour > 8]
     for p in septic:
@@ -89,7 +122,10 @@ def main() -> None:
     test_deteriorating()
     test_stable()
     test_band_ordering()
-    test_real_lead()
+    test_band_two_sided()
+    cl = CohortCluster(n=12, lane_budget=160, seed=7)
+    test_band_real(cl)
+    test_real_lead(cl)
     print("-" * 64)
     print("ALL FORECAST CHECKS PASSED")
 

@@ -29,6 +29,10 @@ RANGES = {"hr": (30, 200), "temp_c": (33, 42), "resp_rate": (5, 60),
           "spo2": (60, 100), "map": (30, 140), "wbc": (0.3, 60), "lactate": (0.2, 25)}
 # direction (per channel) that increases sepsis risk
 _WORSE = {"hr": 1, "resp_rate": 1, "wbc": 1, "lactate": 1, "map": -1, "spo2": -1}
+# channels that are abnormal on BOTH sides (SIRS: temp > 38 or < 36, WBC > 12 or < 4):
+# worse is away from the centre of normal, better is toward it and stops there, so a
+# "better" WBC of 4.4 is never pushed into leukopenia
+_TWO_SIDED = {"temp_c": 37.0, "wbc": 8.0}
 ALARM = 0.70
 
 
@@ -60,9 +64,18 @@ class TrajectoryForecaster:
         return level, trend, sigma
 
     def _worse_dir(self, ch: str, val: float) -> int:
-        if ch == "temp_c":
-            return 1 if val >= 37.0 else -1     # fever or hypothermia both worsen
+        if ch in _TWO_SIDED:
+            return 1 if val >= _TWO_SIDED[ch] else -1     # e.g. fever or hypothermia both worsen
         return _WORSE.get(ch, 0)
+
+    def _scenario(self, ch: str, base: float, band: float, sign: int) -> float:
+        """``base`` moved by ``band`` in the worse (+1) or better (-1) direction."""
+        d = self._worse_dir(ch, base)
+        v = base + sign * d * band
+        if sign < 0 and ch in _TWO_SIDED:                 # better stops at the centre
+            c = _TWO_SIDED[ch]
+            v = max(v, c) if base >= c else min(v, c)
+        return _clamp(v, *RANGES[ch])
 
     def _fuse_once(self, vals: Dict[str, float]) -> float:
         edge = {"hr": vals["hr"],
@@ -87,10 +100,8 @@ class TrajectoryForecaster:
         risk_mean, risk_hi, risk_lo = [], [], []
         for h in range(H):
             base = {ch: ch_fc[ch]["mean"][h] for ch in SCORED}
-            worse = {ch: _clamp(base[ch] + self._worse_dir(ch, base[ch]) * ch_fc[ch]["band"][h],
-                                *RANGES[ch]) for ch in SCORED}
-            better = {ch: _clamp(base[ch] - self._worse_dir(ch, base[ch]) * ch_fc[ch]["band"][h],
-                                 *RANGES[ch]) for ch in SCORED}
+            worse = {ch: self._scenario(ch, base[ch], ch_fc[ch]["band"][h], +1) for ch in SCORED}
+            better = {ch: self._scenario(ch, base[ch], ch_fc[ch]["band"][h], -1) for ch in SCORED}
             risk_mean.append(round(self._fuse_once(base), 3))
             risk_hi.append(round(self._fuse_once(worse), 3))
             risk_lo.append(round(self._fuse_once(better), 3))
