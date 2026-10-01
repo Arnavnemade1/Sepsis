@@ -25,7 +25,7 @@ from backend.aegis.paging import policy
 from backend.aegis.paging.engine import PagingOS
 from backend.aegis.paging.hospital import Clinician, ICU_ROOMS
 from backend.aegis.paging.router import rank
-from backend.aegis.paging.triage import LLM_TIMEOUT_S, triage_text
+from backend.aegis.paging.triage import LLM_TIMEOUT_S, extract_vitals, triage_text
 
 _n = {"pass": 0}
 
@@ -87,6 +87,9 @@ def test_triage() -> None:
         t = triage_text(text)
         ok(t.priority == pr and t.room == room, f"P{pr} room {room}: {text[:44]!r} (got P{t.priority} {t.room})")
     ok(triage_text("HR 104, BP 130/80 in bed 507").room == "507", "a heart rate of 104 is not room 104")
+    for text, spo2 in (("605 desaturating to 84% on room air", 84), ("409 is 86% on RA", 86), ("O2 at 15 L NRB, sats 91%", 91)):
+        got = extract_vitals(text).get("spo2")
+        ok(got == spo2, f"SpO2 {spo2} read from {text!r} (got {got})")
     code_model = FakeModel('{"priority": 4, "category": "general", "rationale": "sounds routine"}')
     t = triage_text("code blue in 307", client=code_model)
     ok(t.priority == 1 and code_model.calls == 0, "a P1 red flag goes out on the rule; the model is never asked")
@@ -253,6 +256,21 @@ def test_queue() -> None:
     p = os_.pages[p["id"]]
     ok(p["status"] == "paging" and p["failsafe"] and p["certificate"]["certified"],
        "review never blocks care: an unreviewed P1 goes out on the fail-safe, still certified")
+    # the planned clinician is paged for ANOTHER case while this P1 waits in review: at
+    # the fail-safe the consecutive-paging invariant refuses them, and the page must
+    # route around them, not wait in review forever
+    os_, clk = fresh()
+    p = os_.raise_alert("Code blue 305", source="nurse")["page"]
+    planned = p["planned"]
+    other = os_.raise_alert("Code blue 307", source="nurse")["page"]
+    os_.approve(other["id"], "rn.patel", planned)
+    ok(os_.pages[other["id"]]["assignee"] == planned, "setup: the planned clinician is now ringing for another case")
+    clk.advance(policy.DEFAULT_SETTINGS["review_failsafe_s"]["1"] + 1)
+    os_.tick()
+    p = os_.pages[p["id"]]
+    ok(p["status"] == "paging" and p["assignee"] not in (None, planned) and p["certificate"]["certified"],
+       f"a P1 whose first pick became unavailable is re-routed at the fail-safe (got {p['status']}, "
+       f"{p['assignee']}, blocked={p['blocked']})")
     os_, clk = fresh()
     for c in os_.roster.values():            # nobody free anywhere; hospitalists out first
         if c.pageable:
@@ -312,7 +330,18 @@ def test_detector() -> None:
     ok(not os_.episodes[ICU_ROOMS[4]]["open"], "three readings below 0.60 close the episode")
     beds[4] = _bed(4, 0.72)
     os_.observe_ward(beds)
-    ok(len([p for p in os_.pages.values() if p["source"] == "detector"]) == 2, "re-crossing opens a new episode")
+    det = [p for p in os_.pages.values() if p["source"] == "detector"]
+    ok(len(det) == 1 and os_.episodes[ICU_ROOMS[4]]["open"]
+       and any("re-crossed" in e["why"] for e in det[0]["escalation_log"]),
+       "re-crossing while the first page is still open writes on THAT page: one patient, one page")
+    os_.cancel(det[0]["id"], "rn.patel", "seen")
+    beds[4] = _bed(4, 0.5)
+    for _ in range(3):
+        os_.observe_ward(beds)
+    beds[4] = _bed(4, 0.72)
+    os_.observe_ward(beds)
+    ok(len([p for p in os_.pages.values() if p["source"] == "detector"]) == 2,
+       "once that page is closed, a new episode pages again")
     beds[7] = _bed(7, 0.65)
     os_.observe_ward(beds)
     ok(os_.monitor_state()[ICU_ROOMS[7]]["watch"] and not any(p["room"] == ICU_ROOMS[7] for p in os_.pages.values()),
@@ -333,6 +362,14 @@ def test_sentinel() -> None:
     os_.last_sentinel = 0
     os_.tick()
     ok("zone_surge" not in {r["kind"] for r in os_.sentinel.active()}, "the surge clears when the window passes")
+    os_, clk = fresh()
+    for _ in range(4):                      # one patient alarming over and over is not a short unit
+        os_.raise_alert("503 fall, no head strike", source="nurse")
+    os_._note("503: the detector closed its episode", "503")
+    os_.last_sentinel = 0
+    os_.tick()
+    ok("zone_surge" not in {r["kind"] for r in os_.sentinel.active()},
+       "repeat alerts from ONE room (plus a detector note) are that patient's episode, not a unit surge")
     os_, clk = fresh()
     beds = [_bed(i, 0.2) for i in range(12)]
     beds[0], beds[1] = _bed(0, 0.76), _bed(1, 0.74)

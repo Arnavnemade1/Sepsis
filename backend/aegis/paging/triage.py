@@ -82,19 +82,26 @@ def extract_vitals(text: str) -> Dict[str, float]:
     if m and 40 <= _f(m.group(1)) <= 260:
         v["sbp"], v["dbp"] = _f(m.group(1)), _f(m.group(2))
         v.setdefault("map", round((v["sbp"] + 2 * v["dbp"]) / 3, 1))
-    for key, rx in (
-        ("hr", r"\b(?:hr|heart rate|pulse)\s*(?:of|is)?\s*[:=]?\s*(\d{2,3})\b"),
-        ("spo2", r"\b(?:spo2|sp02|o2 sat|sats?|saturation|o2)\s*(?:of|at)?\s*[:=]?\s*(\d{2,3})\s*%?"),
-        ("rr", r"\b(?:rr|resp(?:iratory)? rate|resps?)\s*[:=]?\s*(\d{1,2})\b"),
-        ("map", r"\bmap\s*[:=]?\s*(\d{2,3})\b"),
-        ("lactate", r"\b(?:lactate|lac)\s*(?:of|is)?\s*[:=]?\s*(\d{1,2}(?:\.\d)?)\b"),
-        ("gcs", r"\bgcs\s*[:=]?\s*(\d{1,2})\b"),
-        ("glucose", r"\b(?:glucose|bg|sugar)\s*[:=]?\s*(\d{2,3})\b"),
-        ("nihss", r"\bnihss\s*[:=]?\s*(\d{1,2})\b"),
+    # (key, pattern, plausible range): the first reading in range wins, so "O2 at 15 L, sats 91%"
+    # reads the saturation, not the flow
+    for key, rx, lo, hi in (
+        ("hr", r"\b(?:hr|heart rate|pulse)\s*(?:of|is)?\s*[:=]?\s*(\d{2,3})\b", 20, 250),
+        ("spo2", r"\b(?:spo2|sp02|o2 sat(?:uration)?s?|sats?|satt?ing|saturation|saturating|desat(?:urat(?:ing|ed|ion)|ting|s)?|pulse ox|o2)\s*(?:(?:is|was|now|of|at|to|down to|dropp(?:ing|ed) to|falling to|fell to)\s+)*[:=]?\s*(\d{2,3})\s*%?", 50, 100),
+        ("rr", r"\b(?:rr|resp(?:iratory)? rate|resps?)\s*[:=]?\s*(\d{1,2})\b", 4, 70),
+        ("map", r"\bmap\s*[:=]?\s*(\d{2,3})\b", 20, 200),
+        ("lactate", r"\b(?:lactate|lac)\s*(?:of|is)?\s*[:=]?\s*(\d{1,2}(?:\.\d)?)\b", 0.1, 30),
+        ("gcs", r"\bgcs\s*[:=]?\s*(\d{1,2})\b", 3, 15),
+        ("glucose", r"\b(?:glucose|bg|sugar)\s*[:=]?\s*(\d{2,3})\b", 10, 1000),
+        ("nihss", r"\bnihss\s*[:=]?\s*(\d{1,2})\b", 0, 42),
     ):
-        m = re.search(rx, t)
-        if m:
-            v[key] = _f(m.group(1))
+        for m in re.finditer(rx, t):
+            if lo <= _f(m.group(1)) <= hi:
+                v[key] = _f(m.group(1))
+                break
+    if "spo2" not in v:  # an unlabelled reading with its oxygen context: "84% on room air", "88% on 4L"
+        m = re.search(r"\b(\d{2,3})\s*%\s*(?:on\s+(?:ra|room air|\d+\s*l|nrb|nc|high[- ]flow|bipap|cpap)\b|ra\b)", t)
+        if m and 50 <= _f(m.group(1)) <= 100:
+            v["spo2"] = _f(m.group(1))
     m = re.search(r"\b(?:temp|t|temperature|febrile(?: to)?|fever(?: of)?|tmax)\s*[:=]?\s*(\d{2,3}(?:\.\d)?)\s*(°?\s*[cf])?\b", t)
     if m:
         val = _f(m.group(1))

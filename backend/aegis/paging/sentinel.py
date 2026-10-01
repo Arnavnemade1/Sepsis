@@ -61,13 +61,16 @@ class Sentinel:
         self.last_scan = now
         found: Dict[str, Rec] = {}
 
-        # 1 · a surge of alerts on one unit
+        # 1 · a surge of alerts on one unit. Alerts only (not the detector's notes), and
+        # across at least two rooms: one patient alarming again is that patient's
+        # episode, not evidence that the unit is short
         by_zone: Dict[str, List[Dict[str, Any]]] = {}
         for a in alerts:
-            if a.get("zone") and now - a["created_at"] <= ZONE_WINDOW_S and not a.get("history"):
+            if a.get("kind", "alert") == "alert" and a.get("zone") and now - a["created_at"] <= ZONE_WINDOW_S \
+                    and not a.get("history"):
                 by_zone.setdefault(a["zone"], []).append(a)
         for z, items in by_zone.items():
-            if len(items) >= ZONE_THRESHOLD:
+            if len(items) >= ZONE_THRESHOLD and len({a.get("room") for a in items}) >= 2:
                 name = ZONES[z].name if z in ZONES else z
                 p1 = sum(1 for a in items if a.get("priority") == 1)
                 found[f"zone:{z}"] = Rec(

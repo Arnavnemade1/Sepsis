@@ -317,6 +317,10 @@ class PagingOS:
             page["blocked"] = cert["violations"]
             page["review_reason"] = "Held: the proposed page violates " + ", ".join(cert["violations"]) + "."
             page["planned"] = cid
+            if not page["failsafe"] and not page.get("review_deadline"):
+                # the operator sees it now; if nobody acts, the fail-safe re-routes it
+                fs = self.settings["review_failsafe_s"].get(str(page["priority"]))
+                page["review_deadline"] = now + fs if fs else None
             self._set_status(page, "review")
             _journal("blocked", "warn", page=page["id"], clinician=cid, violations=cert["violations"])
             return False
@@ -399,9 +403,9 @@ class PagingOS:
                 return {"status": "error", "detail": f"unknown action {action!r}"}
             return {"status": "ok", "page": copy.deepcopy(page)}
 
-    def _escalate(self, page: Dict[str, Any], now: float, why: str) -> None:
+    def _escalate(self, page: Dict[str, Any], now: float, why: str, exclude: Optional[List[str]] = None) -> None:
         page["escalations"] += 1
-        tried = [a["clinician"] for a in page["attempts"]]
+        tried = [a["clinician"] for a in page["attempts"]] + list(exclude or [])
         if page["escalations"] > self.settings["max_escalations"]:
             page["escalation_log"].append({"at": now, "why": why, "to": None})
             page["review_reason"] = "Escalation chain exhausted: the operator must assign this page."
@@ -646,7 +650,14 @@ class PagingOS:
             ep = self.episodes.get(LIVE_ROOM) or {"open": False}
             mp = v.get("map")
             shock = mp is not None and mp < 65
-            if level == "HIGH" and not ep["open"]:
+            prior = self._active_detector_page(LIVE_ROOM) if level == "HIGH" and not ep["open"] else None
+            if prior:
+                prior["escalation_log"].append({"at": now, "why": "calibrated tier back to HIGH",
+                                                "to": prior.get("assignee")})
+                self.emit("page", prior)
+                self.episodes[LIVE_ROOM] = {"open": True, "priority": prior["priority"], "page": prior["id"],
+                                            "opened_at": now, "below": 0}
+            elif level == "HIGH" and not ep["open"]:
                 tri = Triage(1 if shock else 2, "sepsis", LIVE_ROOM, ["calibrated risk HIGH"],
                              {"map": mp} if mp is not None else {},
                              [f"calibrated detector tier HIGH (p={p:.3f})" if p is not None else "detector tier HIGH"]
@@ -665,6 +676,23 @@ class PagingOS:
                     self._note(f"Live patient back to LOW risk; detector episode closed.", LIVE_ROOM)
                 self.episodes[LIVE_ROOM] = ep
 
+    def _active_detector_page(self, room: str) -> Optional[Dict[str, Any]]:
+        """The detector page still being dealt with for this room, if there is one."""
+        live = [p for p in self.pages.values() if p["room"] == room and p["source"] == "detector"
+                and p["status"] in ACTIVE]
+        return min(live, key=lambda p: p["created_at"]) if live else None
+
+    def _upgrade(self, page: Dict[str, Any], tri: Triage, now: float, room: str) -> None:
+        page["priority"], page["triage"] = tri.priority, tri.to_dict()
+        page["escalation_log"].append({"at": now, "why": "upgraded to P1: septic-shock criteria met",
+                                       "to": page.get("assignee")})
+        self._set_status(page, page["status"])
+        self.emit("page", page)
+        self.emit("notify", {"to": page.get("assignee"), "page": page["id"], "priority": 1,
+                             "room": room, "text": "Upgraded to P1: septic-shock criteria met",
+                             "kind": "upgrade"})
+        _journal("upgraded", "notice", page=page["id"], room=room)
+
     def _episode(self, room: str, bed: str, risk: float, b: Dict[str, Any], now: float) -> None:
         ep = self.episodes.get(room) or {"open": False, "priority": None, "page": None, "below": 0}
         if risk >= DETECTOR_ALARM:
@@ -672,22 +700,28 @@ class PagingOS:
                                   b.get("drivers") or [], b.get("population_risk"))
             page = self.pages.get(ep["page"]) if ep.get("page") else None
             if not ep["open"]:
-                text = (f"Sepsis risk {risk:.2f} on {b.get('name')} (room {room}). "
-                        + ("; ".join((b.get('drivers') or [])[:3]) or "Risk above the alarm line."))
-                page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
-                ep = {"open": True, "priority": tri.priority, "page": page["id"], "opened_at": now, "below": 0}
+                prior = self._active_detector_page(room)
+                if prior:
+                    # the last episode's page is still being handled: one patient, one page.
+                    # The re-crossing is written on it (and can raise it), never paged again
+                    prior["escalation_log"].append({"at": now, "why": f"risk re-crossed the alarm line ({risk:.2f})",
+                                                    "to": prior.get("assignee")})
+                    if tri.priority < prior["priority"]:
+                        self._upgrade(prior, tri, now, room)
+                    else:
+                        self.emit("page", prior)
+                    _journal("recrossed", "info", page=prior["id"], room=room, risk=round(risk, 3))
+                    ep = {"open": True, "priority": prior["priority"], "page": prior["id"], "opened_at": now,
+                          "below": 0}
+                else:
+                    text = (f"Sepsis risk {risk:.2f} on {b.get('name')} (room {room}). "
+                            + ("; ".join((b.get('drivers') or [])[:3]) or "Risk above the alarm line."))
+                    page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
+                    ep = {"open": True, "priority": tri.priority, "page": page["id"], "opened_at": now, "below": 0}
             elif tri.priority < (ep.get("priority") or 4):
                 ep["priority"] = tri.priority
                 if page and page["status"] in ACTIVE:
-                    page["priority"], page["triage"] = tri.priority, tri.to_dict()
-                    page["escalation_log"].append({"at": now, "why": "upgraded to P1: septic-shock criteria met",
-                                                   "to": page.get("assignee")})
-                    self._set_status(page, page["status"])
-                    self.emit("page", page)
-                    self.emit("notify", {"to": page.get("assignee"), "page": page["id"], "priority": 1,
-                                         "room": room, "text": "Upgraded to P1: septic-shock criteria met",
-                                         "kind": "upgrade"})
-                    _journal("upgraded", "notice", page=page["id"], room=room)
+                    self._upgrade(page, tri, now, room)
                 else:
                     text = f"Septic-shock criteria on {b.get('name')} (room {room}): risk {risk:.2f}."
                     page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
@@ -741,15 +775,19 @@ class PagingOS:
                     else:
                         self._escalate(page, now, "hold expired")
                     self.emit("page", page)
-                elif st == "review" and page.get("review_deadline") and now >= page["review_deadline"] \
-                        and not page["blocked"]:
-                    page["failsafe"] = True
+                elif st == "review" and page.get("review_deadline") and now >= page["review_deadline"]:
+                    # fires once. The planned clinician is re-certified on today's facts; if
+                    # an invariant still refuses them (paged for another case meanwhile, gone
+                    # off shift), re-rank without them: a P1 never waits in review because
+                    # its first pick became unavailable
+                    page["failsafe"], page["review_deadline"] = True, None
                     target = page.get("planned")
                     _journal("failsafe", "warn", page=page["id"])
-                    if target:
-                        self._send(page, target, now)
-                    else:
-                        self._escalate(page, now, "review fail-safe")
+                    if not (target and self._send(page, target, now)):
+                        held_by = ", ".join(page["blocked"])
+                        self._escalate(page, now, "review fail-safe" + (
+                            f": {self.roster[target].name} is blocked by {held_by}" if target and held_by else ""),
+                            exclude=[target] if target else None)
                     self.emit("page", page)
                 elif st == "accepted" and s["simulated_responders"] and not self.presence.get(page.get("assignee")):
                     done_at = page.setdefault("sim_resolve_at", now + self.rng.uniform(

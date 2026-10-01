@@ -87,7 +87,19 @@ def main() -> int:
         client.post("/aegis/fs/write", headers=HC, json={"path": "/etc/policy.dsl",
                                                           "content": dsl.DEFAULT_POLICY})
 
-        # -- 3. the event loop stays responsive while the prover is held -------- #
+        # -- 3. paging writes carry identity: a rejected session never acts as guest #
+        forged_text = "Room 509 surface check: family asking for an update (forged session)"
+        r = client.post("/aegis/paging/alerts", headers={"Authorization": "Bearer eyJleHAiOjF9.forged"},
+                        json={"text": forged_text}).json()
+        raised = [p for p in S.PAGING.pages.values() if p["text"] == forged_text]
+        check("a rejected session cannot raise a page as guest (EAUTH), even in audit mode",
+              r.get("errno") == "EAUTH" and not raised, f"gate={S.GATE.mode}; {str(r)[:80]}")
+        r = client.post("/aegis/paging/alerts", headers=HN,
+                        json={"text": "Room 509 surface check: family asking for an update"}).json()
+        check("the same alert on the charge nurse's live session is raised as hers",
+              r.get("status") == "ok" and (r.get("page") or {}).get("reporter") == "rn.patel", str(r)[:90])
+
+        # -- 4. the event loop stays responsive while the prover is held -------- #
         with client.websocket_connect("/aegis/os/stream") as ws:
             ws.receive_json()                                    # hello
             release = threading.Event()

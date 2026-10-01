@@ -31,16 +31,29 @@ from backend.aegis.server import (
 router = APIRouter()
 
 
+class _SessionRejected(Exception):
+    """EAUTH — the caller presented a session the kernel no longer accepts."""
+
+
 def _need(cap: str, what: str):
     """The caller's credential, after the gate's verdict on ``cap``. Enforcing mode
-    refuses here; audit mode journals a would-deny and lets it through."""
+    refuses here; audit mode journals a would-deny and lets it through.
+
+    One thing audit mode does NOT let through here: a presented session the kernel
+    rejected (forged, expired, or signed before a restart). Elsewhere that caller is
+    served as the guest it now is; on the paging OS every write carries identity, and
+    serving it as guest would record a charge nurse's alert, or a clinician's answer,
+    as guest's. The client renews the session and retries."""
     cred = _cred()
+    if cred.auth_error:
+        raise _SessionRejected(f"presented session rejected: {cred.auth_error}")
     GATE.require(cap, cred, what=what)
     return cred
 
 
 def _deny(exc: Exception) -> Dict[str, Any]:
-    return {"status": "error", "errno": "EPERM", "detail": str(exc)}
+    errno = "EAUTH" if isinstance(exc, _SessionRejected) else "EPERM"
+    return {"status": "error", "errno": errno, "detail": str(exc)}
 
 
 @router.get("/aegis/paging/hospital")
@@ -60,7 +73,7 @@ async def paging_raise(payload: PagingAlertIn) -> Dict[str, Any]:
     guardrails, policy, Z3 certificate — and returns the dispatch decision."""
     try:
         cred = _need("page:raise", "raise a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     source = payload.source if payload.source in ("nurse", "voice") else "nurse"
     # off the event loop: triage may call the model, and certify holds the Z3 lock
@@ -77,7 +90,7 @@ def paging_page(page_id: str) -> Dict[str, Any]:
 async def paging_respond(page_id: str, payload: PagingRespondIn) -> Dict[str, Any]:
     try:
         cred = _need("page:respond", "answer a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     who = payload.clinician or cred.username
     if who != cred.username and not cred.has("page:dispatch"):
@@ -91,7 +104,7 @@ async def paging_respond(page_id: str, payload: PagingRespondIn) -> Dict[str, An
 async def paging_resolve(page_id: str) -> Dict[str, Any]:
     try:
         cred = _need("page:respond", "resolve a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     page = PAGING.page_detail(page_id) or {}
     if page.get("assignee") != cred.username and not cred.has("page:dispatch"):
@@ -103,7 +116,7 @@ async def paging_resolve(page_id: str) -> Dict[str, Any]:
 async def paging_escalate(page_id: str) -> Dict[str, Any]:
     try:
         cred = _need("page:dispatch", "escalate a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     return await asyncio.to_thread(PAGING.escalate_now, page_id, cred.username)
 
@@ -112,7 +125,7 @@ async def paging_escalate(page_id: str) -> Dict[str, Any]:
 async def paging_approve(page_id: str, payload: PagingApproveIn) -> Dict[str, Any]:
     try:
         cred = _need("page:dispatch", "approve a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     return await asyncio.to_thread(PAGING.approve, page_id, cred.username, payload.clinician)
 
@@ -121,7 +134,7 @@ async def paging_approve(page_id: str, payload: PagingApproveIn) -> Dict[str, An
 async def paging_cancel(page_id: str, payload: PagingCancelIn) -> Dict[str, Any]:
     try:
         cred = _need("page:dispatch", "cancel a page")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     return await asyncio.to_thread(PAGING.cancel, page_id, cred.username, payload.reason)
 
@@ -135,7 +148,7 @@ def paging_clinicians() -> Dict[str, Any]:
 async def paging_status(clinician_id: str, payload: PagingStatusIn) -> Dict[str, Any]:
     try:
         cred = _need("page:respond", "set a status")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     if clinician_id != cred.username and not cred.has("page:dispatch"):
         return {"status": "error", "errno": "EPERM", "detail": "you can only set your own status"}
@@ -146,7 +159,7 @@ async def paging_status(clinician_id: str, payload: PagingStatusIn) -> Dict[str,
 def paging_ack(rec_id: str) -> Dict[str, Any]:
     try:
         cred = _need("page:dispatch", "acknowledge a recommendation")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     return PAGING.acknowledge_rec(rec_id, cred.username)
 
@@ -167,7 +180,7 @@ def paging_settings() -> Dict[str, Any]:
 def paging_settings_update(payload: PagingSettingsIn) -> Dict[str, Any]:
     try:
         cred = _need("page:configure", "change the paging policy")
-    except _PermissionDenied as exc:
+    except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     return PAGING.update_settings(payload.patch, cred.username)
 
