@@ -47,6 +47,9 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "max_escalations": 3,
     "simulated_responders": True,       # demo: staff with no device open answer on their own
     "demo_traffic": True,               # demo: a synthetic nurse alert every few minutes
+    # every synthetic ward room is watched by the room monitor (NEWS2, qSOFA, opioid safety,
+    # medication safety, …); a finding that calls for a page raises one through this pipeline
+    "room_monitor_pages": True,
 }
 
 INVARIANTS: List[Dict[str, str]] = [
@@ -64,7 +67,7 @@ def zone_kind_for_policy(kind: str) -> str:
 
 
 def requires_review(settings: Dict[str, Any], zone_kind: str, priority: int, source: str) -> bool:
-    if source == "detector" and priority == 1 and settings.get("detector_p1_review", True):
+    if source in ("detector", "monitor") and priority == 1 and settings.get("detector_p1_review", True):
         return True
     row = settings["autonomy"].get(zone_kind_for_policy(zone_kind), ["auto"] * 4)
     return row[priority - 1] == "review"
@@ -87,7 +90,7 @@ def merge_settings(current: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, 
             for pr, secs in v.items():
                 if str(pr) in out[k] and isinstance(secs, (int, float)) and 10 <= secs <= 3600:
                     out[k][str(pr)] = int(secs)
-        elif k in ("detector_p1_review", "simulated_responders", "demo_traffic") and isinstance(v, bool):
+        elif k in ("detector_p1_review", "simulated_responders", "demo_traffic", "room_monitor_pages") and isinstance(v, bool):
             out[k] = v
         elif k in ("consecutive_window_s", "hold_window_s") and isinstance(v, (int, float)) and 0 <= v <= 7200:
             out[k] = int(v)

@@ -1,4 +1,5 @@
 import {
+  BedDouble,
   BellRing,
   Cpu,
   FlaskConical,
@@ -18,7 +19,7 @@ import {
 
 export type NavKey =
   | "overview" | "pages" | "staff" | "sentinel" | "policy"
-  | "patients" | "pharmacy"
+  | "rooms" | "patients" | "pharmacy"
   | "architecture" | "kernel" | "journal" | "gate" | "shell" | "evidence"
   | "pagers";
 
@@ -37,7 +38,8 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Clinical",
     items: [
-      { key: "patients", label: "Patients", href: "/patient/", icon: HeartPulse, hint: "Twin, risk trend, orders" },
+      { key: "rooms", label: "Rooms", href: "/room/", icon: BedDouble, hint: "Every room as a unit: record, vitals, detections" },
+      { key: "patients", label: "Patients", href: "/patient/", icon: HeartPulse, hint: "ICU census, twin, risk trend, orders" },
       { key: "pharmacy", label: "Pharmacy", href: "/pharmacy/", icon: Pill, hint: "Treatment paths, interactions" },
     ],
   },

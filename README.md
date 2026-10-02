@@ -45,6 +45,7 @@ can be believed.
 | | Where it stands |
 |:--|:--|
 | **Paging** | A typed P1 is triaged, located, routed, certified and ringing in single-digit milliseconds. Rules decide first; a language model reviews afterwards and **may only raise** a priority, never lower one. The brief is a template at once and the model's version when it arrives |
+| **Room units** | Every occupied room is watched as one unit: the patient's prior record (problems, orders, allergies, code status, earlier encounters and the baseline measured there), the vitals the room is producing, and **19 detectors** that read both. NEWS2 switches to SpO₂ scale 2 when the record prescribes it; a systolic of 108 alarms against a baseline of 162 and not against one of 116; an allergy conflict pages pharmacy while a sepsis page is open. Findings page through the same certified pipeline, one room one page |
 | **Policy, proven** | **Six invariants** are checked by Z3 on every page. A refused page is held for the operator with the broken rule named. If the prover itself is unhealthy, nothing is sent |
 | **Guardrails** | Autonomy by unit and priority. Consecutive-paging protection. A workload limit. Near-tie load sharing. Hold-for-the-right-person. Auto-escalation on decline or timeout. A review fail-safe that routes around a clinician who has become unavailable |
 | **Shipped detector** | A stacked ensemble trained on the patient label. Its members are two histogram boosters, extra-trees, logistic regression and a utility-aimed XGBoost. It was fitted on **24,206** CinC patients and calibrated without a staircase. On **6,852** held-out patients that neither it nor its predecessor saw: **AUROC 0.800** (predecessor 0.743), **ECE 0.003** |
@@ -53,7 +54,7 @@ can be believed.
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **91 suites**. The paging OS alone has 68 checks, and each guard was first seen failing on the code it fixes. The suites behind published claims plant known failures and require the guard to fire |
+| **Verification** | **92 suites**. The paging OS has 70 checks and the room monitor 60, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -83,12 +84,14 @@ There is no front page: the product is the console. `/` opens it directly, signe
 charge nurse of the demo hospital (switch users from the menu at the top right). Every screen
 shares one frame: a sidebar grouping Operations, Clinical and Platform; a top bar with
 connection latency, prover health and a 24-hour clock; and a command palette (`⌘K`) that
-jumps to any section, active page, patient or pager.
+jumps to any section, active page, room, patient or pager.
 
 | Route | Who | What it is |
 |:--|:--|:--|
-| `/operator/` | charge nurse · chief | **The operator console.** **Overview** has the live KPIs and the building in isometric: each active page on its room in its priority's colour, each clinician where they are, a ringing page as an arc from clinician to room. Beside it are the active-page queue (live countdowns; approve, escalate, cancel) and the event log. **Pages** (`?view=pages`) lists every page with filters. **Staff** is the roster by service. **Sentinel** has the system-wide recommendations and dispatch performance. **Policy** holds the autonomy matrix, the guardrails and the six invariants; the chief can change them. `N` (or the palette) raises an alert by text or by voice. Selecting a page opens its inspector: the dispatch pipeline with timings, triage, the ranked routing table, the Z3 certificate, the timeline and the brief |
+| `/operator/` | charge nurse · chief | **The operator console.** **Overview** has the live KPIs and the building in isometric: each active page on its room in its priority's colour, each clinician where they are, a ringing page as an arc from clinician to room. Beside it are the active-page queue (live countdowns; approve, escalate, cancel) and a watchlist of the rooms whose monitor sees something, with the event log one tab away. A room the monitor has flagged carries a corner mark in its worst finding's colour, and selecting any room opens its unit. **Pages** (`?view=pages`) lists every page with filters. **Staff** is the roster by service. **Sentinel** has the system-wide recommendations and dispatch performance. **Policy** holds the autonomy matrix, the guardrails and the six invariants; the chief can change them. `N` (or the palette) raises an alert by text or by voice. Selecting a page opens its inspector: the dispatch pipeline with timings, triage, the ranked routing table, the Z3 certificate, the timeline and the brief |
 | `/clinician/?id=<user>` | any clinician | **The pager.** Pages for that clinician ring here with sound and vibration. Accept, and the brief is waiting. Decline (in a procedure, with another patient, not my service), and the next clinician is paged at once. On a phone the page is the pager. While it is open, nobody answers for that clinician. `/clinician/` lists every pager |
+| `/room/` | everyone | **Rooms:** every occupied room as a tile, grouped by unit: NEWS2 (or sepsis risk in the ICU), the worst active finding, the trend, allergies, code status and any open episode. Filter to the rooms that need attention, or search by room, patient, finding or allergy |
+| `/room/?id=<room>` | from anywhere | **One room as a unit.** Who is in it and what everyone must know first (allergies, code status, SpO₂ target). The scores the room is acting on. Every active detection with its evidence, the part of the record that changed the reading, the published rule's response and the page it is on. Vitals against their normal band and the patient's own baseline. Labs with the record's baseline. The record itself: problems, orders and home medications, earlier encounters. The care team, devices and pages linked to the room, and one timeline of everything that happened in it |
 | `/patient/` | everyone | **The census:** every monitored bed ranked by the risk the unit acts on, with the population score, early-warning trend, leading system, drivers and any open page |
 | `/patient/?id=<bed>` | from a page | One patient: the risk the unit acts on, vitals with trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line with its 8 h projection, the decision and its limits, orders through the Z3 cage, the specialist panel, and Dr. Aegis |
 | `/pharmacy/?id=<bed>` | from a patient | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
@@ -114,10 +117,20 @@ The demo hospital has seven floors, 18 units and 98 rooms:
 ICU rooms **301–312** replay twelve real de-identified PhysioNet/CinC 2019 stays, and the
 detector watches them. Room **402** is the live monitored session (camera or wearable, or
 the simulator when neither is connected). Every other patient is synthetic and labelled so.
-Two demo behaviours run by default, and both can be switched off in Policy:
 
-- **Demo traffic:** a synthetic nurse alert every couple of minutes.
+Every occupied room carries a record and a monitor feed. An ICU room's record is the real stay
+up to the current replay hour (every lab and vital measured so far; never a later hour, never
+the challenge's label), and the dataset's gaps are named rather than filled. A synthetic room
+has a synthetic longitudinal record and a simulated monitor built on the patient's own
+baseline. Three demo behaviours run by default, and each can be switched off in Policy:
+
+- **Demo traffic:** a synthetic nurse alert every few minutes, and now and then a simulated
+  course in a synthetic room that its record makes plausible (sepsis, opioid sedation, rapid
+  AF, hypoglycaemia, a bleed on an anticoagulant, fluid overload, hyperkalaemia, a COPD
+  exacerbation, neutropenic fever) for the room monitor to catch. A nurse's report becomes the
+  room's measurement, so an alert and the room's vitals never disagree.
 - **Simulated responders:** they answer for any clinician whose pager is not open.
+- **Room monitor pages:** a synthetic room's findings raise pages. Off, they are only shown.
 
 ### Staff accounts
 
@@ -178,13 +191,13 @@ counterexample's invariant named.
 The backend is one FastAPI app, `backend.aegis.server:app`. The server module is the
 composition root. Every endpoint lives in a domain router under
 [`backend/api/routes/`](backend/api/routes/), and request bodies are in
-[`backend/api/schemas.py`](backend/api/schemas.py). All **160** routes are numbered syscalls
+[`backend/api/schemas.py`](backend/api/schemas.py). All **162** routes are numbered syscalls
 in [`abi_table.json`](backend/aegis/kernel/abi_table.json), each bound to a capability the
 gate checks (`abi` in the System shell lists them).
 
 | Router | Routes | Key endpoints |
 |:--|:--:|:--|
-| `paging` | 16 | `POST /aegis/paging/alerts` (text or voice transcript → the whole pipeline) · `WS /aegis/paging/stream` (snapshot, then event batches; `?clinician=` marks a pager open) · `GET /aegis/paging/snapshot` · `GET /aegis/paging/hospital` · `POST /aegis/paging/pages/{id}/respond` · `…/approve` · `…/escalate` · `…/cancel` · `…/resolve` · `POST /aegis/paging/clinicians/{id}/status` · `POST /aegis/paging/recs/{id}/ack` · `GET`/`POST /aegis/paging/settings` |
+| `paging` | 18 | `GET /aegis/rooms` (every room as a unit) · `GET /aegis/rooms/{room}` (record, vitals, labs, findings, pages, care team, devices, timeline) · `POST /aegis/paging/alerts` (text or voice transcript → the whole pipeline) · `WS /aegis/paging/stream` (snapshot, then event batches; `?clinician=` marks a pager open) · `GET /aegis/paging/snapshot` · `GET /aegis/paging/hospital` · `POST /aegis/paging/pages/{id}/respond` · `…/approve` · `…/escalate` · `…/cancel` · `…/resolve` · `POST /aegis/paging/clinicians/{id}/status` · `POST /aegis/paging/recs/{id}/ack` · `GET`/`POST /aegis/paging/settings` |
 | `live` | 8 | `WS /aegis/stream` (one snapshot per tick) · `GET /aegis/snapshot` · `POST /aegis/ingest` (real telemetry) · `GET /aegis/decision?bed=` · `GET /aegis/timeline` · `POST /aegis/simulate/{stage}` |
 | `patients` | 20 | `GET /aegis/patients` · `GET /aegis/patient/snapshot?bed=` · `WS /aegis/cluster/stream` (the ward) · `GET /aegis/cohort/{bed}/chart` · `GET /aegis/cohort/{bed}/bundle` · `GET /aegis/identity` |
 | `pharmacy` | 9 | `GET /aegis/pk/options?bed=` · `POST /aegis/pk/project` · `POST /aegis/pharmacopoeia/screen` · `POST /aegis/dsl/verify` |
@@ -209,7 +222,7 @@ Browser (frontend/, static on Vercel)          operator console · pagers · dri
   ├─ REST ─────────► FastAPI  backend.aegis.server:app  (Render)
   │                    │
   │                    ├─ kernel gate ── every call: resolve syscall → authenticate → decide (audit | enforce)
-  │                    ├─ backend/api/routes/*  (12 domain routers, 160 syscalls)
+  │                    ├─ backend/api/routes/*  (12 domain routers, 162 syscalls)
   │                    └─ composition root: kernel · session · ICU wing · paging OS · scheduler · journal
   │
   ├─ WS /aegis/paging/stream ──► the hospital: snapshot, then one batch of paging events a second
@@ -299,7 +312,25 @@ Over forty subsystems, grouped by the layer they live in. Each has its own `veri
 | `sbar.py` | The brief: facts first from the record, a template at once, the model's version when it arrives; under 100 words |
 | `hospital.py` · `demo.py` | Aegis Memorial (7 floors, 18 units, 98 rooms, 18 staff) and the demo scenarios |
 
-`make verify-paging` runs its 68 checks.
+`make verify-paging` runs its 70 checks.
+
+</details>
+
+<details>
+<summary><b>Room units</b> · <code>backend/aegis/rooms/</code></summary>
+
+<br/>
+
+| Module | What it is |
+|:--|:--|
+| `records.py` | The record each room carries. Synthetic rooms: problems with the year they began, home medications, inpatient orders with doses, allergies with the reaction, code status, earlier encounters with the vitals taken at each (the personal baseline is their mean) and recent labs. ICU rooms: the real stay up to the current hour, read from whitelisted columns only. Room 402: the session's history |
+| `detectors.py` | The detection library, pure functions of the room: NEWS2 (scale 2 from the record, confusion scored only when new), qSOFA, SIRS, shock index and MAP, personal-baseline deviation, least-squares trend, opioid sedation, neutropenic fever (on antibiotics or not), hypoglycaemia levels, AF with RVR, bleeding on antithrombotics, KDIGO, potassium, lactate, SOFA from real ICU labs, the sepsis detector, medication safety, the Morse fall scale and device health. Each finding names its source, its evidence and the record context that changed it. A detector that raises is reported, never allowed to blind the room |
+| `formulary.py` | The ward formulary (doses, classes, renal thresholds, QT risk), allergy rules with honest cross-reactivity, and curated pair rules that know an expected regimen (heparin with aspirin in an NSTEMI) from an error. The pharmacopoeia's interaction screen is consulted as well |
+| `physiology.py` | The synthetic rooms' monitor: the patient's baseline shifted by today's illness, Ornstein–Uhlenbeck drift, and the courses a record makes plausible, which hold until someone has the page and then recover |
+| `monitor.py` | The room monitor, ticked by the paging OS: re-runs a room's detectors when its inputs change, debounces findings into episodes (open after two evaluations, resolve after five), writes each room's timeline and escalates on two tracks per room, the patient's physiology and the medication record, so an allergy conflict reaches pharmacy even while a sepsis page is open. ICU rooms and the live session stay with the sepsis detector |
+
+`make verify-rooms` runs its 60 checks, including three planted defects: NEWS2 ignoring the
+record's target, the ICU record reading ten hours ahead, and the monitor paging a room twice.
 
 </details>
 
@@ -594,6 +625,9 @@ Each subsystem also has its own README:
 - **HRV → sepsis needs credentialed waveform labels.** The adapter is built and waiting.
 - **MIMIC-IV results do not exist yet.** Demo numbers are noise at 99 patients, and every
   demo report says so.
+- **The room monitor runs published rules, not a trained model.** Its detectors are checked
+  against hand-computed answers and planted failures, not against outcomes. Synthetic rooms run
+  on simulated vitals and every course there is labelled simulated.
 
 ## License
 

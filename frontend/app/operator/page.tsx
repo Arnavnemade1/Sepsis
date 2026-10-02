@@ -9,13 +9,15 @@ import { LEGEND, P_RGB, PriorityChip, StatusDot } from "@/components/paging/bits
 import { Composer } from "@/components/paging/composer";
 import { FloorChips, FloorView } from "@/components/paging/floor-view";
 import { PageDrawer } from "@/components/paging/page-drawer";
-import { CasesTable, Insights, KpiStrip, PolicyPanel, RoomDrawer, StaffBoard, UnitStatus } from "@/components/paging/panels";
+import { CasesTable, Insights, KpiStrip, PolicyPanel, StaffBoard } from "@/components/paging/panels";
 import { Feed, Queue } from "@/components/paging/queue";
+import { RoomDrawer, Watchlist } from "@/components/rooms/drawer";
 import { AppShell, type NavKey } from "@/components/shell";
-import { Button, CloseIcon, cx, Panel, Skeleton } from "@/components/ui";
+import { Button, CloseIcon, cx, Panel, Segmented, Skeleton } from "@/components/ui";
 import { readSession, revalidate, writeSession } from "@/lib/api";
 import { useSession } from "@/lib/hooks";
 import { activePages, useLayout, usePaging, useRoomPages, useServerNow, type Page } from "@/lib/paging";
+import { SEV_RANK, SEV_RGB } from "@/lib/rooms";
 
 type View = "overview" | "pages" | "staff" | "sentinel" | "policy";
 const VIEWS: View[] = ["overview", "pages", "staff", "sentinel", "policy"];
@@ -56,6 +58,7 @@ function Operator() {
   const [pageId, setPageId] = useState<string | null>(null);
   const [room, setRoom] = useState<string | null>(null);
   const [composer, setComposer] = useState<{ open: boolean; room?: string | null }>({ open: false });
+  const [side, setSide] = useState<"watch" | "log">("watch");
 
   const open = useMemo(() => activePages(state.pages), [state.pages]);
   const roomPages = useRoomPages(state.pages);
@@ -90,18 +93,21 @@ function Operator() {
       window.removeEventListener("aegis:compose", compose);
     };
   }, []);
-  // deep links from the palette: ?compose=1 opens the composer, ?page=PG-… opens that page
+  // deep links: ?compose=1[&room=512] opens the composer, ?page=PG-… opens that page, ?room=512 that room
   const askCompose = params.get("compose");
   const askPage = params.get("page");
+  const askRoom = params.get("room");
   useEffect(() => {
-    if (askCompose) setComposer({ open: true });
-  }, [askCompose]);
+    if (askCompose) setComposer({ open: true, room: askRoom });
+    else if (askRoom) setRoom(askRoom);
+  }, [askCompose, askRoom]);
   useEffect(() => {
     if (askPage) setPageId(askPage);
   }, [askPage]);
 
   const toasts = useToasts(state.pages, state.ready);
   const activeRecs = recs.filter((r) => !r.acknowledged).length;
+  const watching = Object.values(state.rooms).filter((r) => r.sev && SEV_RANK[r.sev] >= 1).length;
   const counts: Partial<Record<NavKey, number>> = { pages: open.length, sentinel: activeRecs };
   const alerts: Partial<Record<NavKey, boolean>> = { pages: open.some((p) => p.priority === 1), sentinel: recs.some((r) => r.severity === "critical" && !r.acknowledged) };
 
@@ -145,11 +151,6 @@ function Operator() {
                   backgroundSize: "18px 18px, 100% 100%",
                 }}
               >
-                {layout && state.ready && (
-                  <div className="absolute left-3 top-3 z-[2] hidden xl:block">
-                    <UnitStatus layout={layout} occupancy={state.occupancy} roomPages={roomPages} monitor={state.monitor} onFloor={setFloor} />
-                  </div>
-                )}
                 {layout && state.ready ? (
                   <FloorView
                     layout={layout}
@@ -158,6 +159,7 @@ function Operator() {
                     pages={state.pages}
                     monitor={state.monitor}
                     occupancy={state.occupancy}
+                    rooms={state.rooms}
                     floor={floor}
                     onFloor={setFloor}
                     onRoom={setRoom}
@@ -182,6 +184,12 @@ function Operator() {
                   <span className="h-2.5 w-2.5 rounded-[2px] border border-dashed border-med bg-med/15" /> Sepsis watch 0.60–0.70
                 </span>
                 <span className="inline-flex items-center gap-1.5">
+                  <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden>
+                    <path d="M0 0H8L0 8Z" fill={`rgb(${SEV_RGB.urgent})`} />
+                  </svg>
+                  Monitor finding
+                </span>
+                <span className="inline-flex items-center gap-1.5">
                   <span className="h-2 w-2 rounded-full border border-white/70" /> Monitored bed
                 </span>
               </div>
@@ -201,8 +209,29 @@ function Operator() {
               >
                 <Queue pages={open} clinicians={state.clinicians} now={now} onOpen={setPageId} canDispatch={canDispatch} selected={pageId} />
               </Panel>
-              <Panel title="Event log" flush className="lg:min-h-0 lg:flex-1" bodyClass="max-h-[420px] overflow-y-auto lg:max-h-none lg:min-h-0">
-                <Feed items={state.alerts} now={now} onOpen={setPageId} />
+              <Panel
+                title={side === "watch" ? "Watchlist" : "Event log"}
+                meta={side === "watch" ? `${watching} of ${Object.keys(state.rooms).length} occupied rooms above the watch level` : undefined}
+                right={
+                  <Segmented
+                    size="sm"
+                    value={side}
+                    onChange={setSide}
+                    options={[
+                      { value: "watch", label: "Rooms" },
+                      { value: "log", label: "Log" },
+                    ]}
+                  />
+                }
+                flush
+                className="lg:min-h-0 lg:flex-1"
+                bodyClass="max-h-[420px] overflow-y-auto lg:max-h-none lg:min-h-0"
+              >
+                {side === "watch" ? (
+                  <Watchlist rooms={state.rooms} occupancy={state.occupancy} roomPages={roomPages} onRoom={setRoom} />
+                ) : (
+                  <Feed items={state.alerts} now={now} onOpen={setPageId} />
+                )}
               </Panel>
             </div>
           </div>
@@ -222,7 +251,6 @@ function Operator() {
       <RoomDrawer
         room={room}
         onClose={() => setRoom(null)}
-        now={now}
         onRaise={(r) => {
           setRoom(null);
           setComposer({ open: true, room: r });
@@ -270,7 +298,7 @@ function useToasts(pages: Record<string, Page>, ready: boolean) {
     for (const p of Object.values(pages)) {
       const prev = seen.current[p.id];
       if (primed.current) {
-        if (!prev && (p.priority <= 2 || p.source === "detector")) add.push({ id: p.id, page: p, kind: "new" });
+        if (!prev && (p.priority <= 2 || p.source === "detector" || p.source === "monitor")) add.push({ id: p.id, page: p, kind: "new" });
         else if (prev && prev !== "unassigned" && p.status === "unassigned") add.push({ id: p.id, page: p, kind: "unassigned" });
       }
       seen.current[p.id] = p.status;
@@ -303,7 +331,13 @@ function Toasts({ toasts, onOpen, onDismiss }: { toasts: Toast[]; onOpen: (id: s
               <PriorityChip p={t.page.priority} size="sm" />
               <div className="min-w-0 flex-1">
                 <div className="text-[12.5px] font-medium text-ink">
-                  {t.kind === "unassigned" ? "No one accepted this page" : t.page.source === "detector" ? "Sepsis detector alert" : `New P${t.page.priority} alert`}
+                  {t.kind === "unassigned"
+                    ? "No one accepted this page"
+                    : t.page.source === "detector"
+                      ? "Sepsis detector alert"
+                      : t.page.source === "monitor"
+                        ? `Room monitor · P${t.page.priority}`
+                        : `New P${t.page.priority} alert`}
                   <span className="font-normal text-dim"> · Room {t.page.room ?? "?"}</span>
                 </div>
                 <div className="mt-0.5 line-clamp-2 text-[12px] text-muted">{t.page.text}</div>

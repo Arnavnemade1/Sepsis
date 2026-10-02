@@ -68,6 +68,11 @@ export function SourceTag({ source, synthetic }: { source: Source; synthetic?: b
       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden>
         <path d="M1 8h3l2-5 3 10 2-5h4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
+    ) : source === "monitor" ? (
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden>
+        <rect x="1.5" y="2.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M3.5 8h2l1.2-2.5L8.5 10l1.2-2h2.8M6 14h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
     ) : source === "voice" ? (
       <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden>
         <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
@@ -75,7 +80,7 @@ export function SourceTag({ source, synthetic }: { source: Source; synthetic?: b
       </svg>
     ) : null;
   return (
-    <span className={cx("inline-flex shrink-0 items-center gap-1 text-[11px]", source === "detector" ? "text-accent-ink" : "text-dim")}>
+    <span className={cx("inline-flex shrink-0 items-center gap-1 text-[11px]", source === "detector" || source === "monitor" ? "text-accent-ink" : "text-dim")}>
       {icon}
       {SOURCE_LABEL[source]}
       {synthetic && source !== "demo" && <span className="text-faint">· synthetic</span>}

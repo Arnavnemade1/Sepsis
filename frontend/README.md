@@ -20,6 +20,7 @@ npm run build                # → out/
 | `/` | `app/page.tsx` | nothing: it redirects to `/operator/` (at the edge on Vercel via `vercel.json`, client-side elsewhere) |
 | `/operator/?view=overview·pages·staff·sentinel·policy` | `app/operator/page.tsx` | `WS /aegis/paging/stream`, `/aegis/paging/hospital`; writes `POST /aegis/paging/alerts`, `…/pages/{id}/approve · escalate · cancel · resolve`, `…/clinicians/{id}/status`, `…/recs/{id}/ack`, `…/settings` |
 | `/clinician/?id=` | `app/clinician/page.tsx` | `WS /aegis/paging/stream?clinician=<id>` (the pager is open), its own device session; writes `…/pages/{id}/respond`, `…/resolve`, `…/clinicians/{id}/status` |
+| `/room/` · `/room/?id=` | `app/room/page.tsx`, `components/rooms/*` | the board reads `/aegis/rooms` every 5 s; a room reads `/aegis/rooms/{room}` every 4 s (record, vitals series, labs, findings, pages, care team, devices, timeline) |
 | `/patient/` · `/patient/?id=` | `app/patient/page.tsx`, `components/bed/*` | the census reads `/aegis/cluster/snapshot` and the paging stream; the record reads `WS /aegis/stream` (live patient) or `/aegis/patient/snapshot?bed=` (cohort bed), `/aegis/cohort/{bed}/chart`, `/aegis/timeline`, `/aegis/decision`, `/aegis/doctor/*` |
 | `/pharmacy/?id=` | `app/pharmacy/page.tsx` | `/aegis/pk/options?bed=`, `POST /aegis/pharmacopoeia/screen` |
 | `/lab/` | `app/lab/page.tsx` | `/aegis/lab/evidence`, `/aegis/lab` |
@@ -35,13 +36,17 @@ app/                one directory per route; globals.css holds the design tokens
 components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue, feed, actions)
                     page-drawer.tsx (dispatch, triage, routing, certificate, timeline, SBAR)
                     composer.tsx (N, text or voice) · panels.tsx (KPIs with hour sparklines, pages, staff,
-                    insights, policy, room drawer) · bits.tsx (priority chips, countdowns, avatars)
+                    insights, policy) · bits.tsx (priority chips, countdowns, avatars)
+components/rooms/   unit.tsx (one room as a unit: header, scores, detections, vitals, labs, record,
+                    linked objects, timeline) · board.tsx (every room as a tile) · drawer.tsx (the
+                    overview's watchlist and room drawer) · bits.tsx (severity, NEWS2, allergy and code chips)
 components/         shell.tsx (sidebar, top bar, status, user) · nav.ts (the section model) · command.tsx (⌘K palette)
                     os/ (architecture, kernel, journal, gate, shell views) · bed/census.tsx · ui.tsx (panels, tags,
                     buttons, inspector sheet, modal, mini charts, Restricted)
                     feed.tsx · twin.tsx · terminal.tsx · bed/ (patient panels, chart, orders)
 engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js
-lib/                paging.ts (types, the event reducer, usePaging, labels, clock) ·
+lib/                paging.ts (types, the event reducer, usePaging, labels, clock) · rooms.ts (room-unit
+                    contracts, severity hues, useBoard/useUnit) ·
                     api.ts (backend, gate token, session renewal) · hooks.ts · clinical.ts ·
                     ecosystem.ts
 public/             vendor/models (organ meshes, CC BY 4.0) · _headers (Cloudflare fallback)
@@ -51,7 +56,7 @@ vercel.json         headers, ignored-build step (Vercel)
 ## How the live state works
 
 `usePaging()` opens `WS /aegis/paging/stream`. It receives one snapshot and then one batch
-of events a second (`page`, `alert`, `clinician`, `rec`, `monitor`, `stats`, `notify`, `settings`), and folds
+of events a second (`page`, `alert`, `clinician`, `rec`, `monitor`, `rooms`, `stats`, `notify`, `settings`), and folds
 them into a reducer. Every screen renders from that one store, so the floor, the queue, the
 drawer and the pager never disagree. Time comes from the server (`useServerNow` corrects for
 clock offset), so countdowns are the backend's deadlines, not the browser's guess.
@@ -64,7 +69,8 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
   grey (`#212429` canvas, `#282c32` panels): dark enough for a wall display, not black.
 - **Colour is signal.** The stock Tailwind palette is deleted in `globals.css`
   (`--color-*: initial`), so `bg-blue-500` does not compile. Red, orange, amber and grey are
-  page priority (P1–P4). Green, blue, violet, amber and grey are staff status. Indigo is the
+  page priority (P1–P4), and the same four hues are a room monitor finding's severity
+  (critical, urgent, watch, information), so a room and its page always speak one colour. Green, blue, violet, amber and grey are staff status. Indigo is the
   one accent, for selection, focus and the primary action. A healthy reading is neutral, not
   green.
 - **Flat and exact.** Panels are a hairline border on a slightly lighter grey with 6–8 px radii.

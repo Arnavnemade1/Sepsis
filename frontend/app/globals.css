@@ -21,6 +21,8 @@
 
 @theme {
   --color-*: initial;
+  /* a wide desktop (a 14–16" laptop with the sidebar open): three working columns */
+  --breakpoint-wide: 87.5rem;
 
   /* canvas + surfaces: stealth grey, not black */
   --color-bg: #212429;

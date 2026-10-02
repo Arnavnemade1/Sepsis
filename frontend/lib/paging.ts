@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { api, wsProtocols, wsUrl } from "./api";
+import type { RoomStatus } from "./rooms";
 
 /* ------------------------------------------------------------------ */
 /* Contracts (backend/aegis/paging)                                    */
@@ -10,7 +11,7 @@ import { api, wsProtocols, wsUrl } from "./api";
 export type Priority = 1 | 2 | 3 | 4;
 export type PageStatus = "new" | "review" | "held" | "paging" | "accepted" | "resolved" | "cancelled" | "unassigned";
 export type StaffStatus = "available" | "paging" | "in_procedure" | "on_case" | "off_shift";
-export type Source = "nurse" | "voice" | "detector" | "demo";
+export type Source = "nurse" | "voice" | "detector" | "monitor" | "demo";
 
 export type Layout = {
   name: string;
@@ -127,6 +128,8 @@ export type Page = {
   refining?: boolean;
   refinement?: { outcome: "raised" | "agrees" | "kept" | "unavailable"; note: string; from?: number; to?: number; model?: string | null; suggested?: number };
   timings: { triage_ms: number; locate_ms: number; route_ms: number; certify_ms?: number; total_ms?: number };
+  /** set when the room monitor raised (or added findings to) this page */
+  monitor?: { findings: { key: string; detector: string; title: string; severity: "info" | "watch" | "urgent" | "critical"; source: string }[] };
 };
 
 export type FeedItem = {
@@ -195,6 +198,7 @@ export type Settings = {
   max_escalations: number;
   simulated_responders: boolean;
   demo_traffic: boolean;
+  room_monitor_pages?: boolean;
 };
 
 export type Notify = { to: string | null; page: string; priority: number; room: string | null; text: string; kind: "page" | "fyi" | "sbar" | "upgrade"; ts: number };
@@ -207,6 +211,8 @@ export type PagingState = {
   recs: Record<string, Rec>;
   monitor: Monitor;
   occupancy: Record<string, Occupant>;
+  /** every occupied room's unit status from the room monitor */
+  rooms: Record<string, RoomStatus>;
   settings: Settings | null;
   stats: Stats | null;
   invariants: { id: string; text: string }[];
@@ -223,6 +229,7 @@ type Snapshot = {
   recs: Rec[];
   monitor: Monitor;
   occupancy: Record<string, Occupant>;
+  rooms?: Record<string, RoomStatus>;
   stats: Stats;
   invariants: { id: string; text: string }[];
 };
@@ -231,7 +238,7 @@ type Event = { type: string; data: unknown; ts: number };
 type Action = { kind: "snapshot"; snap: Snapshot } | { kind: "events"; events: Event[] };
 
 const empty: PagingState = {
-  ready: false, pages: {}, alerts: [], clinicians: {}, recs: {}, monitor: {}, occupancy: {},
+  ready: false, pages: {}, alerts: [], clinicians: {}, recs: {}, monitor: {}, occupancy: {}, rooms: {},
   settings: null, stats: null, invariants: [], notifications: [], offsetMs: 0,
 };
 
@@ -253,6 +260,7 @@ function reduce(state: PagingState, action: Action): PagingState {
       recs: Object.fromEntries(s.recs.map((r) => [r.id, r])),
       monitor: s.monitor,
       occupancy: s.occupancy,
+      rooms: s.rooms ?? {},
       settings: s.settings,
       stats: s.stats,
       invariants: s.invariants,
@@ -285,6 +293,9 @@ function reduce(state: PagingState, action: Action): PagingState {
       }
       case "monitor":
         next = { ...next, monitor: e.data as Monitor };
+        break;
+      case "rooms":
+        next = { ...next, rooms: { ...next.rooms, ...(e.data as Record<string, RoomStatus>) } };
         break;
       case "settings":
         next = { ...next, settings: e.data as Settings };
@@ -430,7 +441,7 @@ export const BLOCK_LABEL: Record<string, string> = {
   on_shift: "off shift", consecutive: "paged for another case", workload: "over the hourly limit",
   specialty: "not this service", autonomy: "needs review", p1_timeout: "timeout policy", prover_unavailable: "prover down",
 };
-export const SOURCE_LABEL: Record<Source, string> = { nurse: "Nurse", voice: "Voice", detector: "Detector", demo: "Demo" };
+export const SOURCE_LABEL: Record<Source, string> = { nurse: "Nurse", voice: "Voice", detector: "Detector", monitor: "Room monitor", demo: "Demo" };
 export const CATEGORY_LABEL: Record<string, string> = {
   code: "Code", sepsis: "Sepsis", cardiac: "Cardiac", neuro: "Neuro", respiratory: "Respiratory",
   surgical: "Surgical", medication: "Medication", trauma: "Trauma", general: "General",

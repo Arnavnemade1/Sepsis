@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build verify-paging audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build verify-paging verify-rooms audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -274,6 +274,7 @@ verify-os:
 	$(PY) -m backend.aegis.verify_os_surface
 	$(PY) -m backend.aegis.verify_fastpaths
 	$(PY) -m backend.aegis.paging.verify_paging
+	$(PY) -m backend.aegis.rooms.verify_rooms
 
 # Every optimised path in the ward tick (bind-table encoder, memoised frames, batched
 # retrieval, the SMT-LIB2 scheduler proof, one-encode broadcast) against the reference
@@ -444,6 +445,11 @@ check-webui:
 # escalation queue, the detector as an alert source, the sentinel.
 verify-paging:
 	$(PY) -m backend.aegis.paging.verify_paging
+
+# The room monitor: every occupied room watched as a unit (record + vitals + detectors).
+# Record-aware claims are checked in pairs, the ICU firewall against a planted future value.
+verify-rooms:
+	$(PY) -m backend.aegis.rooms.verify_rooms
 
 # The clinical app. `make serve` in one terminal, `make web` in another.
 web:

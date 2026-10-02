@@ -1286,6 +1286,22 @@
    "path": "/aegis/paging/stream",
    "cap": "view:public",
    "class": "stream"
+  },
+  {
+   "nr": 161,
+   "name": "rooms",
+   "method": "GET",
+   "path": "/aegis/rooms",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 162,
+   "name": "rooms[room]",
+   "method": "GET",
+   "path": "/aegis/rooms/{room}",
+   "cap": "view:public",
+   "class": "read"
   }
  ]
 }

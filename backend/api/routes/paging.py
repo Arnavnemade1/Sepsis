@@ -170,6 +170,20 @@ def paging_room(room: str) -> Dict[str, Any]:
     return r if r is not None else {"status": "error", "detail": "no such room"}
 
 
+@router.get("/aegis/rooms")
+def rooms_board() -> Dict[str, Any]:
+    """Every room as a unit: occupant, record flags, latest vitals, NEWS2, active findings, episode."""
+    return PAGING.rooms_board()
+
+
+@router.get("/aegis/rooms/{room}")
+def room_unit(room: str) -> Dict[str, Any]:
+    """One room as a unit: the record, the vitals series, labs, every detector's findings, the
+    pages, the care team, the devices and the merged timeline."""
+    u = PAGING.room_unit(room.upper())
+    return u if u is not None else {"status": "error", "detail": "no such room"}
+
+
 @router.get("/aegis/paging/settings")
 def paging_settings() -> Dict[str, Any]:
     snap = PAGING.snapshot()

@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 
 import { cx } from "@/components/ui";
 import type { Clinician, Layout, Monitor, Occupant, Page } from "@/lib/paging";
+import { BAND_SEV, SEV_INK, SEV_RANK, SEV_RGB, type RoomStatus } from "@/lib/rooms";
 
 import { P_INK, P_RGB, ST_RGB } from "./bits";
 
@@ -30,6 +31,13 @@ function quad(rect: number[], inset: number, s: number, p: Pos): Pt[] {
   return [proj(x0, y0, s, p), proj(x1, y0, s, p), proj(x1, y1, s, p), proj(x0, y1, s, p)];
 }
 const center = (rect: number[], s: number, p: Pos): Pt => proj(rect[0] + rect[2] / 2, rect[1] + rect[3] / 2, s, p);
+/** A small triangle in a room's far corner, for the room monitor's flag. */
+function corner(rect: number[], s: number, p: Pos): Pt[] {
+  const [x, y, w, h] = rect;
+  const k = Math.min(w, h) * 0.26;
+  const x0 = x + 0.4, y0 = y + 0.4;
+  return [proj(x0, y0, s, p), proj(x0 + k, y0, s, p), proj(x0, y0 + k, s, p)];
+}
 
 // structure is monochrome: colour on the plan means a page, a watch or a person.
 // Critical-care and emergency units read a shade lighter so the eye finds them.
@@ -48,6 +56,8 @@ type Props = {
   pages: Record<string, Page>;
   monitor: Monitor;
   occupancy: Record<string, Occupant>;
+  /** the room monitor's status for every occupied room */
+  rooms?: Record<string, RoomStatus>;
   floor: string | "all";
   onFloor: (f: string | "all") => void;
   onRoom: (room: string) => void;
@@ -125,7 +135,7 @@ function useStaffSpots(layout: Layout, clinicians: Record<string, Clinician>, pa
 /* ------------------------------------------------------------------ */
 /* One floor slab                                                      */
 /* ------------------------------------------------------------------ */
-function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onClinician, setTip, spots, fid, s, pos, detail, hover, summary }:
+function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom, onClinician, setTip, spots, fid, s, pos, detail, hover, summary }:
   Props & { setTip: (t: Tip) => void; spots: Spots; fid: string; s: number; pos: Pos; detail: boolean; hover?: boolean; summary?: { n: number; top: number | null } }) {
   const W = layout.plate.w, D = layout.plate.d;
   const T = detail ? 12 : 8;
@@ -157,6 +167,8 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
               const pg = roomPages[rid];
               const mon = monitor[rid];
               const occ = occupancy[rid];
+              const st = rooms?.[rid];
+              const flagged = st?.sev && SEV_RANK[st.sev] >= 1 ? st.sev : null;
               let fill = occ ? "rgb(255 255 255 / .09)" : "rgb(255 255 255 / .025)";
               let stroke = "rgb(255 255 255 / .15)";
               let dash: string | undefined;
@@ -187,6 +199,8 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                     tipAt(e, `Room ${rid} · ${zn.name}`, [
                       occ ? `${occ.name ?? "Patient"}${occ.age ? `, ${occ.age}${occ.sex ?? ""}` : ""} · ${occ.diagnosis}` : "Empty",
                       ...(mon ? [`Monitored · sepsis risk ${mon.risk != null ? mon.risk.toFixed(2) : "—"}${mon.watch ? " · on watch" : ""}`] : []),
+                      ...(st?.news2 != null ? [`NEWS2 ${st.news2}`] : []),
+                      ...(flagged && st?.title ? [`${flagged === "critical" ? "Critical" : flagged === "urgent" ? "Urgent" : "Watch"}: ${st.title}${st.n > 1 ? ` (+${st.n - 1})` : ""}`] : []),
                       ...(pg ? [`P${pg.priority} · ${pg.status === "paging" ? "ringing" : pg.status}: ${pg.text.slice(0, 64)}`] : []),
                       ...(occ?.synthetic ? ["synthetic demo record"] : occ?.monitored ? ["real replayed record"] : []),
                     ])
@@ -202,6 +216,10 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                     </circle>
                   )}
                   {mon && !pg && <circle cx={c[0] + (detail ? 10 : 4.5)} cy={c[1] - (detail ? 3.5 : 1.6)} r={detail ? 2.6 : 1.6} fill="none" stroke="rgb(255 255 255 / .7)" strokeWidth={detail ? 1.1 : 0.8} className="pointer-events-none" />}
+                  {flagged && !pg && (
+                    // the room monitor's worst finding: a corner mark, so a page still owns the room's colour
+                    <polygon points={pts(corner(room.rect, s, pos))} fill={`rgb(${SEV_RGB[flagged]})`} className="pointer-events-none" />
+                  )}
                   {detail && (
                     <text x={c[0]} y={c[1] + 3.2} textAnchor="middle" fontSize={9} fontFamily="var(--font-geist-mono)" fill={pg ? P_INK[pg.priority] : "rgb(255 255 255 / .55)"} fontWeight={pg ? 700 : 500} className="pointer-events-none">
                       {rid}
@@ -210,6 +228,19 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                   {detail && mon?.risk != null && (
                     <text x={c[0]} y={c[1] + 13} textAnchor="middle" fontSize={7.5} fontFamily="var(--font-geist-mono)" fill={mon.watch || pg ? "#f4c55a" : "rgb(255 255 255 / .38)"} className="pointer-events-none">
                       {mon.risk.toFixed(2)}
+                    </text>
+                  )}
+                  {detail && !mon && st?.news2 != null && (
+                    <text
+                      x={c[0]}
+                      y={c[1] + 13}
+                      textAnchor="middle"
+                      fontSize={7.5}
+                      fontFamily="var(--font-geist-mono)"
+                      fill={st.band && st.band !== "low" ? SEV_INK[BAND_SEV[st.band]] : "rgb(255 255 255 / .38)"}
+                      className="pointer-events-none"
+                    >
+                      {`N2 ${st.news2}`}
                     </text>
                   )}
                 </g>

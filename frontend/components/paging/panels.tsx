@@ -1,14 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
-import { Button, CloseIcon, cx, Drawer, Empty, IconButton, Kv, MiniBars, MiniLine, Panel, Segmented, Switch, Tag } from "@/components/ui";
+import { Button, cx, Empty, Kv, MiniBars, MiniLine, Panel, Segmented, Switch, Tag } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   CATEGORY_LABEL,
-  clock,
-  PAGE_STATUS_LABEL,
   STATUS_LABEL,
   type Clinician,
   type Layout,
@@ -87,189 +85,6 @@ export function KpiStrip({ stats, pages, monitor, all, now }: { stats: Stats | n
         </div>
       ))}
     </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Units at a glance (floor plan overlay)                              */
-/* ------------------------------------------------------------------ */
-export function UnitStatus({ layout, occupancy, roomPages, monitor, onFloor }: {
-  layout: Layout;
-  occupancy: Record<string, unknown>;
-  roomPages: Record<string, Page>;
-  monitor: Monitor;
-  onFloor: (f: string) => void;
-}) {
-  const rows = Object.values(layout.zones)
-    .filter((z) => z.rooms.length > 0)
-    .map((z) => {
-      const pages = z.rooms.map((r) => roomPages[r]).filter(Boolean) as Page[];
-      return {
-        z,
-        occ: z.rooms.filter((r) => occupancy[r]).length,
-        pages: pages.length,
-        top: pages.length ? Math.min(...pages.map((p) => p.priority)) : null,
-        watch: z.rooms.filter((r) => monitor[r]?.watch).length,
-      };
-    })
-    .filter((u) => u.z.critical || u.pages > 0)
-    .sort((a, b) => (a.top ?? 9) - (b.top ?? 9) || Number(b.z.critical) - Number(a.z.critical) || a.z.name.localeCompare(b.z.name));
-  return (
-    <div className="w-[248px] overflow-hidden rounded-md border border-line bg-s1/95 shadow-[0_12px_32px_-16px_rgb(0_0_0/.6)]">
-      <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-[11px]">
-        <span className="font-medium text-muted">Units</span>
-        <span className="ml-auto text-dim">beds</span>
-        <span className="w-10 text-right text-dim">active</span>
-      </div>
-      <ul>
-        {rows.map((u) => (
-          <li key={u.z.id}>
-            <button onClick={() => onFloor(u.z.floor)} className="flex w-full items-center gap-2 border-b border-line-soft px-3 py-1.5 text-left transition-colors last:border-b-0 hover:bg-s2">
-              <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{u.z.name}</span>
-              {u.watch > 0 && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-med" title={`${u.watch} on sepsis watch`} />}
-              <span className="num shrink-0 font-mono text-[11px] text-dim">
-                {u.occ}/{u.z.rooms.length}
-              </span>
-              <span className="flex w-10 shrink-0 justify-end">{u.top ? <PriorityChip p={u.top} size="sm" /> : <span className="font-mono text-[11px] text-faint">—</span>}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Room inspector                                                      */
-/* ------------------------------------------------------------------ */
-type RoomDetail = {
-  room: string;
-  zone_name: string;
-  floor: string;
-  patient: null | Record<string, unknown>;
-  pages: Page[];
-  alerts: { id: string; text: string; created_at: number; status: string; priority: number | null }[];
-  episode: null | { open: boolean };
-};
-
-export function RoomDrawer({ room, onClose, now, onRaise, onOpenPage }: {
-  room: string | null;
-  onClose: () => void;
-  now: number;
-  onRaise: (room: string) => void;
-  onOpenPage: (id: string) => void;
-}) {
-  const [d, setD] = useState<RoomDetail | null>(null);
-  useEffect(() => {
-    if (!room) return;
-    setD(null);
-    let alive = true;
-    const load = () => api<RoomDetail>(`/aegis/paging/rooms/${room}`).then((r) => alive && setD(r)).catch(() => {});
-    load();
-    const t = setInterval(load, 4000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-    };
-  }, [room]);
-  const p = (d?.patient ?? null) as null | Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-  return (
-    <Drawer open={!!room} onClose={onClose} width={440}>
-      <header className="flex shrink-0 items-start gap-3 border-b border-line px-4 py-3.5">
-        <div className="min-w-0 flex-1">
-          <div className="text-[11.5px] text-dim">{d ? `Floor ${d.floor} · ${d.zone_name}` : "Room"}</div>
-          <h2 className="mt-0.5 font-mono text-[18px] font-semibold text-ink">Room {room}</h2>
-        </div>
-        <IconButton label="Close" onClick={onClose}>
-          <CloseIcon />
-        </IconButton>
-      </header>
-      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
-        {!d ? (
-          <div className="h-40 animate-pulse rounded-md bg-s2" />
-        ) : !p ? (
-          <Empty>Unoccupied.</Empty>
-        ) : (
-          <div className="rounded-md border border-line">
-            <div className="px-3 py-2.5">
-              <div className="flex items-baseline gap-2">
-                <span className="text-[14px] font-semibold text-ink">{p.name}</span>
-                <span className="text-[12px] text-dim">{p.age ? `${p.age}${p.sex ?? ""}` : ""}</span>
-                {p.mrn && <span className="font-mono text-[11px] text-faint">{p.mrn}</span>}
-                <span className="ml-auto">
-                  <Tag tone={p.synthetic ? "neutral" : "low"}>{p.synthetic ? "Synthetic record" : "Replayed real record"}</Tag>
-                </span>
-              </div>
-              <div className="mt-0.5 text-[12px] text-muted">{p.diagnosis ?? (p.monitored ? "Continuously monitored" : "")}</div>
-            </div>
-            {p.monitored && (
-              <div className="grid grid-cols-3 gap-px border-t border-line bg-line">
-                {[
-                  ["Sepsis risk", p.risk != null ? Number(p.risk).toFixed(2) : "—", (p.risk ?? 0) >= 0.7 ? "text-high-ink" : (p.risk ?? 0) >= 0.6 ? "text-med-ink" : "text-ink"],
-                  ["MAP", p.vitals?.map != null ? Math.round(p.vitals.map) : "—", "text-ink"],
-                  ["SpO₂", p.vitals?.spo2 != null ? Math.round(p.vitals.spo2) : "—", "text-ink"],
-                ].map(([k, v, tone]) => (
-                  <div key={String(k)} className="bg-s1 px-3 py-2">
-                    <div className="text-[11px] text-dim">{k}</div>
-                    <div className={cx("num font-mono text-[16px] font-medium", String(tone))}>{v}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {p.monitored && Array.isArray(p.drivers) && p.drivers.length > 0 && (
-              <ul className="space-y-0.5 border-t border-line px-3 py-2 text-[12px] text-muted">
-                {p.drivers.slice(0, 3).map((x: string) => (
-                  <li key={x}>{x}</li>
-                ))}
-              </ul>
-            )}
-            {!p.monitored && (
-              <div className="space-y-0.5 border-t border-line px-3 py-2">
-                {p.history?.length > 0 && <Kv k="History" v={<span className="whitespace-normal">{p.history.join(", ")}</span>} />}
-                {p.medications?.length > 0 && <Kv k="Medications" v={<span className="whitespace-normal">{p.medications.join(", ")}</span>} />}
-                <Kv k="Allergies" v={p.allergies?.length ? p.allergies.join(", ") : "NKDA"} />
-                {p.code_status && <Kv k="Code status" v={p.code_status} />}
-              </div>
-            )}
-            {p.bed && (
-              <Link href={`/patient/?id=${encodeURIComponent(p.bed)}`} className="flex items-center justify-between border-t border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:bg-s2">
-                Open patient record <span className="text-dim">↗</span>
-              </Link>
-            )}
-          </div>
-        )}
-        <Button variant="primary" className="w-full" onClick={() => room && onRaise(room)}>
-          Raise an alert for this room
-        </Button>
-        {d && d.pages.length > 0 && (
-          <div>
-            <div className="mb-1.5 text-[11.5px] font-medium text-dim">Pages</div>
-            <div className="overflow-hidden rounded-md border border-line">
-              {[...d.pages].reverse().map((pg) => (
-                <button key={pg.id} onClick={() => onOpenPage(pg.id)} className="flex w-full items-center gap-2 border-b border-line-soft px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-s2">
-                  <PriorityChip p={pg.priority} size="sm" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink">{pg.text}</span>
-                  <span className="shrink-0 text-[11px] text-dim">{PAGE_STATUS_LABEL[pg.status]}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {d && d.alerts.length > 0 && (
-          <div>
-            <div className="mb-1.5 text-[11.5px] font-medium text-dim">History</div>
-            <ul className="space-y-1 text-[12px]">
-              {[...d.alerts].reverse().map((a) => (
-                <li key={a.id} className="grid grid-cols-[44px_minmax(0,1fr)] gap-2">
-                  <span className="num font-mono text-[11px] text-dim">{clock(a.created_at, false)}</span>
-                  <span className="truncate text-muted">{a.text}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    </Drawer>
   );
 }
 
@@ -572,8 +387,12 @@ export function PolicyPanel({ settings, invariants, canConfigure, stats }: {
             </table>
           </div>
           <div className="flex items-center gap-3 border-t border-line px-3.5 py-2.5">
-            <Switch checked={settings.detector_p1_review} disabled={!canConfigure || busy} onChange={(v) => save({ detector_p1_review: v })} label="Detector P1 review" />
-            <span className="text-[12.5px] text-muted">A P1 raised by the sepsis detector always waits for a person first</span>
+            <Switch checked={settings.detector_p1_review} disabled={!canConfigure || busy} onChange={(v) => save({ detector_p1_review: v })} label="Machine P1 review" />
+            <span className="text-[12.5px] text-muted">A P1 raised by the sepsis detector or the room monitor always waits for a person first</span>
+          </div>
+          <div className="flex items-center gap-3 border-t border-line px-3.5 py-2.5">
+            <Switch checked={settings.room_monitor_pages ?? true} disabled={!canConfigure || busy} onChange={(v) => save({ room_monitor_pages: v })} label="Room monitor pages" />
+            <span className="text-[12.5px] text-muted">A ward room&apos;s detections (NEWS2, qSOFA, opioid and medication safety) raise pages; off, they are only shown</span>
           </div>
         </Panel>
         <Panel title="Guardrails" meta="Applied by the Case Handler as named steps on every routing decision">
@@ -594,7 +413,7 @@ export function PolicyPanel({ settings, invariants, canConfigure, stats }: {
             </div>
             <div className="flex items-center gap-3">
               <Switch checked={settings.demo_traffic} disabled={!canConfigure || busy} onChange={(v) => save({ demo_traffic: v })} label="Demo traffic" />
-              <span className="text-[12.5px] text-muted">A synthetic nurse alert every couple of minutes</span>
+              <span className="text-[12.5px] text-muted">A synthetic nurse alert every few minutes, and simulated courses in the synthetic rooms</span>
             </div>
           </div>
         </Panel>
@@ -637,13 +456,14 @@ export function CasesTable({ pages, clinicians, now, onOpen }: {
   now: number;
   onOpen: (id: string) => void;
 }) {
-  const [filter, setFilter] = useState<"open" | "p1" | "detector" | "closed" | "all">("open");
+  const [filter, setFilter] = useState<"open" | "p1" | "detector" | "monitor" | "closed" | "all">("open");
   const rows = useMemo(() => {
     const all = Object.values(pages).sort((a, b) => b.created_at - a.created_at);
     const open = (p: Page) => !["resolved", "cancelled"].includes(p.status);
     if (filter === "open") return all.filter(open).sort((a, b) => a.priority - b.priority || b.created_at - a.created_at);
     if (filter === "p1") return all.filter((p) => p.priority === 1);
     if (filter === "detector") return all.filter((p) => p.source === "detector");
+    if (filter === "monitor") return all.filter((p) => p.source === "monitor");
     if (filter === "closed") return all.filter((p) => !open(p));
     return all;
   }, [pages, filter]);
@@ -661,6 +481,7 @@ export function CasesTable({ pages, clinicians, now, onOpen }: {
               { value: "open", label: "Active" },
               { value: "p1", label: "P1" },
               { value: "detector", label: "Detector" },
+              { value: "monitor", label: "Monitor" },
               { value: "closed", label: "Closed" },
               { value: "all", label: "All" },
             ]}

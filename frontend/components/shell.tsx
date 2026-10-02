@@ -500,7 +500,18 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
 export function Page({ children, context, active }: { children: ReactNode; context?: ReactNode; active?: NavKey }) {
   const path = usePathname();
   const key: NavKey | undefined =
-    active ?? (path?.startsWith("/patient") ? "patients" : path?.startsWith("/pharmacy") ? "pharmacy" : path?.startsWith("/lab") ? "evidence" : path?.startsWith("/os") ? "architecture" : undefined);
+    active ??
+    (path?.startsWith("/room")
+      ? "rooms"
+      : path?.startsWith("/patient")
+        ? "patients"
+        : path?.startsWith("/pharmacy")
+          ? "pharmacy"
+          : path?.startsWith("/lab")
+            ? "evidence"
+            : path?.startsWith("/os")
+              ? "architecture"
+              : undefined);
   return (
     <AppShell active={key}>
       <main className="min-h-0 flex-1 overflow-y-auto">

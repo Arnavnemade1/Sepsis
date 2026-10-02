@@ -405,6 +405,13 @@ PAGING.bundle_started = lambda bed: (bool(getattr(syscalls.interventions.get(bed
                                      if bed else None)
 # The brief a clinician reads is grounded in the same dossier the consult uses.
 PAGING.dossier_text = lambda bed: (_doctor_dossier(bed) or {}).get("text")
+# Every room is watched as a unit (backend/aegis/rooms). The ICU rooms read their real replayed
+# stay up to the current hour, an imported external history if a clinician linked one, the live
+# session's history, and the pharmacopoeia's interaction screen. Resolved at call time.
+PAGING.units.icu_patient = lambda bed: getattr(cluster, "_by", {}).get(bed)
+PAGING.units.imported_history = lambda bed: patient_terminal.get_history(bed)
+PAGING.units.live_history = lambda: session.core.clinical_history
+PAGING.units.screen = lambda drugs, ctx: pharmacopoeia.screen(drugs, ctx)
 
 
 def _bed_susceptibility(bed: str) -> float:

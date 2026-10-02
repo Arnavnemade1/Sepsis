@@ -12,6 +12,8 @@ import {
   type Page,
 } from "@/lib/paging";
 
+import { SEV_RGB } from "@/lib/rooms";
+
 import { Avatar, Countdown, P_RGB, PriorityChip, SourceTag, StatusText, TimerBar } from "./bits";
 import { age, pageAction, statusLine } from "./queue";
 
@@ -184,7 +186,13 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
           title="Triage"
           right={
             <span className="text-[11px] text-dim">
-              {page.triage.source === "detector" ? "Sepsis detector" : page.triage.source === "llm+rules" ? `Rules + ${page.triage.model ?? "model"}` : "Rules"}
+              {page.triage.source === "detector"
+                ? "Sepsis detector"
+                : page.triage.source === "monitor"
+                  ? "Room monitor"
+                  : page.triage.source === "llm+rules"
+                    ? `Rules + ${page.triage.model ?? "model"}`
+                    : "Rules"}
             </span>
           }
         >
@@ -198,6 +206,19 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
             </div>
           )}
           <p className="text-[12.5px] leading-relaxed text-muted">{page.triage.rationale}</p>
+          {page.monitor && page.monitor.findings.length > 0 && (
+            <ul className="mt-2.5 divide-y divide-line-soft overflow-hidden rounded-md border border-line">
+              {page.monitor.findings.map((f) => (
+                <li key={f.key} className="flex items-start gap-2.5 px-2.5 py-1.5">
+                  <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `rgb(${SEV_RGB[f.severity]})` }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[12.5px] text-ink">{f.title}</div>
+                    <div className="truncate text-[11px] text-dim">{f.source}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
           {Object.keys(page.triage.vitals).length > 0 && (
             <div className="mt-2.5 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
               {Object.entries(page.triage.vitals).map(([k, v]) => (
@@ -388,20 +409,34 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
           </Section>
         )}
 
-        {page.bed && (
-          <Section title="Patient">
+        {page.room && (
+          <Section title={page.bed ? "Room and patient" : "Room"}>
             <Link
-              href={`/patient/?id=${encodeURIComponent(page.bed)}`}
-              className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
+              href={`/room/?id=${encodeURIComponent(page.room)}`}
+              className="mb-2 flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
             >
               <span>
-                Open {page.patient?.name ?? "the patient"}
-                {page.patient?.risk != null && <span className="ml-2 font-mono text-[11.5px] text-dim">risk {page.patient.risk.toFixed(2)}</span>}
+                Open room {page.room}
+                <span className="ml-2 text-[11.5px] text-dim">record, vitals, detections, timeline</span>
               </span>
               <span className="text-dim" aria-hidden>
                 ↗
               </span>
             </Link>
+            {page.bed && (
+              <Link
+                href={`/patient/?id=${encodeURIComponent(page.bed)}`}
+                className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
+              >
+                <span>
+                  Open {page.patient?.name ?? "the patient"}&apos;s ICU record
+                  {page.patient?.risk != null && <span className="ml-2 font-mono text-[11.5px] text-dim">risk {page.patient.risk.toFixed(2)}</span>}
+                </span>
+                <span className="text-dim" aria-hidden>
+                  ↗
+                </span>
+              </Link>
+            )}
           </Section>
         )}
         <div className="h-4" />

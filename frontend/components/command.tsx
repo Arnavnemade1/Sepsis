@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BellRing, CornerDownLeft, HeartPulse, LogOut, Plus, Search, Smartphone, UserRound, type LucideIcon } from "lucide-react";
+import { ArrowRight, BedDouble, BellRing, CornerDownLeft, HeartPulse, LogOut, Plus, Search, Smartphone, UserRound, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -18,9 +18,10 @@ type Snapshot = {
   clinicians: { id: string; name: string; specialty_label: string; pageable: boolean }[];
 };
 type Roster = { patients: { id: string; name: string; kind: string }[] };
+type Rooms = { rooms: { room: string; zone_name: string; kind: string | null; name?: string | null; diagnosis?: string | null; worst?: string | null; scores?: { news2?: { score: number } }; findings?: { title: string }[] }[] };
 
 const ACTIVE = new Set(["review", "held", "paging", "accepted", "unassigned"]);
-const GROUP_ORDER = ["Actions", "Go to", "Active pages", "Patients", "Pagers", "Account"];
+const GROUP_ORDER = ["Actions", "Go to", "Active pages", "Rooms", "Patients", "Pagers", "Account"];
 
 /** ⌘K: jump anywhere, act on anything. */
 export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -30,6 +31,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [idx, setIdx] = useState(0);
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [roster, setRoster] = useState<Roster | null>(null);
+  const [rooms, setRooms] = useState<Rooms | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
 
@@ -40,6 +42,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     setTimeout(() => input.current?.focus(), 30);
     api<Snapshot>("/aegis/paging/snapshot", { timeoutMs: 20_000 }).then(setSnap).catch(() => {});
     api<Roster>("/aegis/patients", { timeoutMs: 20_000 }).then(setRoster).catch(() => {});
+    api<Rooms>("/aegis/rooms", { timeoutMs: 20_000 }).then(setRooms).catch(() => {});
   }, [open]);
 
   const go = (href: string) => {
@@ -76,6 +79,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         run: () => go(`/operator/?page=${encodeURIComponent(p.id)}`),
       });
     }
+    for (const r of (rooms?.rooms ?? []).filter((r) => r.kind)) {
+      const top = r.findings?.[0]?.title;
+      out.push({
+        id: `r:${r.room}`,
+        group: "Rooms",
+        label: `Room ${r.room} · ${r.name ?? "Patient"}`,
+        hint: top ?? `${r.zone_name} · ${r.diagnosis ?? ""}`,
+        icon: BedDouble,
+        tone: r.worst === "critical" ? "text-high-ink" : r.worst === "urgent" ? "text-dys-ink" : undefined,
+        keywords: `${r.room} ${r.zone_name} ${r.diagnosis ?? ""} news2 ${r.scores?.news2?.score ?? ""} ${(r.findings ?? []).map((f) => f.title).join(" ")}`,
+        run: () => go(`/room/?id=${encodeURIComponent(r.room)}`),
+      });
+    }
     for (const p of roster?.patients ?? []) {
       out.push({
         id: `pt:${p.id}`,
@@ -107,7 +123,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     out.push({ id: "u:out", group: "Account", label: "Sign out", hint: "View only until you choose a user", icon: LogOut, run: () => { onClose(); signOut().then(() => router.refresh()); } });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [snap, roster, path]);
+  }, [snap, roster, rooms, path]);
 
   const shown = useMemo(() => {
     const terms = q.toLowerCase().split(/\s+/).filter(Boolean);

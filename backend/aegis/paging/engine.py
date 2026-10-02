@@ -78,6 +78,10 @@ class PagingOS:
         self.sync_refine = False                 # tests refine inline
         if demo_history:
             self._seed_history(now)
+        # every occupied room tracked as one unit (record + vitals + detectors). Imported here:
+        # the rooms package imports this one
+        from backend.aegis.rooms.monitor import RoomMonitor
+        self.units = RoomMonitor(self, seed=2026 if seed is None else seed)
 
     # ------------------------------------------------------------------ #
     # plumbing
@@ -140,6 +144,9 @@ class PagingOS:
         with self._lock:
             page = self._open_case(tri, text, source, reporter, synthetic)
             page["refining"] = refine
+            if source not in ("detector", "monitor"):
+                # what the nurse measured is now part of the room's record
+                self.units.report(tri.room, tri.vitals, text, page["id"])
             out = copy.deepcopy(page)
         if refine:
             if self.sync_refine:
@@ -817,9 +824,11 @@ class PagingOS:
             if s["simulated_responders"] and now >= self.next_roster_churn:
                 self._churn(now)
             if s["demo_traffic"] and now >= self.next_demo_at:
-                self.next_demo_at = now + self.rng.uniform(120, 240)
+                # nurse-typed demo alerts; the room monitor's simulated courses page on their own too
+                self.next_demo_at = now + self.rng.uniform(180, 360)
                 occupied = {r: p for r, p in self.synthetic.items()}
                 demo_alert = demo.pick_scenario(self.rng, occupied)
+            self.units.tick(now)
             if now - self.last_sentinel >= SENTINEL_PERIOD_S:
                 self.last_sentinel = now
                 changed = self.sentinel.scan(now, self.alerts, list(self.pages.values()), self.roster,
@@ -903,7 +912,7 @@ class PagingOS:
             "since": self.started_at, "pages": len(real), "by_priority": by_pr,
             "active": sum(1 for p in real if p["status"] in ACTIVE),
             "review": sum(1 for p in real if p["status"] == "review"),
-            "by_source": {s: sum(1 for p in real if p["source"] == s) for s in ("nurse", "voice", "detector", "demo")},
+            "by_source": {s: sum(1 for p in real if p["source"] == s) for s in ("nurse", "voice", "detector", "monitor", "demo")},
             "median_ack_s": {k: round(statistics.median(v), 1) if v else None for k, v in ack.items()},
             "escalation_rate": round(esc / len(real), 3) if real else None,
             "timeouts": sum(1 for a in attempts if a["outcome"] == "timeout"),
@@ -925,7 +934,7 @@ class PagingOS:
                 "clinicians": [self._clin(c) for c in self.roster],
                 "pages": sorted(recent, key=lambda p: p["created_at"]),
                 "alerts": self.alerts[-80:], "recs": self.sentinel.active(),
-                "monitor": self.monitor_state(), "occupancy": self.occupancy(),
+                "monitor": self.monitor_state(), "occupancy": self.occupancy(), "rooms": self.units.status,
                 "stats": self.stats(), "invariants": policy.INVARIANTS,
             })
 
@@ -951,6 +960,14 @@ class PagingOS:
                 "alerts": [a for a in self.alerts if a.get("room") == room][-10:],
                 "episode": self.episodes.get(room),
             })
+
+    def rooms_board(self) -> Dict[str, Any]:
+        with self._lock:
+            return copy.deepcopy(self.units.board())
+
+    def room_unit(self, room: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            return copy.deepcopy(self.units.unit(room))
 
     @staticmethod
     def layout() -> Dict[str, Any]:

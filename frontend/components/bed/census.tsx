@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowUpRight, TrendingUp } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
@@ -117,7 +118,15 @@ export function Census() {
               <tbody>
                 {live && (
                   <tr onClick={() => router.push(`/patient/?id=${encodeURIComponent(live.id)}`)} className="group cursor-pointer border-b border-line transition-colors hover:bg-s2">
-                    <td className="px-3.5 py-2.5 font-mono font-semibold text-ink">{liveRoom ?? "402"}</td>
+                    <td className="px-3.5 py-2.5">
+                      <Link
+                        href={`/room/?id=${encodeURIComponent(liveRoom ?? "402")}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-mono font-semibold text-ink underline decoration-line-bright underline-offset-2 hover:decoration-ink"
+                      >
+                        {liveRoom ?? "402"}
+                      </Link>
+                    </td>
                     <td className="px-2 py-2.5">
                       <div className="text-ink">{live.name}</div>
                       <div className="text-[11px] text-dim">Live monitored session</div>
@@ -139,7 +148,18 @@ export function Census() {
                   return (
                     <tr key={b.bed_id} onClick={() => router.push(`/patient/?id=${encodeURIComponent(b.bed_id)}`)} className="group cursor-pointer border-b border-line-soft transition-colors last:border-b-0 hover:bg-s2">
                       <td className="px-3.5 py-2.5">
-                        <div className="font-mono font-semibold text-ink">{room ?? "—"}</div>
+                        {room ? (
+                          <Link
+                            href={`/room/?id=${encodeURIComponent(room)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="font-mono font-semibold text-ink underline decoration-line-bright underline-offset-2 hover:decoration-ink"
+                            title="Open the room: record, vitals, detections, timeline"
+                          >
+                            {room}
+                          </Link>
+                        ) : (
+                          <div className="font-mono font-semibold text-ink">—</div>
+                        )}
                         <div className="font-mono text-[10.5px] text-faint">{b.bed_id}</div>
                       </td>
                       <td className="px-2 py-2.5">
