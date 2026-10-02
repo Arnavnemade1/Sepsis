@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -71,19 +72,33 @@ function Operator() {
     return c;
   }, [open]);
 
-  // ⌘K / N opens the composer; Esc is handled by the overlays themselves
+  // N raises an alert (⌘K is the command palette, which can also raise one); Esc closes overlays
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       const typing = typeof t?.closest === "function" && t.closest("input, textarea, select, [contenteditable]");
-      if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key.toLowerCase() === "n" && !typing && !e.metaKey && !e.ctrlKey)) {
+      if (e.key.toLowerCase() === "n" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         setComposer({ open: true });
       }
     };
+    const compose = () => setComposer({ open: true });
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    window.addEventListener("aegis:compose", compose);
+    return () => {
+      window.removeEventListener("keydown", k);
+      window.removeEventListener("aegis:compose", compose);
+    };
   }, []);
+  // deep links from the palette: ?compose=1 opens the composer, ?page=PG-… opens that page
+  const askCompose = params.get("compose");
+  const askPage = params.get("page");
+  useEffect(() => {
+    if (askCompose) setComposer({ open: true });
+  }, [askCompose]);
+  useEffect(() => {
+    if (askPage) setPageId(askPage);
+  }, [askPage]);
 
   const toasts = useToasts(state.pages, state.ready);
   const activeRecs = recs.filter((r) => !r.acknowledged).length;
@@ -95,14 +110,11 @@ function Operator() {
       active={view}
       counts={counts}
       alerts={alerts}
-      fill
       actions={
-        <Button size="sm" variant="primary" onClick={() => setComposer({ open: true })} title="Raise an alert (⌘K)">
-          <svg width="11" height="11" viewBox="0 0 12 12" aria-hidden>
-            <path d="M6 1v10M1 6h10" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-          </svg>
+        <Button size="sm" variant="primary" onClick={() => setComposer({ open: true })} title="Raise an alert (N)">
+          <Plus size={13} strokeWidth={2.25} />
           <span className="hidden sm:inline">New alert</span>
-          <span className="ml-0.5 hidden font-mono text-[10.5px] opacity-55 md:inline">⌘K</span>
+          <span className="ml-0.5 hidden font-mono text-[10.5px] opacity-50 md:inline">N</span>
         </Button>
       }
     >
@@ -115,7 +127,7 @@ function Operator() {
 
       {view === "overview" ? (
         <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 sm:p-4 lg:overflow-hidden">
-          <KpiStrip stats={state.stats} pages={open} monitor={state.monitor} />
+          <KpiStrip stats={state.stats} pages={open} monitor={state.monitor} all={state.pages} now={now} />
           <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_400px]">
             <Panel
               title="Floor plan"
@@ -125,7 +137,14 @@ function Operator() {
               className="order-2 lg:order-1 lg:min-h-0"
               bodyClass="flex flex-col lg:min-h-0"
             >
-              <div className="relative bg-[radial-gradient(75%_70%_at_50%_45%,#2c3036_0%,#25282d_100%)] py-3 lg:min-h-0 lg:flex-1 lg:py-0">
+              <div
+                className="relative py-3 lg:min-h-0 lg:flex-1 lg:py-0"
+                style={{
+                  // a technical canvas: a faint dot grid over a soft vignette
+                  backgroundImage: "radial-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1.3px), radial-gradient(75% 70% at 50% 45%, #2d3137 0%, #24272c 100%)",
+                  backgroundSize: "18px 18px, 100% 100%",
+                }}
+              >
                 {layout && state.ready ? (
                   <FloorView
                     layout={layout}

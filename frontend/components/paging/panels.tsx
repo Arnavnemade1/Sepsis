@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useState } from "react";
 
-import { Button, CloseIcon, cx, Drawer, Empty, IconButton, Kv, Panel, Segmented, Switch, Tag } from "@/components/ui";
+import { Button, CloseIcon, cx, Drawer, Empty, IconButton, Kv, MiniBars, MiniLine, Panel, Segmented, Switch, Tag } from "@/components/ui";
 import { api } from "@/lib/api";
 import {
   CATEGORY_LABEL,
@@ -26,27 +26,64 @@ import { age, statusLine } from "./queue";
 /* ------------------------------------------------------------------ */
 /* KPI strip                                                           */
 /* ------------------------------------------------------------------ */
-export function KpiStrip({ stats, pages, monitor }: { stats: Stats | null; pages: Page[]; monitor: Monitor }) {
+const BUCKET_S = 300;
+const BUCKETS = 12;
+
+/** The last hour in 5-minute buckets, oldest first, from every page the console holds. */
+function useHourSeries(all: Record<string, Page>, now: number) {
+  return useMemo(() => {
+    const start = now - BUCKET_S * BUCKETS;
+    const at = (t: number | null | undefined) => (t == null || t < start || t > now ? -1 : Math.min(BUCKETS - 1, Math.floor((t - start) / BUCKET_S)));
+    const raised = Array(BUCKETS).fill(0);
+    const p1 = Array(BUCKETS).fill(0);
+    const esc = Array(BUCKETS).fill(0);
+    const acc: number[][] = Array.from({ length: BUCKETS }, () => []);
+    for (const p of Object.values(all)) {
+      const b = at(p.created_at);
+      if (b >= 0) {
+        raised[b] += 1;
+        if (p.priority === 1) p1[b] += 1;
+      }
+      for (const a of p.attempts.slice(1)) {
+        const e = at(a.sent_at);
+        if (e >= 0) esc[e] += 1;
+      }
+      if (p.accepted_at && p.priority <= 2) {
+        const k = at(p.accepted_at);
+        if (k >= 0) acc[k].push(p.accepted_at - p.created_at);
+      }
+    }
+    const median = (xs: number[]) => (xs.length ? [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)] : null);
+    return { raised, p1, esc, accept: acc.map(median) };
+    // bucket boundaries move once a minute, not every second
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, Math.floor(now / 60)]);
+}
+
+export function KpiStrip({ stats, pages, monitor, all, now }: { stats: Stats | null; pages: Page[]; monitor: Monitor; all?: Record<string, Page>; now?: number }) {
+  const series = useHourSeries(all ?? {}, now ?? 0);
   const p1 = pages.filter((p) => p.priority === 1).length;
   const review = pages.filter((p) => p.status === "review" || p.status === "unassigned").length;
   const watch = Object.values(monitor).filter((m) => m.watch).length;
   const ack = stats?.median_ack_s ?? {};
   const fastAck = [ack["1"], ack["2"]].filter((x): x is number => x != null);
-  const items: { k: string; v: string | number; sub: string; tone?: string }[] = [
-    { k: "Active pages", v: pages.length, sub: `${pages.filter((p) => p.status === "paging").length} ringing` },
-    { k: "P1 active", v: p1, tone: p1 ? "text-high-ink" : undefined, sub: p1 ? "immediate response" : "none" },
+  const showSeries = !!all && now != null;
+  const items: { k: string; v: string | number; sub: string; tone?: string; spark?: React.ReactNode }[] = [
+    { k: "Active pages", v: pages.length, sub: `${pages.filter((p) => p.status === "paging").length} ringing`, spark: showSeries && <MiniBars data={series.raised} title="Pages raised per 5 min, last hour" /> },
+    { k: "P1 active", v: p1, tone: p1 ? "text-high-ink" : undefined, sub: p1 ? "immediate response" : "none", spark: showSeries && <MiniBars data={series.p1} color="#e5484d" title="P1 pages per 5 min, last hour" /> },
     { k: "Awaiting operator", v: review, tone: review ? "text-dys-ink" : undefined, sub: "review or unassigned" },
-    { k: "Time to accept", v: fastAck.length ? `${Math.round(Math.min(...fastAck))}s` : "—", sub: "median, P1/P2" },
-    { k: "Escalation rate", v: stats?.escalation_rate != null ? `${Math.round(stats.escalation_rate * 100)}%` : "—", sub: `${stats?.timeouts ?? 0} timeouts · ${stats?.declines ?? 0} declines` },
+    { k: "Time to accept", v: fastAck.length ? `${Math.round(Math.min(...fastAck))}s` : "—", sub: "median, P1/P2", spark: showSeries && <MiniLine data={series.accept} /> },
+    { k: "Escalation rate", v: stats?.escalation_rate != null ? `${Math.round(stats.escalation_rate * 100)}%` : "—", sub: `${stats?.timeouts ?? 0} timeouts · ${stats?.declines ?? 0} declines`, spark: showSeries && <MiniBars data={series.esc} color="#f5762e" title="Escalations per 5 min, last hour" /> },
     { k: "Monitored beds", v: stats?.monitored_beds ?? Object.keys(monitor).length, sub: watch ? `${watch} on sepsis watch` : "detector active" },
   ];
   return (
     <div className="grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
       {items.map((it) => (
-        <div key={it.k} className="min-w-0 bg-s1 px-3.5 py-2.5">
+        <div key={it.k} className="relative min-w-0 bg-s1 px-3.5 py-2.5">
           <div className="truncate text-[11px] text-dim">{it.k}</div>
           <div className={cx("num mt-0.5 text-[20px] font-medium leading-tight tracking-[-0.01em]", it.tone ?? "text-ink")}>{it.v}</div>
-          <div className="truncate text-[11px] text-dim">{it.sub}</div>
+          <div className={cx("truncate text-[11px] text-dim", !!it.spark && "sm:pr-[84px]")}>{it.sub}</div>
+          {it.spark && <div className="absolute bottom-2.5 right-3.5 hidden opacity-90 sm:block">{it.spark}</div>}
         </div>
       ))}
     </div>

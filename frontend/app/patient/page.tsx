@@ -1,8 +1,11 @@
 "use client";
 
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
 
+import { Census } from "@/components/bed/census";
 import { RiskChart, type RiskSeries } from "@/components/bed/chart";
 import { Consult, DecisionCard, Organs, Reasoning, RiskHero, Vitals } from "@/components/bed/panels";
 import { Orders } from "@/components/bed/orders";
@@ -39,15 +42,25 @@ const CHART_KEY: Record<string, string> = {
 export default function BedPage() {
   return (
     <Suspense>
-      <Bedside />
+      <PatientsRoute />
     </Suspense>
   );
 }
 
-function Bedside() {
-  const params = useSearchParams();
+/** /patient/ is the census; /patient/?id=… is one patient's record. */
+function PatientsRoute() {
+  const id = useSearchParams().get("id");
+  if (!id)
+    return (
+      <Page>
+        <Census />
+      </Page>
+    );
+  return <Bedside id={id} />;
+}
+
+function Bedside({ id }: { id: string }) {
   const roster = usePoll<Roster>("/aegis/patients");
-  const id = params.get("id") || roster.data?.default || null;
   const patient = roster.data?.patients.find((p) => p.id === id) ?? null;
   const live = patient?.kind === "live";
   const bed = live ? null : id;
@@ -113,6 +126,10 @@ function Bedside() {
     <Page
       context={
         <div className="flex items-center gap-3">
+          <Link href="/patient/" className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-dim transition-colors hover:bg-s2 hover:text-ink">
+            <ArrowLeft size={14} />
+            Census
+          </Link>
           {roster.data && <BedSelector roster={roster.data.patients} current={patient} />}
           {live ? (
             <FeedPill status={feed.status} lastAt={feed.lastAt} label={snap?.source === "simulator" ? "Simulator" : "Live"} />

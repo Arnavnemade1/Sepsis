@@ -160,6 +160,44 @@ export function Sparkline({ data, tone = "neutral", w = 120, h = 28, domain }: {
   );
 }
 
+/** A row of tiny bars: counts per time bucket, oldest first. */
+export function MiniBars({ data, color = "#868d97", w = 76, h = 22, title }: { data: number[]; color?: string; w?: number; h?: number; title?: string }) {
+  const max = Math.max(1, ...data);
+  const bw = w / Math.max(1, data.length);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden={!title} role={title ? "img" : undefined} aria-label={title}>
+      {data.map((v, i) => {
+        const bh = v > 0 ? Math.max(2, (v / max) * (h - 1)) : 1;
+        return <rect key={i} x={i * bw + 0.75} y={h - bh} width={Math.max(1, bw - 1.5)} height={bh} rx={0.75} fill={v > 0 ? color : "#3e444c"} />;
+      })}
+    </svg>
+  );
+}
+
+/** A tiny line over time buckets; gaps (null) break the line. */
+export function MiniLine({ data, color = "#6eaaff", w = 76, h = 22 }: { data: (number | null)[]; color?: string; w?: number; h?: number }) {
+  const vals = data.filter((v): v is number => v != null);
+  if (vals.length < 2) return <svg width={w} height={h} aria-hidden />;
+  const lo = Math.min(...vals), hi = Math.max(...vals);
+  const span = hi - lo || 1;
+  const step = w / Math.max(1, data.length - 1);
+  let d = "";
+  let pen = false;
+  data.forEach((v, i) => {
+    if (v == null) {
+      pen = false;
+      return;
+    }
+    d += `${pen ? "L" : "M"}${(i * step).toFixed(1)},${(h - 2 - ((v - lo) / span) * (h - 4)).toFixed(1)}`;
+    pen = true;
+  });
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="overflow-visible" aria-hidden>
+      <path d={d} fill="none" stroke={color} strokeWidth={1.4} strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex min-h-20 flex-col items-center justify-center gap-2 px-4 py-6 text-center text-[12.5px] text-dim">
@@ -178,6 +216,23 @@ export function Kv({ k, v, mono = false }: { k: ReactNode; v: ReactNode; mono?: 
     <div className="flex items-baseline justify-between gap-3 py-1 text-[12.5px]">
       <span className="shrink-0 text-dim">{k}</span>
       <span className={cx("num min-w-0 truncate text-right text-ink", mono && "font-mono text-[11.5px]")}>{v}</span>
+    </div>
+  );
+}
+
+/** A read this role is not entitled to. In audit mode the gate serves it and records a
+ *  would-deny; in enforce mode it refuses it. Either way the interface says so. */
+export function Restricted({ cap, role, children }: { cap: string; role: string | null; children?: ReactNode }) {
+  return (
+    <div className="flex items-start gap-2.5 rounded-md border border-med/30 bg-med/[0.08] px-3 py-2 text-[12px] leading-relaxed text-muted">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="mt-[3px] shrink-0 text-med-ink" aria-hidden>
+        <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" />
+      </svg>
+      <span>
+        Requires <span className="font-mono text-[11.5px] text-med-ink">{cap}</span>
+        {role ? <>, which the {role} role does not hold</> : null}. {children ?? "In audit mode the gate serves this read and records it as a would-deny; in enforce mode it is refused."}
+      </span>
     </div>
   );
 }

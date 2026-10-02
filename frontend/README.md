@@ -20,10 +20,10 @@ npm run build                # → out/
 | `/` | `app/page.tsx` | nothing: it redirects to `/operator/` (at the edge on Vercel via `vercel.json`, client-side elsewhere) |
 | `/operator/?view=overview·pages·staff·sentinel·policy` | `app/operator/page.tsx` | `WS /aegis/paging/stream`, `/aegis/paging/hospital`; writes `POST /aegis/paging/alerts`, `…/pages/{id}/approve · escalate · cancel · resolve`, `…/clinicians/{id}/status`, `…/recs/{id}/ack`, `…/settings` |
 | `/clinician/?id=` | `app/clinician/page.tsx` | `WS /aegis/paging/stream?clinician=<id>` (the pager is open), its own device session; writes `…/pages/{id}/respond`, `…/resolve`, `…/clinicians/{id}/status` |
-| `/patient/?id=` | `app/patient/page.tsx` | `WS /aegis/stream` (live patient) or `/aegis/patient/snapshot?bed=` (cohort bed), `/aegis/cohort/{bed}/chart`, `/aegis/timeline`, `/aegis/decision`, `/aegis/doctor/*` |
+| `/patient/` · `/patient/?id=` | `app/patient/page.tsx`, `components/bed/*` | the census reads `/aegis/cluster/snapshot` and the paging stream; the record reads `WS /aegis/stream` (live patient) or `/aegis/patient/snapshot?bed=` (cohort bed), `/aegis/cohort/{bed}/chart`, `/aegis/timeline`, `/aegis/decision`, `/aegis/doctor/*` |
 | `/pharmacy/?id=` | `app/pharmacy/page.tsx` | `/aegis/pk/options?bed=`, `POST /aegis/pharmacopoeia/screen` |
 | `/lab/` | `app/lab/page.tsx` | `/aegis/lab/evidence`, `/aegis/lab` |
-| `/os/` | `app/os/page.tsx` | `/aegis/sys/*`, `/aegis/fs/*`, `/aegis/kernel/devices`, `/aegis/services` |
+| `/os/?view=architecture·kernel·journal·gate·shell` | `app/os/page.tsx`, `components/os/*` | `/aegis/proc` (the kernel tree in one call), `/aegis/sys/{gate,abi,who,journal,ps,boot}`, `/aegis/kernel/devices`, `/aegis/services`, `/aegis/devices`, `/aegis/consensus`, `/aegis/orchestrator`, `/aegis/health/prover`, `/aegis/lab/evidence`, plus the paging stream |
 
 `/command/` and `/bed/` redirect to `/operator/` and `/patient/`. Which role lands where is
 one table in `lib/ecosystem.ts`. The backend gate stays the authority on what a role may *do*.
@@ -34,9 +34,11 @@ one table in `lib/ecosystem.ts`. The backend gate stays the authority on what a 
 app/                one directory per route; globals.css holds the design tokens
 components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue, feed, actions)
                     page-drawer.tsx (dispatch, triage, routing, certificate, timeline, SBAR)
-                    composer.tsx (⌘K, text or voice) · panels.tsx (KPIs, cases, staff,
+                    composer.tsx (N, text or voice) · panels.tsx (KPIs with hour sparklines, pages, staff,
                     insights, policy, room drawer) · bits.tsx (priority chips, countdowns, avatars)
-components/         shell.tsx (system bar, section bar, session, user menu) · ui.tsx (panels, tags, buttons, inspector sheet, modal)
+components/         shell.tsx (sidebar, top bar, status, user) · nav.ts (the section model) · command.tsx (⌘K palette)
+                    os/ (architecture, kernel, journal, gate, shell views) · bed/census.tsx · ui.tsx (panels, tags,
+                    buttons, inspector sheet, modal, mini charts, Restricted)
                     feed.tsx · twin.tsx · terminal.tsx · bed/ (patient panels, chart, orders)
 engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js
 lib/                paging.ts (types, the event reducer, usePaging, labels, clock) ·
@@ -58,7 +60,7 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
 
 - **An operations console, not a website.** There is no landing page, no hero, no serif display
   type, no gradients or glass, and no decorative icons. One system bar (connection latency,
-  prover health, clock, user) and one section bar frame every screen. The palette is stealth
+  prover health, clock), a grouped sidebar and a ⌘K command palette frame every screen. The palette is stealth
   grey (`#212429` canvas, `#282c32` panels): dark enough for a wall display, not black.
 - **Colour is signal.** The stock Tailwind palette is deleted in `globals.css`
   (`--color-*: initial`), so `bg-blue-500` does not compile. Red, orange, amber and grey are

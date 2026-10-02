@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, readSession, wsProtocols, wsUrl, type StoredSession } from "./api";
 
@@ -152,4 +152,10 @@ export function useSession(): StoredSession | null {
     };
   }, []);
   return s;
+}
+
+/** The signed-in user's capabilities: what the gate will let this role read and do. */
+export function useCaps(): { caps: Set<string>; role: string | null; ready: boolean } {
+  const s = useSession();
+  return useMemo(() => ({ caps: new Set(s?.credential.capabilities ?? []), role: s?.credential.role ?? null, ready: !!s }), [s]);
 }

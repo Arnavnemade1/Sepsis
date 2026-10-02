@@ -1,15 +1,22 @@
 "use client";
 
+import { Building2, ChevronsUpDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { api, readSession, revalidate, writeSession, type Credential } from "@/lib/api";
+import { api } from "@/lib/api";
 import { ROLE_LABEL } from "@/lib/ecosystem";
 import { useSession } from "@/lib/hooks";
 import { clock } from "@/lib/paging";
+import { signInAs, signOut, useEnsureSession } from "@/lib/session";
 
+import { CommandPalette } from "./command";
+import { GROUP_OF, initialsOf, NAV_GROUPS, NAV_ITEMS, SWITCH_USERS, type NavItem, type NavKey } from "./nav";
 import { cx } from "./ui";
+
+export type { NavKey } from "./nav";
+export { signInAs, signOut, useEnsureSession } from "@/lib/session";
 
 /* ------------------------------------------------------------------ */
 /* Identity                                                            */
@@ -17,56 +24,21 @@ import { cx } from "./ui";
 export function Mark({ size = 16 }: { size?: number }) {
   return (
     <svg width={size * 0.9} height={size} viewBox="0 0 36 40" aria-hidden className="shrink-0">
-      <path d="M18 0 36 6.6V22.4L18 40 0 22.4V6.6Z" fill="#e6e9ed" />
+      <path d="M18 0 36 6.6V22.4L18 40 0 22.4V6.6Z" fill="#e8eaed" />
       <path d="M18 0 36 6.6V22.4L18 40Z" fill="#9aa3ae" />
     </svg>
   );
 }
 
-export function Logo() {
+export function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <Link href="/operator/" className="flex items-center gap-2" aria-label="Aegis operations">
-      <Mark />
-      <span className="text-[14px] font-semibold tracking-[-0.01em] text-ink">Aegis</span>
+    <Link href="/operator/" className="flex min-w-0 items-center gap-2.5" aria-label="AegisOS">
+      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line-bright bg-s2">
+        <Mark size={14} />
+      </span>
+      {!compact && <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">AegisOS</span>}
     </Link>
   );
-}
-
-/* ------------------------------------------------------------------ */
-/* Session                                                             */
-/* ------------------------------------------------------------------ */
-type LoginOut = { status: string; token: string; credential: Credential; detail?: string };
-const SIGNED_OUT = "aegis_signed_out";
-const DEFAULT_OPERATOR = "rn.patel";
-
-async function signInAs(username: string): Promise<boolean> {
-  const r = await api<LoginOut>("/aegis/sys/login", { body: { username }, token: null, timeoutMs: 60_000 });
-  if (r.status !== "ok") return false;
-  writeSession({ token: r.token, credential: r.credential });
-  try {
-    localStorage.removeItem(SIGNED_OUT);
-  } catch {}
-  return true;
-}
-
-/** The demo hospital opens on the charge nurse's console. Someone who signed out
- *  stays signed out (view only) until they choose a user. */
-export function useEnsureSession() {
-  useEffect(() => {
-    let off = false;
-    try {
-      off = localStorage.getItem(SIGNED_OUT) === "1";
-    } catch {}
-    const s = readSession();
-    if (s) {
-      // the kernel's secret may be random per boot: renew a session it forgot, drop one it ended
-      revalidate(s)
-        .then((v) => (v.state === "renewed" ? writeSession(v.session) : v.state === "ended" && writeSession(null)))
-        .catch(() => {});
-      return;
-    }
-    if (!off) signInAs(DEFAULT_OPERATOR).catch(() => {});
-  }, []);
 }
 
 /* ------------------------------------------------------------------ */
@@ -75,8 +47,8 @@ export function useEnsureSession() {
 type Health = { status: string; source: string; prover?: { healthy: boolean; fail_closed: boolean } };
 type Link_ = "connecting" | "online" | "waking" | "offline";
 
-function useHealth() {
-  const [st, setSt] = useState<{ link: Link_; ms: number | null; prover: boolean | null }>({ link: "connecting", ms: null, prover: null });
+export function useHealth() {
+  const [st, setSt] = useState<{ link: Link_; ms: number | null; prover: boolean | null; source: string | null }>({ link: "connecting", ms: null, prover: null, source: null });
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -85,7 +57,7 @@ function useHealth() {
       try {
         const d = await api<Health>("/aegis/health", { timeoutMs: 60_000 });
         if (!alive) return;
-        setSt({ link: "online", ms: Math.round(performance.now() - t0), prover: !!d.prover?.healthy && !d.prover?.fail_closed });
+        setSt({ link: "online", ms: Math.round(performance.now() - t0), prover: !!d.prover?.healthy && !d.prover?.fail_closed, source: d.source ?? null });
       } catch {
         if (alive) setSt((s) => ({ ...s, link: s.link === "online" ? "offline" : "waking" }));
       } finally {
@@ -111,7 +83,7 @@ function useHealth() {
 
 function Indicator({ color, label, value, title }: { color: string; label: string; value?: ReactNode; title?: string }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap text-[11.5px]" title={title}>
+    <span className="flex items-center gap-1.5 whitespace-nowrap text-[12px]" title={title}>
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
       <span className="text-muted">{label}</span>
       {value != null && <span className="num font-mono text-[11px] text-dim">{value}</span>}
@@ -136,7 +108,7 @@ export function StatusCluster() {
             color={h.prover ? "#2fb67c" : "#e5484d"}
             label={h.prover ? "Prover" : "Prover fail-closed"}
             value={h.prover ? "OK" : undefined}
-            title={h.prover ? "Z3 is healthy: every page is certified before it is sent" : "Z3 is unhealthy: nothing is sent until it recovers"}
+            title={h.prover ? "Z3 is healthy: every page and order is certified before it leaves" : "Z3 is unhealthy: nothing is sent until it recovers"}
           />
         </span>
       )}
@@ -158,17 +130,7 @@ export function Clock() {
 /* ------------------------------------------------------------------ */
 /* User                                                                */
 /* ------------------------------------------------------------------ */
-const SWITCH = [
-  { u: "rn.patel", n: "Priya Patel, RN", r: "Charge nurse" },
-  { u: "dr.whitfield", n: "Dr. James Whitfield", r: "Chief of critical care" },
-  { u: "guest", n: "Guest", r: "View only" },
-];
-
-function initialsOf(name: string) {
-  return name.replace(/^Dr\.\s*/, "").split(/[\s,]+/).filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase();
-}
-
-export function UserMenu() {
+function UserBlock({ collapsed }: { collapsed: boolean }) {
   const s = useSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -185,46 +147,51 @@ export function UserMenu() {
     };
   }, []);
   const c = s?.credential;
-  const switchTo = async (u: string) => {
-    setBusy(u);
-    try {
-      await signInAs(u);
-      setOpen(false);
-    } finally {
-      setBusy(null);
-    }
-  };
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex h-7 items-center gap-2 rounded-md pl-0.5 pr-1.5 transition-colors hover:bg-s2"
+        className={cx("flex w-full items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-white/[0.05]", collapsed && "justify-center")}
         aria-haspopup="menu"
         aria-expanded={open}
+        title={collapsed ? (c ? c.display : "View only") : undefined}
       >
-        <span className="grid h-6 w-6 place-items-center rounded-full bg-s4 text-[10px] font-semibold text-ink">{c ? initialsOf(c.display) : "–"}</span>
-        <span className="hidden text-[12.5px] text-ink lg:inline">{c ? c.display : "View only"}</span>
-        <svg width="10" height="10" viewBox="0 0 10 10" className="text-dim" aria-hidden>
-          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" fill="none" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-s4 text-[10.5px] font-semibold text-ink">{c ? initialsOf(c.display) : "–"}</span>
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-[12.5px] font-medium text-ink">{c ? c.display : "View only"}</span>
+              <span className="block truncate text-[11px] text-dim">{c ? `${ROLE_LABEL[c.role]} · ring ${c.ring}` : "Not signed in"}</span>
+            </span>
+            <ChevronsUpDown size={14} className="shrink-0 text-dim" />
+          </>
+        )}
       </button>
       {open && (
-        <div role="menu" className="pop absolute right-0 top-9 z-[70] w-72 py-1">
+        <div role="menu" className={cx("pop absolute bottom-full z-[70] mb-1.5 w-64 py-1", collapsed ? "left-0" : "left-0 right-0 w-auto")}>
           <div className="px-3 py-2">
-            <div className="text-[13px] font-medium text-ink">{c ? c.display : "Not signed in"}</div>
-            <div className="text-[11.5px] text-dim">
+            <div className="text-[12.5px] font-medium text-ink">{c ? c.display : "Not signed in"}</div>
+            <div className="text-[11px] text-dim">
               {c ? `${ROLE_LABEL[c.role]} · privilege ring ${c.ring}` : "View only. Choose a user to act."}
-              {c && <span className="ml-1.5 font-mono text-[11px] text-faint">{c.username}</span>}
             </div>
+            {c && <div className="mt-0.5 font-mono text-[10.5px] text-faint">{c.username}</div>}
           </div>
           <div className="my-1 h-px bg-line" />
-          <div className="px-3 pb-1 pt-1.5 text-[11px] font-medium text-dim">Switch user</div>
-          {SWITCH.map((x) => (
+          <div className="px-3 pb-1 pt-1 text-[11px] font-medium text-dim">Switch user</div>
+          {SWITCH_USERS.map((x) => (
             <button
               key={x.u}
               role="menuitem"
               disabled={!!busy}
-              onClick={() => switchTo(x.u)}
+              onClick={async () => {
+                setBusy(x.u);
+                try {
+                  await signInAs(x.u);
+                  setOpen(false);
+                } finally {
+                  setBusy(null);
+                }
+              }}
               className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors hover:bg-s2 disabled:opacity-50"
             >
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-s3 text-[9px] font-semibold text-muted">{initialsOf(x.n)}</span>
@@ -235,26 +202,22 @@ export function UserMenu() {
               {c?.username === x.u ? <span className="text-[11px] text-dim">current</span> : busy === x.u ? <span className="text-[11px] text-dim">…</span> : null}
             </button>
           ))}
-          <div className="my-1 h-px bg-line" />
-          <Link href="/clinician/" onClick={() => setOpen(false)} role="menuitem" className="block px-3 py-1.5 text-[12.5px] text-ink transition-colors hover:bg-s2">
-            Open a clinician&apos;s pager
-          </Link>
           {c && (
-            <button
-              role="menuitem"
-              onClick={async () => {
-                await api("/aegis/sys/logout", { method: "POST" }).catch(() => {});
-                writeSession(null);
-                try {
-                  localStorage.setItem(SIGNED_OUT, "1");
-                } catch {}
-                setOpen(false);
-                router.refresh();
-              }}
-              className="block w-full px-3 py-1.5 text-left text-[12.5px] text-muted transition-colors hover:bg-s2 hover:text-ink"
-            >
-              Sign out
-            </button>
+            <>
+              <div className="my-1 h-px bg-line" />
+              <button
+                role="menuitem"
+                onClick={async () => {
+                  await signOut();
+                  setOpen(false);
+                  router.refresh();
+                }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-muted transition-colors hover:bg-s2 hover:text-ink"
+              >
+                <LogOut size={13} />
+                Sign out
+              </button>
+            </>
           )}
         </div>
       )}
@@ -263,116 +226,233 @@ export function UserMenu() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Navigation                                                          */
+/* Sidebar                                                             */
 /* ------------------------------------------------------------------ */
-export type NavKey = "overview" | "pages" | "staff" | "sentinel" | "policy" | "patients" | "pharmacy" | "evidence" | "system";
-
-const NAV: { key: NavKey; label: string; href: string; group: number }[] = [
-  { key: "overview", label: "Overview", href: "/operator/", group: 0 },
-  { key: "pages", label: "Pages", href: "/operator/?view=pages", group: 0 },
-  { key: "staff", label: "Staff", href: "/operator/?view=staff", group: 0 },
-  { key: "sentinel", label: "Sentinel", href: "/operator/?view=sentinel", group: 0 },
-  { key: "policy", label: "Policy", href: "/operator/?view=policy", group: 0 },
-  { key: "patients", label: "Patients", href: "/patient/", group: 1 },
-  { key: "pharmacy", label: "Pharmacy", href: "/pharmacy/", group: 1 },
-  { key: "evidence", label: "Evidence", href: "/lab/", group: 2 },
-  { key: "system", label: "System", href: "/os/", group: 2 },
-];
-
-function keyFromPath(path: string | null): NavKey | undefined {
-  if (!path) return undefined;
-  if (path.startsWith("/patient")) return "patients";
-  if (path.startsWith("/pharmacy")) return "pharmacy";
-  if (path.startsWith("/lab")) return "evidence";
-  if (path.startsWith("/os")) return "system";
-  return undefined;
+function NavLink({ item, active, count, alert, collapsed, onNavigate }: {
+  item: NavItem;
+  active: boolean;
+  count?: number;
+  alert?: boolean;
+  collapsed: boolean;
+  onNavigate?: () => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      title={collapsed ? `${item.label}${count ? ` (${count})` : ""}` : undefined}
+      aria-current={active ? "page" : undefined}
+      className={cx(
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
+        active ? "bg-white/[0.07] text-ink" : "text-muted hover:bg-white/[0.04] hover:text-ink",
+        collapsed && "justify-center px-0",
+      )}
+    >
+      <Icon size={16} strokeWidth={1.75} className={cx("shrink-0", active ? "text-ink" : "text-dim group-hover:text-muted")} />
+      {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
+      {!collapsed && count ? (
+        <span className={cx("num rounded-[4px] px-1.5 font-mono text-[10.5px] leading-[18px]", alert ? "bg-high/15 text-high-ink" : "text-dim")}>{count}</span>
+      ) : null}
+      {collapsed && count ? <span className={cx("absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full", alert ? "bg-high" : "bg-muted")} /> : null}
+    </Link>
+  );
 }
 
-export function NavBar({ active, counts = {}, alerts = {}, actions }: {
+function SidebarBody({ active, counts, alerts, collapsed, onToggle, onSearch, onNavigate }: {
   active?: NavKey;
-  counts?: Partial<Record<NavKey, number>>;
-  alerts?: Partial<Record<NavKey, boolean>>;
-  actions?: ReactNode;
+  counts: Partial<Record<NavKey, number>>;
+  alerts: Partial<Record<NavKey, boolean>>;
+  collapsed: boolean;
+  onToggle?: () => void;
+  onSearch: () => void;
+  onNavigate?: () => void;
 }) {
   return (
-    <nav className="flex h-10 shrink-0 items-stretch border-b border-line bg-bg pl-1 pr-2 sm:pl-2 sm:pr-3" aria-label="Sections">
-      <div className="flex min-w-0 flex-1 items-stretch overflow-x-auto [scrollbar-width:none] max-md:[mask-image:linear-gradient(to_right,#000_82%,transparent)]">
-        {NAV.map((n, i) => (
-          <div key={n.key} className="flex shrink-0 items-stretch">
-            {i > 0 && NAV[i - 1].group !== n.group && <span className="mx-1.5 my-3 w-px bg-line-bright" aria-hidden />}
-            <Link
-              href={n.href}
-              className={cx(
-                "relative flex items-center gap-1.5 px-2.5 text-[12.5px] font-medium transition-colors",
-                active === n.key ? "text-ink" : "text-dim hover:text-ink",
-              )}
-              aria-current={active === n.key ? "page" : undefined}
-            >
-              {n.label}
-              {counts[n.key] ? (
-                <span className={cx("num rounded-[3px] px-1 font-mono text-[10.5px]", alerts[n.key] ? "bg-high/15 text-high-ink" : "bg-s3 text-muted")}>{counts[n.key]}</span>
-              ) : null}
-              {active === n.key && <span className="absolute inset-x-2.5 bottom-0 h-[2px] rounded-t-sm bg-ink" />}
-            </Link>
+    <div className="flex h-full flex-col">
+      <div className={cx("flex h-12 shrink-0 items-center gap-2 px-3", collapsed && "justify-center px-0")}>
+        <Logo compact={collapsed} />
+        {onToggle && !collapsed && (
+          <button onClick={onToggle} className="ml-auto grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.05] hover:text-ink" aria-label="Collapse sidebar" title="Collapse sidebar">
+            <PanelLeftClose size={15} />
+          </button>
+        )}
+      </div>
+      <div className={cx("px-2.5", collapsed && "px-2")}>
+        {!collapsed ? (
+          <div className="mb-2 flex items-center gap-2.5 rounded-md border border-line bg-white/[0.02] px-2.5 py-2">
+            <Building2 size={15} className="shrink-0 text-dim" />
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-[12.5px] font-medium text-ink">Aegis Memorial</div>
+              <div className="truncate text-[11px] text-dim">Demonstration hospital</div>
+            </div>
+            <span className="rounded-[3px] border border-line-bright px-1 font-mono text-[9.5px] tracking-wide text-dim" title="ICU rooms 301–312 replay real de-identified PhysioNet/CinC 2019 stays; other patients and the nurse traffic are synthetic and labelled so.">
+              DEMO
+            </span>
+          </div>
+        ) : null}
+        <button
+          onClick={onSearch}
+          className={cx(
+            "flex h-8 w-full items-center gap-2 rounded-md border border-line bg-white/[0.02] px-2.5 text-[12.5px] text-dim transition-colors hover:border-line-bright hover:text-muted",
+            collapsed && "justify-center px-0",
+          )}
+          title="Search and commands (⌘K)"
+        >
+          <Search size={14} className="shrink-0" />
+          {!collapsed && (
+            <>
+              <span className="flex-1 text-left">Search</span>
+              <span className="kbd">⌘K</span>
+            </>
+          )}
+        </button>
+      </div>
+      <nav className="mt-3 min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 [scrollbar-width:none]" aria-label="Sections">
+        {NAV_GROUPS.map((g) => (
+          <div key={g.label} className="mb-3">
+            {!collapsed ? <div className="px-2 pb-1 text-[11px] font-medium text-faint">{g.label}</div> : <div className="mx-2 mb-1.5 h-px bg-line" />}
+            <div className="space-y-px">
+              {g.items.map((it) => (
+                <NavLink key={it.key} item={it} active={active === it.key} count={counts[it.key]} alert={alerts[it.key]} collapsed={collapsed} onNavigate={onNavigate} />
+              ))}
+            </div>
           </div>
         ))}
+      </nav>
+      <div className={cx("shrink-0 border-t border-line p-2", collapsed && "flex flex-col items-center gap-1")}>
+        {collapsed && onToggle && (
+          <button onClick={onToggle} className="grid h-8 w-8 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.05] hover:text-ink" aria-label="Expand sidebar" title="Expand sidebar">
+            <PanelLeftOpen size={15} />
+          </button>
+        )}
+        <UserBlock collapsed={collapsed} />
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2 pl-2">{actions}</div>}
-    </nav>
+    </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/* Frames                                                              */
-/* ------------------------------------------------------------------ */
-export function SystemBar() {
-  return (
-    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-line bg-bg px-3 sm:px-4">
-      <Logo />
-      <span className="hidden h-4 w-px bg-line-bright sm:block" aria-hidden />
-      <span className="hidden text-[12.5px] text-muted sm:inline">Aegis Memorial</span>
-      <span
-        className="hidden rounded-[3px] border border-line-bright px-1 py-px font-mono text-[10px] tracking-wide text-dim sm:inline"
-        title="Demonstration hospital. ICU rooms 301–312 replay real de-identified PhysioNet/CinC 2019 stays; other patients and nurse traffic are synthetic and labelled so."
-      >
-        DEMO
-      </span>
-      <div className="ml-auto flex items-center gap-4">
-        <StatusCluster />
-        <Clock />
-        <UserMenu />
-      </div>
-    </header>
-  );
-}
+const SIDEBAR_KEY = "aegis_sidebar";
 
-/** Every screen: the system bar, the section bar, then the content. */
-export function AppShell({ active, counts, alerts, actions, children, fill = false }: {
+/* ------------------------------------------------------------------ */
+/* Frame                                                               */
+/* ------------------------------------------------------------------ */
+/** Every screen: sidebar, top bar, content; plus the command palette and phone navigation. */
+export function AppShell({ active, counts = {}, alerts = {}, actions, children, title }: {
   active?: NavKey;
   counts?: Partial<Record<NavKey, number>>;
   alerts?: Partial<Record<NavKey, boolean>>;
   actions?: ReactNode;
   children: ReactNode;
+  title?: ReactNode;
   fill?: boolean;
 }) {
   useEnsureSession();
+  const [collapsed, setCollapsed] = useState(false);
+  const [drawer, setDrawer] = useState(false);
+  const [palette, setPalette] = useState(false);
+  const pathname = usePathname();
+
+  useEffect(() => {
+    try {
+      setCollapsed(localStorage.getItem(SIDEBAR_KEY) === "collapsed");
+    } catch {}
+  }, []);
+  const toggle = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, c ? "expanded" : "collapsed");
+      } catch {}
+      return !c;
+    });
+  }, []);
+  // ⌘K anywhere opens the palette
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPalette((p) => !p);
+      }
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, []);
+  useEffect(() => setDrawer(false), [pathname]);
+
+  const item = NAV_ITEMS.find((i) => i.key === active);
   return (
-    <div className={cx("flex flex-col", fill ? "h-[100dvh] overflow-hidden" : "min-h-[100dvh]")}>
-      <SystemBar />
-      <NavBar active={active} counts={counts} alerts={alerts} actions={actions} />
-      {children}
+    <div className="flex h-[100dvh] overflow-hidden bg-bg">
+      <aside className={cx("hidden shrink-0 border-r border-line bg-[#1c1f23] transition-[width] duration-150 lg:block", collapsed ? "w-[60px]" : "w-[232px]")}>
+        <SidebarBody active={active} counts={counts} alerts={alerts} collapsed={collapsed} onToggle={toggle} onSearch={() => setPalette(true)} />
+      </aside>
+
+      {/* phone / tablet: the sidebar as a drawer */}
+      {drawer && (
+        <div className="fixed inset-0 z-[65] lg:hidden">
+          <div className="absolute inset-0 bg-black/45" onClick={() => setDrawer(false)} />
+          <aside className="absolute inset-y-0 left-0 w-[268px] border-r border-line bg-[#1c1f23] shadow-[24px_0_48px_-24px_rgb(0_0_0/.6)]">
+            <button onClick={() => setDrawer(false)} className="absolute right-2 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-md text-dim hover:bg-white/[0.05] hover:text-ink" aria-label="Close menu">
+              <X size={15} />
+            </button>
+            <SidebarBody
+              active={active}
+              counts={counts}
+              alerts={alerts}
+              collapsed={false}
+              onSearch={() => {
+                setDrawer(false);
+                setPalette(true);
+              }}
+              onNavigate={() => setDrawer(false)}
+            />
+          </aside>
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-4">
+          <button onClick={() => setDrawer(true)} className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-ink lg:hidden" aria-label="Open menu">
+            <Menu size={17} />
+          </button>
+          <span className="lg:hidden">
+            <Logo compact />
+          </span>
+          <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+            {item && <span className="hidden text-dim sm:inline">{GROUP_OF[item.key]}</span>}
+            {item && <span className="hidden text-faint sm:inline">/</span>}
+            <span className="truncate font-medium text-ink">{title ?? item?.label ?? ""}</span>
+          </div>
+          <div className="ml-auto flex items-center gap-3 sm:gap-4">
+            <span className="hidden sm:block">
+              <StatusCluster />
+            </span>
+            <Clock />
+            {actions}
+            <button onClick={() => setPalette(true)} className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-ink lg:hidden" aria-label="Search">
+              <Search size={16} />
+            </button>
+          </div>
+        </header>
+        {children}
+      </div>
+
+      <CommandPalette open={palette} onClose={() => setPalette(false)} />
     </div>
   );
 }
 
-/** A drill-down screen (patients, pharmacy, evidence, system). */
-export function Page({ children, context }: { children: ReactNode; context?: ReactNode }) {
+/** A drill-down screen. */
+export function Page({ children, context, active }: { children: ReactNode; context?: ReactNode; active?: NavKey }) {
   const path = usePathname();
+  const key: NavKey | undefined =
+    active ?? (path?.startsWith("/patient") ? "patients" : path?.startsWith("/pharmacy") ? "pharmacy" : path?.startsWith("/lab") ? "evidence" : path?.startsWith("/os") ? "architecture" : undefined);
   return (
-    <AppShell active={keyFromPath(path)}>
-      <main className="mx-auto w-full max-w-[1680px] flex-1 px-3 pb-12 pt-3 sm:px-4 sm:pt-4">
-        {context && <div className="mb-3 flex flex-wrap items-center gap-2">{context}</div>}
-        {children}
+    <AppShell active={key}>
+      <main className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[1680px] px-3 pb-12 pt-3 sm:px-5 sm:pt-5">
+          {context && <div className="mb-3 flex flex-wrap items-center gap-2">{context}</div>}
+          {children}
+        </div>
       </main>
     </AppShell>
   );
@@ -380,13 +460,16 @@ export function Page({ children, context }: { children: ReactNode; context?: Rea
 
 export function PageHead({ eyebrow, title, right, children }: { eyebrow?: ReactNode; title: ReactNode; right?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end gap-3 border-b border-line pb-4">
+    <div className="mb-5 flex flex-wrap items-end gap-3">
       <div className="min-w-0 flex-1">
-        {eyebrow && <div className="mb-0.5 text-[11.5px] font-medium text-dim">{eyebrow}</div>}
-        <h1 className="text-[18px] font-semibold tracking-[-0.01em] text-ink">{title}</h1>
-        {children && <p className="mt-1 max-w-3xl text-[12.5px] leading-relaxed text-muted">{children}</p>}
+        {eyebrow && <div className="mb-1 text-[12px] font-medium text-dim">{eyebrow}</div>}
+        <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h1>
+        {children && <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">{children}</p>}
       </div>
       {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
     </div>
   );
 }
+
+// kept for screens that import them by name
+export { UserBlock as UserMenu };

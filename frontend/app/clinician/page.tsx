@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Avatar, Countdown, P_RGB, PriorityChip, SourceTag, StatusText, TimerBar } from "@/components/paging/bits";
-import { AppShell, Logo } from "@/components/shell";
+import { Logo, Page as ShellPage } from "@/components/shell";
 import { Button, cx, Panel, Tag } from "@/components/ui";
 import { api, readDeviceSession, revalidate, writeDeviceSession, type Credential } from "@/lib/api";
 import {
@@ -487,11 +487,11 @@ function Directory() {
     .filter((c) => c.pageable)
     .sort((a, b) => a.specialty_label.localeCompare(b.specialty_label) || a.name.localeCompare(b.name));
   return (
-    <AppShell>
-      <main className="mx-auto w-full max-w-[1100px] flex-1 px-3 pb-12 pt-4 sm:px-4">
-        <div className="mb-4 border-b border-line pb-4">
-          <h1 className="text-[18px] font-semibold tracking-[-0.01em] text-ink">Pagers</h1>
-          <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted">
+    <ShellPage active="pagers">
+      <div className="mx-auto max-w-[1100px]">
+        <div className="mb-5">
+          <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Pagers</h1>
+          <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-muted">
             Every clinician on the roster carries a pager. Open one on this device and pages routed to that clinician ring here; while it is open, the
             simulated responder stands down for them.
           </p>
@@ -542,7 +542,7 @@ function Directory() {
             </table>
           </div>
         </Panel>
-      </main>
-    </AppShell>
+      </div>
+    </ShellPage>
   );
 }

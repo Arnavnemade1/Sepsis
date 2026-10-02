@@ -146,7 +146,7 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
       <polygon points={pts(shadow)} fill="rgb(0 0 0 / .28)" style={{ filter: `blur(${detail ? 10 : 6}px)` }} />
       <polygon points={pts(front)} fill="#1d2024" />
       <polygon points={pts(side)} fill="#191b1f" />
-      <polygon points={pts(top)} fill="#33383f" stroke={hover ? "rgb(110 170 255 / .8)" : "rgb(255 255 255 / .16)"} strokeWidth={hover ? 1.4 : 1} style={{ transition: "stroke .2s" }} />
+      <polygon points={pts(top)} fill="url(#slab-top)" stroke={hover ? "rgb(110 170 255 / .8)" : "rgb(255 255 255 / .18)"} strokeWidth={hover ? 1.4 : 1} style={{ transition: "stroke .2s" }} />
       {floor.zones.map((zid) => {
         const zn = layout.zones[zid];
         return (
@@ -174,6 +174,7 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
               }
               const q = quad(room.rect, 0.4, s, pos);
               const c = center(room.rect, s, pos);
+              const urgent = pg && pg.priority <= 2 && (pg.status === "paging" || pg.status === "review" || pg.status === "unassigned");
               return (
                 <g
                   key={rid}
@@ -192,6 +193,7 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, onRoom, onCli
                   }
                   onMouseLeave={() => setTip(null)}
                 >
+                  {urgent && <polygon points={pts(q)} fill={`rgb(${P_RGB[pg!.priority]})`} opacity={0.55} filter="url(#room-glow)" className="pointer-events-none" />}
                   <polygon points={pts(q)} fill={fill} stroke={stroke} strokeWidth={sw} strokeDasharray={dash} className="transition-[fill] duration-300 hover:brightness-125" />
                   {pg && (pg.status === "paging" || pg.status === "review" || pg.status === "unassigned") && pg.priority <= 2 && (
                     <circle cx={c[0]} cy={c[1]} r={detail ? 6 : 3.5} fill={`rgb(${P_RGB[pg.priority]})`} className="pointer-events-none">
@@ -354,6 +356,15 @@ function Stack(props: Props & { setTip: (t: Tip) => void }) {
   const bottom = (W + D) * fy * S + 34;
   return (
     <svg data-floorhost viewBox={`${minX.toFixed(0)} ${(-top).toFixed(0)} ${(maxX - minX).toFixed(0)} ${(top + bottom).toFixed(0)}`} className="h-auto w-full lg:h-full" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="slab-top" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#3c4149" />
+          <stop offset="1" stopColor="#2e3239" />
+        </linearGradient>
+        <filter id="room-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+      </defs>
       {layout.floors.map((f) => {
         const pos: Pos = { z: f.index * GAP, ox: f.index * DX, fx, fy };
         return (
@@ -388,6 +399,15 @@ function Single(props: Props & { fid: string; setTip: (t: Tip) => void }) {
   const minY = -64, maxY = (W + D) * fy * S + 40;
   return (
     <svg data-floorhost viewBox={`${minX.toFixed(0)} ${minY} ${(maxX - minX).toFixed(0)} ${(maxY - minY).toFixed(0)}`} className="h-auto w-full lg:h-full" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="slab-top" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#3c4149" />
+          <stop offset="1" stopColor="#2e3239" />
+        </linearGradient>
+        <filter id="room-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="4" />
+        </filter>
+      </defs>
       <Slab {...props} spots={spots} fid={fid} s={S} pos={pos} detail />
       <Arcs layout={layout} pages={pages} spots={spots} s={S} posOf={(f) => (f === fid ? pos : null)} only={fid} selected={selectedPage} />
     </svg>

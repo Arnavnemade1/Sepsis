@@ -49,7 +49,7 @@ function pad(s: string | number, n: number): string {
   return v.length >= n ? v.slice(0, n) : v + " ".repeat(n - v.length);
 }
 
-export function Terminal() {
+export function Terminal({ className = "h-[440px]" }: { className?: string }) {
   const session = useSession();
   const [lines, setLines] = useState<Line[]>([{ k: "dim", t: 'AegisOS shell. Type "help".' }]);
   const [cwd, setCwd] = useState("/");
@@ -65,6 +65,13 @@ export function Terminal() {
   }, [lines]);
 
   const print = (t: string, k: Line["k"] = "out") => setLines((l) => [...l, ...t.split("\n").map((x) => ({ k, t: x }))]);
+  // other panels can type a command in: window.dispatchEvent(new CustomEvent("aegis:shell", { detail: "ps" }))
+  const runRef = useRef<(cmd: string) => void>(() => {});
+  useEffect(() => {
+    const h = (e: Event) => runRef.current(String((e as CustomEvent).detail ?? ""));
+    window.addEventListener("aegis:shell", h);
+    return () => window.removeEventListener("aegis:shell", h);
+  }, []);
 
   const run = async (raw: string) => {
     const cmd = raw.trim();
@@ -197,6 +204,10 @@ export function Terminal() {
     }
   };
 
+  runRef.current = (cmd: string) => {
+    if (!busy) run(cmd);
+  };
+
   const onKey = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !busy) {
       run(input);
@@ -222,7 +233,7 @@ export function Terminal() {
   // ink tokens are for paper)
   return (
     <div
-      className="flex h-[440px] flex-col overflow-hidden rounded-lg border border-line-bright bg-night font-mono text-[12px] leading-[1.55] "
+      className={`flex flex-col overflow-hidden rounded-lg border border-line-bright bg-night font-mono text-[12px] leading-[1.55] ${className}`}
       onClick={() => field.current?.focus()}
     >
       <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">

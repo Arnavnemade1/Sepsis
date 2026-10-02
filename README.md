@@ -81,17 +81,19 @@ request takes 30–60 s to wake it. The app says so and retries.
 
 There is no front page: the product is the console. `/` opens it directly, signed in as the
 charge nurse of the demo hospital (switch users from the menu at the top right). Every screen
-shares one system bar, showing connection latency, prover health and a 24-hour clock, and one
-section bar.
+shares one frame: a sidebar grouping Operations, Clinical and Platform; a top bar with
+connection latency, prover health and a 24-hour clock; and a command palette (`⌘K`) that
+jumps to any section, active page, patient or pager.
 
 | Route | Who | What it is |
 |:--|:--|:--|
-| `/operator/` | charge nurse · chief | **The operator console.** **Overview** has the live KPIs and the building in isometric: each active page on its room in its priority's colour, each clinician where they are, a ringing page as an arc from clinician to room. Beside it are the active-page queue (live countdowns; approve, escalate, cancel) and the event log. **Pages** (`?view=pages`) lists every page with filters. **Staff** is the roster by service. **Sentinel** has the system-wide recommendations and dispatch performance. **Policy** holds the autonomy matrix, the guardrails and the six invariants; the chief can change them. `⌘K` raises an alert by text or by voice. Selecting a page opens its inspector: the dispatch pipeline with timings, triage, the ranked routing table, the Z3 certificate, the timeline and the brief |
+| `/operator/` | charge nurse · chief | **The operator console.** **Overview** has the live KPIs and the building in isometric: each active page on its room in its priority's colour, each clinician where they are, a ringing page as an arc from clinician to room. Beside it are the active-page queue (live countdowns; approve, escalate, cancel) and the event log. **Pages** (`?view=pages`) lists every page with filters. **Staff** is the roster by service. **Sentinel** has the system-wide recommendations and dispatch performance. **Policy** holds the autonomy matrix, the guardrails and the six invariants; the chief can change them. `N` (or the palette) raises an alert by text or by voice. Selecting a page opens its inspector: the dispatch pipeline with timings, triage, the ranked routing table, the Z3 certificate, the timeline and the brief |
 | `/clinician/?id=<user>` | any clinician | **The pager.** Pages for that clinician ring here with sound and vibration. Accept, and the brief is waiting. Decline (in a procedure, with another patient, not my service), and the next clinician is paged at once. On a phone the page is the pager. While it is open, nobody answers for that clinician. `/clinician/` lists every pager |
+| `/patient/` | everyone | **The census:** every monitored bed ranked by the risk the unit acts on, with the population score, early-warning trend, leading system, drivers and any open page |
 | `/patient/?id=<bed>` | from a page | One patient: the risk the unit acts on, vitals with trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line with its 8 h projection, the decision and its limits, orders through the Z3 cage, the specialist panel, and Dr. Aegis |
 | `/pharmacy/?id=<bed>` | from a patient | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
 | `/lab/` | research · chief | The deployed detector read from its promotion manifest, the operating point, conformal abstention, the falsification record, and every change the gate refused |
-| `/os/` | chief · operators | A shell on the kernel (every verb a syscall through the gate), the process table, the hash-chained journal (paging events included), the measured boot, services and verified drivers |
+| `/os/` | chief · operators | **The platform.** **Architecture** is a live map of every layer of the OS: surfaces, the syscall gate, paging, decisions under proof, the clinical runtime, the bio-kernel, the signals and the record, each component with its own metrics and an inspector. **Kernel** (`?view=kernel`) has the process table with CPU shares, the scheduler's tiers and lanes, verified drivers, services and the boot waterfall. **Journal** is the hash-chained log with chain status and filters. **Syscall gate** has the reference monitor's statistics, the Z3 policy proof, the full syscall table and sessions. **Shell** is a terminal where every command is a syscall. Views a role may not read say so instead of failing silently |
 
 The older routes still resolve: `/command/` goes to `/operator/`, `/bed/` to `/patient/`, and the old `?tab=` names map onto the new views.
 
@@ -454,7 +456,7 @@ npm run dev                   # http://localhost:3000
 
 Open http://localhost:3000 and open the operator console as **Priya Patel, RN**. In a second
 window open a pager, for example http://localhost:3000/clinician/?id=dr.alvarez. Raise an
-alert with `⌘K` ("Room 305 BP 84/50, febrile 39.2, new confusion"), watch it route, and
+alert with `N` ("Room 305 BP 84/50, febrile 39.2, new confusion"), watch it route, and
 answer it on the pager. A patient opens at `/patient/?id=bed_6`.
 
 **3) Research lines** (need datasets, plus two libraries kept out of the serving image)
