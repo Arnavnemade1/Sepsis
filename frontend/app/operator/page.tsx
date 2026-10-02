@@ -9,7 +9,7 @@ import { LEGEND, P_RGB, PriorityChip, StatusDot } from "@/components/paging/bits
 import { Composer } from "@/components/paging/composer";
 import { FloorChips, FloorView } from "@/components/paging/floor-view";
 import { PageDrawer } from "@/components/paging/page-drawer";
-import { CasesTable, Insights, KpiStrip, PolicyPanel, RoomDrawer, StaffBoard } from "@/components/paging/panels";
+import { CasesTable, Insights, KpiStrip, PolicyPanel, RoomDrawer, StaffBoard, UnitStatus } from "@/components/paging/panels";
 import { Feed, Queue } from "@/components/paging/queue";
 import { AppShell, type NavKey } from "@/components/shell";
 import { Button, CloseIcon, cx, Panel, Skeleton } from "@/components/ui";
@@ -145,6 +145,11 @@ function Operator() {
                   backgroundSize: "18px 18px, 100% 100%",
                 }}
               >
+                {layout && state.ready && (
+                  <div className="absolute left-3 top-3 z-[2] hidden xl:block">
+                    <UnitStatus layout={layout} occupancy={state.occupancy} roomPages={roomPages} monitor={state.monitor} onFloor={setFloor} />
+                  </div>
+                )}
                 {layout && state.ready ? (
                   <FloorView
                     layout={layout}

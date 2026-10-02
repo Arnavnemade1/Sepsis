@@ -91,8 +91,7 @@ function Indicator({ color, label, value, title }: { color: string; label: strin
   );
 }
 
-export function StatusCluster() {
-  const h = useHealth();
+export function StatusCluster({ h }: { h: ReturnType<typeof useHealth> }) {
   const link =
     h.link === "online"
       ? { c: "#2fb67c", l: "Online", t: "Backend reachable" }
@@ -334,6 +333,60 @@ function SidebarBody({ active, counts, alerts, collapsed, onToggle, onSearch, on
 
 const SIDEBAR_KEY = "aegis_sidebar";
 
+/** While the backend wakes (a free-tier host sleeps when idle), the content area says
+ *  so instead of showing empty panels. Shown only before the first successful contact. */
+function ConnectGate({ h }: { h: ReturnType<typeof useHealth> }) {
+  const [t0] = useState(() => Date.now());
+  const [now, setNow] = useState(() => Date.now());
+  const [seen, setSeen] = useState(false);
+  useEffect(() => {
+    if (h.link === "online") setSeen(true);
+  }, [h.link]);
+  useEffect(() => {
+    if (seen) return;
+    const i = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(i);
+  }, [seen]);
+  const elapsed = Math.floor((now - t0) / 1000);
+  if (seen || elapsed < 2) return null;
+  return (
+    <div className="absolute inset-x-0 bottom-0 top-12 z-[30] grid place-items-center bg-bg/95 px-6">
+      <div className="w-full max-w-[420px] rounded-lg border border-line bg-s1 p-5">
+        <div className="flex items-center gap-3">
+          <span className="grid h-8 w-8 place-items-center rounded-md border border-line-bright bg-s2">
+            <Mark size={15} />
+          </span>
+          <div>
+            <div className="text-[14px] font-semibold text-ink">Connecting to Aegis Memorial</div>
+            <div className="text-[12px] text-dim">The backend runs on a free tier and sleeps when idle.</div>
+          </div>
+        </div>
+        <ol className="mt-4 space-y-2 text-[12.5px]">
+          <li className="flex items-center gap-2.5">
+            <span className="blink h-1.5 w-1.5 rounded-full bg-med" />
+            <span className="text-ink">Waking the backend</span>
+            <span className="num ml-auto font-mono text-[11.5px] text-dim">{elapsed}s</span>
+          </li>
+          <li className="flex items-center gap-2.5 text-dim">
+            <span className="h-1.5 w-1.5 rounded-full border border-faint" />
+            Signing in to the console
+          </li>
+          <li className="flex items-center gap-2.5 text-dim">
+            <span className="h-1.5 w-1.5 rounded-full border border-faint" />
+            Subscribing to the hospital stream
+          </li>
+        </ol>
+        <div className="mt-4 h-1 overflow-hidden rounded-full bg-s3">
+          <div className="working h-full w-full" />
+        </div>
+        <p className="mt-3 text-[11.5px] leading-relaxed text-dim">
+          {elapsed < 75 ? "Usually 30–60 seconds. Everything loads on its own once it answers." : "Still waking. If this persists, the backend may be redeploying; it retries on its own."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Frame                                                               */
 /* ------------------------------------------------------------------ */
@@ -348,6 +401,7 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
   fill?: boolean;
 }) {
   useEnsureSession();
+  const health = useHealth();
   const [collapsed, setCollapsed] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [palette, setPalette] = useState(false);
@@ -409,7 +463,8 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <ConnectGate h={health} />
         <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-4">
           <button onClick={() => setDrawer(true)} className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-ink lg:hidden" aria-label="Open menu">
             <Menu size={17} />
@@ -424,7 +479,7 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
           </div>
           <div className="ml-auto flex items-center gap-3 sm:gap-4">
             <span className="hidden sm:block">
-              <StatusCluster />
+              <StatusCluster h={health} />
             </span>
             <Clock />
             {actions}

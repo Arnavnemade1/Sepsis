@@ -507,7 +507,10 @@ export function Architecture() {
 
       <div className="relative">
         {/* the bus: one spine every layer hangs off */}
-        <span className="absolute bottom-6 left-[19px] top-6 hidden w-px bg-line-bright md:block" aria-hidden />
+        <span className="absolute bottom-6 left-[19px] top-6 hidden w-px overflow-hidden bg-line-bright md:block" aria-hidden>
+          <span className="flow-down" />
+          <span className="flow-up" />
+        </span>
         <div className="space-y-2.5">
           {layers.map((l, i) => (
             <LayerBand key={l.id} layer={l} index={layers.length - i} selected={sel} onSelect={setSel} />

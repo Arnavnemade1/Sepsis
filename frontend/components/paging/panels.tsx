@@ -91,6 +91,55 @@ export function KpiStrip({ stats, pages, monitor, all, now }: { stats: Stats | n
 }
 
 /* ------------------------------------------------------------------ */
+/* Units at a glance (floor plan overlay)                              */
+/* ------------------------------------------------------------------ */
+export function UnitStatus({ layout, occupancy, roomPages, monitor, onFloor }: {
+  layout: Layout;
+  occupancy: Record<string, unknown>;
+  roomPages: Record<string, Page>;
+  monitor: Monitor;
+  onFloor: (f: string) => void;
+}) {
+  const rows = Object.values(layout.zones)
+    .filter((z) => z.rooms.length > 0)
+    .map((z) => {
+      const pages = z.rooms.map((r) => roomPages[r]).filter(Boolean) as Page[];
+      return {
+        z,
+        occ: z.rooms.filter((r) => occupancy[r]).length,
+        pages: pages.length,
+        top: pages.length ? Math.min(...pages.map((p) => p.priority)) : null,
+        watch: z.rooms.filter((r) => monitor[r]?.watch).length,
+      };
+    })
+    .filter((u) => u.z.critical || u.pages > 0)
+    .sort((a, b) => (a.top ?? 9) - (b.top ?? 9) || Number(b.z.critical) - Number(a.z.critical) || a.z.name.localeCompare(b.z.name));
+  return (
+    <div className="w-[248px] overflow-hidden rounded-md border border-line bg-s1/95 shadow-[0_12px_32px_-16px_rgb(0_0_0/.6)]">
+      <div className="flex items-center gap-2 border-b border-line px-3 py-1.5 text-[11px]">
+        <span className="font-medium text-muted">Units</span>
+        <span className="ml-auto text-dim">beds</span>
+        <span className="w-10 text-right text-dim">active</span>
+      </div>
+      <ul>
+        {rows.map((u) => (
+          <li key={u.z.id}>
+            <button onClick={() => onFloor(u.z.floor)} className="flex w-full items-center gap-2 border-b border-line-soft px-3 py-1.5 text-left transition-colors last:border-b-0 hover:bg-s2">
+              <span className="min-w-0 flex-1 truncate text-[12px] text-ink">{u.z.name}</span>
+              {u.watch > 0 && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-med" title={`${u.watch} on sepsis watch`} />}
+              <span className="num shrink-0 font-mono text-[11px] text-dim">
+                {u.occ}/{u.z.rooms.length}
+              </span>
+              <span className="flex w-10 shrink-0 justify-end">{u.top ? <PriorityChip p={u.top} size="sm" /> : <span className="font-mono text-[11px] text-faint">—</span>}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Room inspector                                                      */
 /* ------------------------------------------------------------------ */
 type RoomDetail = {

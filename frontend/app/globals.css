@@ -185,8 +185,23 @@ textarea {
   animation: sweep 1.6s linear infinite;
 }
 
+/* the architecture spine: requests travel down, telemetry travels up */
+@keyframes flow-down { from { top: -12%; } to { top: 100%; } }
+@keyframes flow-up { from { top: 100%; } to { top: -12%; } }
+.flow-down, .flow-up { position: absolute; left: 0; width: 1px; height: 12%; }
+.flow-down {
+  background: linear-gradient(to bottom, transparent, rgb(110 170 255 / 0.95), transparent);
+  animation: flow-down 3.6s linear infinite;
+}
+.flow-up {
+  background: linear-gradient(to top, transparent, rgb(79 209 151 / 0.9), transparent);
+  animation: flow-up 4.4s linear infinite;
+  animation-delay: -1.8s;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .blink, .working { animation: none; }
+  .flow-down, .flow-up { display: none; }
 }
 
 /* ---- the anatomical twin: its own stage ---- */
