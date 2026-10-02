@@ -76,6 +76,7 @@ class RoomMonitor:
         self.timeline: Dict[str, Deque[Dict[str, Any]]] = {}
         self.episodes: Dict[str, Dict[str, Any]] = {}
         self.scores: Dict[str, Dict[str, Any]] = {}
+        self.body: Dict[str, Dict[str, Any]] = {}          # organ systems for the anatomical twin
         self.news_hist: Dict[str, Deque[Tuple[float, int]]] = {}
         self.faults: Dict[str, List[str]] = {}
         self.status: Dict[str, Dict[str, Any]] = {}
@@ -324,6 +325,7 @@ class RoomMonitor:
             altered = avpu in ("V", "P", "U") or (avpu == "C" and not c.v.get("chronic_confusion"))
             sc["qsofa"] = int(rr is not None and rr >= 22) + int(sbp is not None and sbp <= 100) + int(bool(altered))
         self.scores[room] = sc
+        self.body[room] = body_state(rec, c, [st["finding"] for st in cur.values() if st["last_seen"] == now], sc)
         if rec["kind"] == "synthetic":
             self._escalate(room, rec, c, now)
         return self._status_of(room)
@@ -715,6 +717,7 @@ class RoomMonitor:
                            "eval_period_s": EVAL_S, "pages_from": "room monitor" if rec["kind"] == "synthetic" else "sepsis detector",
                            "detectors": [n for n, _ in D.DETECTORS]},
             "risk": (eng.monitored.get(room) or {}).get("risk"),
+            "body": self.body.get(room),
         }
 
     def _care_team(self, room: str, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -763,6 +766,147 @@ class RoomMonitor:
         if (series[-1].get("o2_lpm") if series else 0):
             devs.append({"name": "Oxygen", "detail": f"Nasal cannula {series[-1]['o2_lpm']:g} L/min", "status": "running"})
         return devs
+
+
+# --------------------------------------------------------------------------- #
+# The body: every organ system scored from what this room measures and finds
+# --------------------------------------------------------------------------- #
+SYSTEMS = {"heart": "Cardiovascular", "lungs": "Respiratory", "brain": "Neurological", "kidneys": "Renal",
+           "liver": "Hepatic", "metabolic": "Metabolic", "immune": "Inflammatory", "blood": "Haematological"}
+_FINDING_REGIONS = {
+    "shock_index": ("heart",), "map_floor": ("heart",), "af_rvr": ("heart",), "baseline:sbp": ("heart",),
+    "baseline:hr": ("heart",), "bleeding": ("blood", "heart"), "opioid_rd": ("lungs", "brain"),
+    "baseline:rr": ("lungs",), "baseline:spo2": ("lungs",), "aki": ("kidneys",), "glucose": ("metabolic",),
+    "lactate": ("metabolic",), "potassium": ("metabolic",), "neutropenic_fever": ("immune",), "sirs": ("immune",),
+    "qsofa": ("immune",), "sepsis_model": ("immune",),
+}
+_SEV_VALUE = {"critical": 0.9, "urgent": 0.62, "watch": 0.35, "info": 0.0}
+_POINT_VALUE = {0: 0.0, 1: 0.12, 2: 0.35, 3: 0.62}
+_NEWS_PART_REGION = {"Respiration rate": "lungs", "SpO₂": "lungs", "Air or oxygen": "lungs", "Systolic BP": "heart",
+                     "Pulse": "heart", "Consciousness": "brain", "Temperature": "immune"}
+_TREND_REGION = {"Pulse": "heart", "Systolic": "heart", "Respiratory rate": "lungs", "SpO₂": "lungs",
+                 "Temperature": "immune"}
+# where a documented infection sits on the body (the twin's suspected-focus marker)
+_INFECTION_SITE = (("pneumonia", "Pneumonia", "lungs"), ("pyelonephritis", "Pyelonephritis", "kidneys"),
+                   ("urinary tract", "Urinary tract", "kidneys"), ("colectomy", "Abdominal (post-operative)", "abdomen"),
+                   ("cholecystectomy", "Abdominal (post-operative)", "abdomen"), ("cellulitis", "Cellulitis, left leg", None),
+                   ("febrile neutropenia", "Source unknown (neutropenic)", "systemic"))
+
+
+def _status(sev: float) -> str:
+    return "CRITICAL" if sev >= 0.75 else "DYSFUNCTION" if sev >= 0.45 else "STRESS" if sev >= 0.15 else "NORMAL"
+
+
+def _num(v: Any) -> Optional[float]:
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def body_state(rec: Dict[str, Any], c: D.Ctx, found: List[Dict[str, Any]], scores: Dict[str, Any]) -> Dict[str, Any]:
+    """Organ systems for the anatomical twin, from this room's own detections and measurements.
+
+    A system is MONITORED only if something in the room measures it (a vital, a lab, a
+    consciousness assessment); otherwise the twin shows it as no data, never as healthy.
+    Its severity is the worst of the findings that implicate it, the NEWS2 points of its
+    parameters, the SOFA points of its labs, and plain lab thresholds."""
+    v, labs = c.v, c.labs
+    last = {k: (xs[-1]["v"] if xs else None) for k, xs in labs.items()}
+    sev = {r: 0.0 for r in SYSTEMS}
+    why: Dict[str, List[Dict[str, Any]]] = {r: [] for r in SYSTEMS}
+
+    def bump(region: str, value: float, key: Optional[str] = None, title: Optional[str] = None,
+             severity: Optional[str] = None) -> None:
+        if value > sev[region]:
+            sev[region] = value
+        if key and not any(w["key"] == key for w in why[region]):
+            why[region].append({"key": key, "title": title, "severity": severity})
+
+    for f in found:
+        if f["severity"] == "info" and f["key"] not in ("news2", "sofa"):
+            continue
+        for region in _FINDING_REGIONS.get(f["key"], ()):
+            bump(region, _SEV_VALUE[f["severity"]], f["key"], f["title"], f["severity"])
+        if f["key"] == "news2":
+            for e in f["evidence"]:
+                region = next((r for lbl, r in _NEWS_PART_REGION.items() if str(e["label"]).startswith(lbl)), None)
+                if region and e.get("points"):
+                    bump(region, _POINT_VALUE.get(int(e["points"]), 0.62),
+                         "news2" if e["points"] >= 2 else None, f["title"], f["severity"] if e["points"] >= 2 else None)
+        if f["key"] == "sofa":
+            for e in f["evidence"]:
+                lbl, pts = str(e["label"]), int(e.get("points") or 0)
+                region = "blood" if lbl.startswith("Coagulation") else "liver" if lbl.startswith("Liver") else \
+                    "kidneys" if lbl.startswith("Renal") else "heart" if lbl.startswith("Cardio") else None
+                if region and pts:
+                    bump(region, {1: 0.2, 2: 0.45, 3: 0.7, 4: 0.9}[min(4, pts)], "sofa", f["title"], f["severity"])
+        if f["key"] == "trend":
+            # a worsening slope is a reason to look, not a dysfunction: it can lift a system
+            # to stress, never past it, while the values themselves are still in range
+            for e in f["evidence"]:
+                region = _TREND_REGION.get(str(e["label"]))
+                if region:
+                    bump(region, min(0.3, _SEV_VALUE[f["severity"]]), "trend", f["title"], f["severity"])
+    plt, hb, bili = _num(last.get("platelets")), _num(last.get("hemoglobin")), _num(last.get("bilirubin"))
+    if plt is not None:
+        bump("blood", 0.8 if plt < 50 else 0.45 if plt < 100 else 0.22 if plt < 150 else 0.0)
+    if hb is not None and hb < 8:
+        bump("blood", 0.45)
+    if bili is not None:
+        bump("liver", 0.75 if bili >= 6 else 0.45 if bili >= 2 else 0.22 if bili >= 1.2 else 0.0)
+
+    hr, sbp, dbp, mp = _num(v.get("hr")), _num(v.get("sbp")), _num(v.get("dbp")), _num(v.get("map"))
+    rr, spo2, temp, o2 = _num(v.get("rr")), _num(v.get("spo2")), _num(v.get("temp_c")), v.get("o2_lpm")
+    avpu = v.get("avpu")
+
+    def fmt(x: Optional[float], nd: int = 0) -> str:
+        return "—" if x is None else (f"{x:.{nd}f}" if nd else f"{round(x)}")
+
+    read: Dict[str, Optional[str]] = {r: None for r in SYSTEMS}
+    if hr is not None or sbp is not None or mp is not None:
+        bp = f"BP {fmt(sbp)}/{fmt(dbp)}" if sbp is not None and dbp is not None else f"MAP {fmt(mp)}" if mp is not None else None
+        si = scores.get("shock_index")
+        read["heart"] = " · ".join(x for x in (f"HR {fmt(hr)}" if hr is not None else None, bp,
+                                              f"SI {si:.2f}" if si and si >= 0.9 else None) if x)
+    if rr is not None or spo2 is not None:
+        on = f" on {o2:g} L" if o2 else " on air" if o2 == 0 else ""
+        read["lungs"] = " · ".join(x for x in (f"RR {fmt(rr)}" if rr is not None else None,
+                                              f"SpO₂ {fmt(spo2)}%{on}" if spo2 is not None else None) if x)
+    if avpu is not None:
+        read["brain"] = {"A": "Alert", "C": "Confused at baseline" if v.get("chronic_confusion") else "New confusion",
+                         "V": "Responds to voice only", "P": "Responds to pain only", "U": "Unresponsive"}[avpu]
+    if last.get("creatinine") is not None:
+        base = next((x["v"] for x in labs["creatinine"] if x.get("baseline")), None)
+        read["kidneys"] = f"Creatinine {last['creatinine']:g}" + (f" (baseline {base:g})" if base else "")
+    if bili is not None:
+        read["liver"] = f"Bilirubin {bili:g}"
+    met = [f"{n} {last[k]:g}" for k, n in (("lactate", "Lactate"), ("glucose", "Glucose"), ("potassium", "K"))
+           if last.get(k) is not None]
+    if met:
+        read["metabolic"] = " · ".join(met)
+    if temp is not None or last.get("wbc") is not None:
+        read["immune"] = " · ".join(x for x in (f"{temp:.1f} °C" if temp is not None else None,
+                                               f"WBC {last['wbc']:g}" if last.get("wbc") is not None else None) if x)
+    if plt is not None or hb is not None:
+        read["blood"] = " · ".join(x for x in (f"Platelets {plt:g}" if plt is not None else None,
+                                              f"Hb {hb:g}" if hb is not None else None) if x)
+
+    regions = {}
+    for r, label in SYSTEMS.items():
+        mon = read[r] is not None
+        sv = round(sev[r], 2) if mon else 0.0
+        regions[r] = {"label": label, "monitored": mon, "severity": sv, "status": _status(sv) if mon else "NO_DATA",
+                      "reading": read[r], "findings": why[r] if mon else []}
+    infection = None
+    if any(f["category"] == "sepsis" and f["severity"] in ("urgent", "critical") for f in found) or \
+            any(f["key"] == "sirs" and f["severity"] == "watch" for f in found):
+        dx = ((rec.get("admission") or {}).get("reason") or "").lower()
+        site = next(((label, region) for kw, label, region in _INFECTION_SITE if kw in dx), None)
+        if site:
+            infection = {"site": site[0], "region": site[1], "source": "the admitting diagnosis"}
+    return {"regions": regions, "infection": infection,
+            "channels": [{"key": "heart_rate", "value": hr}, {"key": "respiratory_rate", "value": rr},
+                         {"key": "map", "value": mp}, {"key": "spo2", "value": spo2}],
+            "vitals": {"heart_rate": hr, "respiratory_rate": rr, "map": mp, "spo2": spo2, "temp_c": temp,
+                       "lactate": last.get("lactate"), "wbc": last.get("wbc")}}
 
 
 def _merge_labs(a: Dict[str, List[Dict[str, float]]], b: Dict[str, List[Dict[str, float]]]) -> Dict[str, List[Dict[str, float]]]:

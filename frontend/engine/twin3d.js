@@ -40,7 +40,9 @@ const H = 1.7;                                    // body height (feet ~0)
 const BASE = new THREE.Color(0x848a93);           // calm / healthy — neutral
 const NODATA = new THREE.Color(0x4b4f56);
 const RIM = new THREE.Color(0xc2c7cf);
-const TIER_HEX = { STRESS: 0xe2a33c, DYSFUNCTION: 0xde833a, CRITICAL: 0xe5544c };
+// = the console's watch / urgent / critical hues (--color-p3 / p2 / p1), so an organ and
+// the room's finding about it are literally the same colour
+const TIER_HEX = { STRESS: 0xeeb12a, DYSFUNCTION: 0xf5762e, CRITICAL: 0xe5484d };
 const REGION_LABEL = {
   brain: "Neurological", heart: "Cardiovascular", lungs: "Respiratory",
   liver: "Hepatic", kidneys: "Renal", skin: "Peripheral", blood: "Coagulation",
@@ -96,10 +98,10 @@ let focusFoci = [], focusRegions = {};       // the attending's per-patient focu
 let ground, particles, pData, reticle;
 let beacon, beaconLabel, wrist, wristBone, glowTex;
 let infectFX, infLabel, lastInfection = null;     // suspected infection focus
-const INFECT_COL = 0xde833a;                       // distinct "infection" orange (= --dys)
+const INFECT_COL = 0xf5762e;                       // "infection" orange (= --dys)
 // suspected-focus region -> organ to light up (null = no single organ / systemic)
-const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver" };
-const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
+const FOCUS_ORGAN = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", abdomen: "intestine" };
+const FOCUS_AT = { lungs: "lung", respiratory: "lung", kidneys: "kidneyL", renal: "kidneyL", liver: "liver", hepatic: "liver", abdomen: "intestine", systemic: "heart", bloodstream: "heart", core: "heart", heart: "heart" };
 
 /* ---------------- Holographic Treatment Infusion ---------------- */
 let infusionParticles = null;
@@ -147,6 +149,12 @@ function iv(d, key, dec) {
 }
 let shellU = null;                                // shell shader uniforms
 let started = false, pendingData = null;
+let interacting = false, lastInteract = -1e9, swayT = 0;          // idle sway (see start)
+const _sph = new THREE.Spherical();
+let hoverKey = null, hlRegion = null, lastRay = 0;                // pointer hover / page highlight
+let hoverCb = null, pickCb = null, pinCb = null;                  // the page's listeners
+let hudEnabled = true, organTotal = 0;
+let camGoal = null;                                               // an eased camera move (focusRegion)
 let hr = 72, resp = 15, overall = 0, tNow = 0;
 
 /* ---------------- helpers ---------------- */
@@ -164,11 +172,13 @@ function backdropTexture() {
   c.width = 2; c.height = 256;                       // 1-D gradient, stretched by three
   const x = c.getContext("2d");
   const g = x.createLinearGradient(0, 0, 0, 256);
-  g.addColorStop(0.00, "#07080a");                   // top: near-black, keeps the head crisp
-  g.addColorStop(0.42, "#101319");
-  g.addColorStop(0.72, "#161a22");                   // horizon behind the torso
-  g.addColorStop(0.93, "#0d1016");
-  g.addColorStop(1.00, "#08090c");                   // floor, darker again
+  // graphite in the console's own family (the canvas is #212429): dark enough that a
+  // glowing organ is the brightest thing in frame, never a black hole in a grey page
+  g.addColorStop(0.00, "#16181b");                   // top: darkest, keeps the head crisp
+  g.addColorStop(0.40, "#1d2024");
+  g.addColorStop(0.70, "#24282d");                   // horizon behind the torso, the lift
+  g.addColorStop(0.92, "#1b1d21");
+  g.addColorStop(1.00, "#17191c");                   // floor, darker again
   x.fillStyle = g; x.fillRect(0, 0, 2, 256);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -307,6 +317,7 @@ function loadOrgans() {
   atlasGroup = new THREE.Group(); scene.add(atlasGroup);
   const loader = new GLTFLoader();
   const N_CAL = ORGAN_FILES.filter((c) => !c.defer).length;   // vessels load lazily, don't gate calibration
+  organTotal = N_CAL;
   ORGAN_FILES.forEach((cfg) => {
     const load = () => loader.load("/vendor/models/organs/" + cfg.file, (g) => {
       const root = g.scene, vascular = !!cfg.vascular, mat = vascular ? makeVascularMat() : makeOrganMat();
@@ -647,7 +658,7 @@ function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ 
 function setHud(kicker, name, hex) {
   ensureHud();
   if (!hudEl) return;
-  if (!name) { hudEl.style.display = "none"; return; }
+  if (!name || !hudEnabled) { hudEl.style.display = "none"; return; }
   hudEl.style.display = "flex";
   hudEl.style.setProperty("--tc", hex || "#ff9a3b");
   hudEl.innerHTML =
@@ -666,12 +677,12 @@ function buildInspect() {
 }
 function drawInspect(l1, l2, col) {
   const x = inspectLabel.userData.ctx; x.clearRect(0, 0, 300, 96);
-  x.fillStyle = "rgba(8,12,22,.9)"; rr(x, 8, 12, 284, 72, 10); x.fill();
-  x.strokeStyle = col; x.lineWidth = 2; rr(x, 8, 12, 284, 72, 10); x.stroke();
-  x.fillStyle = col; x.fillRect(8, 12, 4, 72);                  // accent bar
+  x.fillStyle = "rgba(40,44,50,.95)"; rr(x, 8, 12, 284, 72, 8); x.fill();
+  x.strokeStyle = "rgba(255,255,255,.14)"; x.lineWidth = 1.5; rr(x, 8, 12, 284, 72, 8); x.stroke();
+  x.save(); rr(x, 8, 12, 284, 72, 8); x.clip(); x.fillStyle = col; x.fillRect(8, 12, 4, 72); x.restore();
   x.textAlign = "left"; x.textBaseline = "middle";
-  x.fillStyle = "#eaf0ff"; x.font = "700 22px ui-monospace,monospace"; x.fillText(l1, 26, 38);
-  x.fillStyle = "#9fb0d6"; x.font = "500 15px ui-monospace,monospace"; x.fillText(l2, 26, 66);
+  x.fillStyle = "#e8eaed"; x.font = "600 21px ui-sans-serif,system-ui,sans-serif"; x.fillText(l1, 26, 38);
+  x.fillStyle = "#b1b7bf"; x.font = "500 15px ui-sans-serif,system-ui,sans-serif"; x.fillText(l2, 26, 66);
   inspectLabel.material.map.needsUpdate = true;
 }
 function inspectText(key) {
@@ -694,8 +705,7 @@ function refreshInspect() {
   drawInspect(t.l1, t.l2, t.col);
 }
 function setInspect(key) {
-  inspectKey = key;
-  if (controls) controls.autoRotate = !key;        // pause the spin while inspecting an organ
+  inspectKey = key;                                 // the idle sway pauses while an organ is open
   if (!key) { if (inspectLabel) inspectLabel.visible = false; return; }
   inspectLabel.userData.key = key; refreshInspect(); inspectLabel.visible = true;
 }
@@ -712,6 +722,7 @@ function onUp(e) {
   for (const k in organs) organs[k].pivot && organs[k].pivot.traverse((o) => { if (o.isMesh) { o.userData._ok = k; meshes.push(o); } });
   const hit = raycaster.intersectObjects(meshes, false)[0];
   setInspect(hit ? hit.object.userData._ok : null);
+  if (pickCb) pickCb(hit ? organs[hit.object.userData._ok].region : null);
 }
 
 /* ---------------- suspected infection focus ----------------
@@ -743,7 +754,7 @@ function start(el) {
   if (!el) return;
   if (started) { attach(el); return; }
   container = el; ensureHud(el); const w = el.clientWidth || 480, h = el.clientHeight || 560;
-  scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x05070d, 0.10);
+  scene = new THREE.Scene(); scene.fog = new THREE.FogExp2(0x1c1f23, 0.10);
   scene.background = backdropTexture();
   camera = new THREE.PerspectiveCamera(33, w / h, 0.1, 100);
   camera.position.set(0.2, H * 0.56, H * 1.9);
@@ -756,7 +767,12 @@ function start(el) {
   controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true; controls.dampingFactor = 0.06; controls.enablePan = false;
   controls.target.set(0, H * 0.50, 0);
-  controls.autoRotate = true; controls.autoRotateSpeed = 0.28;
+  // No endless spin: at idle the body SWAYS through ±30° around its front, so the
+  // anatomy (and every pinned label) stays legible; a drag takes over at once and the
+  // sway eases back in after a few seconds of no input.
+  controls.autoRotate = false;
+  controls.addEventListener("start", () => { interacting = true; lastInteract = performance.now(); });
+  controls.addEventListener("end", () => { interacting = false; lastInteract = performance.now(); });
   controls.minPolarAngle = Math.PI * 0.38; controls.maxPolarAngle = Math.PI * 0.56;
   // Neutral studio lighting. Every lamp used to be tinted cool blue, which put the old
   // brand cast back onto the tissue after the materials had been neutralised — and a
@@ -772,7 +788,14 @@ function start(el) {
   // the emissive organs/vessels now bloom like a real hologram instead of reading
   // as flat glowing blobs. Tuned subtle so healthy tissue stays crisp and only the
   // hot (high-emissive) organs bloom.
-  composer = new EffectComposer(renderer);
+  // MSAA on the composer's own target. `antialias: true` above only applies to the
+  // default framebuffer, and every pass renders into the composer's targets, which
+  // three creates WITHOUT samples: edges were aliased since bloom shipped.
+  const dpr = renderer.getPixelRatio();
+  const rt = new THREE.WebGLRenderTarget(w * dpr, h * dpr, {
+    samples: renderer.capabilities.isWebGL2 ? 4 : 0, type: THREE.HalfFloatType });
+  composer = new EffectComposer(renderer, rt);
+  composer.setPixelRatio(dpr); composer.setSize(w, h);
   composer.addPass(new RenderPass(scene, camera));
   // strength / radius / threshold — tuned so only genuinely hot organ cores get a
   // soft halo instead of the whole torso + head blowing out to white.
@@ -785,6 +808,8 @@ function start(el) {
   loadBody(); loadOrgans(); buildBeacon(); buildInfection(); buildInspect();
   renderer.domElement.addEventListener("pointerdown", onDown);
   renderer.domElement.addEventListener("pointerup", onUp);
+  renderer.domElement.addEventListener("pointermove", onMove);
+  renderer.domElement.addEventListener("pointerleave", () => setHoverKey(null));
   clock = new THREE.Clock(); started = true;
   ro = new ResizeObserver(resize); ro.observe(el); animate();
 }
@@ -800,6 +825,7 @@ function attach(el) {
   el.appendChild(renderer.domElement);
   if (hudEl) { hudEl.remove(); hudEl = null; }
   ensureHud(el);
+  if (pinHost) { el.appendChild(pinHost); }
   if (ro) ro.disconnect();
   ro = new ResizeObserver(resize); ro.observe(el);
   parked = false;
@@ -925,6 +951,14 @@ function applyRegions() {
   if (overall >= 0.75) bc.lerp(new THREE.Color(TIER_HEX.CRITICAL), 0.16);
   ZONE.head.copy(bc); ZONE.chest.copy(bc); ZONE.abd.copy(bc); ZONE.pelvis.copy(bc); ZONE.limb.copy(bc);
 
+  // the brain has no reference mesh: its dim stub (and the cord) carry the neurological
+  // system when a room measures consciousness, and stay "no data" grey when nothing does
+  if (brainStub) {
+    const rb = regions.brain, mon = !!(rb && rb.monitored), sv = mon ? (rb.severity || 0) : 0;
+    brainStub.material.color.copy(mon ? tierColor(rb) : NODATA);
+    brainStub.userData.sev = sv; brainStub.userData.mon = mon;
+  }
+
   // suspected infection focus — light up the source organ + an orange hot zone.
   // The TEXT tag is rendered as a crisp DOM HUD (see setHud) instead of a 3D sprite,
   // so bloom can never wash it out and it sits cleanly in the corner, off the body.
@@ -932,7 +966,10 @@ function applyRegions() {
   if (infLabel) infLabel.visible = false;
   if (beacon) beacon.visible = false;
   if (lastInfection && lastInfection.site) {
-    infectFX.position.copy(focusPos(lastInfection.region)); infectFX.visible = true;
+    // a site with no organ on this body (a leg cellulitis) gets the label, not a marker
+    // planted somewhere it is not
+    const placeable = !!FOCUS_AT[lastInfection.region] || lastInfection.region === "skin";
+    infectFX.position.copy(focusPos(lastInfection.region)); infectFX.visible = placeable;
     const fk = FOCUS_ORGAN[lastInfection.region];
     [fk, lastInfection.region === "kidneys" ? "kidneyR" : null].forEach((key) => {
       const o = key && organs[key]; if (!o) return;
@@ -980,6 +1017,23 @@ function animate() {
   // resume instantly) but skip the simulation and the draw entirely.
   if (parked) return;
   tNow += dt; const t = tNow;
+  if (!interacting && !inspectKey && performance.now() - lastInteract > 5000) {
+    swayT += dt;
+    _sph.setFromVector3(_v.copy(camera.position).sub(controls.target));
+    const goal = 0.52 * Math.sin(swayT * 0.16);             // ±30°, a ~40 s cycle
+    let d = goal - _sph.theta;
+    d = Math.atan2(Math.sin(d), Math.cos(d));                // the short way round
+    _sph.theta += d * Math.min(1, dt * 0.9);                  // eases back after a drag
+    camera.position.setFromSpherical(_sph).add(controls.target);
+  }
+  if (camGoal) {
+    const a = Math.min(1, dt * 3.2);
+    controls.target.lerp(camGoal.target, a);
+    _v.copy(camera.position).sub(controls.target);
+    const d = _v.length(), nd = d + (camGoal.dist - d) * a;
+    camera.position.copy(controls.target).add(_v.multiplyScalar(nd / (d || 1)));
+    if (controls.target.distanceTo(camGoal.target) < 0.002 && Math.abs(nd - camGoal.dist) < 0.004) camGoal = null;
+  }
   controls.update();
 
   // heartbeat (sharp) + breathing cycles, from live vitals
@@ -1034,6 +1088,18 @@ function animate() {
       const ip = 0.5 + 0.5 * Math.sin(t * 4.0);
       o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.55) * (1.05 + 0.35 * ip);
       if (!o.cfg.beat && !o.cfg.breathe) o.pivot.scale.setScalar(1 + 0.05 * ip);
+    }
+    // hover (the pointer is on it) and highlight (the page points at its system): the
+    // organ steps forward, everything else steps back
+    const lit = (hoverKey && organs[hoverKey] && organs[hoverKey].region === o.region) || (hlRegion && hlRegion === o.region);
+    if (lit) {
+      o.mat.emissiveIntensity = Math.max(o.mat.emissiveIntensity, 0.62) * 1.32;
+      if (o.halo) { o.halo.visible = true; o.pivot.getWorldPosition(_v); o.halo.position.copy(_v);
+        if (!o.mon || o.sev < 0.15) o.halo.material.color.copy(RIM);
+        const sc = 0.15 + 0.03 * Math.sin(t * 3.0); o.halo.scale.set(sc, sc, 1);
+        o.halo.material.opacity = Math.max(o.halo.material.opacity || 0, 0.34); }
+    } else if (hlRegion || hoverKey) {
+      o.mat.emissiveIntensity *= 0.55;
     }
     o.mat.emissiveIntensity = Math.min(o.mat.emissiveIntensity, 1.45);   // never blow out
     // glow halo: a hot organ blooms through the body, beating with the pulse
@@ -1164,6 +1230,12 @@ function animate() {
     });
   }
   _placeFlags();
+  if (brainStub) {
+    const sv = brainStub.userData.sev || 0, mon = !!brainStub.userData.mon;
+    const lit = hlRegion === "brain" || (hoverKey && organs[hoverKey] && organs[hoverKey].region === "brain");
+    brainStub.material.opacity = mon ? (0.26 + 0.42 * sv) * (sv >= 0.45 ? (0.8 + 0.2 * Math.sin(t * 3.2)) : 1) * (lit ? 1.5 : 1) : 0.2;
+  }
+  _placePins();
   if (wrist && wristBone && wrist.visible) { wristBone.getWorldPosition(_v); wrist.position.copy(_v).add(new THREE.Vector3(0, 0.02, 0.04)); }
 
   // inspect readout tracks the clicked organ
@@ -1244,6 +1316,162 @@ function setHyperscan(on) {
   auraRings.forEach((a) => { a.visible = hyperOn; });
 }
 
+/* ---------------- the page's handles ---------------- */
+function pickAt(cx, cy) {
+  if (!raycaster || !renderer) return null;
+  const rect = renderer.domElement.getBoundingClientRect();
+  pointer.x = ((cx - rect.left) / rect.width) * 2 - 1;
+  pointer.y = -((cy - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(pointer, camera);
+  const meshes = [];
+  for (const k in organs) organs[k].pivot && organs[k].pivot.traverse((o) => { if (o.isMesh) { o.userData._ok = k; meshes.push(o); } });
+  const hit = raycaster.intersectObjects(meshes, false)[0];
+  return hit ? hit.object.userData._ok : null;
+}
+function setHoverKey(k) {
+  if (k === hoverKey) return;
+  hoverKey = k;
+  if (renderer) renderer.domElement.style.cursor = k ? "pointer" : "";
+  if (hoverCb) hoverCb(k && organs[k] ? organs[k].region : null);
+}
+function onMove(e) {
+  if (e.buttons) return;                                        // dragging the camera
+  const now = performance.now(); if (now - lastRay < 60) return;
+  lastRay = now; setHoverKey(pickAt(e.clientX, e.clientY));
+}
+/** The page points at a system (hovering its row): that system's organs step forward. */
+function setHighlight(region) { hlRegion = region || null; }
+function onHover(cb) { hoverCb = cb || null; }
+function onPick(cb) { pickCb = cb || null; }
+function onPin(cb) { pinCb = cb || null; }
+function setHudEnabled(on) { hudEnabled = !!on; if (!hudEnabled && hudEl) hudEl.style.display = "none"; }
+/** Front-on again, sway restarting from the front. */
+function resetView() {
+  if (!camera || !controls) return;
+  setInspect(null); interacting = false; lastInteract = -1e9; swayT = 0; camGoal = null;
+  fitCamera();
+}
+/** Ease the camera onto a system's organ (closer, centred on it); null eases back out to
+    the whole body. The sway carries on around whatever is centred. */
+function focusRegion(region) {
+  if (!camera || !controls) return;
+  const fov = camera.fov * Math.PI / 180;
+  const full = (H * 0.50) / Math.tan(fov / 2) * 1.08;
+  if (!region) { camGoal = { target: new THREE.Vector3(0, H * 0.50, 0), dist: full }; return; }
+  const k = PIN_ANCHOR[region];
+  const p = new THREE.Vector3();
+  if (k === "__brain" && brainStub) brainStub.getWorldPosition(p);
+  else if (organs[k] && organs[k].pivot) organs[k].pivot.getWorldPosition(p);
+  else return;
+  // centre the organ but keep enough of the torso in frame to read where it is
+  camGoal = { target: new THREE.Vector3(p.x * 0.6, p.y, 0), dist: full * 0.62 };
+}
+/** What has loaded, for the page's loading state (the atlas is ~18 MB of GLB). */
+function progress() {
+  const core = Object.values(organs).filter((o) => o.pivot && !o.vascular).length;
+  return { body: !!modelGroup, organs: core, total: organTotal || ORGAN_FILES.length, ready: !!modelGroup && core >= (organTotal || ORGAN_FILES.length) };
+}
+
+/* Pins — each stressed system's label in a gutter beside the body, joined to its organ
+   by a leader line. DOM and SVG rather than sprites, so the text stays crisp through the
+   bloom pass; laid out every frame so they follow the body as it sways. Each system has
+   a fixed side (as it sits when the patient faces you), so a label never jumps across
+   the figure mid-sway. */
+const PIN_ANCHOR = { heart: "heart", lungs: "lung", liver: "liver", kidneys: "kidneyL", blood: "spleen",
+                     immune: "thymus", metabolic: "pancreas", brain: "__brain" };
+const PIN_SIDE = { heart: "right", lungs: "left", liver: "left", kidneys: "left", blood: "right",
+                   immune: "right", metabolic: "right", brain: "left" };
+const PIN_HEX = { CRITICAL: "#e5484d", DYSFUNCTION: "#f5762e", STRESS: "#eeb12a", NORMAL: "#a8afb8" };
+let pinHost = null, pinSvg = null, pinEls = {};
+function ensurePins() {
+  if (pinHost && pinHost.isConnected) return true;
+  const host = container; if (!host) return false;
+  pinHost = document.createElement("div"); pinHost.className = "tw-pins";
+  pinSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); pinSvg.setAttribute("class", "tw-leaders");
+  pinHost.appendChild(pinSvg); host.appendChild(pinHost);
+  pinEls = {};
+  return true;
+}
+function setPins(list) {
+  if (!started || !ensurePins()) { pendingPins = list; return; }
+  const want = {};
+  (list || []).forEach((p) => { if (p && p.region) want[p.region] = p; });
+  for (const r in pinEls) if (!want[r]) { pinEls[r].el.remove(); pinEls[r].g.remove(); delete pinEls[r]; }
+  for (const r in want) {
+    const p = want[r];
+    let e = pinEls[r];
+    if (!e) {
+      const el = document.createElement("button"); el.type = "button"; el.className = "tw-pin"; el.dataset.region = r;
+      el.innerHTML = '<span class="tw-pin-k"></span><span class="tw-pin-v"></span>';
+      el.addEventListener("mouseenter", () => { hlRegion = r; if (pinCb) pinCb(r, "hover"); });
+      el.addEventListener("mouseleave", () => { hlRegion = null; if (pinCb) pinCb(null, "hover"); });
+      el.addEventListener("click", () => { if (pinCb) pinCb(r, "click"); });
+      const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      g.innerHTML = '<path class="tw-lead" /><circle class="tw-ring" r="7" /><circle class="tw-dot" r="2.6" />';
+      pinSvg.appendChild(g); pinHost.appendChild(el);
+      e = pinEls[r] = { el, g, w: 0 };
+    }
+    e.el.querySelector(".tw-pin-k").textContent = p.label || "";
+    e.el.querySelector(".tw-pin-v").textContent = p.sub || "";
+    e.el.dataset.side = PIN_SIDE[r] || "right";
+    e.el.dataset.status = p.status || "STRESS";
+    e.el.style.setProperty("--pc", PIN_HEX[p.status] || PIN_HEX.STRESS);
+    e.g.style.setProperty("--pc", PIN_HEX[p.status] || PIN_HEX.STRESS);
+    e.g.dataset.status = p.status || "STRESS";
+    e.w = 0;                                                   // re-measure on the next frame
+  }
+}
+let pendingPins = null;
+const _pa = new THREE.Vector3();
+function _placePins() {
+  if (pendingPins && started && ensurePins()) { const p = pendingPins; pendingPins = null; setPins(p); }
+  if (!pinHost || !camera) return;
+  const w = container.clientWidth, h = container.clientHeight;
+  const show = w >= 300;
+  pinHost.style.display = show ? "" : "none";
+  if (!show) return;
+  const compact = w < 440;
+  if (pinHost.classList.contains("compact") !== compact) {
+    pinHost.classList.toggle("compact", compact);
+    for (const r in pinEls) pinEls[r].w = 0;                // the labels changed size
+  }
+  pinSvg.setAttribute("width", w); pinSvg.setAttribute("height", h);
+  const sides = { left: [], right: [] };
+  for (const r in pinEls) {
+    const e = pinEls[r];
+    const k = PIN_ANCHOR[r];
+    let ok = false;
+    if (k === "__brain" && brainStub) { brainStub.getWorldPosition(_pa); ok = true; }
+    else if (organs[k] && organs[k].pivot) { organs[k].pivot.getWorldPosition(_pa); ok = true; }
+    if (!ok) { e.el.style.display = "none"; e.g.style.display = "none"; continue; }
+    _pa.project(camera);
+    const ax = (_pa.x * 0.5 + 0.5) * w, ay = (-_pa.y * 0.5 + 0.5) * h;
+    if (!e.w) { e.el.style.display = ""; e.w = e.el.offsetWidth || 120; e.h = e.el.offsetHeight || 34; }
+    sides[e.el.dataset.side === "left" ? "left" : "right"].push({ r, e, ax, ay, y: ay - e.h / 2 });
+  }
+  const GAP = 8, M = 10;
+  for (const side of ["left", "right"]) {
+    const list = sides[side].sort((a, b) => a.y - b.y);
+    for (let i = 0; i < list.length; i++) {                   // push down past the one above
+      if (i) list[i].y = Math.max(list[i].y, list[i - 1].y + list[i - 1].e.h + GAP);
+    }
+    const over = list.length ? list[list.length - 1].y + list[list.length - 1].e.h - (h - M) : 0;
+    if (over > 0) list.forEach((it) => (it.y -= over));         // then lift the column back inside
+    list.forEach((it) => { it.y = Math.max(M, it.y); });
+    list.forEach(({ e, ax, ay, y }) => {
+      const x = side === "left" ? M : w - M - e.w;
+      e.el.style.display = ""; e.g.style.display = "";
+      e.el.style.transform = "translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px)";
+      const sx = side === "left" ? x + e.w + 4 : x - 4, sy = y + 12;
+      const ex = sx + (side === "left" ? 14 : -14);
+      e.g.querySelector(".tw-lead").setAttribute("d", "M" + sx.toFixed(1) + "," + sy.toFixed(1) + "H" + ex.toFixed(1) + "L" + ax.toFixed(1) + "," + ay.toFixed(1));
+      e.g.querySelector(".tw-dot").setAttribute("cx", ax.toFixed(1)); e.g.querySelector(".tw-dot").setAttribute("cy", ay.toFixed(1));
+      e.g.querySelector(".tw-ring").setAttribute("cx", ax.toFixed(1)); e.g.querySelector(".tw-ring").setAttribute("cy", ay.toFixed(1));
+      e.el.classList.toggle("on", hlRegion === e.el.dataset.region);
+    });
+  }
+}
+
 /* Flags — a finding pinned to the organ it came from, as the sweep discovers it.
    DOM rather than sprites so the text stays crisp through the bloom pass, and
    projected each frame so they track the body as it rotates. */
@@ -1304,5 +1532,6 @@ function _placeFlags() {
 }
 
 export { start, attach, detach, update, resize, setOptical, setFocus, setParked,
-         setHyperscan, flag, clearFlags, triggerInfusion };
+         setHyperscan, flag, clearFlags, triggerInfusion,
+         setPins, setHighlight, onPin, onHover, onPick, resetView, focusRegion, progress, setHudEnabled };
 export const isParked = () => parked;

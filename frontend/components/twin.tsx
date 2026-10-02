@@ -9,7 +9,7 @@ type TwinModule = typeof import("@/engine/twin3d.js");
 // One engine per page session: the organ meshes are ~35 MB, so the module (and
 // its single WebGL renderer) is loaded once and re-parented between mounts.
 let enginePromise: Promise<TwinModule> | null = null;
-function engine(): Promise<TwinModule> {
+export function engine(): Promise<TwinModule> {
   enginePromise ??= import("@/engine/twin3d.js");
   return enginePromise;
 }

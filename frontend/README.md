@@ -38,13 +38,15 @@ components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue,
                     composer.tsx (N, text or voice) · panels.tsx (KPIs with hour sparklines, pages, staff,
                     insights, policy) · bits.tsx (priority chips, countdowns, avatars)
 components/rooms/   unit.tsx (one room as a unit: header, scores, detections, vitals, labs, record,
-                    linked objects, timeline) · board.tsx (every room as a tile) · drawer.tsx (the
-                    overview's watchlist and room drawer) · bits.tsx (severity, NEWS2, allergy and code chips)
+                    linked objects, timeline) · body.tsx (the anatomical twin lit by the room, pins,
+                    systems) · board.tsx (every room as a tile) · drawer.tsx (the overview's watchlist and
+                    room drawer) · bits.tsx (severity, NEWS2, allergy and code chips)
 components/         shell.tsx (sidebar, top bar, status, user) · nav.ts (the section model) · command.tsx (⌘K palette)
                     os/ (architecture, kernel, journal, gate, shell views) · bed/census.tsx · ui.tsx (panels, tags,
                     buttons, inspector sheet, modal, mini charts, Restricted)
                     feed.tsx · twin.tsx · terminal.tsx · bed/ (patient panels, chart, orders)
-engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js
+engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js (plus pinned system
+                    labels, hover/highlight, camera focus, an idle sway and MSAA through the composer)
 lib/                paging.ts (types, the event reducer, usePaging, labels, clock) · rooms.ts (room-unit
                     contracts, severity hues, useBoard/useUnit) ·
                     api.ts (backend, gate token, session renewal) · hooks.ts · clinical.ts ·
@@ -118,7 +120,9 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
 - **The twin is a singleton.** `engine/twin3d.js` owns one WebGL renderer and ~18 MB of
   meshes. `start()` on an already-started engine re-parents the canvas (`attach`), and
   unmounting calls `detach`, which parks the render loop. Do not create a second renderer per
-  mount.
+  mount. A page that changes the engine's shared state (pins, the HUD, the camera, its
+  listeners) puts it back on unmount: the room view does, so the patient record's twin never
+  inherits a room's pins or a zoomed camera.
 - **A static export cannot pre-render unknown ids**, so patients and pagers take the id as a
   query string, and pages that use `useSearchParams` are wrapped in `<Suspense>`.
 

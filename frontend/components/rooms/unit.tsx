@@ -29,6 +29,7 @@ import {
 } from "@/lib/rooms";
 
 import { AllergyChips, CodeChip, KindTag, News2Badge, SevDot, SevTag, Spark, useWidth } from "./bits";
+import { RoomBody } from "./body";
 
 /* ------------------------------------------------------------------ */
 /* One room, as one unit                                                */
@@ -87,8 +88,15 @@ function Unoccupied({ u }: { u: Unit }) {
 function Occupied({ u }: { u: Required<Unit> }) {
   const rec = u.record;
   const replay = u.kind === "replay";
-  const active = u.findings.filter((f) => f.severity !== "info");
-  const tracked = u.findings.filter((f) => f.severity === "info");
+  // a system picked on the body narrows the detections to the findings that implicate it
+  const [system, setSystem] = useState<string | null>(null);
+  const pick = (r: string | null) => {
+    setSystem(r);
+    if (r && typeof window !== "undefined" && window.innerWidth < 1024) document.getElementById("detections")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const sysKeys = system ? new Set((u.body?.regions[system]?.findings ?? []).map((f) => f.key)) : null;
+  const active = u.findings.filter((f) => f.severity !== "info" && (!sysKeys || sysKeys.has(f.key)));
+  const tracked = u.findings.filter((f) => f.severity === "info" && (!sysKeys || sysKeys.has(f.key)));
   const openPage = u.pages.find((p) => p.active) ?? null;
   return (
     <div>
@@ -96,14 +104,23 @@ function Occupied({ u }: { u: Required<Unit> }) {
       <ScoreStrip u={u} active={active} openPage={openPage} />
 
       <div className="grid items-start gap-3 lg:grid-cols-2 wide:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)_minmax(0,0.95fr)]">
-        <div className="flex min-w-0 flex-col gap-3">
-          <Detections u={u} active={active} tracked={tracked} />
+        {/* below lg the middle column dissolves into the grid so the body can lead the page,
+            ahead of the detections; from lg up it is one column again */}
+        <div className="order-2 flex min-w-0 flex-col gap-3 lg:order-none">
+          <Detections u={u} active={active} tracked={tracked} system={system ? u.body?.regions[system]?.label ?? system : null} onClear={() => setSystem(null)} />
         </div>
-        <div className="flex min-w-0 flex-col gap-3">
-          <VitalsPanel u={u} />
-          <LabsPanel u={u} />
+        <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-3">
+          <div className="order-1 min-w-0 lg:order-none">
+            <RoomBody body={u.body} kind={u.kind} system={system} onSystem={pick} />
+          </div>
+          <div className="order-3 min-w-0 lg:order-none">
+            <VitalsPanel u={u} />
+          </div>
+          <div className="order-4 min-w-0 lg:order-none">
+            <LabsPanel u={u} />
+          </div>
         </div>
-        <div className="flex min-w-0 flex-col gap-3 lg:col-span-2 wide:col-span-1">
+        <div className="order-5 flex min-w-0 flex-col gap-3 lg:order-none lg:col-span-2 wide:col-span-1">
           <div className="grid gap-3 lg:grid-cols-2 wide:grid-cols-1">
             <RecordPanel rec={rec} now={u.now} replay={replay} />
             <LinkedPanel u={u} />
@@ -139,7 +156,7 @@ function Header({ u, openPage }: { u: Required<Unit>; openPage: UnitPage | null 
       <div className="mt-2 flex flex-wrap items-start gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
-            <h1 className="font-mono text-[26px] font-semibold leading-none tracking-[-0.02em] text-ink">Room {u.room}</h1>
+            <h1 className="whitespace-nowrap font-mono text-[26px] font-semibold leading-none tracking-[-0.02em] text-ink">Room {u.room}</h1>
             <span className="text-[17px] font-semibold tracking-[-0.01em] text-ink">{pt.name ?? "Patient"}</span>
             <span className="text-[13px] text-muted">
               {pt.age != null ? `${Math.round(pt.age)}` : ""}
@@ -175,7 +192,7 @@ function Header({ u, openPage }: { u: Required<Unit>; openPage: UnitPage | null 
             )}
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex w-full shrink-0 flex-wrap items-center gap-2 sm:w-auto">
           {openPage && (
             <Link
               href={`/operator/?page=${encodeURIComponent(openPage.id)}`}
@@ -276,7 +293,7 @@ function ScoreStrip({ u, active, openPage }: { u: Required<Unit>; active: Findin
 /* ------------------------------------------------------------------ */
 /* Detections                                                           */
 /* ------------------------------------------------------------------ */
-function Detections({ u, active, tracked }: { u: Required<Unit>; active: Finding[]; tracked: Finding[] }) {
+function Detections({ u, active, tracked, system, onClear }: { u: Required<Unit>; active: Finding[]; tracked: Finding[]; system: string | null; onClear: () => void }) {
   const [tab, setTab] = useState<"active" | "resolved">("active");
   // a paging finding belongs to its track's open episode: medication findings to pharmacy's, the rest to the room's
   const pageOf = useMemo(() => {
@@ -291,6 +308,7 @@ function Detections({ u, active, tracked }: { u: Required<Unit>; active: Finding
     return m;
   }, [u.episode, u.med_episode, u.findings]);
   return (
+    <div id="detections" className="scroll-mt-3">
     <Panel
       title="Detections"
       meta={`${u.monitoring.detectors.length} detectors over this room's record and vitals · re-run every ${u.monitoring.eval_period_s} s`}
@@ -307,10 +325,20 @@ function Detections({ u, active, tracked }: { u: Required<Unit>; active: Finding
       }
       flush
     >
+      {system && (
+        <div className="flex items-center gap-2 border-b border-line bg-s2/50 px-3.5 py-1.5 text-[12px]">
+          <span className="text-dim">Showing</span>
+          <span className="font-medium text-ink">{system}</span>
+          <span className="text-dim">findings only</span>
+          <button onClick={onClear} className="ml-auto rounded px-1.5 text-[11.5px] text-accent-ink hover:underline">
+            Show all
+          </button>
+        </div>
+      )}
       {tab === "active" ? (
         <>
           {active.length === 0 ? (
-            <div className="px-3.5 py-6 text-center text-[12.5px] text-dim">Nothing above information level. Every detector is running.</div>
+            <div className="px-3.5 py-6 text-center text-[12.5px] text-dim">{system ? `No active finding implicates ${system.toLowerCase()} right now.` : "Nothing above information level. Every detector is running."}</div>
           ) : (
             <ul className="divide-y divide-line">
               {active.map((f) => (
@@ -355,6 +383,7 @@ function Detections({ u, active, tracked }: { u: Required<Unit>; active: Finding
         </ul>
       )}
     </Panel>
+    </div>
   );
 }
 

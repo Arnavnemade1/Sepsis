@@ -16,6 +16,8 @@ reading, and the reading has to differ.
   [7] monitor      calm at rest; a deterioration pages once, routes, recovers and closes;
                    a nurse's report becomes the room's measurement; ICU rooms are not paged
                    by the monitor; a broken detector cannot blind the room
+  [8] body         the anatomical twin's organ systems: unmeasured is NO_DATA, a trend
+                   alone stops at stress, findings light the organs they implicate
 
     .venv/bin/python -m backend.aegis.rooms.verify_rooms
 """
@@ -243,6 +245,36 @@ def test_firewall() -> None:
     ok(99.0 in [x["v"] for x in s20["labs"]["creatinine"]], "at hour 20 the same value is visible (the check can fail)")
 
 
+def test_body() -> None:
+    print("[8] the body: organ systems for the anatomical twin")
+    from backend.aegis.rooms.monitor import body_state
+    rec = record(admission={"reason": "Urinary tract infection, pyelonephritis"}, flags=["infection"])
+    c = ctx(rec, {**NORMAL, "avpu": "A"}, labs={"creatinine": [{"t": 1.0, "v": 1.0}]})
+    b = body_state(rec, c, [], {})
+    ok(b["regions"]["liver"]["status"] == "NO_DATA" and not b["regions"]["liver"]["monitored"],
+       "a system nothing in the room measures (no bilirubin) is NO_DATA, never NORMAL")
+    ok(b["regions"]["kidneys"]["status"] == "NORMAL" and b["regions"]["kidneys"]["monitored"],
+       "a measured system in range (creatinine 1.0) is NORMAL")
+    nb = body_state(rec, ctx(rec, {k: x for k, x in NORMAL.items() if k != "avpu"}), [], {})
+    ok(b["regions"]["brain"]["monitored"] and not nb["regions"]["brain"]["monitored"],
+       "the brain is monitored only when the room assesses consciousness")
+    trend = D.Finding("trend", "Trend", "3 vital signs worsening", "urgent", "deterioration",
+                      [{"label": "Respiratory rate", "value": "+6", "unit": "over 15 min"}]).to_dict()
+    t = body_state(rec, c, [trend], {})
+    ok(t["regions"]["lungs"]["status"] == "STRESS",
+       f"a worsening trend alone lifts a system to stress, not further ({t['regions']['lungs']['status']})")
+    op = D.Finding("opioid_rd", "Opioid safety", "RR 7", "critical", "respiratory", []).to_dict()
+    o = body_state(rec, c, [op], {})
+    ok(o["regions"]["lungs"]["status"] == "CRITICAL" and o["regions"]["brain"]["status"] == "CRITICAL"
+       and any(f["key"] == "opioid_rd" for f in o["regions"]["lungs"]["findings"]),
+       "opioid respiratory depression lights the lungs and the brain, and names itself as why")
+    ok(b["infection"] is None, "no sepsis finding, no suspected-source marker")
+    q = D.Finding("qsofa", "qSOFA", "qSOFA 2 with suspected infection", "critical", "sepsis", []).to_dict()
+    i = body_state(rec, c, [q], {})
+    ok(i["infection"] and i["infection"]["region"] == "kidneys",
+       "with a sepsis finding, the suspected source comes from the admitting diagnosis (pyelonephritis → kidneys)")
+
+
 def _os(clk: Clock, demo: bool = False) -> PagingOS:
     os_ = PagingOS(clock=clk, seed=5, demo_history=False)
     os_.settings["demo_traffic"] = demo
@@ -340,7 +372,8 @@ def main() -> None:
     print("=" * 72)
     print("AegisOS room monitor — verification")
     print("=" * 72)
-    for t in (test_news2, test_screens, test_baseline, test_medication, test_conditional, test_firewall, test_monitor):
+    for t in (test_news2, test_screens, test_baseline, test_medication, test_conditional, test_firewall, test_monitor,
+              test_body):
         t()
     print("-" * 72)
     print(f"ALL {_n['pass']} ROOM CHECKS PASSED")

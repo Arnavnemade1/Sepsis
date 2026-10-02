@@ -118,6 +118,23 @@ export type TimelineEvent = {
 
 export type Simulation = { kind: string; label: string; started_at: number; phase: "developing" | "established" | "recovering"; progress: number; page: string | null; observed: boolean };
 
+export type SystemStatus = "CRITICAL" | "DYSFUNCTION" | "STRESS" | "NORMAL" | "NO_DATA";
+/** One organ system as the room monitor scores it (backend/aegis/rooms/monitor.py body_state). */
+export type BodySystem = {
+  label: string;
+  monitored: boolean;
+  severity: number;
+  status: SystemStatus;
+  reading: string | null;
+  findings: { key: string; title: string | null; severity: string | null }[];
+};
+export type Body = {
+  regions: Record<string, BodySystem>;
+  infection: { site: string; region: string | null; source: string } | null;
+  channels: { key: string; value: number | null }[];
+  vitals: Record<string, number | null>;
+};
+
 export type UnitPage = { id: string; priority: number; status: string; text: string; source: string; created_at: number; assignee: string | null; category: string; active: boolean };
 
 export type Unit = {
@@ -148,6 +165,7 @@ export type Unit = {
   simulation?: Simulation | null;
   monitoring?: { kind: RoomKind; sample_s: number | null; eval_period_s: number; pages_from: string; detectors: string[] };
   risk?: number | null;
+  body?: Body | null;
 };
 
 export type BoardRoom = {
