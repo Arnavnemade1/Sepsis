@@ -268,6 +268,9 @@ def test_body() -> None:
     ok(o["regions"]["lungs"]["status"] == "CRITICAL" and o["regions"]["brain"]["status"] == "CRITICAL"
        and any(f["key"] == "opioid_rd" for f in o["regions"]["lungs"]["findings"]),
        "opioid respiratory depression lights the lungs and the brain, and names itself as why")
+    w = body_state(rec, ctx(rec, {**NORMAL, "avpu": "A"}, labs={"wbc": [{"t": 1.0, "v": 20.5}]}), [], {})
+    ok(w["regions"]["immune"]["status"] == "DYSFUNCTION",
+       f"a WBC of 20.5 lights the inflammatory system on its own number ({w['regions']['immune']['status']})")
     ok(b["infection"] is None, "no sepsis finding, no suspected-source marker")
     q = D.Finding("qsofa", "qSOFA", "qSOFA 2 with suspected infection", "critical", "sepsis", []).to_dict()
     i = body_state(rec, c, [q], {})

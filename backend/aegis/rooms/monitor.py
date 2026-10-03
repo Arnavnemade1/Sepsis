@@ -855,6 +855,13 @@ def body_state(rec: Dict[str, Any], c: D.Ctx, found: List[Dict[str, Any]], score
 
     hr, sbp, dbp, mp = _num(v.get("hr")), _num(v.get("sbp")), _num(v.get("dbp")), _num(v.get("map"))
     rr, spo2, temp, o2 = _num(v.get("rr")), _num(v.get("spo2")), _num(v.get("temp_c")), v.get("o2_lpm")
+    # the inflammatory response on its own numbers, so a WBC of 20 never reads "normal" just
+    # because no sepsis-context finding happens to be open (SIRS bands, as for the labs above)
+    wbc = _num(last.get("wbc"))
+    if wbc is not None:
+        bump("immune", 0.45 if (wbc >= 20 or wbc < 2) else 0.25 if (wbc > 12 or wbc < 4) else 0.0)
+    if temp is not None:
+        bump("immune", 0.45 if (temp >= 39.5 or temp < 35) else 0.25 if (temp >= 38.3 or temp < 36) else 0.0)
     avpu = v.get("avpu")
 
     def fmt(x: Optional[float], nd: int = 0) -> str:

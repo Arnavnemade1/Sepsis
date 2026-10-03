@@ -54,7 +54,7 @@ can be believed.
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **92 suites**. The paging OS has 70 checks and the room monitor 67, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
+| **Verification** | **92 suites**. The paging OS has 70 checks and the room monitor 68, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -330,7 +330,7 @@ Over forty subsystems, grouped by the layer they live in. Each has its own `veri
 | `monitor.py` · `body_state` | Each room's organ systems for the anatomical twin: monitored only when something in the room measures them, severity from the findings that implicate them, their NEWS2 and SOFA points and lab thresholds (a worsening trend alone stops at stress), a reading, and the findings behind it |
 | `monitor.py` | The room monitor, ticked by the paging OS: re-runs a room's detectors when its inputs change, debounces findings into episodes (open after two evaluations, resolve after five), writes each room's timeline and escalates on two tracks per room, the patient's physiology and the medication record, so an allergy conflict reaches pharmacy even while a sepsis page is open. ICU rooms and the live session stay with the sepsis detector |
 
-`make verify-rooms` runs its 67 checks, including three planted defects: NEWS2 ignoring the
+`make verify-rooms` runs its 68 checks, including three planted defects: NEWS2 ignoring the
 record's target, the ICU record reading ten hours ahead, and the monitor paging a room twice.
 
 </details>
