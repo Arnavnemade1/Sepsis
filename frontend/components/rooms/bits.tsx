@@ -65,7 +65,7 @@ export function KindTag({ kind }: { kind: RoomKind | null | undefined }) {
         "inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-1.5 text-[11px] font-medium",
         kind === "synthetic" ? "border-line-bright bg-s2 text-muted" : "border-accent/40 bg-accent-soft text-accent-ink",
       )}
-      title={kind === "synthetic" ? "Generated for the demo hospital: not a real person" : kind === "replay" ? "PhysioNet/CinC 2019, de-identified" : "Camera, wearable or simulator"}
+      title={kind === "synthetic" ? "Generated for the demo hospital: not a real person" : kind === "replay" ? "PhysioNet/CinC 2019, de-identified" : kind === "interface" ? "Admitted and fed over HL7 by the hospital's interfaces (simulated systems in the demo)" : "Camera, wearable or simulator"}
     >
       <span className={cx("h-1.5 w-1.5 rounded-full", kind === "synthetic" ? "bg-dim" : "bg-accent-ink")} />
       {KIND_LABEL[kind]}

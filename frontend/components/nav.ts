@@ -1,6 +1,7 @@
 import {
   BedDouble,
   BellRing,
+  Cable,
   Cpu,
   FlaskConical,
   HeartPulse,
@@ -20,7 +21,7 @@ import {
 export type NavKey =
   | "overview" | "pages" | "staff" | "sentinel" | "policy"
   | "rooms" | "patients" | "pharmacy"
-  | "architecture" | "kernel" | "journal" | "gate" | "shell" | "evidence"
+  | "architecture" | "kernel" | "journal" | "gate" | "shell" | "evidence" | "integrations"
   | "pagers";
 
 export type NavItem = { key: NavKey; label: string; href: string; icon: LucideIcon; hint: string };
@@ -47,6 +48,7 @@ export const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
     label: "Platform",
     items: [
       { key: "architecture", label: "Architecture", href: "/os/", icon: Network, hint: "Every layer of the OS, live" },
+      { key: "integrations", label: "Integrations", href: "/integrations/", icon: Cable, hint: "HL7 / FHIR feeds, mappings earned on evidence, CDS Hooks, webhooks" },
       { key: "kernel", label: "Kernel", href: "/os/?view=kernel", icon: Cpu, hint: "Processes, scheduler, drivers, services" },
       { key: "journal", label: "Journal", href: "/os/?view=journal", icon: ScrollText, hint: "Hash-chained kernel log" },
       { key: "gate", label: "Syscall gate", href: "/os/?view=gate", icon: ShieldCheck, hint: "ABI, capabilities, sessions" },

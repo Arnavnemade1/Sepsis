@@ -37,6 +37,9 @@ SCREENS = [
     ("os-arch", "/os/"), ("os-kernel", "/os/?view=kernel"), ("os-journal", "/os/?view=journal"),
     ("os-gate", "/os/?view=gate"), ("os-shell", "/os/?view=shell"),
     ("pagers", "/clinician/"), ("pager-alvarez", "/clinician/?id=dr.alvarez"),
+    ("integrations", "/integrations/"), ("integrations-mappings", "/integrations/?view=mappings"),
+    ("integrations-endpoints", "/integrations/?view=endpoints"),
+    ("room-hl7", "/room/?id=512"),       # the simulated hospital's first HL7-fed admission (seeded)
 ]
 
 

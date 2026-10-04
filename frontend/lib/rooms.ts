@@ -6,7 +6,7 @@ import { usePoll } from "./hooks";
 /* Contracts (backend/aegis/rooms)                                     */
 /* ------------------------------------------------------------------ */
 export type Severity = "info" | "watch" | "urgent" | "critical";
-export type RoomKind = "synthetic" | "replay" | "live";
+export type RoomKind = "synthetic" | "replay" | "live" | "interface";
 
 /** What the paging stream carries for every occupied room (snapshot + "rooms" events). */
 export type RoomStatus = { sev: Severity | null; title: string | null; news2: number | null; band: string | null; n: number; episode: boolean };
@@ -162,6 +162,16 @@ export type Unit = {
   timeline?: TimelineEvent[];
   care_team?: { id: string; name: string; role: string; status: string; specialty: string }[];
   devices?: { name: string; detail: string; status: string }[];
+  /** interface-fed rooms: the integration plane's view of this patient's feeds */
+  feed?: {
+    mrn: string;
+    interface: string;
+    interface_name: string;
+    simulated: boolean;
+    admitted_at: number;
+    channels: { mapping: string; interface: string; interface_name: string; code: string; text: string; concept: string | null; label: string; status: string; unit_written: string; conversion: string | null; last_t: number | null; fault: string | null }[];
+  } | null;
+  withheld?: { t: number; concept: string; label: string; value: number; unit: string; why: string; interface: string }[];
   simulation?: Simulation | null;
   monitoring?: { kind: RoomKind; sample_s: number | null; eval_period_s: number; pages_from: string; detectors: string[] };
   /** the ward risk index (lib/clinical.ts INDEX); monitored rooms only */
@@ -220,7 +230,7 @@ export const SEV_INK: Record<Severity, string> = { critical: "#ff6b70", urgent: 
 export const SEV_LABEL: Record<Severity, string> = { critical: "Critical", urgent: "Urgent", watch: "Watch", info: "Info" };
 export const BAND_SEV: Record<string, Severity> = { high: "critical", medium: "urgent", "low-medium": "watch", low: "info" };
 export const BAND_LABEL: Record<string, string> = { high: "High", medium: "Medium", "low-medium": "Low–medium", low: "Low" };
-export const KIND_LABEL: Record<RoomKind, string> = { synthetic: "Synthetic record", replay: "Replayed real record", live: "Live session" };
+export const KIND_LABEL: Record<RoomKind, string> = { synthetic: "Synthetic record", replay: "Replayed real record", live: "Live session", interface: "HL7 feed" };
 /** NEWS2 points on one parameter → the hue its reading carries (0 is neutral). */
 export const POINT_SEV: Severity[] = ["info", "watch", "urgent", "critical"];
 

@@ -62,7 +62,7 @@ export function WatchBoard() {
 
       <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
         {[
-          ["Rooms monitored", rooms.length, `${rooms.filter((r) => r.kind === "replay").length} replayed · ${rooms.filter((r) => r.kind === "live").length} live · ${rooms.filter((r) => r.kind === "synthetic").length} synthetic`],
+          ["Rooms monitored", rooms.length, `${rooms.filter((r) => r.kind === "replay").length} replayed · ${rooms.filter((r) => r.kind === "live").length} live · ${rooms.filter((r) => r.kind === "interface").length} HL7-fed · ${rooms.filter((r) => r.kind === "synthetic").length} synthetic`],
           ["Critical", counts.critical, "a finding at the top band"],
           ["Urgent", counts.urgent, "review now"],
           ["Watch", counts.watch, "trending or borderline"],

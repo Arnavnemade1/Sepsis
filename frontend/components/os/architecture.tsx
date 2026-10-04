@@ -28,6 +28,14 @@ type ProcTree = {
     "/proc/triage"?: { level: string; fused_risk: number; note_certified: boolean };
     "/proc/services"?: { n: number; running: number; quarantined: number };
     "/proc/boot"?: { booted: boolean; boot_seconds: number; phases: number; failed: unknown[]; slowest: { phase: string; ms: number } };
+    "/proc/interop"?: {
+      interfaces: { id: string; name: string; status: string; per_min: number }[];
+      mappings: { total: number; by_status: Record<string, number> };
+      counters: Record<string, number>;
+      census: number;
+      model: { available: boolean; calls: { model: string | null }[] };
+    };
+    "/proc/webhooks"?: { subscriptions: unknown[]; queued: number; counters: Record<string, number> };
   };
 };
 type Gate = {
@@ -415,6 +423,60 @@ export function Architecture() {
             hrefLabel: "Open services",
           },
         ],
+      },
+      {
+        id: "integration",
+        name: "Integration",
+        about: "The hospital's own systems in and out: HL7 v2 and FHIR feeds whose mappings are earned on evidence, CDS Hooks cards in the EHR, signed webhooks.",
+        components: (() => {
+          const io = t["/proc/interop"];
+          const wh = t["/proc/webhooks"];
+          const bs = io?.mappings.by_status ?? {};
+          const live = io?.interfaces.filter((i) => i.status === "live").length ?? 0;
+          const c = io?.counters ?? {};
+          return [
+            {
+              id: "interface-engine",
+              name: "Interface engine",
+              tag: "HL7 v2",
+              status: io ? (io.interfaces.some((i) => i.status === "degraded") ? "warn" : live ? "ok" : "idle") : "idle",
+              lines: [io ? `${live}/${io.interfaces.length} interfaces live · ${io.census} patients` : "loading", io ? `${(c.messages ?? 0).toLocaleString()} messages · ${c.acks_ae ?? 0} AE · ${c.acks_ar ?? 0} AR` : ""],
+              about: "ADT builds the census in the hospital's rooms, ORU results pass through per-code mappings, ORU^R40 device alarms become pages; every message is acknowledged with its HL7 table-0357 code.",
+              facts: io ? io.interfaces.map((i) => [i.name, `${i.status} · ${i.per_min.toFixed(1)}/min`] as [string, string]) : [],
+              href: "/integrations/",
+              hrefLabel: "Open integrations",
+            },
+            {
+              id: "evidence-gate",
+              name: "Evidence gate",
+              status: io ? ((bs.quarantined ?? 0) > 0 ? "warn" : "ok") : "idle",
+              lines: [io ? `${bs.adopted ?? 0}/${io.mappings.total} codes adopted · ${bs.review ?? 0} in review` : "loading", io ? `${bs.quarantined ?? 0} quarantined · ${c.retracted ?? 0} values withdrawn` : ""],
+              about: "A mapping is adopted only when the code's own data agrees in the unit it was written in (plausibility, location, tail mass, physiological identities); adopted feeds keep being checked against their own baseline and are quarantined when they drift.",
+              facts: io ? [["Adopted automatically", c.adopted_auto ?? 0], ["Adopted by a person", c.adopted_human ?? 0], ["Waiting for review", bs.review ?? 0], ["Quarantines", c.quarantines ?? 0], ["Delivered", (c.delivered ?? 0).toLocaleString()], ["Withheld", (c.withheld ?? 0).toLocaleString()]] : [],
+              href: "/integrations/?view=mappings",
+              hrefLabel: "Open mappings",
+            },
+            {
+              id: "model-proposer",
+              name: "Model proposer",
+              tag: io?.model.calls?.slice(-1)[0]?.model ?? undefined,
+              status: io ? (io.model.available ? "ok" : "warn") : "idle",
+              lines: [io ? (io.model.available ? "language model available" : "unavailable: codes go to a person") : "loading", io ? `${c.model_proposals ?? 0} proposals · only proposes` : ""],
+              about: "Reads the local codes no rule recognises, with the vocabulary in front of it, and answers in JSON. Its proposals pass the same evidence as anyone's; it cannot adopt a mapping.",
+              facts: io ? [["Proposals", c.model_proposals ?? 0], ["Calls", io.model.calls?.length ?? 0]] : [],
+            },
+            {
+              id: "standards",
+              name: "FHIR · CDS Hooks · webhooks",
+              status: wh ? ((wh.counters.dead ?? 0) > 0 ? "warn" : "ok") : "idle",
+              lines: ["FHIR R4 reads · CDS Hooks 2.0", wh ? `${wh.subscriptions.length} webhook subscriptions · ${wh.counters.delivered ?? 0} delivered` : "loading"],
+              about: "The EHR reads AegisOS in FHIR and gets its findings as CDS Hooks cards; pages and feed events leave as Standard Webhooks, signed, retried, never to a private address.",
+              facts: wh ? [["Subscriptions", wh.subscriptions.length], ["Delivered", wh.counters.delivered ?? 0], ["Retries", wh.counters.retries ?? 0], ["Dead-lettered", wh.counters.dead ?? 0], ["Queued", wh.queued]] : [],
+              href: "/integrations/?view=endpoints",
+              hrefLabel: "Open endpoints",
+            },
+          ] as Component[];
+        })(),
       },
       {
         id: "signals",

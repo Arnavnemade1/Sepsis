@@ -24,6 +24,7 @@ npm run build                # → out/
 | `/patient/` · `/patient/?id=` | `app/patient/page.tsx`, `components/bed/*` | the census reads `/aegis/cluster/snapshot` and the paging stream; the record reads `WS /aegis/stream` (live patient) or `/aegis/patient/snapshot?bed=` (cohort bed), `/aegis/cohort/{bed}/chart`, `/aegis/timeline`, `/aegis/decision`, `/aegis/doctor/*` |
 | `/pharmacy/?id=` | `app/pharmacy/page.tsx` | `/aegis/pk/options?bed=`, `POST /aegis/pharmacopoeia/screen` |
 | `/lab/` | `app/lab/page.tsx` | `/aegis/lab/evidence`, `/aegis/lab` |
+| `/integrations/?view=overview·mappings·endpoints` | `app/integrations/page.tsx`, `components/integrations/*` | `/aegis/interop` every 2.5 s, `/aegis/interop/{messages,mappings}/{id}`, `/aegis/interop/sim`, `/aegis/interop/audit`, `/aegis/interop/bench`, `/aegis/fhir/R4/metadata`, `/aegis/cds-services`, `/aegis/interop/webhooks`; writes `…/mappings/{id}/adopt · reject · restore · reevaluate`, `POST /aegis/interop/hl7`, `…/sim/drill`, `POST /aegis/cds-services/{id}`, `…/webhooks` |
 | `/os/?view=architecture·kernel·journal·gate·shell` | `app/os/page.tsx`, `components/os/*` | `/aegis/proc` (the kernel tree in one call), `/aegis/sys/{gate,abi,who,journal,ps,boot}`, `/aegis/kernel/devices`, `/aegis/services`, `/aegis/devices`, `/aegis/consensus`, `/aegis/orchestrator`, `/aegis/health/prover`, `/aegis/lab/evidence`, plus the paging stream |
 
 `/command/` and `/bed/` redirect to `/operator/` and `/patient/`. Which role lands where is
@@ -37,6 +38,10 @@ components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue,
                     page-drawer.tsx (dispatch, triage, routing, certificate, timeline, SBAR)
                     composer.tsx (N, text or voice) · panels.tsx (KPIs with hour sparklines, pages, staff,
                     insights, policy) · bits.tsx (priority chips, countdowns, avatars)
+components/integrations/  overview.tsx (interfaces, message stream, quarantines, review, drills, validation) ·
+                    mappings.tsx (every local code and its status) · drawers.tsx (one HL7 message as received; one
+                    mapping with its evidence and the decision) · evidence-chart.tsx (values against the reference) ·
+                    endpoints.tsx (HL7 console, FHIR, CDS Hooks try-out, webhooks)
 components/rooms/   unit.tsx (one room as a unit: header, scores, detections, vitals, labs, record,
                     linked objects, timeline) · body.tsx (the anatomical twin lit by the room, pins,
                     systems) · board.tsx (every room as a tile) · drawer.tsx (the overview's watchlist and

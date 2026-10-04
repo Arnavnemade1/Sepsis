@@ -898,6 +898,34 @@ function LinkedPanel({ u }: { u: Required<Unit> }) {
             ))}
           </ul>
         </Block>
+        {u.feed && (
+          <Block title="Feeds">
+            <div className="mb-1.5 text-[11.5px] text-dim">
+              Admitted by {u.feed.interface_name} (MRN <span className="font-mono">{u.feed.mrn}</span>){u.feed.simulated ? " · simulated sender" : ""}. Each value below arrives through a mapping the integration engine verified.
+            </div>
+            <ul className="space-y-1">
+              {u.feed.channels.map((c) => (
+                <li key={c.mapping} className="flex items-center gap-2">
+                  <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", c.status === "adopted" ? "bg-low" : c.status === "quarantined" ? "bg-high" : c.status === "review" ? "bg-med" : "bg-dim")} />
+                  <Link href={`/integrations/?view=mappings&mapping=${encodeURIComponent(c.mapping)}`} className="min-w-0 flex-1 truncate text-[12px] text-ink hover:underline">
+                    {c.label} <span className="font-mono text-[11px] text-dim">{c.code}</span>
+                  </Link>
+                  <span className={cx("shrink-0 text-[11px]", c.status === "quarantined" ? "text-high-ink" : "text-dim")}>{c.status === "adopted" ? (c.conversion && c.conversion !== "identity" ? c.conversion : "mapped") : c.status}</span>
+                </li>
+              ))}
+            </ul>
+            {(u.withheld ?? []).length > 0 && (
+              <div className="mt-2 rounded-md border border-high/30 bg-high/[0.06] px-2.5 py-1.5 text-[11.5px] leading-snug text-muted">
+                <div className="font-medium text-high-ink">Withheld from this room</div>
+                {(u.withheld ?? []).slice(-4).reverse().map((w, i) => (
+                  <div key={i}>
+                    {w.label} {typeof w.value === "number" ? w.value : ""} {w.unit}: {w.why}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Block>
+        )}
         <Block title="Pages">
           {u.pages.length === 0 ? (
             <p className="text-[12.5px] text-dim">No pages for this room.</p>

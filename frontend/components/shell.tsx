@@ -509,6 +509,8 @@ export function Page({ children, context, active }: { children: ReactNode; conte
           ? "pharmacy"
           : path?.startsWith("/lab")
             ? "evidence"
+            : path?.startsWith("/integrations")
+              ? "integrations"
             : path?.startsWith("/os")
               ? "architecture"
               : undefined);
