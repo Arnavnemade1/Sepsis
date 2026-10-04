@@ -301,18 +301,23 @@ def triage_text(text: str, room_hint: Optional[str] = None, client: Any = None,
 # --------------------------------------------------------------------------- #
 # The detector as an alert source
 # --------------------------------------------------------------------------- #
-DETECTOR_ALARM = 0.70          # the cohort's alarm line (same line the ward board and bundle use)
+# The ward index (backend/aegis/ward_risk.py) is the shipped detector's calibrated
+# probability mapped so its validated operating point sits on these lines: the paging
+# line IS the detector's HIGH point, so a page means "the detector alarmed".
+DETECTOR_ALARM = 0.70          # the detector's HIGH operating point, on the ward index
 DETECTOR_CLEAR = 0.60          # hysteresis: an episode closes only below this
 
 
 def triage_detector(room: str, name: str, risk: float, enterprise: Dict[str, float],
-                    drivers: List[str], population: Optional[float] = None) -> Triage:
+                    drivers: List[str], population: Optional[float] = None,
+                    probability: Optional[float] = None) -> Triage:
     """A monitored bed crossed the alarm line. P1 when the Sepsis-3 shock criteria
     are met (MAP < 65 or lactate ≥ 4), else P2. The detector never raises P3/P4:
     below the alarm line the bed shows as 'watch' on the floor, it does not page."""
     mp, lac = enterprise.get("map"), enterprise.get("lactate")
     shock = (mp is not None and mp < 65) or (lac is not None and lac >= 4)
-    red = [f"effective risk {risk:.2f} ≥ {DETECTOR_ALARM:.2f}"]
+    red = [f"risk index {risk:.2f} ≥ {DETECTOR_ALARM:.2f}"
+           + (f" (calibrated P {probability:.3f})" if probability is not None else "")]
     if mp is not None and mp < 65:
         red.append(f"MAP {mp:.0f} < 65")
     if lac is not None and lac >= 4:
@@ -323,7 +328,9 @@ def triage_detector(room: str, name: str, risk: float, enterprise: Dict[str, flo
         symptoms=list(drivers[:4]) or ["risk above alarm line"],
         vitals=v, red_flags=red,
         rationale=("Septic-shock criteria met (Sepsis-3): " if shock else "Sepsis risk crossed the alarm line: ")
-        + "; ".join(red) + (f" (population risk {population:.2f})" if population is not None else ""),
+        + "; ".join(red) + (f" (before the chart's prior shift {population:.2f})"
+                            if population is not None and abs(population - risk) > 1e-3 else ""),
         source="detector", model=None,
-        sepsis_screen={"shock_signs": shock, "detector_risk": round(risk, 4)},
+        sepsis_screen={"shock_signs": shock, "detector_risk": round(risk, 4),
+                       "probability": round(probability, 5) if probability is not None else None},
     )

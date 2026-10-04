@@ -94,10 +94,15 @@ def test_one_risk_per_bed() -> None:
     from backend.aegis.kernel.bundle import SepsisBundleEngine
     cl = CohortCluster(n=12, lane_budget=160, seed=7)
     cl.run(60)
+    # Without a bed whose population risk differs from its effective risk, every
+    # assertion below would pass even if a consumer read the population number. The
+    # own-baseline learner used to supply that gap; the ward is now the detector's
+    # score alone, so the gap comes from what still creates one in production: an
+    # imported chart's prior shift, planted on the bed nearest mid-scale.
+    target = min(cl.node_ids, key=lambda n: abs(cl.profiles[n].fused_risk - 0.5))
+    cl.susceptibility_provider = lambda nid: 1.5 if nid == target else 0.0
     board = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
     gaps = {nid: abs(cl.profiles[nid].fused_risk - board[nid]) for nid in board}
-    # Without a bed whose population risk differs from its effective risk, every
-    # assertion below would pass even if a consumer read the population number.
     worst = max(gaps, key=gaps.get)
     assert gaps[worst] > 0.05, f"no divergent bed; the check would be vacuous ({gaps})"
     for nid, r in board.items():
@@ -105,8 +110,8 @@ def test_one_risk_per_bed() -> None:
         assert abs(cl.effective_profile(nid).fused_risk - r) < 1e-9, nid
     bundle = SepsisBundleEngine().generate(cl.effective_profile(worst), cl.histories.get(worst, {}))
     assert abs(bundle["fused_risk"] - round(board[worst], 3)) < 1e-3, (bundle["fused_risk"], board[worst])
-    # a chart's prior shift moves the board and effective_risk together
-    cl.susceptibility_provider = lambda nid: 1.0 if nid == worst else 0.0
+    # a larger prior shift moves the board and effective_risk together
+    cl.susceptibility_provider = lambda nid: 2.5 if nid == worst else 0.0
     shifted = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
     assert shifted[worst] > board[worst] + 1e-3, "uplift did not move the board"
     assert abs(cl.effective_risk(worst) - shifted[worst]) < 1e-9
@@ -120,10 +125,18 @@ def test_write_path_grades_effective_risk() -> None:
     from backend.aegis.syscalls import SyscallTable, _band
     cl = CohortCluster(n=12, lane_budget=160, seed=7)
     cl.run(60)
+    # Without a bed whose population band differs from its effective band, this check
+    # could not tell the two risks apart; plant the prior shift that creates one (see [5]).
+    split = []
+    for shift in (1.5, 3.0, 5.0):
+        for cand in cl.node_ids:
+            cl.susceptibility_provider = lambda nid, c=cand, u=shift: u if nid == c else 0.0
+            if _band(cl.profiles[cand].fused_risk) != _band(cl.effective_risk(cand)):
+                split = [cand]
+                break
+        if split:
+            break
     board = {b["bed_id"]: b["fused_risk"] for b in cl.snapshot()["beds"]}
-    split = [nid for nid in board if _band(cl.profiles[nid].fused_risk) != _band(board[nid])]
-    # Without a bed whose population band differs from its effective band, this
-    # check could not tell the two risks apart.
     assert split, "no bed where population and effective risk fall in different bands"
     nid = split[0]
     table = SyscallTable(cl, SepsisBundleEngine(), NeuroSymbolicRuntime())

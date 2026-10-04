@@ -626,6 +626,7 @@ class PagingOS:
                     "room": room, "bed": bid, "name": b.get("name"), "age": int(b.get("age") or 0) or None,
                     "sex": b.get("gender"), "mrn": b.get("mrn"), "icu_hour": b.get("icu_hour"),
                     "risk": round(risk, 4), "population_risk": b.get("population_risk"), "tier": tiers.get(bid),
+                    "probability": b.get("probability"),
                     "vitals": b.get("enterprise") or {}, "drivers": b.get("drivers") or [],
                     "history": flags, "monitored": True, "synthetic": False,
                     "source": "PhysioNet/CinC 2019 · replayed", "watch": DETECTOR_CLEAR <= risk < DETECTOR_ALARM,
@@ -643,12 +644,16 @@ class PagingOS:
             now = self.now()
             level = r.get("level", "LOW")
             p = r.get("ml_probability")
+            # the room's risk on the ward index (the scale every other room is read on);
+            # the calibrated probability travels beside it
+            idx = r.get("index")
             pt = snap.get("patient") or {}
             hist = [k.replace("_", " ") for k, val in (pt.get("clinical_history") or {}).items() if val is True]
             self.monitored[LIVE_ROOM] = {
                 "room": LIVE_ROOM, "bed": None, "name": pt.get("name"), "age": pt.get("age"),
                 "sex": (pt.get("gender") or "")[:1] or None, "mrn": pt.get("id"), "icu_hour": None,
-                "risk": p, "level": level, "tier": level, "vitals": {k: v.get(k) for k in ("map", "heart_rate", "spo2",
+                "risk": idx if idx is not None else p, "probability": p,
+                "level": level, "tier": level, "vitals": {k: v.get(k) for k in ("map", "heart_rate", "spo2",
                                                                                            "respiratory_rate", "skin_temp")},
                 "drivers": list(snap.get("triggered_rules") or [])[:4], "history": hist, "monitored": True,
                 "synthetic": False, "live": True, "source": f"live session · {snap.get('source', 'idle')}",
@@ -704,7 +709,7 @@ class PagingOS:
         ep = self.episodes.get(room) or {"open": False, "priority": None, "page": None, "below": 0}
         if risk >= DETECTOR_ALARM:
             tri = triage_detector(room, b.get("name") or room, risk, b.get("enterprise") or {},
-                                  b.get("drivers") or [], b.get("population_risk"))
+                                  b.get("drivers") or [], b.get("population_risk"), b.get("probability"))
             page = self.pages.get(ep["page"]) if ep.get("page") else None
             if not ep["open"]:
                 prior = self._active_detector_page(room)
@@ -880,7 +885,8 @@ class PagingOS:
     # views
     # ------------------------------------------------------------------ #
     def monitor_state(self) -> Dict[str, Any]:
-        return {room: {"risk": m.get("risk"), "tier": m.get("tier"), "watch": m.get("watch"),
+        return {room: {"risk": m.get("risk"), "probability": m.get("probability"),
+                       "tier": m.get("tier"), "watch": m.get("watch"),
                        "episode": bool((self.episodes.get(room) or {}).get("open")), "bed": m.get("bed"),
                        "live": bool(m.get("live"))}
                 for room, m in self.monitored.items()}

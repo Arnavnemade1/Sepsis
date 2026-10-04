@@ -61,9 +61,15 @@ class BedProfile:
     components: Dict[str, float]        # cardiac, inflammatory, perfusion, metabolic
     drivers: List[str]                  # ranked human-readable derangements
     primary_system: str
+    #: When the shipped detector scores the bed (``backend.aegis.ward_risk``),
+    #: ``fused_risk`` carries its score on the ward index; this engine's own
+    #: bedside-rules number is kept here, and the detector's calibrated probability
+    #: beside it. Both None when this engine is the risk.
+    rules_risk: Optional[float] = None
+    probability: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "bed_id": self.bed_id, "name": self.name,
             "fused_risk": round(self.fused_risk, 4),
             "edge": {k: round(v, 3) for k, v in self.edge.items()},
@@ -71,6 +77,11 @@ class BedProfile:
             "components": {k: round(v, 3) for k, v in self.components.items()},
             "drivers": self.drivers, "primary_system": self.primary_system,
         }
+        if self.probability is not None:
+            d["probability"] = round(self.probability, 5)
+            d["rules_risk"] = round(self.rules_risk, 4) if self.rules_risk is not None else None
+            d["risk_source"] = "detector"
+        return d
 
 
 class FusionEngine:

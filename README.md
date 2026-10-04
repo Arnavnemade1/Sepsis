@@ -6,7 +6,7 @@
 
 [![verify-os](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml/badge.svg)](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
-![Verification](https://img.shields.io/badge/verification-91%20suites-2ea44f)
+![Verification](https://img.shields.io/badge/verification-93%20suites-2ea44f)
 ![MIMIC-IV](https://img.shields.io/badge/MIMIC--IV-pipeline%20ready-8957e5)
 ![Research only](https://img.shields.io/badge/research%20only-not%20a%20medical%20device-d73a49)
 
@@ -49,12 +49,13 @@ can be believed.
 | **Policy, proven** | **Six invariants** are checked by Z3 on every page. A refused page is held for the operator with the broken rule named. If the prover itself is unhealthy, nothing is sent |
 | **Guardrails** | Autonomy by unit and priority. Consecutive-paging protection. A workload limit. Near-tie load sharing. Hold-for-the-right-person. Auto-escalation on decline or timeout. A review fail-safe that routes around a clinician who has become unavailable |
 | **Shipped detector** | A stacked ensemble trained on the patient label. Its members are two histogram boosters, extra-trees, logistic regression and a utility-aimed XGBoost. It was fitted on **24,206** CinC patients and calibrated without a staircase. On **6,852** held-out patients that neither it nor its predecessor saw: **AUROC 0.800** (predecessor 0.743), **ECE 0.003** |
+| **What it scores** | Every monitored bed: the twelve ICU rooms (301–312) and the live room. Until 2026-10-03 the ICU rooms, which raise most detector pages, were scored by a hand-weighted qSOFA/SIRS fusion instead. On **8,062** patients the detector never trained on, every hour, that fusion scored **AUROC 0.632**; the detector scores **0.800** on the same rows (**+0.168**, CI +0.147 to +0.192). The ward shows the detector's probability on a 0–1 index whose 0.70 line is its validated alarm point, and replays only stays the detector never trained on |
 | **At the bedside** | On those patients, at the deployed threshold, it flags **46%** of septic patients and **8.5%** of non-septic patients at least once. Inside a 15% alarm budget it catches **55%** (predecessor 41%). Catching more without raising the burden is the open problem |
 | **Across hospitals** | **AUROC 0.68–0.70**, trained at one hospital and scored at the other. This is the honest deployment number |
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **92 suites**. The paging OS has 70 checks and the room monitor 68, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
+| **Verification** | **93 suites**. The paging OS has 70 checks and the room monitor 68, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -346,7 +347,7 @@ record's target, the ICU record reading ten hours ahead, and the monitor paging 
 | **L2 · Memory** | `memfabric.py` | A zero-copy virtual memory fabric of per-signal ring buffers |
 | **L3 · Scheduling** | `scheduler.py` `hdsched.py` `hdkernel.py` | A multi-tenant cognitive scheduler with Z3-proven invariants that folds critical-slowing-down foresight into bed priority. HDSched is a CPU scheduler benchmarked against classical policies. HDKernel is a live cooperative kernel that runs coroutine tasks with syscalls, IPC and a process table |
 | **L4 · Egress** | `neurosym.py` | The formally verified neurosymbolic cage. Every dispatched alert, protocol, actuator command and automated note is proven in Z3 first; a failed proof quarantines it |
-| **Fusion** | `fusion.py` | The sepsis ontology that aligns every modality |
+| **Fusion** | `fusion.py` | The sepsis ontology that aligns every modality and names the derangements behind a bed's risk. Its own hand-weighted score no longer decides anything: the detector scores every bed (`ward_risk.py`) |
 | **Security** | `gate.py` `abi.py` `policy.py` `policyfile.py` `users.py` | One reference monitor that every call crosses. A numbered, capability-bound syscall ABI, with the access policy checked against the whole syscall table. The hospital's policy lives in `/etc/policy.dsl`. Accounts, sessions and break-glass |
 | **Record** | `journal.py` `causal_graph.py` `proc.py` `vfs.py` `boot.py` `executor.py` `osstream.py` | A tamper-evident journal, and the patient's temporal causal graph as a kernel object. A process table with real accounting, a virtual filesystem and a boot sequencer. A single-writer executor, and one capability-filtered socket per desktop |
 | **Payload** | `bundle.py` | The Hour-1 Sepsis Bundle engine |
@@ -363,10 +364,11 @@ Every layer has its own `verify_*.py`. Run them all with `make verify-os`.
 | Module | Role |
 |:--|:--|
 | `os.py` · `core.py` | `AegisOS` boots and owns the layers; `AegisCore` is the assessment runtime it composes |
-| `cohort.py` | Drives the OS from real CinC 2019 ICU stays, bed by bed |
+| `cohort.py` | Drives the OS from real CinC 2019 ICU stays, bed by bed, drawn only from patients the detector never trained on |
+| `ward_risk.py` | Scores every ward bed with the shipped detector, hour by hour and causally, and maps its calibrated probability onto the ward's 0–1 index so the detector's operating point sits at the 0.35 and 0.70 lines (AUROC unchanged, by monotonicity). Replaced a hand-weighted fusion score that ran at AUROC 0.632 (`make verify-ward`, `make ward-auroc`) |
 | `streaming_features.py` | One feature builder for training and serving, so the two cannot skew |
 | `body_state.py` | The multi-organ dysfunction model behind the 3D twin |
-| `resonance.py` | Cross-modal HDC resonance. A real deterioration moves every acquisition pathway; a sensor glitch moves one, which the gate rejects. It removes 91% of artifact false alarms (leave-one-patient-out on real CinC data) |
+| `resonance.py` | Cross-modal HDC resonance. A real deterioration moves every acquisition pathway; a sensor glitch moves one, which the gate rejects. On all 32 held-out demo patients (leave-one-patient-out, real CinC data) it removes 79% of the false alarms a camera artifact causes, short of its own 80% bar; the earlier 91% came from one 12-patient draw, and such draws range from −39% to 98% |
 | `hdc_memory.py` | Hyperdimensional case memory: encode a patient-hour, retrieve precedent |
 | `learner.py` | Per-patient baselines and interpretable deviation |
 | `identity.py` | A physiologic fingerprint that detects a swapped sensor stream and locks dispensing (the lock is proven in Z3). It is a stream-swap detector, not biometric identity |

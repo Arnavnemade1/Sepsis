@@ -688,15 +688,19 @@ def detect_sepsis_model(c: Ctx) -> List[Finding]:
     r = float(ml["risk"])
     live = c.kind == "live"
     alarm, watch = (0.70, 0.40) if live else (0.70, 0.60)
+    # the risk index (ward_risk) and the calibrated probability it was mapped from
+    prob = ml.get("probability")
+    head = [_ev("Risk index", round(r, 3))] + ([_ev("Calibrated P(sepsis)", round(float(prob), 4))]
+                                                if prob is not None else [])
     if r >= alarm:
         return [Finding("sepsis_model", "Sepsis detector", f"Sepsis risk {r:.2f}, above the paging line", "critical", "sepsis",
-                        [_ev("Effective risk", round(r, 3))] + [_ev("Driver", d) for d in (ml.get("drivers") or [])[:3]],
+                        head + [_ev("Driver", d) for d in (ml.get("drivers") or [])[:3]],
                         ["Paged by the sepsis detector itself; the room monitor does not page twice."],
                         "Sepsis review now; the Hour-1 bundle team is notified with the page.",
                         "AegisOS stacked detector, validated on PhysioNet/CinC 2019", round(r, 3))]
     if r >= watch:
         return [Finding("sepsis_model", "Sepsis detector", f"Sepsis risk {r:.2f}: on watch", "watch", "sepsis",
-                        [_ev("Effective risk", round(r, 3))] + [_ev("Driver", d) for d in (ml.get("drivers") or [])[:3]], [],
+                        head + [_ev("Driver", d) for d in (ml.get("drivers") or [])[:3]], [],
                         "Below the paging line: trend it.", "AegisOS stacked detector, validated on PhysioNet/CinC 2019",
                         round(r, 3))]
     return []

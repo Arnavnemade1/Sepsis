@@ -132,6 +132,15 @@ class AegisSession:
         return self.snapshot()
 
     # ------------------------------------------------------------------ #
+    def _index(self, p: Optional[float]) -> Optional[float]:
+        op = getattr(self.core, "operating_point", None)
+        if p is None or op is None:
+            return None
+        if getattr(self, "_imap", None) is None:
+            from backend.aegis.ward_risk import IndexMap
+            self._imap = IndexMap.pinned(op.medium, op.high, getattr(op, "detector", "unknown"))
+        return round(self._imap.index(p), 4)
+
     def snapshot(self, history_points: int = 300) -> Dict[str, Any]:
         """THE frontend contract. Stable, versioned, fully JSON-serializable."""
         a = self.latest
@@ -147,6 +156,10 @@ class AegisSession:
             "risk": {
                 "level": a.risk_level if a else "LOW",
                 "ml_probability": a.ml_probability if a else None,
+                # the same probability on the ward's index scale (ward_risk), so the
+                # census and the floor plan read this room on the scale every other
+                # room uses; lines 0.35 / 0.70 are the operating point
+                "index": self._index(a.ml_probability) if a else None,
                 "ns_risk_level": a.ns_risk_level if a else "LOW",
                 "sirs_score": a.sirs_score if a else 0,
                 "qsofa_score": a.qsofa_score if a else 0,

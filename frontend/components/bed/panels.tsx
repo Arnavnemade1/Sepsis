@@ -4,31 +4,41 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button, cx, Empty, Meter, Pill, Plate, Skeleton, Sparkline, Stat } from "@/components/ui";
 import { api } from "@/lib/api";
-import { pct, severityTone, tierTone, title, TONE_TEXT, VITALS, type Tone } from "@/lib/clinical";
+import { INDEX, pct, severityTone, tierTone, title, TONE_TEXT, VITALS, type Tone } from "@/lib/clinical";
 import type { AgentOpinion, Decision, Snapshot } from "@/lib/types";
 
 /* ------------------------------------------------------------------ */
 /* Risk hero: the one number, what it is, and how sure we are about it */
 /* ------------------------------------------------------------------ */
-export function RiskHero({ snap, recorded }: { snap: Snapshot; recorded: boolean }) {
+export function RiskHero({ snap }: { snap: Snapshot; recorded?: boolean }) {
   const r = snap.risk;
   const p = r.ml_probability;
   const tone = tierTone(r.level);
   const c = r.certainty as (Snapshot["risk"]["certainty"] & { unavailable?: boolean; reason?: string }) | undefined;
-  const pop = (r as unknown as { population_risk?: number }).population_risk;
+  const pop = r.population_risk;
   return (
     <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
       <div>
-        <div className="text-[12px] text-dim">{recorded ? "Effective risk (fused, personalized)" : "Calibrated sepsis risk"}</div>
+        <div className="text-[12px] text-dim">Calibrated sepsis risk</div>
         <div className={cx("num text-[64px] font-light leading-none tracking-tight", TONE_TEXT[tone === "low" ? "neutral" : tone])}>
           {p == null ? "—" : (p * 100).toFixed(1).split(".")[0]}
           <span className="text-[26px] text-dim">{p == null ? "" : `.${(p * 100).toFixed(1).split(".")[1]}%`}</span>
         </div>
       </div>
       <div className="space-y-2 pb-1.5">
-        <Pill tone={tone === "low" ? "neutral" : tone} dot>
-          {title(r.level)} risk
-        </Pill>
+        <div className="flex items-center gap-2">
+          <Pill tone={tone === "low" ? "neutral" : tone} dot>
+            {title(r.level)} risk
+          </Pill>
+          {r.index != null && (
+            <span
+              className="num font-mono text-[12px] text-muted"
+              title={`The ward risk index: this probability on the scale every room is read on. It pages at ${INDEX.page.toFixed(2)}, the detector's validated alarm point.`}
+            >
+              index {r.index.toFixed(2)} <span className="text-faint">/ pages at {INDEX.page.toFixed(2)}</span>
+            </span>
+          )}
+        </div>
         <div className="text-[12px] text-muted">
           {c && !c.unavailable && c.lo != null && c.hi != null ? (
             <>
@@ -44,8 +54,8 @@ export function RiskHero({ snap, recorded }: { snap: Snapshot; recorded: boolean
         <Stat label="SIRS" value={r.sirs_score} size="sm" tone={r.sirs_score >= 2 ? "med" : "neutral"} />
         <Stat label="qSOFA" value={r.qsofa_score} size="sm" tone={r.qsofa_score >= 2 ? "med" : "neutral"} />
         <Stat label="Signal" value={pct(r.signal_quality, 0)} size="sm" tone={r.signal_quality < 0.5 ? "med" : "neutral"} />
-        {pop != null && Math.abs(pop - (p ?? 0)) > 0.005 && (
-          <Stat label="Population" value={pct(pop, 0)} size="sm" sub="before personalization" />
+        {pop != null && Math.abs(pop - (p ?? 0)) > 0.0005 && (
+          <Stat label="Before chart shift" value={pct(pop, 1)} size="sm" sub="the detector's own output" />
         )}
       </div>
     </div>

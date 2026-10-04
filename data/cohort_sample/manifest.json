@@ -1,226 +1,258 @@
 [
 {
-"id": "p001446",
-"set": "training_setA",
-"hours": 86,
+"id": "p118906",
+"set": "training_setB",
+"hours": 18,
 "septic": true,
-"onset": 76
+"onset": 8,
+"severity": 8.013
 },
 {
-"id": "p001128",
+"id": "p104787",
+"set": "training_setB",
+"hours": 37,
+"septic": true,
+"onset": 27,
+"severity": 7.102
+},
+{
+"id": "p002700",
+"set": "training_setA",
+"hours": 212,
+"septic": true,
+"onset": 203,
+"severity": 4.783
+},
+{
+"id": "p010957",
 "set": "training_setA",
 "hours": 17,
 "septic": true,
-"onset": 7
+"onset": 8,
+"severity": 4.467
 },
 {
-"id": "p001895",
-"set": "training_setA",
-"hours": 265,
+"id": "p114585",
+"set": "training_setB",
+"hours": 60,
 "septic": true,
-"onset": 256
+"onset": 50,
+"severity": 3.817
 },
 {
-"id": "p000754",
-"set": "training_setA",
-"hours": 108,
+"id": "p110588",
+"set": "training_setB",
+"hours": 146,
 "septic": true,
-"onset": 98
+"onset": 136,
+"severity": 3.63
 },
 {
-"id": "p002156",
-"set": "training_setA",
-"hours": 25,
-"septic": true,
-"onset": 16
-},
-{
-"id": "p001441",
-"set": "training_setA",
-"hours": 37,
-"septic": true,
-"onset": 27
-},
-{
-"id": "p000188",
-"set": "training_setA",
+"id": "p106246",
+"set": "training_setB",
 "hours": 84,
 "septic": true,
-"onset": 75
+"onset": 74,
+"severity": 3.503
 },
 {
-"id": "p002404",
-"set": "training_setA",
-"hours": 38,
+"id": "p109218",
+"set": "training_setB",
+"hours": 45,
 "septic": true,
-"onset": 28
+"onset": 35,
+"severity": 3.39
 },
 {
-"id": "p002097",
+"id": "p004252",
 "set": "training_setA",
-"hours": 27,
+"hours": 166,
 "septic": true,
-"onset": 17
+"onset": 157,
+"severity": 0.467
 },
 {
-"id": "p002080",
+"id": "p012566",
 "set": "training_setA",
-"hours": 97,
+"hours": 55,
 "septic": true,
-"onset": 87
+"onset": 45,
+"severity": 0.0
 },
 {
-"id": "p000401",
-"set": "training_setA",
-"hours": 214,
-"septic": true,
-"onset": 204
-},
-{
-"id": "p001666",
-"set": "training_setA",
-"hours": 127,
-"septic": true,
-"onset": 117
-},
-{
-"id": "p001502",
-"set": "training_setA",
-"hours": 28,
-"septic": true,
-"onset": 19
-},
-{
-"id": "p000272",
-"set": "training_setA",
-"hours": 100,
-"septic": true,
-"onset": 90
-},
-{
-"id": "p001429",
-"set": "training_setA",
-"hours": 16,
-"septic": true,
-"onset": 6
-},
-{
-"id": "p000468",
-"set": "training_setA",
-"hours": 92,
-"septic": true,
-"onset": 83
-},
-{
-"id": "p000129",
-"set": "training_setA",
-"hours": 26,
-"septic": false,
-"onset": null
-},
-{
-"id": "p000251",
-"set": "training_setA",
-"hours": 49,
-"septic": false,
-"onset": null
-},
-{
-"id": "p002094",
-"set": "training_setA",
+"id": "p101712",
+"set": "training_setB",
 "hours": 41,
-"septic": false,
-"onset": null
+"septic": true,
+"onset": 31,
+"severity": 0.0
 },
 {
-"id": "p002371",
-"set": "training_setA",
-"hours": 27,
-"septic": false,
-"onset": null
+"id": "p104320",
+"set": "training_setB",
+"hours": 29,
+"septic": true,
+"onset": 19,
+"severity": 0.0
 },
 {
-"id": "p000019",
-"set": "training_setA",
-"hours": 48,
-"septic": false,
-"onset": null
+"id": "p111418",
+"set": "training_setB",
+"hours": 230,
+"septic": true,
+"onset": 220,
+"severity": 0.8
 },
 {
-"id": "p002485",
-"set": "training_setA",
-"hours": 41,
-"septic": false,
-"onset": null
+"id": "p112097",
+"set": "training_setB",
+"hours": 63,
+"septic": true,
+"onset": 53,
+"severity": 0.2
 },
 {
-"id": "p000298",
-"set": "training_setA",
-"hours": 41,
-"septic": false,
-"onset": null
+"id": "p113260",
+"set": "training_setB",
+"hours": 35,
+"septic": true,
+"onset": 25,
+"severity": 0.15
 },
 {
-"id": "p000976",
-"set": "training_setA",
-"hours": 59,
-"septic": false,
-"onset": null
+"id": "p114315",
+"set": "training_setB",
+"hours": 90,
+"septic": true,
+"onset": 80,
+"severity": 0.6
 },
 {
-"id": "p001679",
-"set": "training_setA",
-"hours": 42,
-"septic": false,
-"onset": null
-},
-{
-"id": "p001284",
-"set": "training_setA",
-"hours": 38,
-"septic": false,
-"onset": null
-},
-{
-"id": "p000310",
+"id": "p000822",
 "set": "training_setA",
 "hours": 30,
 "septic": false,
-"onset": null
+"onset": null,
+"severity": 0.0
 },
 {
-"id": "p002437",
+"id": "p006391",
 "set": "training_setA",
-"hours": 47,
+"hours": 37,
 "septic": false,
-"onset": null
+"onset": null,
+"severity": 0.0
 },
 {
-"id": "p001279",
-"set": "training_setA",
-"hours": 44,
-"septic": false,
-"onset": null
-},
-{
-"id": "p002389",
-"set": "training_setA",
-"hours": 45,
-"septic": false,
-"onset": null
-},
-{
-"id": "p001340",
+"id": "p006981",
 "set": "training_setA",
 "hours": 56,
 "septic": false,
-"onset": null
+"onset": null,
+"severity": 0.0
 },
 {
-"id": "p001859",
+"id": "p009067",
 "set": "training_setA",
+"hours": 58,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p009945",
+"set": "training_setA",
+"hours": 44,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p012367",
+"set": "training_setA",
+"hours": 48,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p015724",
+"set": "training_setA",
+"hours": 27,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p016706",
+"set": "training_setA",
+"hours": 43,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p017507",
+"set": "training_setA",
+"hours": 58,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p100136",
+"set": "training_setB",
+"hours": 36,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p100733",
+"set": "training_setB",
+"hours": 37,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p109663",
+"set": "training_setB",
+"hours": 50,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p111128",
+"set": "training_setB",
+"hours": 40,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p114365",
+"set": "training_setB",
 "hours": 35,
 "septic": false,
-"onset": null
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p118133",
+"set": "training_setB",
+"hours": 59,
+"septic": false,
+"onset": null,
+"severity": 0.0
+},
+{
+"id": "p118642",
+"set": "training_setB",
+"hours": 53,
+"septic": false,
+"onset": null,
+"severity": 0.0
 }
 ]

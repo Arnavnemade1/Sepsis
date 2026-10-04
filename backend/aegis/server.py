@@ -32,6 +32,7 @@ from backend.api.schemas import *  # noqa: F401,F403 — request bodies
 from backend.aegis.stream import AegisSession
 from backend.aegis.kernel import ALERT, BioCluster, NeuroSymbolicRuntime, SepsisBundleEngine
 from backend.aegis.cohort import CohortCluster
+from backend.aegis.ward_risk import INDEX_HIGH as _INDEX_HIGH, INDEX_MEDIUM as _INDEX_MEDIUM
 from backend.aegis.devices import DeviceRegistry
 from backend.aegis.syscalls import SyscallTable
 from backend.aegis.kernel.runtime import KernelDeviceRuntime
@@ -123,7 +124,11 @@ _active_treatment: Dict[str, float] = {"fluid_rate": 0.0, "vasopressor_dose": 0.
 #     fall back to the synthetic wing, which exercises the identical kernel. ---- #
 BOOT.checkpoint("wing", "mount the ICU wing on /dev/bio")
 try:
-    cluster = CohortCluster(n=12, lane_budget=160, seed=7, ebpf_optical=3)
+    # The ward is scored by the same detector the live session serves, in the same
+    # object: one copy of the stack in the process (backend/aegis/ward_risk.py).
+    from backend.aegis.ward_risk import WardDetector as _WardDetector
+    cluster = CohortCluster(n=12, lane_budget=160, seed=7, ebpf_optical=3,
+                            ward=_WardDetector(model=session.core.model))
     if not cluster.node_ids:
         raise RuntimeError("CinC-2019 corpus not found under data/cinc2019")
     DATA_MODE = "real-cinc2019"
@@ -936,20 +941,27 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
          "sweat_lactate": float(raw.get("lactate", 1.2)), "hrv": 55.0,
          "systolic_bp": round(mp * 1.4, 1), "diastolic_bp": round(mp * 0.8, 1)}
     fused = float(getattr(prof, "fused_risk", 0.0)) if prof else 0.0
-    # Personalisation: an imported/linked chart shifts the alerting PRIOR for a
-    # high-risk host (immunosuppression, CKD, …). Population risk is preserved; the
-    # band is taken from the personalised risk so the OS alerts these patients sooner.
-    # The effective risk already carries both personalisations (own-baseline and the
-    # chart's prior shift) and is the number the ward board shows for this bed.
+    # An imported/linked chart shifts the alerting PRIOR for a high-risk host
+    # (immunosuppression, CKD, …). The effective risk carries that shift and is the
+    # number the ward board shows for this bed.
     personalized = round(_effective_risk(bed), 4) if prof else 0.0
+    # The ward is scored by the shipped detector (ward_risk): its calibrated
+    # probability is what every field named "probability" carries, for this bed and
+    # the live session alike, and the tier is read off the index, whose lines ARE the
+    # detector's operating point. Without a detector, the old fusion semantics.
+    prob = cluster.effective_probability(bed) if hasattr(cluster, "effective_probability") else None
+    prob_pop = getattr(prof, "probability", None) if prof else None
     _hobj = patient_terminal.get_history(bed)
     _susc = (_hobj or {}).get("susceptibility") or {}
-    level = "HIGH" if personalized >= 0.6 else "MEDIUM" if personalized >= 0.35 else "LOW"
+    level = ("HIGH" if personalized >= _INDEX_HIGH else "MEDIUM" if personalized >= _INDEX_MEDIUM
+             else "LOW") if prob is not None else (
+             "HIGH" if personalized >= 0.6 else "MEDIUM" if personalized >= 0.35 else "LOW")
     wbc = float(hist.get("wbc", 7.5)); gcs = int(hist.get("gcs", 15))
     sirs = (int(v["skin_temp"] > 38 or v["skin_temp"] < 36) + int(v["heart_rate"] > 90)
             + int(v["respiratory_rate"] > 20) + int(wbc > 12 or wbc < 4))
     qsofa = int(v["respiratory_rate"] >= 22) + int(v["systolic_bp"] <= 100) + int(gcs < 15)
-    det = {"ml_probability": round(fused, 4), "sepsis_probability": round(fused, 4),
+    p_det = round(prob, 5) if prob is not None else round(fused, 4)
+    det = {"ml_probability": p_det, "sepsis_probability": p_det,
            "organ_dysfunction_score": 0, "hdc_probability": 0.0,
            "confidence": 0.6, "sensor_quality": 1.0}
     from backend.aegis.agents import ReasoningPlane, ReasoningContext
@@ -968,21 +980,33 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
         "schema_version": "1.4", "timestamp": time.time(), "source": "recorded · " + bed,
         "patient": {"id": bed, "name": rp.name, "age": rp.age, "gender": rp.gender,
                     "clinical_history": hist},
-        "risk": {"level": level, "ml_probability": round(personalized, 4), "ns_risk_level": level,
-                 "population_risk": round(fused, 4), "personalized_risk": round(personalized, 4),
-                 "susceptibility": _susc or None,
-                 "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0,
-                 # The conformal bands describe the CALIBRATED DETECTOR's output
-                 # distribution and nothing else. A cohort bed's risk is a fused
-                 # cohort score read against entirely different bands (0.35/0.6, not
-                 # the detector's 0.0525), so no conformal claim covers it. Said out
-                 # loud rather than omitted: a missing field reads as "resolved",
-                 # and quietly applying the bands to a differently-scaled score is
-                 # the threshold/fit-coupling error this repo already paid for once.
-                 "certainty": {"unavailable": True, "state": "no_claim",
-                               "reason": "cohort bed risk is a fused cohort score, not "
-                                         "the calibrated detector probability the "
-                                         "conformal bands were derived from"}},
+        "risk": ({"level": level, "ml_probability": round(prob, 5), "index": personalized,
+                  "ns_risk_level": level, "source": "detector",
+                  "population_risk": round(prob_pop, 5) if prob_pop is not None else None,
+                  "personalized_risk": round(prob, 5),
+                  "susceptibility": _susc or None,
+                  "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0,
+                  # The bed is now scored by the very fit the conformal bands were cut
+                  # on, so the claim is available - unless an imported chart has
+                  # shifted the score, which the bands do not describe.
+                  "certainty": cluster.certainty(bed) or {
+                      "unavailable": True, "state": "no_claim",
+                      "reason": ("an imported chart shifted this bed's prior; the conformal "
+                                 "bands describe the detector's own output"
+                                 if cluster._history_uplift(bed) else
+                                 "no conformal bands for the served detector")}}
+                 if prob is not None else
+                 {"level": level, "ml_probability": round(personalized, 4), "ns_risk_level": level,
+                  "population_risk": round(fused, 4), "personalized_risk": round(personalized, 4),
+                  "susceptibility": _susc or None,
+                  "sirs_score": sirs, "qsofa_score": qsofa, "signal_quality": 1.0,
+                  # A fused cohort score is read against different bands than the
+                  # detector's, so no conformal claim covers it. Said out loud rather
+                  # than omitted: a missing field reads as "resolved".
+                  "certainty": {"unavailable": True, "state": "no_claim",
+                                "reason": "cohort bed risk is a fused cohort score, not "
+                                          "the calibrated detector probability the "
+                                          "conformal bands were derived from"}}),
         "vitals": v, "detection": det, "triggered_rules": [],
         "body_state": body, "reasoning": reasoning, "whatif": adv["whatif"], "consensus": None,
         "history": {"t": [], "channels": {}, "risk": [], "probability": [], "region_severity": {}},
@@ -1609,7 +1633,7 @@ def _pk_context(bed: Optional[str]):
         patient, hist = _pk_patient(bed)
         prof = cluster.profiles[bed]
         risk = _effective_risk(bed)
-        level = "HIGH" if risk >= 0.70 else "MEDIUM" if risk >= 0.40 else "LOW"
+        level = "HIGH" if risk >= _INDEX_HIGH else "MEDIUM" if risk >= _INDEX_MEDIUM else "LOW"
         return (_pk_protocol(bed), patient, hist, level,
                 getattr(prof, "name", bed))
     snap = session.snapshot()
@@ -1694,11 +1718,14 @@ from backend.llm.live import LiveConsult as _LiveConsult, LiveUnavailable as _Li
 _doctor = _AIDoctor(_llm_client)
 
 
-# The banding that actually produces the tier shown on screen (server.py:719).
-# Passed to the dossier so the doctor states THIS scale and is barred from
-# comparing it against the detector's out-of-fold operating point, which is a
-# different quantity entirely.
-_TIER_BANDS = {"high": 0.6, "medium": 0.35}
+# The banding that produced the tier shown on screen, in the units of the probability
+# the dossier quotes. Every bed's "probability" is now the shipped detector's
+# calibrated output and every tier is read at its operating point (the ward index's
+# 0.35 / 0.70 lines are that point by construction), so the bands ARE the operating
+# point. Passed to the dossier so the doctor states the scale the tier came from.
+_OP = session.core.operating_point
+_TIER_BANDS = ({"high": float(_OP.high), "medium": float(_OP.medium)} if _OP is not None
+               else {"high": 0.6, "medium": 0.35})
 
 
 def _doctor_dossier(bed: Optional[str]) -> Dict[str, Any]:

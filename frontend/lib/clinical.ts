@@ -49,6 +49,18 @@ export function tierTone(t: Tier | WardTier | string | null | undefined): Tone {
   }
 }
 
+/**
+ * The ward risk index (backend/aegis/ward_risk.py). Every monitored bed is scored by
+ * the shipped sepsis detector; its calibrated probability is mapped onto 0–1 by a
+ * strictly monotone transform pinned at the detector's validated operating point, so
+ * these lines ARE that point: MEDIUM at 0.35, the paging line (HIGH) at 0.70. WATCH is
+ * the band just below the line. The index is a position on the alarm scale, not a
+ * probability; the calibrated probability is shown beside it.
+ */
+export const INDEX = { medium: 0.35, watch: 0.6, page: 0.7 } as const;
+export type IndexTier = "HIGH" | "MEDIUM" | "LOW";
+export const indexTier = (r: number): IndexTier => (r >= INDEX.page ? "HIGH" : r >= INDEX.medium ? "MEDIUM" : "LOW");
+
 export function severityTone(s: number | null | undefined, monitored = true): Tone {
   if (!monitored || s == null) return "nodata";
   if (s >= 0.66) return "high";

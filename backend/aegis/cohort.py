@@ -51,19 +51,50 @@ def _full_corpus_available() -> bool:
     return False
 
 
-def _source_patients(scan: int) -> Iterable["cinc2019.PatientRecord"]:
-    """Real ICU stays from the full corpus if present, else the bundled sample."""
-    if _full_corpus_available():
-        yield from cinc2019.iter_patients(limit=scan)
-        return
+def _sample_records() -> Iterable["cinc2019.PatientRecord"]:
     for path in sorted(glob.glob(os.path.join(_SAMPLE_DIR, "*.psv"))):
         rec = cinc2019._parse_psv(path, os.path.basename(path)[:-4], "sample")
         if rec is not None:
             yield rec
 
 
+def _source_patients(scan: int, need: int = 0) -> Iterable["cinc2019.PatientRecord"]:
+    """Real ICU stays the serving detector never trained on.
+
+    The ward is scored by the shipped detector (``ward_risk``), so a bed replaying one
+    of its TRAINING patients would show an in-sample prediction - flattering, and not
+    what the detector does on a new admission. The bundled sample is curated from the
+    detector's promotion holdout, and it is the source for every ward that fits in it,
+    locally and in production alike. Only a caller that needs more beds than the
+    sample holds (the scale harness) reads the full corpus, and then only patients on
+    the held-out list, checked by id before a file is parsed."""
+    seen = set()
+    for rec in _sample_records():
+        seen.add(rec.patient_id)
+        yield rec
+    if need <= len(seen) or not _full_corpus_available():
+        return
+    from backend.aegis.ward_risk import heldout
+    ids = heldout()["ids"]
+    budget = max(scan, 6 * need)
+    for s in _mlcfg.CINC_SETS:
+        d = os.path.join(_mlcfg.DATA_DIR, s)
+        if not os.path.isdir(d):
+            continue
+        for fname in sorted(os.listdir(d)):
+            if budget <= 0:
+                return
+            pid = fname[:-4]
+            if not fname.endswith(".psv") or pid in seen or (ids and pid not in ids):
+                continue
+            rec = cinc2019._parse_psv(os.path.join(d, fname), pid, s)
+            if rec is not None:
+                budget -= 1
+                yield rec
+
+
 def data_source() -> str:
-    return "full-corpus" if _full_corpus_available() else "bundled-sample"
+    return "held-out sample"
 
 # CinC column -> kernel channel. These are the seven real signals the fusion
 # engine actually scores on (HR/Temp/Resp/SpO2/MAP/WBC/Lactate).
@@ -120,6 +151,11 @@ class RealPatient:
     phase: float = 0.0
     _interp_at: float = field(default=float("nan"), repr=False)
     _interp_val: Any = field(default=None, repr=False)
+    #: the shipped detector's calibrated P(sepsis label) for every hour of the record,
+    #: and the same on the ward's index scale (``ward_risk``). None = no detector.
+    _p: Optional[np.ndarray] = field(default=None, repr=False)
+    _idx: Optional[np.ndarray] = field(default=None, repr=False)
+    _strata: Optional[np.ndarray] = field(default=None, repr=False)
 
     @property
     def mrn(self) -> str:
@@ -176,6 +212,30 @@ class RealPatient:
     def hours_to_onset(self) -> Optional[int]:
         return None if self.onset_hour is None else int(self.onset_hour - self.pos)
 
+    # -- the detector's reading of this record -------------------------- #
+    def score(self, ward: Any) -> None:
+        """Score every hour of the record once (features are causal, so hour h's score
+        is what the detector would have said AT hour h)."""
+        sc = ward.score(self.record) if ward is not None and ward.ready else None
+        if sc is not None and len(sc["p"]) == self.los_total:
+            self._p, self._idx = sc["p"], ward.map.index_array(sc["p"])
+            self._strata = sc.get("strata")
+
+    def p_at(self, hour: int) -> Optional[float]:
+        if self._p is None:
+            return None
+        return float(self._p[min(max(int(hour), 0), self.los_total - 1)])
+
+    def index_at(self, hour: int) -> Optional[float]:
+        if self._idx is None:
+            return None
+        return float(self._idx[min(max(int(hour), 0), self.los_total - 1)])
+
+    def stratum_at(self, hour: int) -> Optional[str]:
+        if self._strata is None:
+            return None
+        return str(self._strata[min(max(int(hour), 0), self.los_total - 1)])
+
     # -- current conditioned-input sample ------------------------------- #
     def _interp(self) -> Tuple[Dict[str, float], Dict[str, float]]:
         # Each of the bed's four drivers samples the same clock position every tick;
@@ -219,28 +279,41 @@ class RealPatient:
         }
 
     def chart(self, window: int = 48) -> Dict[str, Any]:
-        """Real vitals/labs trajectory up to the current replay hour, the fused
-        risk our engine assigns each hour, and the ground-truth label track."""
+        """Real vitals/labs trajectory up to the current replay hour, the risk the
+        ward acts on for each of those hours, and the ground-truth label track.
+
+        The risk series is the SAME quantity the rest of the record shows: the shipped
+        detector's score of each hour on the ward index (``ward_risk``), with its
+        calibrated probability alongside. It used to be the fusion engine pushed through
+        the own-baseline learner, re-run here from hour 0; that path is kept only for a
+        process with no detector."""
         hi = max(1, int(self.pos) + 1)
         lo = max(0, hi - window)
         series: Dict[str, List[Optional[float]]] = {}
         for k, ch in enumerate(CHANNELS):
             col = self._ff[lo:hi, k]
             series[ch] = [round(float(v), 2) for v in col]
-        # Risk per hour, warmed from hour 0 so the fusion windows are valid.
-        #
-        # This must be the SAME quantity the rest of the dossier displays. The engine
-        # produces two: the raw population risk, and the per-patient personalized risk
-        # (`personalized_risk(pop, deviation, maturity)`) that `_bed_dict` publishes as
-        # `fused_risk`. The header number, the tier badge, the detection hub's FUSED bar
-        # and the protocol gating all read the personalized one — but this method used to
-        # return the raw POPULATION series, under a panel titled "FUSED SEPSIS-RISK
-        # TIMELINE". For a patient whose own baseline is already deranged the two diverge
-        # hard (population 0.95 vs fused 0.60), so the chart drew him pinned above the
-        # 0.70 alarm line for his entire admission while the system's actual call, three
-        # inches away on the same screen, was WATCH. Both are returned now: `risk` is the
-        # personalized series the label promises, `population_risk` is kept alongside so
-        # the divergence is inspectable rather than invisible.
+        labels = self.record.labels[lo:hi].astype(int).tolist()
+        # the per-vital trend lines (Holt, per channel) are still worth drawing; the
+        # RISK projection continues the risk series itself (see ward_risk.index_forecast)
+        from backend.aegis.forecast import TrajectoryForecaster
+        wlo = max(0, hi - 12)
+        windows = {ch: [float(self._ff[h, k]) for h in range(wlo, hi)]
+                   for k, ch in enumerate(CHANNELS)}
+        vit_fc = TrajectoryForecaster(8).forecast(windows, start_hour=self.icu_hour)
+        if self._idx is not None:
+            from backend.aegis.ward_risk import INDEX_HIGH, INDEX_MEDIUM, index_forecast
+            risk = [round(float(v), 4) for v in self._idx[lo:hi]]
+            return {
+                "hours": list(range(lo, hi)), "series": series, "labels": labels,
+                "risk": risk, "population_risk": None,
+                "probability": [round(float(v), 5) for v in self._p[lo:hi]],
+                "onset_hour": self.onset_hour, "icu_hour": self.icu_hour,
+                "alarm": INDEX_HIGH, "medium": INDEX_MEDIUM, "source": "detector",
+                "forecast": index_forecast(self._idx[:hi], self.icu_hour, 8,
+                                           channels=vit_fc.get("channels")),
+            }
+        # no detector in this process: the bedside-rules fusion, as before
         from backend.aegis.kernel.fusion import FusionEngine
         ent_keys = ("temp_c", "resp_rate", "spo2", "map", "wbc", "lactate")
         fe = FusionEngine()
@@ -257,18 +330,11 @@ class RealPatient:
             snap = lz.snapshot(vals)
             pop_full.append(round(pop, 3))
             risk_full.append(round(personalized_risk(pop, snap["deviation"], snap["maturity"]), 3))
-        labels = self.record.labels[lo:hi].astype(int).tolist()
-        # trajectory forecast from the recent window
-        from backend.aegis.forecast import TrajectoryForecaster
-        wlo = max(0, hi - 12)
-        windows = {ch: [float(self._ff[h, k]) for h in range(wlo, hi)]
-                   for k, ch in enumerate(CHANNELS)}
-        forecast = TrajectoryForecaster(8).forecast(windows, start_hour=self.icu_hour)
         return {
             "hours": list(range(lo, hi)), "series": series, "labels": labels,
             "risk": risk_full[lo:hi], "population_risk": pop_full[lo:hi],
             "onset_hour": self.onset_hour,
-            "icu_hour": self.icu_hour, "alarm": 0.70, "forecast": forecast,
+            "icu_hour": self.icu_hour, "alarm": 0.70, "forecast": vit_fc, "source": "fusion",
         }
 
 
@@ -297,7 +363,7 @@ def build_cohort(n: int = 12, seed: int = 7, scan: int = 1500) -> List[RealPatie
     varied demographics. Deterministic for a given seed."""
     rng = np.random.default_rng(seed)
     severe, mild, stable = [], [], []
-    for rec in _source_patients(scan):
+    for rec in _source_patients(scan, need=n):
         if not (10 <= rec.n_hours <= 320):
             continue
         if rec.is_septic and rec.label_onset_hour is not None and rec.label_onset_hour >= 6:
@@ -425,8 +491,15 @@ class CohortCluster:
     HOURS_PER_TICK = 0.12        # ~1 ICU hour per ~5 s at 0.6 s ticks
 
     def __init__(self, n: int = 12, lane_budget: int = 160, seed: int = 7,
-                 ebpf_optical: int = 0):
+                 ebpf_optical: int = 0, ward: Any = None):
         self.patients = build_cohort(n, seed=seed)
+        # The ward's risk is the shipped detector's (see ward_risk): every record is
+        # scored once, hour by hour, and the tick reads the current hour's score. The
+        # server passes the live session's detector in so the process holds one copy.
+        from backend.aegis.ward_risk import WardDetector
+        self.ward = ward if ward is not None else WardDetector()
+        for p in self.patients:
+            p.score(self.ward)
         self.bus = DevBio()
         # Size the biometric arena to the ward. MemFabric's default is a fixed
         # 1Mi-cell (8 MiB) budget that has nothing to do with how many beds are
@@ -611,14 +684,27 @@ class CohortCluster:
                 edge = {k: vit[k] for k in self.EDGE_KEYS if k in vit}
                 ent = {k: vit[k] for k in self.ENTERPRISE_KEYS if k in vit}
                 prof = self.fusion.update(nid, self.names[nid], edge, ent)
+                pp = self._by[nid]
+                # THE risk: the detector's score of the current ICU hour, on the ward
+                # index. The fusion engine still names the derangements (drivers,
+                # organ components) and its own bedside-rules number is kept beside it
+                # as `rules_risk`; it no longer decides anything.
+                prob = pp.p_at(pp.icu_hour)
+                if prob is not None:
+                    prof.rules_risk = prof.fused_risk
+                    prof.probability = prob
+                    prof.fused_risk = float(pp.index_at(pp.icu_hour))
                 self.profiles[nid] = prof
-                # per-patient behavioural learning: deviation from the patient's OWN baseline
+                # per-patient behavioural learning: deviation from the patient's OWN
+                # baseline. An explanation, not an input to the alarm: on top of the
+                # detector it costs AUROC (0.800 -> 0.776 on 8,062 held-out patients).
                 lz = self.learner.get(nid)
                 scored = {ch: vit[ch] for ch in CHANNELS if ch in vit}
                 lz.observe(scored)
                 snap = lz.snapshot(scored)
-                risk = personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"])
-                self.personalized[nid] = {"risk": risk, **snap}
+                risk = (prof.fused_risk if prob is not None
+                        else personalized_risk(prof.fused_risk, snap["deviation"], snap["maturity"]))
+                self.personalized[nid] = {"risk": risk, "probability": prob, **snap}
                 # PREDICTIVE foresight: the Critical-Slowing-Down resilience radar +
                 # personal deviation, so the kernel pours compute into a destabilising
                 # patient BEFORE risk crosses the alarm (anticipatory scheduling).
@@ -723,20 +809,52 @@ class CohortCluster:
             return 0.0
 
     def effective_risk(self, nid: str) -> float:
-        """THE risk for a bed: population fusion, then the patient's own-baseline
-        personalization, then the imported chart's prior shift.
+        """THE risk for a bed: the detector's score of the current hour on the ward
+        index, then the imported chart's prior shift.
 
-        This is the number the board, the tier badge and the scheduler act on.
-        ``profiles[nid].fused_risk`` is only the POPULATION input to it, and reading
-        that instead made two screens disagree about one patient: the focus bundle
-        certified a patient as CRITICAL at 1.00 while the board, from this same
-        cluster, called him WATCH at 0.62. Every consumer reads this method."""
-        risk = self.personalized.get(nid, {}).get("risk", self.profiles[nid].fused_risk)
+        This is the number the board, the tier badge, the pager and the scheduler act
+        on. ``profiles[nid].fused_risk`` is the same score before the prior shift, and
+        reading that instead once made two screens disagree about one patient (the
+        focus bundle certified CRITICAL while the board said WATCH). Every consumer
+        reads this method. Without a detector it falls back to the fusion engine
+        through the own-baseline learner."""
+        pz = self.personalized.get(nid, {})
+        risk = pz.get("risk", self.profiles[nid].fused_risk)
         uplift = self._history_uplift(nid)
         if uplift:
-            from backend.aegis.patient_records import personalize_risk
-            risk = personalize_risk(risk, uplift)
+            prob = pz.get("probability")
+            if prob is not None and self.ward.map is not None:
+                # the chart's prior shift is a statement about the PROBABILITY of
+                # sepsis, so it is applied there and carried onto the index
+                from backend.aegis.ward_risk import shift_logodds
+                risk = self.ward.map.index(shift_logodds(prob, uplift))
+            else:
+                from backend.aegis.patient_records import personalize_risk
+                risk = personalize_risk(risk, uplift)
         return float(risk)
+
+    def certainty(self, nid: str) -> Optional[Dict[str, Any]]:
+        """The conformal prediction set for the bed's current hour, or None.
+
+        Read off the detector's OWN output. An imported chart's prior shift moves the
+        bed's risk but is not the detector's output, so a shifted bed carries no claim."""
+        p = self._by.get(nid)
+        if p is None or self._history_uplift(nid):
+            return None
+        h = p.icu_hour
+        return self.ward.certainty(p.p_at(h), p.stratum_at(h))
+
+    def effective_probability(self, nid: str) -> Optional[float]:
+        """The calibrated detector probability behind ``effective_risk`` (prior shift
+        included), or None when the ward runs without the detector."""
+        prob = self.personalized.get(nid, {}).get("probability")
+        if prob is None:
+            return None
+        uplift = self._history_uplift(nid)
+        if uplift:
+            from backend.aegis.ward_risk import shift_logodds
+            prob = shift_logodds(prob, uplift)
+        return float(prob)
 
     def effective_profile(self, nid: str):
         """The bed's profile carrying its effective risk (for the bundle engine,
@@ -773,6 +891,9 @@ class CohortCluster:
         # provider is injected by the server; beds with no history return 0 (no-op).
         d["history_uplift"] = round(self._history_uplift(nid), 3)
         d["fused_risk"] = self.effective_risk(nid)
+        prob = self.effective_probability(nid)
+        if prob is not None:
+            d["probability"] = round(prob, 5)
         return d
 
     def _ews_at(self, nid: str, h: int) -> Dict[str, Any]:
@@ -822,6 +943,21 @@ class CohortCluster:
             ch["risk"][-1] = round(float(pz["risk"]), 3)
         return ch
 
+    def _rules_series(self, p: "RealPatient") -> List[float]:
+        """The old ward path for one stay: fusion, then own-baseline personalisation."""
+        fe, lz = FusionEngine(), PatientBaselineLearner()
+        out: List[float] = []
+        for hr in range(p.los_total):
+            vals = {ch: float(p._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
+            edge = {"hr": vals["hr"],
+                    "perfusion": max(0.4, min(1.8, 1.0 + (vals["spo2"] - 95.0) / 18.0))}
+            ent = {k: vals[k] for k in self.ENTERPRISE_KEYS}
+            pop = fe.update(p.bed_id, p.name, edge, ent).fused_risk
+            lz.observe(vals)
+            snap = lz.snapshot(vals)
+            out.append(personalized_risk(pop, snap["deviation"], snap["maturity"]))
+        return out
+
     # -- validation: real detection performance vs ground-truth labels --- #
     def validation(self, alarm: float = 0.5) -> Dict[str, Any]:
         """Replay every cohort patient's FULL real stay through the fusion engine
@@ -844,10 +980,30 @@ class CohortCluster:
 
         rows: List[Dict[str, Any]] = []
         for p in self.patients:
+            if p._idx is not None:
+                # the series the ward acts on: the detector's score of every hour. There
+                # is no separate population series any more; `population` below repeats
+                # the rules engine's numbers so the comparison stays on the record.
+                pers_series = [float(v) for v in p._idx]
+                pop_series = self._rules_series(p)
+                first = _first_sustained(pers_series, alarm)
+                first_pop = _first_sustained(pop_series, alarm)
+                lead = (p.onset_hour - first) if (p.is_septic and p.onset_hour is not None
+                                                  and first is not None) else None
+                on = p.onset_hour if p.onset_hour is not None else p.los_total
+                rows.append({
+                    "bed_id": p.bed_id, "name": p.name, "mrn": p.mrn,
+                    "age": p.age, "gender": p.gender, "los": p.los_total,
+                    "septic": p.is_septic, "onset_hour": p.onset_hour,
+                    "first_alarm": first, "lead": lead, "first_alarm_pop": first_pop,
+                    "_pre_peak": _sustained_peak(pers_series[:on + 1]),
+                    "_peak": _sustained_peak(pers_series),
+                })
+                continue
             fe = FusionEngine()
             lz = PatientBaselineLearner()
-            pers_series: List[float] = []
-            pop_series: List[float] = []
+            pers_series = []
+            pop_series = []
             for hr in range(p.los_total):
                 vals = {ch: float(p._ff[hr, k]) for k, ch in enumerate(CHANNELS)}
                 edge = {"hr": vals["hr"],
@@ -904,8 +1060,10 @@ class CohortCluster:
             "mean_lead_h": _mean(leads), "median_lead_h": _median(leads),
             "max_lead_h": max(leads) if leads else 0,
             "fp_rate": round(len(fp) / max(len(stable), 1), 3),
-            "leads": leads, "sweep": sweep, "model": "personalized",
-            # population-only baseline, so the personalization gain is honest + visible
+            "leads": leads, "sweep": sweep,
+            "model": "detector" if self.ward.ready else "personalized",
+            # the comparison row: the bedside-rules fusion with own-baseline learning (the
+            # ward's risk before the detector replaced it), scored on the same stays
             "population": {
                 "detection_rate": round(len(det_pop) / max(len(septic), 1), 3),
                 "n_detected": len(det_pop),

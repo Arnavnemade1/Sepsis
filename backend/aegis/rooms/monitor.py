@@ -267,13 +267,14 @@ class RoomMonitor:
                         break
             m = self.engine.monitored.get(room) or {}
             hour = float(m.get("icu_hour") or (series[-1]["t"] if series else 0))
-            ml = {"risk": m.get("risk"), "drivers": m.get("drivers") or []}
+            ml = {"risk": m.get("risk"), "probability": m.get("probability"), "drivers": m.get("drivers") or []}
             return D.Ctx(room, kind, rec, v, hour, series, rec.get("labs") or {}, hour, clock="icu_hours", ml=ml,
                          flags=frozenset(rec.get("flags") or []))
         m = self.engine.monitored.get(room) or {}
         v = {k: x for k, x in (series[-1] if series else {}).items() if k != "t" and x is not None}
         return D.Ctx(room, kind, rec, v, series[-1]["t"] if series else None, series, rec.get("labs") or {}, now,
-                     ml={"risk": m.get("risk"), "drivers": m.get("drivers") or []}, flags=frozenset(rec.get("flags") or []))
+                     ml={"risk": m.get("risk"), "probability": m.get("probability"), "drivers": m.get("drivers") or []},
+                     flags=frozenset(rec.get("flags") or []))
 
     def _evaluate(self, room: str, now: float) -> Dict[str, Any]:
         rec = self.records.get(room)

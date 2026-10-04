@@ -22,9 +22,13 @@ type Roster = { patients: RosterPatient[]; default: string };
 type CohortChart = {
   hours: number[];
   series: Record<string, number[]>;
+  /** the ward risk index per hour (or the fusion score when the backend has no detector) */
   risk: number[];
-  population_risk: number[];
+  population_risk: number[] | null;
+  probability?: number[];
   alarm: number;
+  medium?: number;
+  source?: "detector" | "fusion";
   icu_hour: number;
   forecast: { risk_mean: number[]; risk_lo: number[]; risk_hi: number[]; trajectory: string; earliest_breach_in: number | null };
 };
@@ -81,7 +85,8 @@ function Bedside({ id }: { id: string }) {
       return {
         x: c.hours,
         risk: c.risk,
-        population: c.population_risk,
+        population: c.population_risk ?? undefined,
+        probability: c.probability,
         forecast: c.forecast?.risk_mean?.map((m, i) => ({
           x: last + i + 1,
           mean: m,
@@ -89,7 +94,9 @@ function Bedside({ id }: { id: string }) {
           hi: c.forecast.risk_hi[i],
         })),
         alarm: c.alarm,
+        medium: c.medium,
         xLabel: "ICU hour",
+        unit: c.source === "detector" ? "index" : "probability",
       };
     }
     if (live && timeline.data && timeline.data.history.length > 1) {
@@ -101,6 +108,7 @@ function Bedside({ id }: { id: string }) {
         alarm: t.alarm_threshold,
         medium: t.medium_threshold,
         xLabel: "hour",
+        unit: "probability",
       };
     }
     return null;
@@ -200,11 +208,17 @@ function Bedside({ id }: { id: string }) {
           <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Plate
               title="Risk over time"
-              eyebrow={recorded ? "White: the risk the unit acts on · grey: population fusion · blue: its 8 h projection" : "Calibrated detector probability"}
+              eyebrow={
+                recorded
+                  ? chart.data?.source === "fusion"
+                    ? "Bedside-rules fusion (no detector on this backend) · blue: its 8 h trend"
+                    : "The sepsis detector's score of each hour, on the ward index · blue: its 8 h trend"
+                  : "Calibrated detector probability"
+              }
               right={
                 recorded && chart.data?.forecast ? (
                   <span className="text-[11.5px] text-dim">
-                    population projection · {chart.data.forecast.trajectory}
+                    trend · {chart.data.forecast.trajectory}
                   </span>
                 ) : timeline.data ? (
                   <span className="text-[11.5px] text-dim">{timeline.data.trajectory}</span>

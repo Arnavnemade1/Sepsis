@@ -165,7 +165,12 @@ export type Rec = {
   active: boolean;
 };
 
-export type Monitor = Record<string, { risk: number | null; tier: string | null; watch: boolean; episode: boolean; bed: string | null; live: boolean }>;
+/** Per monitored room. `risk` is the ward risk index (see INDEX in lib/clinical.ts);
+ *  `probability` is the detector's calibrated P(sepsis) it was mapped from. */
+export type Monitor = Record<
+  string,
+  { risk: number | null; probability?: number | null; tier: string | null; watch: boolean; episode: boolean; bed: string | null; live: boolean }
+>;
 export type Occupant = { name: string; age: number | null; sex: string | null; diagnosis: string; synthetic: boolean; monitored: boolean; bed?: string | null; live?: boolean };
 
 export type Stats = {

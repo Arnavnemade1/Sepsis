@@ -59,9 +59,17 @@ def _hr(t: str) -> None:
     print(f"\n{t}\n" + "─" * len(t))
 
 
+#: Every patient in the bundled held-out sample. This used to evaluate the 12 the demo
+#: ward happened to draw, and the claim moved with the draw: on the held-out sample,
+#: twelve-patient draws (seeds 1-8) put "share of artifact-induced false alarms the gate
+#: removes" anywhere from -39% to 98%. The headline 91% was one such draw. All 32 is
+#: the steadier estimate (2026-10-03: 79% removed, the gate itself +8.0 pts).
+N_PATIENTS = 32
+
+
 def main() -> int:
     rng = np.random.default_rng(7)
-    patients = build_cohort(n=12, seed=7)
+    patients = build_cohort(n=N_PATIENTS, seed=7)
     if not patients:
         print("CinC-2019 corpus unavailable — cannot run the real-data validation.")
         return 1
@@ -79,7 +87,7 @@ def main() -> int:
     as_gated = []                        # septic + artifact (robustness)
     localized = 0
 
-    _hr("LEAVE-ONE-PATIENT-OUT EVALUATION  ·  12 real CinC-2019 patients")
+    _hr(f"LEAVE-ONE-PATIENT-OUT EVALUATION  ·  {len(patients)} real CinC-2019 patients")
     for held in patients:
         pid = held.bed_id
         train = [r[0] for p in patients if p.bed_id != pid
@@ -148,8 +156,12 @@ def main() -> int:
     for label, ok in checks:
         print(f"  [{'PASS' if ok else 'FAIL'}] {label}")
         failures += 0 if ok else 1
+    # A failure here is a finding about the gate, not a prompt to move its thresholds
+    # until this passes: tuning the gate on the patients it is judged on is the
+    # in-sample error the bars exist to catch.
     print("\n  RESONANCE GATE VALIDATED ✓" if failures == 0
-          else f"\n  {failures} CHECK(S) FAILED — tune thresholds in resonance.py")
+          else f"\n  {failures} CHECK(S) FAILED on held-out patients — the claim does not "
+               f"hold at its stated bar")
     return 1 if failures else 0
 
 

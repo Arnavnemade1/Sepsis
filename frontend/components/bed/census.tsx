@@ -7,7 +7,7 @@ import { useMemo } from "react";
 
 import { PageHead } from "@/components/shell";
 import { cx, MiniLine, Panel, Skeleton, Tag } from "@/components/ui";
-import { title } from "@/lib/clinical";
+import { INDEX, indexTier, pct, title, type IndexTier } from "@/lib/clinical";
 import { usePoll } from "@/lib/hooks";
 import { usePaging, useRoomPages } from "@/lib/paging";
 
@@ -21,6 +21,8 @@ type Bed = {
   los_total: number;
   fused_risk: number;
   population_risk: number;
+  /** the detector's calibrated P(sepsis) behind `fused_risk` (absent without a detector) */
+  probability?: number;
   primary_system: string | null;
   drivers: string[];
   ews?: { ews: number; trace: number[]; rising: boolean; warming: boolean };
@@ -28,15 +30,12 @@ type Bed = {
 type Cluster = { beds: Bed[] };
 type Roster = { patients: { id: string; name: string; kind: string }[] };
 
-// The tiers the patient record shows, so the census never contradicts it
-// (backend/aegis/server.py: cohort beds HIGH ≥ 0.60, MEDIUM ≥ 0.35; the live,
-// calibrated session HIGH ≥ 0.70, MEDIUM ≥ 0.40). The detector PAGES at 0.70,
+// Every bed, the live room included, is read on the ward risk index: one scale, one
+// rule (lib/clinical.ts). The paging line is the detector's validated HIGH point and is
 // drawn as the tick on every bar.
-const PAGING_LINE = 0.7;
-type Tier = "HIGH" | "MEDIUM" | "LOW";
-const tierOf = (r: number, live = false): Tier => (r >= (live ? 0.7 : 0.6) ? "HIGH" : r >= (live ? 0.4 : 0.35) ? "MEDIUM" : "LOW");
-const TIER_TEXT: Record<Tier, string> = { HIGH: "text-high-ink", MEDIUM: "text-med-ink", LOW: "text-ink" };
-const TIER_BAR: Record<Tier, string> = { HIGH: "#e5484d", MEDIUM: "#eeb12a", LOW: "#868d97" };
+const PAGING_LINE = INDEX.page;
+const TIER_TEXT: Record<IndexTier, string> = { HIGH: "text-high-ink", MEDIUM: "text-med-ink", LOW: "text-ink" };
+const TIER_BAR: Record<IndexTier, string> = { HIGH: "#e5484d", MEDIUM: "#eeb12a", LOW: "#868d97" };
 
 export function Census() {
   const router = useRouter();
@@ -53,10 +52,12 @@ export function Census() {
   const liveRoom = Object.entries(state.monitor).find(([, v]) => v.live)?.[0] ?? null;
   const live = roster.data?.patients.find((p) => p.kind === "live") ?? null;
   const liveRisk = liveRoom ? state.monitor[liveRoom]?.risk ?? null : null;
+  const liveP = liveRoom ? state.monitor[liveRoom]?.probability ?? null : null;
 
   const beds = useMemo(() => [...(cluster.data?.beds ?? [])].sort((a, b) => b.fused_risk - a.fused_risk), [cluster.data]);
-  const high = beds.filter((b) => tierOf(b.fused_risk) === "HIGH").length + (liveRisk != null && tierOf(liveRisk, true) === "HIGH" ? 1 : 0);
-  const above = beds.filter((b) => b.fused_risk >= PAGING_LINE).length + (liveRisk != null && liveRisk >= PAGING_LINE ? 1 : 0);
+  const risks = [...beds.map((b) => b.fused_risk), ...(liveRisk != null ? [liveRisk] : [])];
+  const above = risks.filter((r) => r >= PAGING_LINE).length;
+  const watch = risks.filter((r) => r >= INDEX.watch && r < PAGING_LINE).length;
   const rising = beds.filter((b) => b.ews?.rising).length;
   const withPage = beds.filter((b) => roomOf[b.bed_id] && roomPages[roomOf[b.bed_id]]).length;
 
@@ -66,24 +67,25 @@ export function Census() {
         title="Patients"
         right={
           <div className="flex flex-wrap gap-2">
-            <Tag tone={high ? "high" : "neutral"} dot={!!high}>
-              {high} high risk
+            <Tag tone={above ? "high" : "neutral"} dot={!!above}>
+              {above} at the paging line
             </Tag>
-            <Tag tone={above ? "dys" : "neutral"} dot={!!above}>
-              {above} above the paging line
+            <Tag tone={watch ? "med" : "neutral"} dot={!!watch}>
+              {watch} on watch
             </Tag>
           </div>
         }
       >
-        Every monitored bed, ranked by the risk the unit acts on: the fused, personalized score with the population score beside it. ICU rooms 301–312
-        replay de-identified PhysioNet/CinC 2019 stays; room 402 is the live session.
+        Every monitored bed, ranked by the sepsis detector&rsquo;s score of the current hour. The score is a 0&ndash;1 index whose 0.70 line is the
+        detector&rsquo;s validated alarm point; its calibrated probability is shown beneath. ICU rooms 301&ndash;312 replay de-identified PhysioNet/CinC
+        2019 stays the detector never trained on; room 402 is the live session.
       </PageHead>
 
       <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-5">
         {[
           ["Monitored", beds.length + (live ? 1 : 0), "12 replayed · 1 live"],
-          ["High risk", high, "the record's tier: ≥ 0.60 replayed, ≥ 0.70 live"],
-          ["Above the paging line", above, `the detector pages at ≥ ${PAGING_LINE.toFixed(2)}`],
+          ["At the paging line", above, `index ≥ ${PAGING_LINE.toFixed(2)}: the detector's alarm`],
+          ["On watch", watch, `${INDEX.watch.toFixed(2)}–${PAGING_LINE.toFixed(2)}, approaching the line`],
           ["Rising early warning", rising, "critical slowing down"],
           ["With an open page", withPage, "paged by nurse or detector"],
         ].map(([k, v, sub]) => (
@@ -95,7 +97,7 @@ export function Census() {
         ))}
       </div>
 
-      <Panel title="Census" meta="Sorted by effective risk · select a patient to open the record" flush>
+      <Panel title="Census" meta="Sorted by risk · select a patient to open the record" flush>
         {!cluster.data ? (
           <div className="p-3.5">
             <Skeleton className="h-96" />
@@ -108,7 +110,7 @@ export function Census() {
                   <th className="px-3.5 py-2 font-medium">Room</th>
                   <th className="px-2 py-2 font-medium">Patient</th>
                   <th className="px-2 py-2 font-medium">ICU hour</th>
-                  <th className="w-[220px] px-2 py-2 font-medium">Effective risk · paging line {PAGING_LINE.toFixed(2)}</th>
+                  <th className="w-[220px] px-2 py-2 font-medium">Sepsis risk · paging line {PAGING_LINE.toFixed(2)}</th>
                   <th className="px-2 py-2 font-medium">Early warning</th>
                   <th className="px-2 py-2 font-medium">Leading system</th>
                   <th className="px-2 py-2 font-medium">Drivers</th>
@@ -133,13 +135,13 @@ export function Census() {
                     </td>
                     <td className="px-2 py-2.5 font-mono text-[11.5px] text-dim">live</td>
                     <td className="px-2 py-2.5">
-                      <RiskCell risk={liveRisk} live />
+                      <RiskCell risk={liveRisk} probability={liveP} />
                     </td>
                     <td className="px-2 py-2.5 text-[11.5px] text-dim">streaming</td>
                     <td className="px-2 py-2.5 text-muted">—</td>
                     <td className="px-2 py-2.5 text-[12px] text-dim">camera, wearable or simulator</td>
                     <td className="px-3.5 py-2.5">
-                      <StatusCell risk={liveRisk} live page={!!(liveRoom && roomPages[liveRoom])} />
+                      <StatusCell risk={liveRisk} page={!!(liveRoom && roomPages[liveRoom])} />
                     </td>
                   </tr>
                 )}
@@ -176,7 +178,7 @@ export function Census() {
                         <span className="text-faint"> / {b.los_total}</span>
                       </td>
                       <td className="px-2 py-2.5">
-                        <RiskCell risk={b.fused_risk} population={b.population_risk} />
+                        <RiskCell risk={b.fused_risk} probability={b.probability} />
                       </td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center gap-2">
@@ -203,14 +205,18 @@ export function Census() {
   );
 }
 
-function RiskCell({ risk, population, live = false }: { risk: number | null; population?: number; live?: boolean }) {
+function RiskCell({ risk, probability }: { risk: number | null; probability?: number | null }) {
   if (risk == null) return <span className="text-dim">—</span>;
-  const tier = tierOf(risk, live);
+  const tier = indexTier(risk);
   return (
     <div>
       <div className="flex items-baseline gap-2">
         <span className={cx("num font-mono text-[13px] font-semibold", TIER_TEXT[tier])}>{risk.toFixed(2)}</span>
-        {population != null && <span className="num font-mono text-[11px] text-faint">pop {population.toFixed(2)}</span>}
+        {probability != null && (
+          <span className="num font-mono text-[11px] text-faint" title="the detector's calibrated probability of the sepsis label">
+            P {pct(probability, 1)}
+          </span>
+        )}
       </div>
       <div className="relative mt-1 h-1 w-[150px] overflow-hidden rounded-[2px] bg-s3">
         <div className="h-full" style={{ width: `${Math.min(100, risk * 100)}%`, background: TIER_BAR[tier] }} />
@@ -220,8 +226,8 @@ function RiskCell({ risk, population, live = false }: { risk: number | null; pop
   );
 }
 
-function StatusCell({ risk, page, live = false }: { risk: number | null; page: boolean; live?: boolean }) {
-  const tier = risk == null ? null : tierOf(risk, live);
+function StatusCell({ risk, page }: { risk: number | null; page: boolean }) {
+  const tier = risk == null ? null : indexTier(risk);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {tier == null ? <Tag>no data</Tag> : tier === "HIGH" ? <Tag tone="high">High risk</Tag> : tier === "MEDIUM" ? <Tag tone="med">Medium</Tag> : <Tag>Low</Tag>}

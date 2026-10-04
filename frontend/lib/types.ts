@@ -63,7 +63,12 @@ export type Snapshot = {
   };
   risk: {
     level: Tier;
+    /** the detector's calibrated P(sepsis label) — for the live session and every ward bed */
     ml_probability: number | null;
+    /** the same on the ward risk index (lib/clinical.ts INDEX); the tier is read off it */
+    index?: number | null;
+    /** the probability before an imported chart's prior shift, when one applies */
+    population_risk?: number | null;
     sirs_score: number;
     qsofa_score: number;
     signal_quality: number;

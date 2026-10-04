@@ -44,7 +44,7 @@ def lab_evidence() -> Dict[str, Any]:
             "detection_at_spec90", "false_alarm_at_spec90")
     hold = man.get("holdout_metrics") or {}
     out: Dict[str, Any] = {"detector": None, "operating_point": None,
-                           "conformal": None, "falsification": None}
+                           "conformal": None, "falsification": None, "ward": None}
     if man:
         out["detector"] = {
             "id": det_id, "promoted": bool(man.get("promoted")), "created": man.get("created"),
@@ -84,6 +84,21 @@ def lab_evidence() -> Dict[str, Any]:
             "coverage_septic": overall.get("micro_pos"), "coverage_non_septic": overall.get("micro_neg"),
             "abstain_rate": locked.get("abstain_rate"), "n_patients": locked.get("n_patients"),
             "detector": cf.get("detector"), "matches_detector": cf.get("detector") == det_id,
+        }
+    # Which beds the detector actually scores, and what the ward read before it did
+    # (backend/aegis/ward_risk.py; measured by backend/ml/scripts/ward_auroc.py).
+    wr = art("ward_risk.json")
+    if wr:
+        sc = wr.get("scores") or {}
+        out["ward"] = {
+            "detector": wr.get("detector"), "matches_detector": wr.get("detector") == det_id,
+            "patients": wr.get("patients"), "rows": wr.get("rows"), "split": wr.get("split"),
+            "before": sc.get("rules"), "after": sc.get("detector"),
+            "personalised": sc.get("index_pers"),
+            "delta": wr.get("delta_detector_minus_rules"),
+            "index_map": wr.get("index_map"),
+            "scores": ["ICU rooms 301-312 (replayed CinC stays the detector never trained on)",
+                       "room 402 (the live session)"],
         }
     fz = art("falsification.json")
     if fz:

@@ -1,0 +1,48 @@
+{
+  "generated": "2026-10-03T19:11:33",
+  "detector": "patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322",
+  "fit_digest": "7fbbdd0ad322",
+  "rows": 312901,
+  "patients": 8062,
+  "split": "the shipped detector's promotion holdout (patients it never trained on), every hour, challenge label",
+  "scores": {
+    "rules": {
+      "auroc": 0.632,
+      "hour_matched": 0.651
+    },
+    "rules_pop": {
+      "auroc": 0.6511,
+      "hour_matched": 0.6507
+    },
+    "detector": {
+      "auroc": 0.8,
+      "hour_matched": 0.7333
+    },
+    "index": {
+      "auroc": 0.8,
+      "hour_matched": 0.7333
+    },
+    "index_pers": {
+      "auroc": 0.7763,
+      "hour_matched": 0.7219
+    }
+  },
+  "delta_detector_minus_rules": {
+    "delta": 0.168,
+    "lo": 0.1467,
+    "hi": 0.1915,
+    "draws": 400
+  },
+  "index_map": {
+    "a": 2.029721,
+    "c": -3.310459,
+    "p_medium": 0.0262,
+    "p_high": 0.0525,
+    "index_medium": 0.35,
+    "index_watch": 0.6,
+    "index_high": 0.7,
+    "detector": "patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322",
+    "formula": "index = sigmoid(a * (logit(p) - c))"
+  },
+  "index_preserves_auroc": true
+}
