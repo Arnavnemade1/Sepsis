@@ -164,7 +164,10 @@ export type Unit = {
   devices?: { name: string; detail: string; status: string }[];
   simulation?: Simulation | null;
   monitoring?: { kind: RoomKind; sample_s: number | null; eval_period_s: number; pages_from: string; detectors: string[] };
+  /** the ward risk index (lib/clinical.ts INDEX); monitored rooms only */
   risk?: number | null;
+  /** the detector's calibrated P(sepsis) behind `risk` */
+  probability?: number | null;
   body?: Body | null;
 };
 
@@ -193,7 +196,10 @@ export type BoardRoom = {
   trend?: number[];
   episode?: { open: boolean; page: string | null } | null;
   simulation?: Simulation | null;
+  /** the ward risk index (lib/clinical.ts INDEX); monitored rooms only */
   risk?: number | null;
+  /** the detector's calibrated P(sepsis) behind `risk` */
+  probability?: number | null;
 };
 
 export type Board = {

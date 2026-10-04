@@ -131,7 +131,7 @@ function Pharmacy() {
       </PageHead>
 
       {opts.loading && !data ? (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <Skeleton className="h-64 rounded-lg" />
           <Skeleton className="h-96 rounded-lg" />
         </div>
@@ -140,7 +140,7 @@ function Pharmacy() {
           <Empty>{opts.data?.detail ?? opts.error ?? "Choose a patient."}</Empty>
         </Plate>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <Plate title="Compare the paths" eyebrow={data.comparison.headline} bodyClass="p-0">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[860px] border-collapse text-[12.5px]">
@@ -211,7 +211,7 @@ function Pharmacy() {
 function OptionDetail({ o }: { o: Option }) {
   const events = [...o.adverse.events].sort((a, b) => b.probability - a.probability).slice(0, 6);
   return (
-    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <Plate
         title={o.label}
         eyebrow={o.note}
@@ -229,7 +229,7 @@ function OptionDetail({ o }: { o: Option }) {
         {o.arms.length === 0 ? (
           <Empty>No drug is given on this path.</Empty>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {o.arms.map((a) => (
               <div key={a.drug} className="min-w-0">
                 <div className="flex items-baseline gap-2">
@@ -261,7 +261,7 @@ function OptionDetail({ o }: { o: Option }) {
           </div>
         )}
         {(o.upsides.length > 0 || o.downsides.length > 0) && (
-          <div className="mt-3 grid gap-4 border-t border-line-soft pt-4 md:grid-cols-2">
+          <div className="mt-3 grid grid-cols-1 gap-4 border-t border-line-soft pt-4 md:grid-cols-2">
             <PointList title="For" points={o.upsides} />
             <PointList title="Against" points={o.downsides} warn />
           </div>
@@ -458,7 +458,7 @@ function InteractionScreen({ seed, renal }: { seed: string[]; renal: boolean }) 
       </div>
       {err && <div className="mt-3 text-[12.5px] text-high-ink">{err}</div>}
       {res && (
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
           <div>
             <div className="mb-2 text-[11.5px] text-dim">Proof tree · hard constraints</div>
             {res.proof_tree.length === 0 ? (

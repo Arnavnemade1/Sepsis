@@ -52,6 +52,17 @@ type Evidence = {
     detector: string;
     matches_detector: boolean;
   };
+  ward: null | {
+    detector: string;
+    matches_detector: boolean;
+    patients: number;
+    rows: number;
+    before: { auroc: number; hour_matched: number };
+    after: { auroc: number; hour_matched: number };
+    personalised: { auroc: number; hour_matched: number };
+    delta: { delta: number; lo: number; hi: number; draws: number };
+    index_map: { p_medium: number; p_high: number; index_medium: number; index_high: number };
+  };
   falsification: null | {
     generated: string;
     mutations: number;
@@ -96,7 +107,7 @@ export default function LabPage() {
         proposed change the promotion gate refused.
       </PageHead>
 
-      <div className="grid gap-3">
+      <div className="grid grid-cols-1 gap-3">
         <Plate
           title="Deployed detector"
           eyebrow={d ? `${d.promoted ? "Promoted" : "Candidate"} ${d.created?.slice(0, 10)} · ${d.feature_set} features` : "From the promotion gate's manifest"}
@@ -144,7 +155,9 @@ export default function LabPage() {
           )}
         </Plate>
 
-        <div className="grid gap-3 xl:grid-cols-3">
+        {ev.data?.ward && <WardPlate w={ev.data.ward} />}
+
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
           <Plate title="Operating point" eyebrow="Where the alarm is set, derived on out-of-fold patients" right={ev.data?.operating_point && <Stamp ok={ev.data.operating_point.matches_detector} />}>
             {!ev.data ? (
               <Skeleton className="h-32" />
@@ -254,7 +267,7 @@ export default function LabPage() {
             </div>
           ) : (
             <>
-              <div className="grid gap-4 border-b border-line-soft p-4 md:grid-cols-4">
+              <div className="grid grid-cols-1 gap-4 border-b border-line-soft p-4 md:grid-cols-4">
                 {lab.data.proposers.map((p) => (
                   <div key={p.name}>
                     <div className="text-[13px] text-ink">{p.name}</div>
@@ -302,7 +315,7 @@ export default function LabPage() {
           {!lab.data ? (
             <Skeleton className="h-24" />
           ) : (
-            <div className="grid gap-x-8 md:grid-cols-2">
+            <div className="grid grid-cols-1 gap-x-8 md:grid-cols-2">
               {Object.entries(lab.data.roles).map(([k, v]) => (
                 <Kv key={k} k={k} v={<span className="whitespace-normal text-left text-muted">{v}</span>} />
               ))}
@@ -332,5 +345,72 @@ function Bar({ label, v, cap, note }: { label: string; v: number; cap?: number; 
       <Meter value={v} marks={cap != null ? [cap] : []} className="mt-1" />
       {note && <div className="mt-1 text-[11px] text-dim">{note}</div>}
     </div>
+  );
+}
+
+/** Which beds the detector scores, and what the ICU rooms were scored by before it did. */
+function WardPlate({ w }: { w: NonNullable<Evidence["ward"]> }) {
+  // AUROC on its meaningful range: 0.5 is chance
+  const pos = (a: number) => `${Math.max(0, Math.min(1, (a - 0.5) / 0.5)) * 100}%`;
+  const rows = [
+    { k: "Bedside-rules fusion, the ICU rooms' risk until 2026-10-03", a: w.before, tone: "bg-dim" },
+    { k: "The deployed detector, what every bed reads now", a: w.after, tone: "bg-ink" },
+  ];
+  return (
+    <Plate title="What it scores" eyebrow="Every monitored bed: the twelve ICU rooms and the live room" right={<Stamp ok={w.matches_detector} />}>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+        <div>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-3 text-[11.5px] text-dim">
+            <span>
+              AUROC on {w.patients.toLocaleString()} patients the detector never trained on, every hour
+            </span>
+            <span className="num shrink-0 font-mono">bars from 0.5 (chance) to 1.0</span>
+          </div>
+          <div className="space-y-3.5">
+            {rows.map((r) => (
+              <div key={r.k}>
+                <div className="flex items-baseline justify-between gap-3 text-[12.5px]">
+                  <span className="min-w-0 text-muted">{r.k}</span>
+                  <span className="num shrink-0 font-mono text-ink">
+                    {r.a.auroc.toFixed(3)} <span className="text-dim">· {r.a.hour_matched.toFixed(3)} hour-matched</span>
+                  </span>
+                </div>
+                <div className="relative mt-1.5 h-1.5 overflow-hidden rounded-[2px] bg-s3">
+                  <div className={cx("h-full", r.tone)} style={{ width: pos(r.a.auroc) }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-4 text-[12px] leading-relaxed text-dim">
+            The ICU rooms raise most detector pages, and until this change a hand-weighted qSOFA/SIRS score decided them while the validated
+            detector served only the live room. Paired bootstrap over patients ({w.delta.draws} draws): +{w.delta.delta.toFixed(3)} [
+            {w.delta.lo >= 0 ? "+" : ""}
+            {w.delta.lo.toFixed(3)}, +{w.delta.hi.toFixed(3)}]. Own-baseline learning on top of the detector scored {w.personalised.auroc.toFixed(3)}, so it
+            explains a record and no longer moves the alarm.
+          </p>
+        </div>
+        <div className="border-t border-line-soft pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
+          <div className="text-[11.5px] text-dim">The scale every room is read on</div>
+          <div className="mt-3 space-y-2.5 text-[12.5px]">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-muted">Pages at index</span>
+              <span className="num font-mono text-ink">
+                {w.index_map.index_high.toFixed(2)} <span className="text-dim">= P {pct(w.index_map.p_high, 2)}</span>
+              </span>
+            </div>
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-muted">Medium from</span>
+              <span className="num font-mono text-ink">
+                {w.index_map.index_medium.toFixed(2)} <span className="text-dim">= P {pct(w.index_map.p_medium, 2)}</span>
+              </span>
+            </div>
+          </div>
+          <p className="mt-3 text-[12px] leading-relaxed text-dim">
+            The index is the calibrated probability mapped by a strictly monotone curve pinned at the operating point above, so the paging line is
+            the detector&rsquo;s own alarm and the ranking, and AUROC, are unchanged. Every room shows the probability beside it.
+          </p>
+        </div>
+      </div>
+    </Plate>
   );
 }

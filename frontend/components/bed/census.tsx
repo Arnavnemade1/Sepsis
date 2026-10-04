@@ -103,7 +103,44 @@ export function Census() {
             <Skeleton className="h-96" />
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* a phone gets one row per bed: room, patient, risk, status */}
+          <ul className="divide-y divide-line-soft md:hidden">
+            {live && (
+              <li>
+                <Link href={`/patient/?id=${encodeURIComponent(live.id)}`} className="flex items-center gap-3 px-3.5 py-2.5 active:bg-s2">
+                  <span className="w-9 shrink-0 font-mono font-semibold text-ink">{liveRoom ?? "402"}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-ink">{live.name}</span>
+                    <span className="block text-[11px] text-dim">Live session</span>
+                  </span>
+                  <span className="shrink-0">
+                    <RiskCell risk={liveRisk} probability={liveP} compact />
+                  </span>
+                </Link>
+              </li>
+            )}
+            {beds.map((b) => {
+              const room = roomOf[b.bed_id];
+              return (
+                <li key={b.bed_id}>
+                  <Link href={`/patient/?id=${encodeURIComponent(b.bed_id)}`} className="flex items-center gap-3 px-3.5 py-2.5 active:bg-s2">
+                    <span className="w-9 shrink-0 font-mono font-semibold text-ink">{room ?? "—"}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-ink">{b.name}</span>
+                      <span className="block truncate text-[11px] text-dim">
+                        ICU hour {b.icu_hour} · {b.drivers[0] ?? "no derangement named"}
+                      </span>
+                    </span>
+                    <span className="shrink-0">
+                      <RiskCell risk={b.fused_risk} probability={b.probability} compact />
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[1000px] text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] text-dim">
@@ -186,7 +223,7 @@ export function Census() {
                           {b.ews?.rising && <TrendingUp size={13} className="text-med-ink" />}
                         </div>
                       </td>
-                      <td className="px-2 py-2.5 text-muted">{b.primary_system ? title(b.primary_system) : "—"}</td>
+                      <td className="px-2 py-2.5 text-muted">{b.primary_system && b.primary_system !== "none" ? title(b.primary_system) : "—"}</td>
                       <td className="max-w-[260px] truncate px-2 py-2.5 text-[12px] text-dim" title={b.drivers.join(" · ")}>
                         {b.drivers[0] ?? "—"}
                       </td>
@@ -199,15 +236,23 @@ export function Census() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Panel>
     </div>
   );
 }
 
-function RiskCell({ risk, probability }: { risk: number | null; probability?: number | null }) {
+function RiskCell({ risk, probability, compact = false }: { risk: number | null; probability?: number | null; compact?: boolean }) {
   if (risk == null) return <span className="text-dim">—</span>;
   const tier = indexTier(risk);
+  if (compact)
+    return (
+      <div className="text-right">
+        <div className={cx("num font-mono text-[13px] font-semibold", TIER_TEXT[tier])}>{risk.toFixed(2)}</div>
+        {probability != null && <div className="num font-mono text-[10.5px] text-faint">P {pct(probability, 1)}</div>}
+      </div>
+    );
   return (
     <div>
       <div className="flex items-baseline gap-2">

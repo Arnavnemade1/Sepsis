@@ -1,7 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { cx } from "@/components/ui";
 import type { Clinician, Layout, Monitor, Occupant, Page } from "@/lib/paging";
@@ -98,6 +98,30 @@ export function FloorView(props: Props) {
       )}
     </div>
   );
+}
+
+/** The host box's width / height on a desktop, where the panel sets the height; null on a
+ *  phone, where the drawing sets its own height (so there is no box to fit). */
+function useHostAspect(ref: React.RefObject<SVGSVGElement | null>): number | null {
+  const [aspect, setAspect] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current?.parentElement;
+    if (!el) return;
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      setAspect(mq.matches && r.width > 0 && r.height > 0 ? Math.round((r.width / r.height) * 50) / 50 : null);
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    mq.addEventListener("change", measure);
+    measure();
+    return () => {
+      ro.disconnect();
+      mq.removeEventListener("change", measure);
+    };
+  }, [ref]);
+  return aspect;
 }
 
 /* ------------------------------------------------------------------ */
@@ -298,14 +322,14 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom
           const p = proj(0, D, s, pos);
           return (
             <g className="pointer-events-none">
-              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={10.5} fontFamily="var(--font-geist-mono)" fontWeight={600} letterSpacing="0.06em" fill="rgb(255 255 255 / .82)">
+              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={12.5} fontFamily="var(--font-geist-mono)" fontWeight={600} letterSpacing="0.05em" fill="rgb(255 255 255 / .85)">
                 {`FLOOR ${fid}`}
               </text>
-              <text x={p[0] - 18} y={p[1] + 10} textAnchor="end" fontSize={10} fill="rgb(255 255 255 / .42)">
+              <text x={p[0] - 18} y={p[1] + 12} textAnchor="end" fontSize={11.5} fill="rgb(255 255 255 / .48)">
                 {floor.label}
               </text>
               {summary && summary.n > 0 && summary.top != null && (
-                <text x={p[0] - 18} y={p[1] + 24} textAnchor="end" fontSize={9.5} fontFamily="var(--font-geist-mono)" fontWeight={600} fill={P_INK[summary.top]}>
+                <text x={p[0] - 18} y={p[1] + 28} textAnchor="end" fontSize={11} fontFamily="var(--font-geist-mono)" fontWeight={600} fill={P_INK[summary.top]}>
                   {`${summary.n} ACTIVE`}
                 </text>
               )}
@@ -363,9 +387,20 @@ function Stack(props: Props & { setTip: (t: Tip) => void }) {
   const { layout, onFloor, clinicians, pages, selectedPage, roomPages } = props;
   const [hover, setHover] = useState<string | null>(null);
   const spots = useStaffSpots(layout, clinicians, pages);
-  const S = 4.9, GAP = 66, DX = 54;
+  const host = useRef<SVGSVGElement>(null);
+  const aspect = useHostAspect(host);
+  const S = 4.9, DX = 54;
   const n = layout.floors.length;
   const { fx, fy } = STACK_ANGLE;
+  const W = layout.plate.w, D = layout.plate.d;
+  // labels sit left of each slab; 108 units holds the longest at the sizes below
+  const minX = -D * fx * S - 108;
+  const maxX = W * fx * S + (n - 1) * DX + 24;
+  const bottom = (W + D) * fy * S + 34;
+  // The stack's width is fixed by the plate; its height is set by the gap between floors.
+  // A fixed gap drew a wide, short building into a taller panel and letterboxed it (70 px
+  // bands at 1512 px). On a desktop the gap is chosen so the drawing has the panel's shape.
+  const GAP = aspect ? Math.max(60, Math.min(112, ((maxX - minX) / aspect - 36 - bottom) / Math.max(1, n - 1))) : 66;
   const posOf = (fid: string): Pos | null => {
     const f = layout.floors.find((x) => x.id === fid);
     return f ? { z: f.index * GAP, ox: f.index * DX, fx, fy } : null;
@@ -380,13 +415,9 @@ function Stack(props: Props & { setTip: (t: Tip) => void }) {
     }
     return out;
   }, [roomPages]);
-  const W = layout.plate.w, D = layout.plate.d;
-  const minX = -D * fx * S - 150;
-  const maxX = W * fx * S + (n - 1) * DX + 24;
   const top = (n - 1) * GAP + 36;
-  const bottom = (W + D) * fy * S + 34;
   return (
-    <svg data-floorhost viewBox={`${minX.toFixed(0)} ${(-top).toFixed(0)} ${(maxX - minX).toFixed(0)} ${(top + bottom).toFixed(0)}`} className="h-auto w-full lg:h-full" preserveAspectRatio="xMidYMid meet">
+    <svg ref={host} data-floorhost viewBox={`${minX.toFixed(0)} ${(-top).toFixed(0)} ${(maxX - minX).toFixed(0)} ${(top + bottom).toFixed(0)}`} className="h-auto w-full lg:h-full" preserveAspectRatio="xMidYMid meet">
       <defs>
         <linearGradient id="slab-top" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#3c4149" />

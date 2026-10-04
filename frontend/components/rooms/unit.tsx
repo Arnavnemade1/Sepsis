@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { PriorityChip } from "@/components/paging/bits";
 import { Button, cx, Empty, Panel, Segmented, Skeleton } from "@/components/ui";
+import { INDEX } from "@/lib/clinical";
 import { clock, PAGE_STATUS_LABEL, type PageStatus } from "@/lib/paging";
 import {
   BAND_LABEL,
@@ -51,7 +52,7 @@ function UnitSkeleton({ room }: { room: string }) {
         <h1 className="font-mono text-[26px] font-semibold tracking-[-0.02em] text-ink">Room {room}</h1>
       </div>
       <Skeleton className="mb-3 h-16" />
-      <div className="grid gap-3 wide:grid-cols-3 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 wide:grid-cols-3 lg:grid-cols-2">
         <Skeleton className="h-[420px]" />
         <Skeleton className="h-[420px]" />
         <Skeleton className="h-[420px]" />
@@ -103,7 +104,7 @@ function Occupied({ u }: { u: Required<Unit> }) {
       <Header u={u} openPage={openPage} />
       <ScoreStrip u={u} active={active} openPage={openPage} />
 
-      <div className="grid items-start gap-3 lg:grid-cols-2 wide:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)_minmax(0,0.95fr)]">
+      <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 wide:grid-cols-[minmax(0,1.05fr)_minmax(0,1.2fr)_minmax(0,0.95fr)]">
         {/* below lg the middle column dissolves into the grid so the body can lead the page,
             ahead of the detections; from lg up it is one column again */}
         <div className="order-2 flex min-w-0 flex-col gap-3 lg:order-none">
@@ -121,7 +122,7 @@ function Occupied({ u }: { u: Required<Unit> }) {
           </div>
         </div>
         <div className="order-5 flex min-w-0 flex-col gap-3 lg:order-none lg:col-span-2 wide:col-span-1">
-          <div className="grid gap-3 lg:grid-cols-2 wide:grid-cols-1">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 wide:grid-cols-1">
             <RecordPanel rec={rec} now={u.now} replay={replay} />
             <LinkedPanel u={u} />
           </div>
@@ -235,14 +236,17 @@ function ScoreStrip({ u, active, openPage }: { u: Required<Unit>; active: Findin
     {
       k: "NEWS2",
       v: replay ? <span className="text-[15px] text-dim">Not used in ICU</span> : <span className="flex items-center gap-2"><News2Badge score={n?.score} band={n?.band} /><span className="text-[13px] text-muted">{n ? BAND_LABEL[n.band] : ""}</span></span>,
-      sub: replay ? "SOFA and the sepsis detector instead" : n ? (n.complete ? `scale ${n.scale}${n.scale === 2 ? ", from the record" : ""}` : `incomplete: no ${n.missing.join(", ")}`) : "",
+      sub: replay ? "the ICU reads SOFA and the detector" : n ? (n.complete ? `scale ${n.scale}${n.scale === 2 ? ", from the record" : ""}` : `incomplete: no ${n.missing.join(", ")}`) : "",
     },
     { k: "qSOFA", v: u.scores.qsofa != null ? `${u.scores.qsofa} / 3` : "—", sub: "RR ≥ 22 · SBP ≤ 100 · mentation" },
-    { k: "Shock index", v: u.scores.shock_index != null ? u.scores.shock_index.toFixed(2) : "—", sub: "pulse ÷ systolic; ≥ 1.0 abnormal" },
+    { k: "Shock index", v: u.scores.shock_index != null ? u.scores.shock_index.toFixed(2) : "—", sub: "HR ÷ SBP · abnormal ≥ 1.0" },
     {
       k: "Sepsis risk",
       v: u.risk != null ? u.risk.toFixed(2) : "—",
-      sub: u.risk != null ? "the detector pages at 0.70" : "a ward room: scored by the monitor",
+      sub:
+        u.risk != null
+          ? `${u.probability != null ? `P ${(u.probability * 100).toFixed(1)}% · ` : ""}pages at ${INDEX.page.toFixed(2)}`
+          : "ward room: the monitor scores it",
     },
     {
       k: "Active findings",
@@ -282,7 +286,10 @@ function ScoreStrip({ u, active, openPage }: { u: Required<Unit>; active: Findin
         <div key={c.k} className="min-w-0 bg-s1 px-3.5 py-2.5">
           <div className="truncate text-[11px] text-dim">{c.k}</div>
           <div className="num mt-1 flex min-h-6 items-center truncate font-mono text-[17px] font-medium text-ink">{c.v}</div>
-          <div className="mt-0.5 truncate text-[11px] text-dim">{c.sub}</div>
+          {/* two lines rather than an ellipsis: these are the definitions, and half of one misleads */}
+          <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-dim" title={typeof c.sub === "string" ? c.sub : undefined}>
+            {c.sub}
+          </div>
         </div>
       ))}
       <div className="bg-s1 xl:hidden" aria-hidden />

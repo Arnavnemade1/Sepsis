@@ -72,7 +72,7 @@ export function Orders({ bed }: { bed: string }) {
   return (
     <div>
       {!session && <div className="mb-3 text-[12px] text-dim">Sign in as a clinician to issue orders.</div>}
-      <div className="grid gap-2">
+      <div className="grid grid-cols-1 gap-2">
         {ACTIONS.map((a) => {
           const can = caps.has(a.cap);
           return (

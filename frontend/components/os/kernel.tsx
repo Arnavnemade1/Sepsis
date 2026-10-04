@@ -94,7 +94,7 @@ export function Kernel() {
         ))}
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)]">
         <Panel
           title="Processes"
           meta={ps.data ? `${procs.length} shown · sorted by CPU time` : undefined}

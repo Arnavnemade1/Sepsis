@@ -526,8 +526,10 @@ export function Page({ children, context, active }: { children: ReactNode; conte
 
 export function PageHead({ eyebrow, title, right, children }: { eyebrow?: ReactNode; title: ReactNode; right?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-3">
-      <div className="min-w-0 flex-1">
+    <div className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2.5">
+      {/* the text claims a full row on a phone, so the tags wrap below it rather than
+          squeezing the paragraph into a column a few words wide */}
+      <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
         {eyebrow && <div className="mb-1 text-[12px] font-medium text-dim">{eyebrow}</div>}
         <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h1>
         {children && <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">{children}</p>}

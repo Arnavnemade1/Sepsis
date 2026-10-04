@@ -25,12 +25,14 @@ export function Panel({ title, meta, right, children, className, bodyClass, flus
   return (
     <section className={cx("panel flex min-w-0 flex-col", className)}>
       {(title || right) && (
-        <header className="flex min-h-10 shrink-0 items-center gap-3 border-b border-line px-3.5 py-2">
-          <div className="min-w-0 flex-1">
+        <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3.5 py-2">
+          {/* the title keeps at least 11rem; below that the controls wrap under it instead of
+              squeezing it to one word per line, and scroll sideways if still too wide */}
+          <div className="min-w-0 flex-1 basis-44">
             {title && <h2 className="truncate text-[12.5px] font-semibold text-ink">{title}</h2>}
             {meta && <div className="text-[11.5px] leading-snug text-dim">{meta}</div>}
           </div>
-          {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
+          {right && <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none]">{right}</div>}
         </header>
       )}
       <div className={cx("min-w-0 flex-1", !flush && "p-3.5", bodyClass)}>{children}</div>
@@ -307,13 +309,13 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
   size?: "sm" | "md";
 }) {
   return (
-    <div className="inline-flex rounded-md border border-line bg-bg p-0.5">
+    <div className="inline-flex shrink-0 rounded-md border border-line bg-bg p-0.5">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            "rounded-[4px] font-medium transition-colors",
+            "whitespace-nowrap rounded-[4px] font-medium transition-colors",
             size === "sm" ? "h-6 px-2 text-[11.5px]" : "h-6 px-2.5 text-[12px]",
             value === o.value ? "bg-s3 text-ink" : "text-dim hover:text-ink",
           )}

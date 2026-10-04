@@ -148,19 +148,19 @@ function Bedside({ id }: { id: string }) {
       }
     >
       {!snap ? (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
           <Skeleton className="h-36 rounded-lg" />
-          <div className="grid gap-3 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
           </div>
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid grid-cols-1 gap-3">
           {/* identity + the one number */}
-          <section className="panel flex flex-wrap items-end gap-x-10 gap-y-5 p-4">
-            <div className="min-w-[240px]">
+          <section className="panel flex flex-wrap items-start gap-x-10 gap-y-5 p-4 xl:items-end">
+            <div className="min-w-0 basis-[min(100%,15rem)]">
               <div className="text-[12px] text-dim">
                 {live ? "Live monitored patient" : `${title(bed ?? "")} · ICU wing`}
                 {snap.source && <span className="ml-2 text-faint">source · {snap.source}</span>}
@@ -181,14 +181,15 @@ function Bedside({ id }: { id: string }) {
                 </div>
               )}
             </div>
-            <div className="min-w-0 flex-1">
+            {/* a basis, so on a phone the reading drops below the name instead of being squeezed beside it */}
+            <div className="min-w-0 flex-1 basis-[min(100%,28rem)]">
               <RiskHero snap={snap} recorded={recorded} />
             </div>
           </section>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
             <Plate title="Vitals" eyebrow={recorded ? "Hourly record, last 24 h" : "Streaming"}>
-              <Vitals channels={(snap.body_state.channels ?? []) as never} trends={trends} />
+              <Vitals channels={(snap.body_state.channels ?? []) as never} trends={trends} source={recorded ? "record" : undefined} />
             </Plate>
             <Plate
               title="Anatomical twin"
@@ -205,7 +206,7 @@ function Bedside({ id }: { id: string }) {
             </Plate>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Plate
               title="Risk over time"
               eyebrow={
@@ -243,7 +244,7 @@ function Bedside({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Plate
               title="Specialist panel"
               eyebrow={`${snap.reasoning?.opinions?.length ?? 0} reasoning agents deliberate on every tick`}

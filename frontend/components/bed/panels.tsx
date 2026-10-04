@@ -76,7 +76,9 @@ type Channel = {
   source?: string;
 };
 
-export function Vitals({ channels, trends }: { channels: Channel[]; trends: Record<string, (number | null)[]> }) {
+/** `source` overrides each channel's acquisition label: a replayed ICU record's values come
+ *  from the record, whatever pathway the body-state model assigns the channel to. */
+export function Vitals({ channels, trends, source }: { channels: Channel[]; trends: Record<string, (number | null)[]>; source?: string }) {
   const shown = channels.filter((c) => c.value != null && !["motion", "stress_vector", "diastolic_bp"].includes(c.key));
   if (!shown.length) return <Empty>No vitals on this feed.</Empty>;
   return (
@@ -92,7 +94,7 @@ export function Vitals({ channels, trends }: { channels: Channel[]; trends: Reco
           <div key={c.key} className="min-w-0">
             <div className="flex items-baseline justify-between gap-2">
               <span className="truncate text-[11.5px] text-dim">{c.label ?? title(c.key)}</span>
-              {c.source && <span className="text-[10px] text-faint">{c.source}</span>}
+              {(source ?? c.source) && <span className="text-[10px] text-faint">{source ?? c.source}</span>}
             </div>
             <div className="flex items-end justify-between gap-2">
               <span className={cx("num text-[22px] font-light leading-tight", TONE_TEXT[tone])}>

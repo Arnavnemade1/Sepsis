@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 
 import { PageHead } from "@/components/shell";
 import { cx, Segmented, Skeleton } from "@/components/ui";
+import { INDEX } from "@/lib/clinical";
 import { SEV_LABEL, SEV_RANK, SEV_RGB, useBoard, type BoardRoom, type Severity } from "@/lib/rooms";
 
 import { CodeChip, News2Badge, SevDot, Spark } from "./bits";
@@ -101,13 +102,17 @@ export function WatchBoard() {
             </span>
           ))}
           <span className="inline-flex items-center gap-1.5">
-            <News2Badge score={3} band="low" size="sm" /> NEWS2
+            <News2Badge score={3} band="low" size="sm" /> NEWS2 (ward)
+          </span>
+          <span className="inline-flex items-center gap-1.5" title={`The sepsis detector's risk index; it pages at ${INDEX.page.toFixed(2)}`}>
+            <span className="num grid h-4 place-items-center rounded-[4px] border border-line-bright bg-s2 px-1 font-mono text-[10px] font-semibold text-ink">0.42</span>
+            Sepsis risk (ICU)
           </span>
         </div>
       </div>
 
       {!data && !error ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {Array.from({ length: 8 }, (_, i) => (
             <Skeleton key={i} className="h-28" />
           ))}
@@ -118,7 +123,7 @@ export function WatchBoard() {
         attention.length === 0 ? (
           <div className="rounded-md border border-line px-4 py-10 text-center text-[13px] text-dim">No room has a finding above information level.</div>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {attention.map((r) => (
               <Tile key={r.room} r={r} wide />
             ))}
@@ -134,7 +139,8 @@ export function WatchBoard() {
                   Floor {g.floor} · {g.rooms.length} {g.rooms.length === 1 ? "patient" : "patients"}
                 </span>
               </div>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(212px,1fr))] gap-2">
+              {/* units hold six rooms: 3 + 3 on a tablet, one row of 6 on a wide screen */}
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3 wide:grid-cols-6">
                 {g.rooms.map((r) => (
                   <Tile key={r.room} r={r} />
                 ))}
@@ -171,8 +177,8 @@ function Tile({ r, wide = false }: { r: BoardRoom; wide?: boolean }) {
         </div>
         {replay || r.kind === "live" ? (
           <span
-            className={cx("num grid h-6 min-w-6 place-items-center rounded-[5px] border px-1.5 font-mono text-[12px] font-semibold", (r.risk ?? 0) >= 0.7 ? "border-high/50 bg-high/15 text-high-ink" : (r.risk ?? 0) >= 0.6 ? "border-med/50 bg-med/15 text-med-ink" : "border-line-bright bg-s2 text-ink")}
-            title="Sepsis risk (the detector pages at 0.70)"
+            className={cx("num grid h-6 min-w-6 place-items-center rounded-[5px] border px-1.5 font-mono text-[12px] font-semibold", (r.risk ?? 0) >= INDEX.page ? "border-high/50 bg-high/15 text-high-ink" : (r.risk ?? 0) >= INDEX.watch ? "border-med/50 bg-med/15 text-med-ink" : "border-line-bright bg-s2 text-ink")}
+            title={`Sepsis risk index${r.probability != null ? ` (calibrated P ${(r.probability * 100).toFixed(1)}%)` : ""}; the detector pages at ${INDEX.page.toFixed(2)}`}
           >
             {r.risk != null ? r.risk.toFixed(2) : "—"}
           </span>

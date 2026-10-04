@@ -28,8 +28,8 @@ export function ShellView() {
         A shell on the kernel. Every command is a syscall through the gate, so what you can read here is exactly what your role may read: a refusal
         comes from the kernel, not from the interface.
       </PageHead>
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <Terminal className="h-[calc(100dvh-230px)] min-h-[420px]" />
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <Terminal greet className="h-[calc(100dvh-230px)] min-h-[420px]" />
         <Panel title="Commands" meta="Select one to run it" flush>
           <ul>
             {COMMANDS.map((c) => (

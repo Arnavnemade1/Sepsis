@@ -134,7 +134,7 @@ function Operator() {
       {view === "overview" ? (
         <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 sm:p-4 lg:overflow-hidden">
           <KpiStrip stats={state.stats} pages={open} monitor={state.monitor} all={state.pages} now={now} />
-          <div className="grid gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_400px]">
             <Panel
               title="Floor plan"
               meta={layout ? `${layout.name} · ${layout.floors.length} floors · ${Object.keys(layout.rooms).length} rooms` : undefined}

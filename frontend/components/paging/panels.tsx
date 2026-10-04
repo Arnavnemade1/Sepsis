@@ -58,6 +58,8 @@ function useHourSeries(all: Record<string, Page>, now: number) {
   }, [all, Math.floor(now / 60)]);
 }
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 export function KpiStrip({ stats, pages, monitor, all, now }: { stats: Stats | null; pages: Page[]; monitor: Monitor; all?: Record<string, Page>; now?: number }) {
   const series = useHourSeries(all ?? {}, now ?? 0);
   const p1 = pages.filter((p) => p.priority === 1).length;
@@ -71,17 +73,20 @@ export function KpiStrip({ stats, pages, monitor, all, now }: { stats: Stats | n
     { k: "P1 active", v: p1, tone: p1 ? "text-high-ink" : undefined, sub: p1 ? "immediate response" : "none", spark: showSeries && <MiniBars data={series.p1} color="#e5484d" title="P1 pages per 5 min, last hour" /> },
     { k: "Awaiting operator", v: review, tone: review ? "text-dys-ink" : undefined, sub: "review or unassigned" },
     { k: "Time to accept", v: fastAck.length ? `${Math.round(Math.min(...fastAck))}s` : "—", sub: "median, P1/P2", spark: showSeries && <MiniLine data={series.accept} /> },
-    { k: "Escalation rate", v: stats?.escalation_rate != null ? `${Math.round(stats.escalation_rate * 100)}%` : "—", sub: `${stats?.timeouts ?? 0} timeouts · ${stats?.declines ?? 0} declines`, spark: showSeries && <MiniBars data={series.esc} color="#f5762e" title="Escalations per 5 min, last hour" /> },
+    { k: "Escalation rate", v: stats?.escalation_rate != null ? `${Math.round(stats.escalation_rate * 100)}%` : "—", sub: `${plural(stats?.timeouts ?? 0, "timeout")} · ${plural(stats?.declines ?? 0, "decline")}`, spark: showSeries && <MiniBars data={series.esc} color="#f5762e" title="Escalations per 5 min, last hour" /> },
     { k: "Monitored beds", v: stats?.monitored_beds ?? Object.keys(monitor).length, sub: watch ? `${watch} on sepsis watch` : "detector active" },
   ];
   return (
     <div className="grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
       {items.map((it) => (
-        <div key={it.k} className="relative min-w-0 bg-s1 px-3.5 py-2.5">
+        <div key={it.k} className="min-w-0 bg-s1 px-3.5 py-2.5">
           <div className="truncate text-[11px] text-dim">{it.k}</div>
-          <div className={cx("num mt-0.5 text-[20px] font-medium leading-tight tracking-[-0.01em]", it.tone ?? "text-ink")}>{it.v}</div>
-          <div className={cx("truncate text-[11px] text-dim", !!it.spark && "sm:pr-[84px]")}>{it.sub}</div>
-          {it.spark && <div className="absolute bottom-2.5 right-3.5 hidden opacity-90 sm:block">{it.spark}</div>}
+          {/* the trend sits beside the number, so the line under it keeps the full width */}
+          <div className="mt-0.5 flex items-end justify-between gap-2">
+            <div className={cx("num text-[20px] font-medium leading-tight tracking-[-0.01em]", it.tone ?? "text-ink")}>{it.v}</div>
+            {it.spark && <div className="mb-1 hidden shrink-0 opacity-90 sm:block">{it.spark}</div>}
+          </div>
+          <div className="truncate text-[11px] text-dim">{it.sub}</div>
         </div>
       ))}
     </div>
@@ -118,7 +123,47 @@ export function StaffBoard({ clinicians, pages, layout, canDispatch, now }: {
       flush
       className="shrink-0"
     >
-      <div className="overflow-x-auto">
+      {/* a phone gets one row per clinician, grouped the same way */}
+      <div className="md:hidden">
+        {groups.map(([spec, staff]) => (
+          <div key={spec}>
+            <div className="border-b border-line bg-s2/70 px-3.5 py-1.5 text-[11.5px]">
+              <span className="font-medium text-muted">{spec}</span>
+              <span className="ml-2 text-dim">
+                {staff.filter((c) => c.status === "available").length}/{staff.length} available
+              </span>
+            </div>
+            {staff.map((c) => {
+              const mine = load(c.id);
+              const where = layout?.zones[c.zone]?.name ?? (c.zone === "remote" ? "Telehealth" : c.zone);
+              const freeIn = c.busy_until && (c.status === "in_procedure" || c.status === "on_case") ? `free in ${Math.max(1, Math.round((c.busy_until - now) / 60))} min` : null;
+              return (
+                <div key={c.id} className="flex items-center gap-2.5 border-b border-line-soft px-3.5 py-2.5">
+                  <Avatar name={c.name} size={24} present={c.present} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate text-[12.5px] text-ink">{c.name}</span>
+                      {c.on_call && <Tag tone="neutral">on call</Tag>}
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11.5px] text-dim">
+                      <StatusText status={c.status} />
+                      <span>{where}</span>
+                      {mine.length > 0 && <span>{mine.length} active</span>}
+                      {freeIn && <span className="font-mono">{freeIn}</span>}
+                    </div>
+                  </div>
+                  {c.pageable && (
+                    <Link href={`/clinician/?id=${c.id}`} className="shrink-0 rounded-md px-2 py-1 text-[11.5px] text-accent-ink transition-colors hover:bg-s3">
+                      Pager ↗
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto md:block">
         <table className="w-full min-w-[820px] text-[12.5px]">
           <thead>
             <tr className="border-b border-line text-left text-[11px] text-dim">
@@ -222,7 +267,7 @@ export function Insights({ recs, stats, canDispatch, now }: { recs: Rec[]; stats
   const byP = stats?.by_priority ?? {};
   const maxP = Math.max(1, ...Object.values(byP));
   return (
-    <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+    <div className="grid grid-cols-1 shrink-0 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
       <Panel
         title="Sentinel"
         meta="Scans the whole paging system every 30 s for surges, coverage gaps, overload, escalation storms, sepsis clusters and bundle clocks. It recommends; it never pages."
@@ -333,12 +378,14 @@ export function PolicyPanel({ settings, invariants, canConfigure, stats }: {
     }
   };
   return (
-    <div className="grid shrink-0 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 shrink-0 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
       <div className="space-y-3">
         {!canConfigure && (
-          <div className="flex items-center gap-2 rounded-lg border border-line bg-s1 px-3.5 py-2.5 text-[12.5px] text-muted">
+          <div className="flex items-start gap-2 rounded-lg border border-line bg-s1 px-3.5 py-2.5 text-[12.5px] text-muted">
             <Tag tone="neutral">Read only</Tag>
-            Changing the paging policy requires <span className="font-mono text-[11.5px] text-ink">page:configure</span> (chief of critical care).
+            <span>
+              Changing the paging policy requires <span className="font-mono text-[11.5px] text-ink">page:configure</span> (chief of critical care).
+            </span>
           </div>
         )}
         {err && <div className="rounded-lg border border-high/40 bg-high/10 px-3.5 py-2.5 text-[12.5px] text-high-ink">{err}</div>}
@@ -396,8 +443,8 @@ export function PolicyPanel({ settings, invariants, canConfigure, stats }: {
           </div>
         </Panel>
         <Panel title="Guardrails" meta="Applied by the Case Handler as named steps on every routing decision">
-          <div className="grid gap-x-6 sm:grid-cols-2">
-            <Kv k="Ring time before escalation" v={["1", "2", "3", "4"].map((p) => `P${p} ${settings.ack_timeout_s[p]}s`).join(" · ")} />
+          <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
+            <Kv k="Ring time, P1 / P2 / P3 / P4" v={`${["1", "2", "3", "4"].map((p) => settings.ack_timeout_s[p]).join(" / ")} s`} />
             <Kv k="Consecutive-paging window" v={`${Math.round(settings.consecutive_window_s / 60)} min`} />
             <Kv k="P3/P4 workload limit" v={`${settings.workload_max_per_hour} / hour`} />
             <Kv k="Near-tie band" v={`${Math.round(settings.near_tie_pct * 100)}%`} />
@@ -494,7 +541,39 @@ export function CasesTable({ pages, clinicians, now, onOpen }: {
       {rows.length === 0 ? (
         <Empty>No pages match this filter.</Empty>
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        {/* a phone gets one card per page; the table needs ~900 px */}
+        <ul className="divide-y divide-line-soft md:hidden">
+          {rows.map((p) => {
+            const c = p.assignee ? clinicians[p.assignee] : p.planned ? clinicians[p.planned] : null;
+            const st = statusLine(p, now);
+            return (
+              <li key={p.id}>
+                <button onClick={() => onOpen(p.id)} className="block w-full px-3.5 py-2.5 text-left transition-colors active:bg-s2">
+                  <div className="flex items-center gap-2">
+                    <PriorityChip p={p.priority} size="sm" />
+                    <span className="font-mono font-semibold text-ink">{p.room ?? "—"}</span>
+                    <span className="min-w-0 truncate text-[11.5px] text-dim">{p.zone_name}</span>
+                    <span className="num ml-auto shrink-0 font-mono text-[11px] text-dim">{age(p.created_at, now)}</span>
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-ink/90">{p.text}</div>
+                  <div className="mt-1.5 flex items-center gap-2 text-[11.5px]">
+                    {c ? (
+                      <span className="inline-flex min-w-0 items-center gap-1.5">
+                        <StatusDot status={c.status} size={7} />
+                        <span className="truncate text-muted">{c.name}</span>
+                      </span>
+                    ) : (
+                      <span className="text-dim">Unassigned</span>
+                    )}
+                    <span className={cx("ml-auto shrink-0 truncate", st.tone)}>{st.text}</span>
+                  </div>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[900px] text-[12.5px]">
             <thead>
               <tr className="border-b border-line text-left text-[11px] text-dim">
@@ -552,6 +631,7 @@ export function CasesTable({ pages, clinicians, now, onOpen }: {
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Panel>
   );

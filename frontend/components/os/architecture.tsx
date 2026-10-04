@@ -535,7 +535,7 @@ function fmtUptime(s: number): string {
 function LayerBand({ layer, index, selected, onSelect }: { layer: Layer; index: number; selected: string | null; onSelect: (id: string) => void }) {
   const worst: Status = layer.components.some((c) => c.status === "err") ? "err" : layer.components.some((c) => c.status === "warn") ? "warn" : layer.components.every((c) => c.status === "idle") ? "idle" : "ok";
   return (
-    <section className="relative grid gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
+    <section className="relative grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
       <div className="relative flex items-start gap-3 md:pr-2 md:pt-3">
         <span className="relative z-[1] mt-0.5 grid h-[22px] w-[40px] shrink-0 place-items-center rounded-[4px] border border-line-bright bg-bg font-mono text-[10.5px] text-dim">
           {String(index).padStart(2, "0")}

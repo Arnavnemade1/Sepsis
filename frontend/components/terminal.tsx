@@ -49,9 +49,12 @@ function pad(s: string | number, n: number): string {
   return v.length >= n ? v.slice(0, n) : v + " ".repeat(n - v.length);
 }
 
-export function Terminal({ className = "h-[440px]" }: { className?: string }) {
+export function Terminal({ className = "h-[440px]", greet = false }: { className?: string; greet?: boolean }) {
   const session = useSession();
-  const [lines, setLines] = useState<Line[]>([{ k: "dim", t: 'AegisOS shell. Type "help".' }]);
+  // a full-page shell opens on the command reference rather than an empty screen
+  const [lines, setLines] = useState<Line[]>(() =>
+    greet ? HELP.split("\n").map((t) => ({ k: "dim" as const, t })) : [{ k: "dim", t: 'AegisOS shell. Type "help".' }],
+  );
   const [cwd, setCwd] = useState("/");
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
