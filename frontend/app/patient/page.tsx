@@ -67,14 +67,16 @@ function Bedside({ id }: { id: string }) {
   const roster = usePoll<Roster>("/aegis/patients");
   const patient = roster.data?.patients.find((p) => p.id === id) ?? null;
   const live = patient?.kind === "live";
-  const bed = live ? null : id;
+  // undecided until the roster says which kind of patient this is: a ward chart requested for
+  // the live session's id comes back as an error that would then be read as a chart
+  const bed = patient ? (live ? null : id) : null;
 
   // The live session streams; a cohort bed is a replayed record, polled.
   const feed = useFeed<Snapshot>(roster.data && live ? "/aegis/stream" : null);
   const polled = usePoll<Snapshot>(roster.data && bed ? `/aegis/patient/snapshot?bed=${encodeURIComponent(bed)}` : null, 4000);
   const snap = live ? feed.data : polled.data;
 
-  const decision = usePoll<Decision>(roster.data ? `/aegis/decision${bed ? `?bed=${encodeURIComponent(bed)}` : ""}` : null, 8000);
+  const decision = usePoll<Decision>(patient ? `/aegis/decision${bed ? `?bed=${encodeURIComponent(bed)}` : ""}` : null, 8000);
   const chart = usePoll<CohortChart>(bed ? `/aegis/cohort/${encodeURIComponent(bed)}/chart` : null, 15000);
   const timeline = usePoll<Timeline>(live ? "/aegis/timeline" : null, 10000);
 
@@ -147,7 +149,16 @@ function Bedside({ id }: { id: string }) {
         </div>
       }
     >
-      {!snap ? (
+      {roster.data && !patient ? (
+        <div className="panel">
+          <Empty>
+            <span className="text-ink">No patient &ldquo;{id}&rdquo; is monitored on this ward.</span>
+            <Link href="/patient/" className="text-accent-ink hover:underline">
+              Back to the census
+            </Link>
+          </Empty>
+        </div>
+      ) : !snap ? (
         <div className="grid grid-cols-1 gap-3">
           <Skeleton className="h-36 rounded-lg" />
           <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
@@ -169,7 +180,7 @@ function Bedside({ id }: { id: string }) {
               <div className="num mt-1 text-[13px] text-muted">
                 {snap.patient.age != null && `${Math.round(snap.patient.age)} y`}
                 {snap.patient.gender && ` · ${snap.patient.gender}`}
-                {chart.data && ` · ICU hour ${chart.data.icu_hour}`}
+                {chart.data?.icu_hour != null && ` · ICU hour ${chart.data.icu_hour}`}
               </div>
               {flags.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">

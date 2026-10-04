@@ -56,8 +56,8 @@ export function GateView() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2.5">
+        <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
           <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Syscall gate</h1>
           <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">
             One reference monitor every request crosses. Each route is a numbered syscall bound to a capability; the gate resolves it, authenticates the

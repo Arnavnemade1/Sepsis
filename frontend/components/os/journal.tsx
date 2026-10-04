@@ -57,8 +57,8 @@ export function JournalView() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-end gap-3">
-        <div className="min-w-0 flex-1">
+      <div className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2.5">
+        <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
           <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Journal</h1>
           <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">
             The kernel&apos;s hash-chained log. Each entry commits to the one before it, so an edited or deleted entry breaks the chain, and the chain

@@ -35,15 +35,17 @@ export function BedSelector({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 items-center gap-2.5 rounded-md border border-line-bright bg-s2 pl-2.5 pr-2 text-[12.5px] transition-colors hover:bg-s3"
+        className="flex h-8 min-w-0 max-w-full items-center gap-2.5 rounded-md border border-line-bright bg-s2 pl-2.5 pr-2 text-[12.5px] transition-colors hover:bg-s3"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
         {current ? (
           <>
-            <span className={cx("h-1.5 w-1.5 rounded-full", dot(current))} />
-            <span className="max-w-[220px] truncate text-ink">{current.name}</span>
-            <span className="text-[11.5px] text-dim">{current.kind === "live" ? "live session" : current.id.replace("bed_", "bed ")}</span>
+            <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", dot(current))} />
+            <span className="min-w-0 max-w-[220px] truncate text-ink">{current.name}</span>
+            <span className="hidden shrink-0 whitespace-nowrap text-[11.5px] text-dim sm:inline">
+              {current.kind === "live" ? "live session" : current.id.replace("bed_", "bed ")}
+            </span>
           </>
         ) : (
           <span className="text-muted">Choose a patient</span>
@@ -53,7 +55,7 @@ export function BedSelector({
         </svg>
       </button>
       {open && (
-        <div role="listbox" className="pop absolute left-0 top-10 z-50 max-h-[70vh] w-80 overflow-y-auto p-1">
+        <div role="listbox" className="pop absolute left-0 top-10 z-50 max-h-[70vh] w-80 max-w-[calc(100vw-24px)] overflow-y-auto p-1">
           {roster.map((p) => (
             <button
               key={p.id}
@@ -70,7 +72,7 @@ export function BedSelector({
             >
               <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", dot(p))} />
               <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{p.name}</span>
-              <span className="text-[11px] text-dim">{p.kind === "live" ? "live session" : p.id.replace("bed_", "bed ")}</span>
+              <span className="shrink-0 whitespace-nowrap text-[11px] text-dim">{p.kind === "live" ? "live session" : p.id.replace("bed_", "bed ")}</span>
             </button>
           ))}
         </div>
