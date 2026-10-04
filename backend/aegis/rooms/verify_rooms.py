@@ -7,6 +7,7 @@ reading, and the reading has to differ.
   [1] NEWS2        known answers; scale 2 only when the record prescribes it; confusion
                    that is the patient's baseline does not score; the single-red band
   [2] screens      qSOFA, SIRS, shock index, MAP, against hand-computed answers
+  [2b] trend       a change over the window is reported only when the samples span it
   [3] baseline     the same systolic alarms against one patient's record and not another's
   [4] medication   allergy conflict vs cross-reactivity; expected regimens; duplication;
                    QT; renal dosing from Cockcroft–Gault; reconciliation
@@ -133,6 +134,34 @@ def test_screens() -> None:
     ok(abs(si.score - 1.2) < 1e-9 and si.severity == "urgent", "HR 120 / SBP 100 = shock index 1.20, urgent")
     mp = keys(D.detect_shock_index(ctx(record(), {**NORMAL, "map": 61})))
     ok("map_floor" in mp and mp["map_floor"].page == 2, "MAP 61 is below the 65 target and pages P2")
+
+
+def test_trend() -> None:
+    print("[2b] trend: a change over the window needs samples that span the window")
+    now = 10_000.0
+
+    def rising(span_s: float, step_s: float, d_hr: float) -> List[Dict[str, Any]]:
+        n = int(span_s / step_s) + 1
+        return [{"t": now - span_s + i * step_s, "hr": 80 + d_hr * i / (n - 1), "rr": 16, "spo2": 97,
+                 "map": 90, "temp_c": 36.8 + 0.4 * i / (n - 1)} for i in range(n)]
+
+    short = rising(90, 3, 10)                # the live room: 31 samples in 90 s, +10 bpm, +0.4 °C
+    full = rising(900, 10, 40)               # a ward room: 15 min, +40 bpm, +0.4 °C
+    got_short = D.detect_trend(ctx(record(), NORMAL, kind="live", series=short, now=now))
+    got_full = keys(D.detect_trend(ctx(record(), NORMAL, kind="live", series=full, now=now)))
+    ok(got_short == [], "90 s of samples rising 10 bpm is not reported as a 15-minute trend")
+    ok("trend" in got_full and any(e["label"] == "Pulse" and e["value"].startswith("+40")
+                                   for e in got_full["trend"].evidence),
+       "15 min of samples rising 40 bpm is: Pulse +40 over 15 min")
+    keep = D.TREND_COVERAGE
+    D.TREND_COVERAGE = 0.0                   # planted: the old rule, which extrapolated
+    try:
+        planted = D.detect_trend(ctx(record(), NORMAL, kind="live", series=short, now=now))
+    finally:
+        D.TREND_COVERAGE = keep
+    pulse = [e for f in planted for e in f.evidence if e["label"] == "Pulse"]
+    ok(bool(pulse) and float(pulse[0]["value"].lstrip("+−")) > 90,
+       f"planted: without the coverage rule the 90 s rise extrapolates to Pulse {pulse[0]['value'] if pulse else '?'} over 15 min")
 
 
 def test_baseline() -> None:
@@ -375,8 +404,8 @@ def main() -> None:
     print("=" * 72)
     print("AegisOS room monitor — verification")
     print("=" * 72)
-    for t in (test_news2, test_screens, test_baseline, test_medication, test_conditional, test_firewall, test_monitor,
-              test_body):
+    for t in (test_news2, test_screens, test_trend, test_baseline, test_medication, test_conditional, test_firewall,
+              test_monitor, test_body):
         t()
     print("-" * 72)
     print(f"ALL {_n['pass']} ROOM CHECKS PASSED")

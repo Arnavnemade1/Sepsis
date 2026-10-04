@@ -401,6 +401,19 @@ COMPARE_ROWS = [
 ]
 
 
+#: how each row reads inside a sentence (a label lower-cased whole turned %fT>MIC into
+#: "%ft>mic", and "identical on safety cage" is not English)
+_IN_SENTENCE = {"cover": "antimicrobial cover", "target": "%fT>MIC", "exposure": "peak plasma",
+                "volume": "volume given", "pressor": "pressor support",
+                "serious": "P(any serious event)", "worst": "the largest single risk",
+                "safety": "the safety cage"}
+
+
+def _listed(keys: List[str]) -> str:
+    words = [_IN_SENTENCE.get(k, k) for k in keys]
+    return words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1]
+
+
 def compare(options: List[Dict[str, Any]], reference: Optional[str] = None
             ) -> Dict[str, Any]:
     """Build the side-by-side table, plus an explicit DIFF against a reference.
@@ -535,16 +548,14 @@ def compare(options: List[Dict[str, Any]], reference: Optional[str] = None
             diverge.append({"k": key, "level": "minor", "text": lab})
         else:
             diverge.append({"k": key, "level": "none", "text": lab})
-    major = [d["text"] for d in diverge if d["level"] == "major"]
-    same = [d["text"] for d in diverge if d["level"] == "none"]
+    major = [d["k"] for d in diverge if d["level"] == "major"]
+    same = [d["k"] for d in diverge if d["level"] == "none"]
     if major:
-        headline = ("These paths differ mainly in " +
-                    ", ".join(m.lower() for m in major[:3]) + ".")
+        headline = "These paths differ mainly in " + _listed(major[:3]) + "."
     else:
         headline = "These paths are close on every axis measured here."
     if same:
-        headline += (" They are effectively identical on " +
-                     ", ".join(s.lower() for s in same[:3]) + ".")
+        headline += " They are effectively identical on " + _listed(same[:3]) + "."
 
     return {
         "reference": ref["key"],

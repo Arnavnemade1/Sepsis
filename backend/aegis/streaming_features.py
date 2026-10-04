@@ -26,6 +26,19 @@ from backend.ml.data.features import FeatureConfig, build_patient_features
 _INTERNAL_TO_CINC = {v: k for k, v in config.CINC_TO_INTERNAL.items()}
 
 
+#: The ICU clock the live stream reports stops here. Every reading advances the clock
+#: one ICU hour (the demo compresses time), so a session left running was at "ICU hour
+#: 1,000" by the evening - and CinC 2019's never-septic records end at ~60 h while
+#: septic ones run to 336 h, so past ~60 h the clock alone reads as sepsis (GENESIS:
+#: the ICU clock by itself scores AUROC 0.636). Measured on the shipped detector with
+#: constant, normal vitals: p = 0.007 at hour 48, 0.043 at hour 72 (just under the
+#: paging line, which noise then crosses), so a healthy live patient paged on elapsed
+#: time alone. Held at 48 h - inside the range where both classes are represented in
+#: training - a stable course stays at p ~ 0.007 indefinitely, and a deteriorating one
+#: crosses the line on exactly the same reading as before.
+ICULOS_CAP = 48.0
+
+
 class StreamingFeatureBuilder:
     def __init__(self, feature_cfg: FeatureConfig, max_history: int = 256):
         self.cfg = feature_cfg
@@ -42,7 +55,7 @@ class StreamingFeatureBuilder:
             if cinc in row:
                 row[cinc] = float(val)
         self._iculos += 1.0
-        row["ICULOS"] = self._iculos
+        row["ICULOS"] = min(self._iculos, ICULOS_CAP)
         # Carry static demographics if supplied via internal keys.
         for k in ("Age", "Gender", "HospAdmTime"):
             if k in telemetry and telemetry[k] is not None:

@@ -408,7 +408,10 @@ def icu_record(room: str, mon: Dict[str, Any], patient: Any, imported: Optional[
                                  "the dataset has no prior history, medications or code status."},
         "patient": {"name": mon.get("name"), "age": mon.get("age"), "sex": mon.get("sex"), "mrn": mon.get("mrn"),
                     "bed": mon.get("bed")},
-        "admission": {"reason": "ICU stay, PhysioNet/CinC 2019", "icu_hour": hour, "unit": unit,
+        # what the stay itself shows so far; the source is on the provenance, and the board
+        # already marks the room as a real replay
+        "admission": {"reason": ", ".join(["ICU stay"] + [p["name"].lower() for p in problems[1:3]]),
+                      "icu_hour": hour, "unit": unit,
                       "hospital_admit_h": hosp_adm,
                       "day": hour // 24 + 1},
         "problems": problems, "orders": [], "home_meds": home, "allergies": allergies,

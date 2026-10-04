@@ -656,6 +656,7 @@ class RoomMonitor:
                 "episode": {"open": bool(ep.get("open")), "page": ep.get("page")} if ep else None,
                 "simulation": ph.scenario.to_dict(self.engine.now()) if ph and ph.scenario else None,
                 "risk": (self.engine.monitored.get(room) or {}).get("risk"),
+                "probability": (self.engine.monitored.get(room) or {}).get("probability"),
             })
             out.append(row)
         ms = sorted(self.eval_ms)
@@ -718,6 +719,7 @@ class RoomMonitor:
                            "eval_period_s": EVAL_S, "pages_from": "room monitor" if rec["kind"] == "synthetic" else "sepsis detector",
                            "detectors": [n for n, _ in D.DETECTORS]},
             "risk": (eng.monitored.get(room) or {}).get("risk"),
+            "probability": (eng.monitored.get(room) or {}).get("probability"),
             "body": self.body.get(room),
         }
 

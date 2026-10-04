@@ -410,6 +410,10 @@ def _slope(xs: Sequence[float], ys: Sequence[float]) -> Tuple[float, float]:
     return b, r2
 
 
+#: share of the trend window the samples must span before a change over it is reported
+TREND_COVERAGE = 0.75
+
+
 def detect_trend(c: Ctx) -> List[Finding]:
     if c.kind == "replay":
         window, unit_label = 6.0, "6 h"          # hourly real data
@@ -422,6 +426,11 @@ def detect_trend(c: Ctx) -> List[Finding]:
     for ch, (sign, thresh, label, unit) in _TREND.items():
         xy = [(s["t"], s[ch]) for s in pts if s.get(ch) is not None]
         if len(xy) < (5 if c.kind == "replay" else 30):
+            continue
+        # The change is reported over the whole window, so the samples must span most of
+        # it. The live room samples every ~3 s: thirty samples are 90 s, and a 10 bpm rise
+        # across them used to be reported as "+107 over 15 min".
+        if xy[-1][0] - xy[0][0] < TREND_COVERAGE * window:
             continue
         b, r2 = _slope([x for x, _ in xy], [y for _, y in xy])
         change = b * window
@@ -693,7 +702,7 @@ def detect_sepsis_model(c: Ctx) -> List[Finding]:
     head = [_ev("Risk index", round(r, 3))] + ([_ev("Calibrated P(sepsis)", round(float(prob), 4))]
                                                 if prob is not None else [])
     if r >= alarm:
-        return [Finding("sepsis_model", "Sepsis detector", f"Sepsis risk {r:.2f}, above the paging line", "critical", "sepsis",
+        return [Finding("sepsis_model", "Sepsis detector", f"Sepsis risk {r:.2f}, paged", "critical", "sepsis",
                         head + [_ev("Driver", d) for d in (ml.get("drivers") or [])[:3]],
                         ["Paged by the sepsis detector itself; the room monitor does not page twice."],
                         "Sepsis review now; the Hour-1 bundle team is notified with the page.",
