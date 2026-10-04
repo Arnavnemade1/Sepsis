@@ -27,6 +27,9 @@ keeps being checked.
 | `evidence.py` | The checks (below) |
 | `proposer.py` | Four proposers: LOINC, IEEE 11073, lexical, and a language model. **They only propose.** |
 | `sender.py` | The demo hospital's systems, simulated: Epic ADT, a Philips IntelliBridge gateway (°F, MDC codes), a laboratory with SI units, and a Nordic-coded reference laboratory. They speak only HL7 to the engine |
+| `fhir.py` | A FHIR R4 read facade over the live rooms (Patient, Encounter, Observation, RiskAssessment, Flag, Communication; synthetic patients carry the `HTEST` label). A posted Observation or transaction Bundle is turned into an ORU and goes through the same mappings |
+| `cdshooks.py` | CDS Hooks 2.0: `patient-view` (risk against the detector's own alarm line, active findings, quarantined feeds) and `order-sign` (recorded allergies, and the pharmacopoeia's interaction screen, one card per hazard), plus feedback |
+| `webhooks.py` | Outbound events (pages, quarantines, adoptions) under the Standard Webhooks signature scheme: `whsec_` secrets, HMAC-SHA256 over `id.timestamp.body`, retries with backoff, a dead-letter list, private addresses refused |
 
 ## How a mapping is earned
 
@@ -252,3 +255,68 @@ scale.
 
 Post-hoc work, labelled exploratory, follows below. It is measured on the same patients
 and is not a confirmation.
+
+## Post-hoc (exploratory, same patients)
+
+The registered misses each pointed at a rule. Each rule below was added after the
+registered run, is defended by a named check that has been seen failing (`make
+falsify`, 17 integration mutations), and was then measured by
+`interop_bench.py --posthoc` on **the same 8,062 patients**
+(`artifacts/interop/interop_bench_posthoc.json`, 35 minutes). Because these patients
+motivated the rules, the numbers below are exploratory. They show what the rules do;
+they do not confirm the gate. Confirmation needs patients the rules have never seen.
+
+| Rule (motivated by) | What changed |
+|:--|:--|
+| **A written unit that cannot be the concept refuses it** (H5: 162 wrong-concept adoptions) | heart-rate values written `/min` and proposed as mean arterial pressure are refused for the unit, instead of the unit being treated as absent |
+| **Only a written unit is confirmed** (H5) | a proposal is auto-adopted only when the data agrees in the unit the feed wrote. A feed with no unit waits for a person, except pH and INR, which are unitless by convention |
+| **A unique named reading** (H5: magnesium mEq/L adopted) | the written unit is confirmed only when no other named unit for the analyte fits the same values. Magnesium in mg/dL vs mEq/L and bilirubin in µmol/L vs mg/L now wait for a person |
+| **A spread check on linear scales** (found while adding the rule above) | a ×0.001 reading of base excess keeps its median at zero; its spread does not. Without this, a correct base-excess feed was held as ambiguous |
+| **A jump must also leave the population band** (H4: bilirubin jumps against an unrepresentative early baseline) | a unit-size move against the feed's own baseline quarantines only if it also lands outside the reference population |
+| **Identities by Page's CUSUM** (H4: BP-order bursts) | the identities accumulate evidence (p₁ = 0.5, threshold 13) instead of testing a window. By simulation, a correct feed raises a false alarm about once every 4 million co-observed rows; a swap is caught in about 5 |
+| **The swap is named and fixed** (H3: no fix for swaps; PaCO₂↔HCO₃ delivered 6,821 wrong values) | when identities fail, the engine tests whether exchanging two fields restores them. If it does, it quarantines both and offers the exchange as the fix |
+
+| | Registered | Post-hoc (exploratory) |
+|:--|--:|--:|
+| H4 false quarantines per 100k: clean | 1.23 | **0.47** |
+| hospital A alone | 2.71 | **0.99** |
+| hospital B alone | 0.20 | 0.20 |
+| septic ward | 0.00 | 0.00 |
+| H5 correct mappings auto-adopted | 93.8% (121/129) | 89.1% (115/129) |
+| H5 wrong unit adopted unsafely | 3.4% (2/58) | **0.0% (0/58)** |
+| H5 wrong concept adopted unsafely | 6.9% (162/2,359) | **0.2% (5/2,359)** |
+| H5 blind pairs adopted (no bar) | 87% (40/46) | 87% (40/46) |
+| SBP↔MAP: gate→fix vs clean | −0.0172 (no fix) | **+0.0000** |
+| PaCO₂↔HCO₃: wrong values delivered | 6,821 | **11** (fix −0.0000) |
+| urea mmol/L read as BUN: wrong values delivered | 4,374 | 6,066 |
+
+What this says, with the caveat above:
+
+1. Every registered bar would now be met: H4 at or under 1 per 100k on each stream,
+   H5 at 89% correct with no wrong-unit adoptions and 0.2% wrong-concept adoptions.
+   Hospital A sits at 0.99 per 100k, at the bar rather than under it.
+2. **The price is automation.** Correct auto-adoption fell from 93.8% to 89.1%: magnesium
+   now always needs a person, because the data cannot tell mg/dL from mEq/L.
+3. **The swap fix works where the identities caught the swap.** SBP↔MAP and PaCO₂↔HCO₃
+   are named, exchanged and restored to clean. Hgb↔Hct and HR↔respiratory rate are
+   caught first by single-variable plausibility (a haematocrit of 30 is not a
+   haemoglobin), so no exchange is offered. Running the swap test on plausibility
+   failures too is the obvious next step and is not done.
+4. **Urea got worse.** Requiring the jump to leave the population band delays the one
+   fault the pre-registration predicted might never be caught: 6,066 wrong values
+   delivered instead of 4,374. A ×0.36 shift that stays inside BUN's population band is
+   still beyond this evidence.
+5. **What remains of H4** is BP-order bursts in the last stretch of the stream (a few
+   very-long-stay patients at hospital A, where the clean violation rate is close to the
+   identity's allowance), two bilirubin jumps, and one BUN and one respiratory-rate jump
+   at hospital B.
+6. FiO₂ and troponin are still never adopted, as registered.
+
+The live console found four more defects, now fixed and each guarded by a check seen
+failing: the same drug pair carded twice by order-sign (moderate from DDInter, major from
+the QT layer); a room that kept listing values as withheld after the fix released them;
+fault drills that the chief, who decides the fix, was not allowed to run; and a failed
+language-model call (a quota, a timeout) recorded as the model declining, which marked
+every code in the batch "unmapped" and took it out of the review queue. No answer now
+sends a code to a person; only an explicit null from the model marks it as outside the
+vocabulary.

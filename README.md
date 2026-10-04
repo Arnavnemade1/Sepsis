@@ -6,11 +6,11 @@
 
 [![verify-os](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml/badge.svg)](https://github.com/Arnavnemade1/Sepsis/actions/workflows/verify-os.yml)
 ![Python](https://img.shields.io/badge/python-3.9%2B-3776AB?logo=python&logoColor=white)
-![Verification](https://img.shields.io/badge/verification-93%20suites-2ea44f)
+![Verification](https://img.shields.io/badge/verification-94%20suites-2ea44f)
 ![MIMIC-IV](https://img.shields.io/badge/MIMIC--IV-pipeline%20ready-8957e5)
 ![Research only](https://img.shields.io/badge/research%20only-not%20a%20medical%20device-d73a49)
 
-[App routes](#app-routes) · [Agents](#agents) · [API](#key-api-endpoints) · [Architecture](#architecture) · [Subsystems](#subsystems) · [Quick start](#quick-start-local-dev) · [Deployment](#deployment) · [Findings](docs/FINDINGS.md) · [Verification](#how-a-claim-gets-in)
+[App routes](#app-routes) · [Agents](#agents) · [Integrations](#plugging-into-a-hospital) · [API](#key-api-endpoints) · [Architecture](#architecture) · [Subsystems](#subsystems) · [Quick start](#quick-start-local-dev) · [Deployment](#deployment) · [Findings](docs/FINDINGS.md) · [Verification](#how-a-claim-gets-in)
 
 </div>
 
@@ -46,6 +46,7 @@ can be believed.
 |:--|:--|
 | **Paging** | A typed P1 is triaged, located, routed, certified and ringing in single-digit milliseconds. Rules decide first; a language model reviews afterwards and **may only raise** a priority, never lower one. The brief is a template at once and the model's version when it arrives |
 | **Room units** | Every occupied room is watched as one unit: the patient's prior record (problems, orders, allergies, code status, earlier encounters and the baseline measured there), the vitals the room is producing, and **19 detectors** that read both. NEWS2 switches to SpO₂ scale 2 when the record prescribes it; a systolic of 108 alarms against a baseline of 162 and not against one of 116; an allergy conflict pages pharmacy while a sepsis page is open. Findings page through the same certified pipeline, one room one page |
+| **Integration** | AegisOS plugs into a hospital's own systems. HL7 v2 comes in (admissions, results and device alarms, over MLLP or HTTP, every message acknowledged). FHIR R4 reads, CDS Hooks cards and signed webhooks go out. Each sender's local codes are mapped onto AegisOS concepts **only when the code's own data agrees in the unit it was written in**. A language model proposes (it named 43 of 43 local codes, Nordic and vendor dialects included) but never adopts. An adopted feed that drifts is quarantined before a wrong value reaches a detector. On the ICU detector's 8,062 held-out patients, a silent °F/°C mix-up costs it 0.046 AUROC and raises its false alarms from 14% to 49% of never-septic patients; the gate catches it after 4 values and its suggested fix restores the detector exactly. Two of the five registered bars were missed and are published as missed ([INTEROP](docs/INTEROP.md)) |
 | **Policy, proven** | **Six invariants** are checked by Z3 on every page. A refused page is held for the operator with the broken rule named. If the prover itself is unhealthy, nothing is sent |
 | **Guardrails** | Autonomy by unit and priority. Consecutive-paging protection. A workload limit. Near-tie load sharing. Hold-for-the-right-person. Auto-escalation on decline or timeout. A review fail-safe that routes around a clinician who has become unavailable |
 | **Shipped detector** | A stacked ensemble trained on the patient label. Its members are two histogram boosters, extra-trees, logistic regression and a utility-aimed XGBoost. It was fitted on **24,206** CinC patients and calibrated without a staircase. On **6,852** held-out patients that neither it nor its predecessor saw: **AUROC 0.800** (predecessor 0.743), **ECE 0.003** |
@@ -55,7 +56,7 @@ can be believed.
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **93 suites**. The paging OS has 70 checks and the room monitor 68, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
+| **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 71 and the integration plane 201, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -97,6 +98,7 @@ jumps to any section, active page, room, patient or pager.
 | `/patient/?id=<bed>` | from a page | One patient: the risk the unit acts on, vitals with trends, the 3D anatomical twin, organ systems (unmeasured shown as unknown), risk over time against the alarm line with its 8 h projection, the decision and its limits, orders through the Z3 cage, the specialist panel, and Dr. Aegis |
 | `/pharmacy/?id=<bed>` | from a patient | Six candidate orders projected through a PBPK model of this patient, cited adverse events with confidence intervals, the Z3 verdict per path, and an interaction screen over 143,669 documented interactions compiled to Z3 |
 | `/lab/` | research · chief | The deployed detector read from its promotion manifest, the operating point, conformal abstention, the falsification record, and every change the gate refused |
+| `/integrations/` | chief · operators | **Integrations.** Every interface the hospital feeds AegisOS through, with live status, traffic and acknowledgements. The message stream: each HL7 message as received, the ACK it got back, and what happened to every result. The mappings, each with the evidence it earned, its values plotted against the concept's reference. The review queue and the quarantined feeds, with the evidence's suggested fix (a unit, or an exchange of two fields) for the chief to accept. Fault drills that break the simulated hospital's interfaces the way real ones break. The standards: an HL7 test console, the FHIR R4 surface, a CDS Hooks try-out and webhook subscriptions with their deliveries. An HL7-fed room shows its feeds and anything withheld from it |
 | `/os/` | chief · operators | **The platform.** **Architecture** is a live map of every layer of the OS: surfaces, the syscall gate, paging, decisions under proof, the clinical runtime, the bio-kernel, the signals and the record, each component with its own metrics and an inspector. **Kernel** (`?view=kernel`) has the process table with CPU shares, the scheduler's tiers and lanes, verified drivers, services and the boot waterfall. **Journal** is the hash-chained log with chain status and filters. **Syscall gate** has the reference monitor's statistics, the Z3 policy proof, the full syscall table and sessions. **Shell** is a terminal where every command is a syscall. Views a role may not read say so instead of failing silently |
 
 The older routes still resolve: `/command/` goes to `/operator/`, `/bed/` to `/patient/`, and the old `?tab=` names map onto the new views.
@@ -149,6 +151,7 @@ baseline. Three demo behaviours run by default, and each can be switched off in 
 | `dr.haddad` · `dr.lindqvist` | Dr. Rami Haddad · Dr. Anna Lindqvist | attending · 3 / remote consult · 1 | Infectious disease |
 | `rn.ortiz` · `rn.kim` | Luis Ortiz, RN · Grace Kim, RN | nurse · 1 | Rapid response |
 | `rx.chen` · `rx.silva` | Wei Chen, PharmD · Ana Silva, PharmD | pharmacist · 2 | Clinical pharmacy (notified on sepsis pages for the Hour-1 bundle) |
+| `svc.hl7` | Interface engine (service account) | interface · 1 | Sends HL7 and FHIR into the hospital (`interop:ingest`); the EHR reads findings back (`interop:read`). Not on the sign-in screen |
 | `guest` | Guest | guest · 0 | View only |
 
 Paging capabilities are checked by the gate:
@@ -158,6 +161,9 @@ Paging capabilities are checked by the gate:
 | `page:raise` · `page:respond` | every signed-in role: nurse, pharmacist, remote consult, attending, chief |
 | `page:dispatch` (approve, escalate, cancel, reassign) | nurses, attendings and the chief |
 | `page:configure` (the policy screen) | the chief only |
+| `interop:read` (feeds, mappings, FHIR reads, CDS Hooks) | nurses, pharmacists, attendings, the chief, the interface account |
+| `interop:configure` (adopt, reject or restore a mapping; run a fault drill on the simulated feeds, which attendings may also do under `drill:device`) | the chief only, and never the AI agent, whoever it acts for |
+| `interop:ingest` (send HL7 or FHIR) | the interface account only |
 
 Demo staff sign in without a passphrase (`AEGIS_DEMO_LOGIN=0` turns that off). The gate
 runs in `audit` mode by default and records what it *would* refuse;
@@ -187,12 +193,66 @@ The six invariants Z3 proves on every page (`backend/aegis/paging/policy.py`):
 `unsat` (no way to violate them) means the page is sent. `sat` means it is held, with the
 counterexample's invariant named.
 
+## Plugging into a hospital
+
+A hospital does not hand an early-warning system clean data. Admissions, monitors and
+laboratories send HL7 v2, each in its own dialect of local codes and units. The integration
+plane ([`backend/aegis/interop/`](backend/aegis/interop/), [docs/INTEROP.md](docs/INTEROP.md))
+treats every interface mapping (local code → AegisOS concept, written unit → conversion) as a
+claim about data, checked before anything acts on it and checked again after.
+
+| Standard | Direction | What AegisOS does with it |
+|:--|:--|:--|
+| **HL7 v2.x** over MLLP (`AEGIS_MLLP_PORT`, on premises) or `POST /aegis/interop/hl7` | in | ADT builds the census in the hospital's rooms; ORU^R01 results pass through verified mappings into the room's record and detectors; ORU^R40 device alarms (IHE PCD-04 subset) become pages, one per room while one is open. Every message gets an ACK with its HL7 table-0357 code; a resent control id is not processed twice |
+| **FHIR R4** at `/aegis/fhir/R4` | out and in | Patient, Encounter, Observation (LOINC, UCUM), RiskAssessment (the detector's calibrated probability), Flag (each active detection) and Communication (each page). Synthetic patients carry the `HTEST` security label. A posted Observation or transaction Bundle goes through the same verified mapping path as an HL7 result |
+| **CDS Hooks 2.0** at `/aegis/cds-services` | out | `patient-view`: sepsis risk against its detector's own alarm line, active detections, and any of the patient's feeds AegisOS has quarantined. `order-sign`: draft orders screened for interactions and allergies, with a removal suggestion on a critical card |
+| **Standard Webhooks** | out | Page created, escalated, accepted, resolved; feed quarantined; mapping adopted. HMAC-SHA256 signed, retried with backoff into a dead-letter list; private and loopback targets refused |
+
+```mermaid
+flowchart LR
+    F["New local code<br/>(e.g. CREA, umol/L)"] --> L["Collect values<br/>nothing delivered"]
+    L --> P["Proposers: LOINC · IEEE 11073<br/>lexical · language model"]
+    P --> E{{"Evidence: plausibility · location<br/>tail mass · identities across fields<br/>unit inference"}}
+    E -- "data agrees in the written unit" --> A["Adopted: converted values<br/>reach the room and its detectors"]
+    E -- "inferred unit · ambiguous · refused" --> R["A person decides<br/>(interop:configure, never the AI agent)"]
+    A --> W{{"Live evidence, every 4 values:<br/>impossible values · unit-size jump vs the feed's own baseline<br/>identities (CUSUM) · frozen cuff"}}
+    W -- "fails" --> Q["Quarantine: withhold, withdraw, name the fix<br/>(a unit, or an exchange of two fields), tell the Sentinel"]
+    Q --> R
+```
+
+**What the same checks found in the benchmark data itself.** Pointed at PhysioNet/CinC 2019,
+with thresholds fixed from physiology rather than fitted, they find two real interface faults
+that replicate on held-out patients. Hospital B's `Calcium` column is 19.1% ionized calcium in
+mmol/L recorded under total calcium (holdout 18.1%). Hospital A's `SaO2` disagrees with
+simultaneous pulse oximetry by more than 15 points in 18.0% of pairs (holdout 18.1%), consistent
+with venous gases recorded as arterial. Both columns feed the ICU detector as they are.
+
+**What a silent fault costs, and what the gate recovers** (registered before the run; 8,062
+held-out patients; the holdout replayed through the deployed engine as HL7):
+
+| Silent fault | Detector AUROC | False alarms (never-septic patients) | Gate | After the suggested fix |
+|:--|--:|--:|:--|--:|
+| Temperature °F read as °C | −0.046 | 14% → **49%** | caught after 4 values, none delivered | ±0.0000 |
+| White cells per µL read as 10³/µL | −0.012 | 14% → **27%** | caught after 4 values, none delivered | +0.0001 |
+| Creatinine µmol/L read as mg/dL | −0.006 | 14% → **22%** | caught after 4 values, none delivered | ±0.0000 |
+
+Registered verdicts: harm, detection (17 of 19, median 4 faulty values) and recovery **met**;
+false quarantines (1.23 and 2.71 per 100k observations against a bar of 1) and onboarding
+safety (wrong concepts adopted 6.9% against 1%) **missed**, both published with their causes.
+The fixes those misses motivated (a unit that cannot be the concept refuses it, a written unit is
+confirmed only when no other named unit fits, identities by CUSUM, the swap named and exchanged)
+were then measured on the same patients, labelled exploratory: false quarantines 0.47 and 0.99 per
+100k, wrong concepts 0.2%, no wrong units, at the cost of auto-adopting 89% of correct mappings
+instead of 94%. The SBP↔MAP swap is restored to clean by the exchange. Urea in mmol/L is still
+caught late, now after 6,066 wrong values. Details in
+[docs/INTEROP.md](docs/INTEROP.md#post-hoc-exploratory-same-patients).
+
 ## Key API endpoints
 
 The backend is one FastAPI app, `backend.aegis.server:app`. The server module is the
 composition root. Every endpoint lives in a domain router under
 [`backend/api/routes/`](backend/api/routes/), and request bodies are in
-[`backend/api/schemas.py`](backend/api/schemas.py). All **162** routes are numbered syscalls
+[`backend/api/schemas.py`](backend/api/schemas.py). All **198** routes are numbered syscalls
 in [`abi_table.json`](backend/aegis/kernel/abi_table.json), each bound to a capability the
 gate checks (`abi` in the System shell lists them).
 
@@ -210,6 +270,8 @@ gate checks (`abi` in the System shell lists them).
 | `devices` | 10 | `GET /aegis/devices` · `POST /aegis/devices/{id}/pair` · `GET /aegis/ppg/morphology` |
 | `causal` | 4 | `GET /aegis/causal?bed=` · `GET /aegis/causal/incident/{node}` · `POST /aegis/causal/replay` |
 | `health` | 4 | `GET /aegis/health` · `GET /aegis/health/system` · `GET /aegis/audit` |
+| `interop` | 18 | `POST /aegis/interop/hl7` (HL7 v2 in, ACK out) · `GET /aegis/interop` · `GET /aegis/interop/messages[/{id}]` · `GET /aegis/interop/mappings[/{id}]` · `POST …/mappings/{id}/adopt` · `…/restore` · `…/reject` · `GET /aegis/interop/vocabulary` · `GET /aegis/interop/audit` · `GET /aegis/interop/bench` · `POST /aegis/interop/sim/drill` |
+| `standards` | 17 | `GET /aegis/fhir/R4/metadata` · `GET /aegis/fhir/R4/{Patient,Encounter,Observation,RiskAssessment,Flag,Communication}` · `POST /aegis/fhir/R4` (transaction Bundle) · `GET /aegis/cds-services` · `POST /aegis/cds-services/{id}` · `POST /aegis/interop/webhooks` |
 
 Auth: `POST /aegis/sys/login` returns a token. Send it as `Authorization: Bearer <token>` over
 HTTP, and as the WebSocket subprotocol `aegis.session.<token>`, because browsers cannot set
@@ -223,11 +285,14 @@ Browser (frontend/, static on Vercel)          operator console · pagers · dri
   ├─ REST ─────────► FastAPI  backend.aegis.server:app  (Render)
   │                    │
   │                    ├─ kernel gate ── every call: resolve syscall → authenticate → decide (audit | enforce)
-  │                    ├─ backend/api/routes/*  (12 domain routers, 162 syscalls)
+  │                    ├─ backend/api/routes/*  (14 domain routers, 198 syscalls)
   │                    └─ composition root: kernel · session · ICU wing · paging OS · scheduler · journal
   │
   ├─ WS /aegis/paging/stream ──► the hospital: snapshot, then one batch of paging events a second
   ├─ WS /aegis/stream ─────────► the live patient, one snapshot per tick
+  │
+Hospital systems (ADT · monitor gateway · LIS) ── HL7 v2 (MLLP / HTTP) ──► integration plane ──► rooms
+EHR ◄── FHIR R4 · CDS Hooks ──  AegisOS  ── signed webhooks ──► messaging / warehouse
   ├─ WS /aegis/cluster/stream ─► the ward: 12 beds, scheduler, certified egress
   └─ WS /aegis/doctor/live ────► voice consult, relayed to Gemini Live (the key never reaches the browser)
 
@@ -313,7 +378,7 @@ Over forty subsystems, grouped by the layer they live in. Each has its own `veri
 | `sbar.py` | The brief: facts first from the record, a template at once, the model's version when it arrives; under 100 words |
 | `hospital.py` · `demo.py` | Aegis Memorial (7 floors, 18 units, 98 rooms, 18 staff) and the demo scenarios |
 
-`make verify-paging` runs its 70 checks.
+`make verify-paging` runs its 73 checks.
 
 </details>
 
@@ -331,8 +396,29 @@ Over forty subsystems, grouped by the layer they live in. Each has its own `veri
 | `monitor.py` · `body_state` | Each room's organ systems for the anatomical twin: monitored only when something in the room measures them, severity from the findings that implicate them, their NEWS2 and SOFA points and lab thresholds (a worsening trend alone stops at stress), a reading, and the findings behind it |
 | `monitor.py` | The room monitor, ticked by the paging OS: re-runs a room's detectors when its inputs change, debounces findings into episodes (open after two evaluations, resolve after five), writes each room's timeline and escalates on two tracks per room, the patient's physiology and the medication record, so an allergy conflict reaches pharmacy even while a sepsis page is open. ICU rooms and the live session stay with the sepsis detector |
 
-`make verify-rooms` runs its 68 checks, including three planted defects: NEWS2 ignoring the
+`make verify-rooms` runs its 71 checks, including three planted defects: NEWS2 ignoring the
 record's target, the ICU record reading ten hours ahead, and the monitor paging a room twice.
+
+</details>
+
+<details>
+<summary><b>The integration plane</b> · <code>backend/aegis/interop/</code></summary>
+
+<br/>
+
+| Module | What it is |
+|:--|:--|
+| `hl7.py` · `mllp.py` | HL7 v2 codec (separators from MSH-2, escapes, CR/LF/CRLF), ACKs with the table-0357 code and location, MLLP framing, and the TCP listener for an on-premises interface engine |
+| `vocab.py` · `units.py` · `reference.json` | 39 canonical concepts with LOINC codes, canonical units, analyte conversions (valence-aware mEq/L, urea vs urea nitrogen) and physiological windows fixed a priori; reference distributions from the shipped detector's training patients (`make interop-reference`) |
+| `evidence.py` | Plausibility, location (refusing needs the whole interval outside the band; adopting needs the median inside it), tail mass, unit inference (named units beat decade guesses), ten identities across fields, live checks against the feed's own baseline, Page's CUSUM for identities |
+| `proposer.py` | LOINC, IEEE 11073, lexical and language-model proposers; the model's JSON is held to the vocabulary and never adopts |
+| `engine.py` | The interface engine: census, mappings, delivery into rooms (results learned before adoption are backfilled), quarantine with per-value withdrawal, swap explanation (an exchange of two fields that restores the identities), the Sentinel's view, people's decisions journalled |
+| `fhir.py` · `cdshooks.py` · `webhooks.py` | The standards surface: FHIR R4 facade and inbound Observations, CDS Hooks 2.0 services and feedback, Standard Webhooks with SSRF refusal |
+| `sender.py` | The demo hospital's systems, simulated: Epic ADT, a Philips gateway (°F, MDC codes, R40 alarms), an SI-unit laboratory and a Nordic-coded reference laboratory, plus six fault drills |
+
+`make verify-interop` runs its 201 checks, every guard as a pair; `make falsify` holds 17
+registered mutations against them, each one a defect found while building this or in the live
+console.
 
 </details>
 
@@ -600,6 +686,7 @@ Datasets are never committed. Each one is redistributed only by its own source.
 | [TRANSFER](docs/TRANSFER.md) | Label-free deployment transfer, a decisive negative |
 | [CONFORMAL](docs/CONFORMAL.md) | The alarm's third state, and why its guarantee does not travel |
 | [SUBGROUP_AUDIT](docs/SUBGROUP_AUDIT.md) | Who the detector serves worse |
+| [INTEROP](docs/INTEROP.md) | Plugging into a hospital: mappings earned on evidence, what CinC's own columns hide, and a registered fault benchmark with two missed bars |
 | [FALSIFICATION](docs/FALSIFICATION.md) | What was actually invented here, and proving the checks can fail |
 | [SCALE](docs/SCALE.md) | How many beds the OS runs, and what gives way first |
 | [LAB](docs/LAB.md) | The agent research plane and its locked gate |
@@ -628,6 +715,12 @@ Each subsystem also has its own README:
 - **HRV → sepsis needs credentialed waveform labels.** The adapter is built and waiting.
 - **MIMIC-IV results do not exist yet.** Demo numbers are noise at 99 patients, and every
   demo report says so.
+- **The integration plane's hospital is simulated.** Its ADT system, monitor gateway and
+  laboratories are simulated and speak only HL7 to the engine; the measurement on real data is
+  the CinC replay. The FHIR surface is a read facade plus inbound Observations, not a conformant
+  FHIR server. MLLP is off on the hosted deployment (Render exposes only HTTP). Evidence verifies
+  scale and gross identity, not meaning: 28 concept pairs are indistinguishable by distribution,
+  and identities are checked within one interface, not across them.
 - **The room monitor runs published rules, not a trained model.** Its detectors are checked
   against hand-computed answers and planted failures, not against outcomes. Synthetic rooms run
   on simulated vitals and every course there is labelled simulated.
