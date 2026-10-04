@@ -670,14 +670,17 @@ class PagingOS:
                 self.episodes[LIVE_ROOM] = {"open": True, "priority": prior["priority"], "page": prior["id"],
                                             "opened_at": now, "below": 0}
             elif level == "HIGH" and not ep["open"]:
-                tri = Triage(1 if shock else 2, "sepsis", LIVE_ROOM, ["calibrated risk HIGH"],
+                # The live tier goes HIGH four ways: the detector crossing its line, or a hard
+                # rule that escalates regardless of the model (qSOFA >= 2, a shock signal, the
+                # safety oracle). The page used to credit the detector every time, including
+                # "calibrated detector tier HIGH (p=0.047)" with p below the line.
+                why = _live_high_reason(r, idx, p)
+                tri = Triage(1 if shock else 2, "sepsis", LIVE_ROOM, [why["symptom"]],
                              {"map": mp} if mp is not None else {},
-                             [f"calibrated detector tier HIGH (p={p:.3f})" if p is not None else "detector tier HIGH"]
-                             + (["MAP < 65"] if shock else []),
-                             "The calibrated detector's tier reached HIGH on the live monitored patient.",
-                             "detector", None, {"shock_signs": shock})
-                page = self._open_case(tri, f"Live patient {pt.get('name')} (room {LIVE_ROOM}): calibrated sepsis risk "
-                                            f"HIGH{', MAP ' + format(mp, '.0f') if mp else ''}.",
+                             [why["flag"]] + (["MAP < 65"] if shock else []),
+                             why["rationale"], "detector", None, {"shock_signs": shock, "by": why["by"]})
+                page = self._open_case(tri, f"Live patient {pt.get('name')} (room {LIVE_ROOM}): {why['text']}"
+                                            f"{', MAP ' + format(mp, '.0f') if mp else ''}.",
                                        "detector", "AegisOS detector", False)
                 self.episodes[LIVE_ROOM] = {"open": True, "priority": tri.priority, "page": page["id"],
                                             "opened_at": now, "below": 0}
@@ -1001,3 +1004,23 @@ def _patient_brief(p: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         return None
     return {k: p.get(k) for k in ("name", "age", "sex", "mrn", "diagnosis", "monitored", "synthetic", "source",
                                   "risk", "bed", "live")}
+
+
+def _live_high_reason(r: Dict[str, Any], idx: Optional[float], p: Optional[float]) -> Dict[str, str]:
+    """Why the live session's tier is HIGH, in the words a page should carry."""
+    from backend.aegis.ward_risk import INDEX_HIGH
+    pp = f"P {p * 100:.1f}%" if p is not None else "no detector reading"
+    if idx is not None and idx >= INDEX_HIGH:
+        return {"by": "detector", "symptom": "calibrated risk HIGH",
+                "flag": f"detector over its line ({pp}, index {idx:.2f})",
+                "rationale": "The sepsis detector's calibrated risk crossed its validated alarm point on the live patient.",
+                "text": f"the sepsis detector crossed its line ({pp})"}
+    q = int(r.get("qsofa_score") or 0)
+    override = ((r.get("certainty") or {}).get("override") or "")
+    rule = (f"qSOFA {q}/3" if q >= 2 else "a shock signal" if override == "shock_signal"
+            else "the safety oracle's escalation")
+    return {"by": "rule", "symptom": f"HIGH by {rule}",
+            "flag": f"{rule} (a hard rule, not the model; the detector reads {pp}, below its line)",
+            "rationale": f"A hard clinical rule ({rule}) escalated the live patient regardless of the detector, which "
+                         f"reads {pp}, below its alarm point.",
+            "text": f"HIGH by {rule}; the detector reads {pp}, below its line"}

@@ -11,6 +11,7 @@ planted bad decision (a check that has never failed is not evidence):
   [4] queue        decline -> backup, timeout -> escalate, exhaustion, fail-safe, hold, cancel
   [5] brief        SBAR on accept: four sections, under 100 words, facts only
   [6] detector     one page per episode, P2 -> P1 upgrade, hysteresis, watch without paging
+  [6b] live        a live HIGH page names its cause: the detector, or a hard rule over it
   [7] sentinel     zone surge, overload, sepsis cluster, bundle clock — and each clears
   [8] liveness     with simulated staff the queue never sticks; a present clinician answers for themself
 
@@ -363,6 +364,28 @@ def test_detector() -> None:
        "between 0.60 and 0.70 a bed is on watch and pages nobody")
 
 
+def _live(level: str, p: float, idx: float, qsofa: int = 0, mp: float = 80.0) -> Dict[str, Any]:
+    return {"source": "simulator", "patient": {"name": "Jane Doe", "age": 67, "gender": "Female", "id": "live"},
+            "risk": {"level": level, "ml_probability": p, "index": idx, "qsofa_score": qsofa, "certainty": None},
+            "vitals": {"map": mp, "heart_rate": 118.0, "respiratory_rate": 26.0, "spo2": 94.0, "skin_temp": 38.6},
+            "triggered_rules": []}
+
+
+def test_live_reason() -> None:
+    print("[6b] live session: a page names what made the tier HIGH")
+    os_, clk = fresh()
+    os_.observe_live(_live("HIGH", 0.047, 0.62, qsofa=2))
+    page = next(p for p in os_.pages.values() if p["room"] == "402")
+    ok("qSOFA 2/3" in page["text"] and "below its line" in page["text"] and "crossed" not in page["text"],
+       f"HIGH by qSOFA with the detector under its line says so: \"{page['text']}\"")
+    ok(page["triage"]["sepsis_screen"]["by"] == "rule", "and the triage records it as a rule, not the model")
+    os2, _ = fresh()
+    os2.observe_live(_live("HIGH", 0.081, 0.84))
+    page2 = next(p for p in os2.pages.values() if p["room"] == "402")
+    ok("detector crossed its line" in page2["text"] and page2["triage"]["sepsis_screen"]["by"] == "detector",
+       f"HIGH from the detector itself credits the detector: \"{page2['text']}\"")
+
+
 # --------------------------------------------------------------------------- #
 def test_sentinel() -> None:
     print("[7] sentinel: patterns surface, then clear")
@@ -455,7 +478,7 @@ def main() -> None:
     print("AegisOS paging OS — verification")
     print("=" * 72)
     for t in (test_triage, test_refinement, test_routing, test_certificate, test_queue, test_brief, test_detector,
-              test_sentinel, test_liveness):
+              test_live_reason, test_sentinel, test_liveness):
         t()
     print("-" * 72)
     print(f"ALL {_n['pass']} PAGING CHECKS PASSED")
