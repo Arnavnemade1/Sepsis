@@ -134,6 +134,16 @@ RESET_MODULES = [
     "backend.aegis.kernel.policyfile",
     "backend.aegis.kernel.osstream",
     "backend.aegis.kernel.bundle",
+    # the integration plane, then the paging OS it feeds (whose occupancy guard it relies on)
+    "backend.aegis.interop.units",
+    "backend.aegis.interop.vocab",
+    "backend.aegis.interop.evidence",
+    "backend.aegis.interop.hl7",
+    "backend.aegis.interop.mapping",
+    "backend.aegis.interop.proposer",
+    "backend.aegis.interop.engine",
+    "backend.aegis.interop.sender",
+    "backend.aegis.paging.engine",
 ]
 
 

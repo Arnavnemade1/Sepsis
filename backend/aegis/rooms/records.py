@@ -449,3 +449,52 @@ def live_record(room: str, mon: Dict[str, Any], history: Optional[Dict[str, Any]
         "encounters": [], "baseline": None, "spo2_target": None, "planned": [], "labs": labs,
         "mobility": None, "flags": sorted(flags), "linked": [], "missing": ["medications", "code status"],
     }
+
+
+# --------------------------------------------------------------------------- #
+# Interface-fed rooms: what the hospital's ADT feed told us, and nothing more
+# --------------------------------------------------------------------------- #
+def interface_record(room: str, p: Dict[str, Any], now: Optional[float] = None) -> Dict[str, Any]:
+    """The record of a patient admitted over HL7 (``backend/aegis/interop``).
+
+    Only what the feed carried: demographics (PID), the admitting and secondary
+    diagnoses (DG1), allergies (AL1), code status and weight (OBX). Problems are read
+    for the same context flags a synthetic record gets, so the detectors read a COPD
+    patient's saturations on scale 2 whichever way the patient arrived. What no feed
+    has sent (medications without a pharmacy interface, earlier encounters, a measured
+    baseline) is listed as missing rather than invented."""
+    now = time.time() if now is None else now
+    dx_list = [d for d in (p.get("diagnoses") or []) if d]
+    reason = dx_list[0] if dx_list else "Admission (no diagnosis on the feed)"
+    problems = [{"name": reason, "status": "active", "since": "this admission"}]
+    problems += [{"name": d, "status": "chronic", "since": "ADT feed"} for d in dx_list[1:]]
+    flags = _flags(dx_list[1:], reason)
+    hypercapnic = "copd" in flags
+    if hypercapnic:
+        flags.add("hypercapnic")
+    allergies = [{"substance": a.get("substance", ""), "reaction": a.get("reaction") or "not stated",
+                  "severity": a.get("severity") or "unknown", "kind": "allergy", "recorded": "ADT feed (AL1)"}
+                 for a in p.get("allergies") or [] if a.get("substance")]
+    admitted = p.get("admitted_at") or now
+    simulated = bool(p.get("simulated"))
+    feed = p.get("interface_name") or "an ADT interface"
+    return {
+        "room": room, "kind": "interface",
+        "provenance": {"synthetic": simulated,
+                       "label": "Interface feed" + (" (simulated hospital)" if simulated else ""),
+                       "detail": f"Admitted by {feed} over HL7 (ADT^A01). Vitals and results arrive as HL7 ORU "
+                                 "messages, each code read through a mapping the integration engine verified."
+                                 + (" The sending systems are simulated; the patient is not a real person."
+                                    if simulated else "")},
+        "patient": {"name": p.get("name"), "age": p.get("age"), "sex": p.get("sex"), "mrn": p.get("mrn"),
+                    "weight_kg": p.get("weight_kg")},
+        "admission": {"reason": reason, "admitted_at": admitted, "day": int((now - admitted) // DAY) + 1,
+                      "attending": p.get("attending") or None},
+        "problems": problems, "orders": [], "home_meds": [], "allergies": allergies,
+        "code_status": p.get("code_status"), "encounters": [], "baseline": None,
+        "spo2_target": ({"lo": 88, "hi": 92, "scale": 2, "why": "COPD on the ADT feed's diagnoses"}
+                        if hypercapnic else None),
+        "planned": [], "labs": {}, "mobility": None, "flags": sorted(flags), "linked": [],
+        "missing": ["medications (no pharmacy interface)", "earlier encounters", "a measured baseline"],
+        "interface": {"name": feed, "mrn": p.get("mrn")},
+    }

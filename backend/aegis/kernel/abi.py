@@ -166,6 +166,13 @@ RULES: List[Tuple[str, str, str, str, str]] = [
     ("POST", r"^/aegis/ingest$", "write", "telemetry:ingest", ""),
     ("POST", r"^/aegis/(simulate/|ppg/vasodilation|hdkernel/run|scenarios/)", "write",
      "sim:control", ""),
+    # --- the integration plane (backend/aegis/interop)
+    ("POST", r"^/aegis/interop/hl7$", "write", "interop:ingest", ""),
+    ("POST", r"^/aegis/interop/mappings/[^/]+/reevaluate$", "compute", "interop:read", ""),
+    ("POST", r"^/aegis/interop/(mappings/|settings)", "write", "interop:configure", ""),
+    ("POST", r"^/aegis/interop/sim/drill$", "write", "drill:device", ""),
+    ("GET", r"^/aegis/interop/(vocabulary|audit|sim)$", "read", "view:public", ""),
+    ("GET", r"^/aegis/interop", "read", "interop:read", ""),
     # --- analyses that change nothing
     ("POST", r"^/aegis/(llm/|doctor/|agent/invoke|speech)", "compute", "compute:ask", ""),
     ("POST", r"^/aegis/(whatif|pk/project|pharmacopoeia/screen|dsl/verify|proof/|"

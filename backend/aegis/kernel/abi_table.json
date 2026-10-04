@@ -1310,6 +1310,142 @@
    "path": "/aegis/models",
    "cap": "view:public",
    "class": "read"
+  },
+  {
+   "nr": 164,
+   "name": "interop",
+   "method": "GET",
+   "path": "/aegis/interop",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 165,
+   "name": "interop.audit",
+   "method": "GET",
+   "path": "/aegis/interop/audit",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 166,
+   "name": "interop.census",
+   "method": "GET",
+   "path": "/aegis/interop/census",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 167,
+   "name": "interop.interfaces[iid]",
+   "method": "GET",
+   "path": "/aegis/interop/interfaces/{iid}",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 168,
+   "name": "interop.mappings",
+   "method": "GET",
+   "path": "/aegis/interop/mappings",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 169,
+   "name": "interop.mappings[mid]",
+   "method": "GET",
+   "path": "/aegis/interop/mappings/{mid}",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 170,
+   "name": "interop.messages",
+   "method": "GET",
+   "path": "/aegis/interop/messages",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 171,
+   "name": "interop.messages[mid]",
+   "method": "GET",
+   "path": "/aegis/interop/messages/{mid}",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 172,
+   "name": "interop.sim",
+   "method": "GET",
+   "path": "/aegis/interop/sim",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 173,
+   "name": "interop.vocabulary",
+   "method": "GET",
+   "path": "/aegis/interop/vocabulary",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 174,
+   "name": "interop.hl7",
+   "method": "POST",
+   "path": "/aegis/interop/hl7",
+   "cap": "interop:ingest",
+   "class": "write"
+  },
+  {
+   "nr": 175,
+   "name": "interop.mappings[mid].adopt",
+   "method": "POST",
+   "path": "/aegis/interop/mappings/{mid}/adopt",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 176,
+   "name": "interop.mappings[mid].reevaluate",
+   "method": "POST",
+   "path": "/aegis/interop/mappings/{mid}/reevaluate",
+   "cap": "interop:read",
+   "class": "compute"
+  },
+  {
+   "nr": 177,
+   "name": "interop.mappings[mid].reject",
+   "method": "POST",
+   "path": "/aegis/interop/mappings/{mid}/reject",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 178,
+   "name": "interop.mappings[mid].restore",
+   "method": "POST",
+   "path": "/aegis/interop/mappings/{mid}/restore",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 179,
+   "name": "interop.settings",
+   "method": "POST",
+   "path": "/aegis/interop/settings",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 180,
+   "name": "interop.sim.drill",
+   "method": "POST",
+   "path": "/aegis/interop/sim/drill",
+   "cap": "drill:device",
+   "class": "write"
   }
  ]
 }

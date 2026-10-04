@@ -67,7 +67,7 @@ def zone_kind_for_policy(kind: str) -> str:
 
 
 def requires_review(settings: Dict[str, Any], zone_kind: str, priority: int, source: str) -> bool:
-    if source in ("detector", "monitor") and priority == 1 and settings.get("detector_p1_review", True):
+    if source in ("detector", "monitor", "device") and priority == 1 and settings.get("detector_p1_review", True):
         return True
     row = settings["autonomy"].get(zone_kind_for_policy(zone_kind), ["auto"] * 4)
     return row[priority - 1] == "review"

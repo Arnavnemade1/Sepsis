@@ -74,6 +74,7 @@ class PagingOS:
         self.bundle_started: Optional[Callable[[Optional[str]], Optional[bool]]] = None
         self.dossier_text: Optional[Callable[[Optional[str]], Optional[str]]] = None
         self.bed_rooms: Dict[str, str] = {}      # bed_id -> room
+        self.interfaced: Dict[str, Dict[str, Any]] = {}   # room -> patient admitted over HL7 (backend/aegis/interop)
         self.sync_sbar = False                   # tests write the brief inline
         self.sync_refine = False                 # tests refine inline
         if demo_history:
@@ -101,7 +102,7 @@ class PagingOS:
     def _patient(self, room: Optional[str]) -> Optional[Dict[str, Any]]:
         if not room:
             return None
-        return self.monitored.get(room) or self.synthetic.get(room)
+        return self.monitored.get(room) or self.synthetic.get(room) or self.interfaced.get(room)
 
     def _load(self, now: float) -> Dict[str, Dict[str, Any]]:
         load: Dict[str, Dict[str, Any]] = {c: {"active": 0, "last_hour": 0, "last_paged_at": None, "last_case": None}
@@ -144,7 +145,7 @@ class PagingOS:
         with self._lock:
             page = self._open_case(tri, text, source, reporter, synthetic)
             page["refining"] = refine
-            if source not in ("detector", "monitor"):
+            if source not in ("detector", "monitor", "device"):
                 # what the nurse measured is now part of the room's record
                 self.units.report(tri.room, tri.vitals, text, page["id"])
             out = copy.deepcopy(page)
@@ -245,7 +246,7 @@ class PagingOS:
         }
         if review:
             page["review_reason"] = ("Room not identified from the alert." if room is None else
-                                     "Machine-raised P1: a person confirms before it is sent." if source == "detector"
+                                     "Machine-raised P1: a person confirms before it is sent." if source in ("detector", "device")
                                      and tri.priority == 1 and self.settings.get("detector_p1_review") else
                                      f"Policy: {z.name if z else 'this unit'} P{tri.priority} pages need operator review.")
         self.pages[pid] = page
@@ -903,7 +904,80 @@ class PagingOS:
             out[room] = {"name": m.get("name"), "age": m.get("age"), "sex": m.get("sex"),
                          "diagnosis": "Live monitored patient" if m.get("live") else "ICU admission (CinC 2019 replay)",
                          "synthetic": False, "monitored": True, "bed": m.get("bed"), "live": bool(m.get("live"))}
+        for room, p in self.interfaced.items():
+            out[room] = {"name": p.get("name"), "age": p.get("age"), "sex": p.get("sex"),
+                         "diagnosis": p.get("diagnosis"), "synthetic": bool(p.get("synthetic")), "monitored": True,
+                         "interface": p.get("interface")}
         return out
+
+    # ------------------------------------------------------------------ #
+    # the integration plane's port (backend/aegis/interop): rooms fed over HL7
+    # ------------------------------------------------------------------ #
+    def interface_room_free(self, room: str) -> bool:
+        """Read WITHOUT the lock on purpose: the integration engine asks while holding its
+        own lock, and dict membership is atomic. Taking this lock there could deadlock with
+        the Sentinel, which reads the integration engine under this lock."""
+        r = ROOMS.get(room)
+        if r is None or ZONES[r.zone].kind in ("or", "imaging", "support"):
+            return False
+        # the ICU replay rooms and the live room belong to the detector whether or not the ward
+        # has ticked yet (at boot ``monitored`` is still empty)
+        if room in ICU_ROOMS or room == LIVE_ROOM:
+            return False
+        return room not in self.synthetic and room not in self.monitored and room not in self.interfaced
+
+    def interface_admit(self, room: str, patient: Dict[str, Any]) -> None:
+        with self._lock:
+            self.interfaced[room] = {
+                "room": room, "name": patient.get("name"), "age": patient.get("age"), "sex": patient.get("sex"),
+                "mrn": patient.get("mrn"), "diagnosis": (patient.get("diagnoses") or ["Admission"])[0],
+                "history": (patient.get("diagnoses") or [])[1:], "allergies": [a.get("substance") for a in
+                                                                              patient.get("allergies") or []],
+                "code_status": patient.get("code_status"), "synthetic": bool(patient.get("simulated")),
+                "source": f"HL7 ADT · {patient.get('interface_name')}", "interface": patient.get("interface_name"),
+                "monitored": True}
+            self.units.admit_interface(room, patient, self.now())
+
+    def interface_update(self, room: str, patient: Dict[str, Any]) -> None:
+        self.interface_admit(room, patient)
+
+    def interface_discharge(self, room: str, why: str = "discharged") -> None:
+        with self._lock:
+            self.interfaced.pop(room, None)
+            self.units.discharge_interface(room, why, self.now())
+
+    def interface_observe(self, room: str, t: float, vitals: Dict[str, float], labs: Dict[str, Any],
+                          meta: Dict[str, Any]) -> None:
+        with self._lock:
+            self.units.observe_interface(room, t, vitals, labs, meta)
+
+    def interface_withheld(self, room: str, t: float, items: List[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+        with self._lock:
+            self.units.withheld_interface(room, t, items, meta)
+
+    def interface_backfill(self, room: str, key: str, rows: List[Any], note: str) -> None:
+        with self._lock:
+            self.units.backfill_interface(room, key, rows, note)
+
+    def interface_retract(self, room: str, ids: List[str], vitals_since: Dict[str, float]) -> None:
+        with self._lock:
+            self.units.retract_interface(room, ids, vitals_since)
+
+    def interface_event(self, room: str, kind: str, severity: str, text: str) -> None:
+        with self._lock:
+            self.units.event_interface(room, kind, severity, text)
+
+    def interface_alarm(self, room: str, text: str, reporter: str) -> None:
+        """A device alarm (ORU^R40) becomes a page like any other alert: triaged by the
+        rules, routed, certified. One page per room while one is open: a further alarm in
+        a room with an active page is written to that page's room timeline instead."""
+        with self._lock:
+            open_page = next((p for p in self.pages.values() if p.get("room") == room and p["status"] in ACTIVE), None)
+            synthetic = bool((self.interfaced.get(room) or {}).get("synthetic", True))
+            if open_page is not None:
+                self.units.event_interface(room, "alarm", "watch", f"{text} (on {open_page['id']}, already open)")
+                return
+        self.raise_alert(text, room, source="device", reporter=reporter, synthetic=synthetic)
 
     def stats(self) -> Dict[str, Any]:
         now = self.now()
@@ -921,7 +995,8 @@ class PagingOS:
             "since": self.started_at, "pages": len(real), "by_priority": by_pr,
             "active": sum(1 for p in real if p["status"] in ACTIVE),
             "review": sum(1 for p in real if p["status"] == "review"),
-            "by_source": {s: sum(1 for p in real if p["source"] == s) for s in ("nurse", "voice", "detector", "monitor", "demo")},
+            "by_source": {s: sum(1 for p in real if p["source"] == s)
+                          for s in ("nurse", "voice", "detector", "monitor", "device", "demo")},
             "median_ack_s": {k: round(statistics.median(v), 1) if v else None for k, v in ack.items()},
             "escalation_rate": round(esc / len(real), 3) if real else None,
             "timeouts": sum(1 for a in attempts if a["outcome"] == "timeout"),

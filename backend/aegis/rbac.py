@@ -78,12 +78,19 @@ CAP_MIN_RING: Dict[str, int] = {
     # running the dispatch console is the charge nurse's; the paging POLICY (which
     # pages need review, how long they ring) is governance, like the safety policy
     "page:raise": 1, "page:respond": 1, "page:dispatch": 1, "page:configure": 4,
+    # the integration plane: reading the feeds and their mappings is a clinical-floor read
+    # (a quarantined lab feed matters to whoever reads that lab); adopting, rejecting or
+    # restoring a mapping decides what every detector believes, which is governance; and
+    # sending HL7 into the hospital is what only a registered interface engine does
+    "interop:read": 1, "interop:configure": 4, "interop:ingest": 1,
 }
 CAPABILITIES = frozenset(CAP_MIN_RING)
 
 RING: Dict[str, int] = {
     "guest": 0,
     "nurse": 1, "remote_specialist": 1, "pharmacist": 2, "attending": 3, "chief": 4,
+    # a machine principal: the hospital's interface engine (ADT, results, alarms over HL7)
+    "interface": 1,
 }
 
 # Explicit grants (need-to-know). Rings are necessary, not sufficient — a role only
@@ -97,14 +104,15 @@ GRANTS: Dict[str, frozenset] = {
     "nurse": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
                                       "ack:alarm", "annotate", "sim:control",
                                       "device:manage", "breakglass:invoke",
-                                      "page:raise", "page:respond", "page:dispatch"}),
+                                      "page:raise", "page:respond", "page:dispatch",
+                                      "interop:read"}),
     "remote_specialist": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin",
                                                   "view:narrative", "annotate",
                                                   "breakglass:invoke", "page:raise", "page:respond"}),
     "pharmacist": PUBLIC_CAPS | frozenset({"view:meds", "view:interactions",
                                            "view:narrative", "pharm:countersign",
                                            "pharm:veto", "annotate", "breakglass:invoke",
-                                           "page:raise", "page:respond"}),
+                                           "page:raise", "page:respond", "interop:read"}),
     "attending": PUBLIC_CAPS | frozenset({"view:vitals", "view:twin", "view:narrative",
                                           "view:meds", "view:interactions", "ack:alarm",
                                           "order:treat", "order:escalate", "order:clear",
@@ -112,7 +120,8 @@ GRANTS: Dict[str, frozenset] = {
                                           "override:alarm", "annotate", "sim:control",
                                           "device:manage", "drill:device", "record:import",
                                           "ml:train", "view:audit", "view:sessions",
-                                          "page:raise", "page:respond", "page:dispatch"}),
+                                          "page:raise", "page:respond", "page:dispatch",
+                                          "interop:read"}),
     # The chief administers the system and oversees the whole ICU but does NOT
     # prescribe (order:treat) or rewrite a patient's order (order:clear): separation
     # of duties. The one who can change the safety policy cannot also be the one
@@ -124,7 +133,10 @@ GRANTS: Dict[str, frozenset] = {
                                       "view:sessions", "svc:control", "pkg:install",
                                       "proc:signal", "session:admin", "breakglass:review",
                                       "policy:write", "page:raise", "page:respond",
-                                      "page:dispatch", "page:configure"}),
+                                      "page:dispatch", "page:configure",
+                                      "interop:read", "interop:configure"}),
+    # the interface engine sends feeds and reads nothing it was not sent: no clinical views
+    "interface": PUBLIC_CAPS | frozenset({"interop:ingest"}),
 }
 
 #: Break-glass: what an emergency elevation ADDS for its duration — read access to

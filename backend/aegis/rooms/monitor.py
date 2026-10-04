@@ -34,7 +34,7 @@ from backend.aegis.paging.hospital import ICU_ROOMS, LIVE_ROOM, ROOMS, ZONES
 from backend.aegis.paging.triage import Triage
 from backend.aegis.rooms import detectors as D
 from backend.aegis.rooms.physiology import SAMPLE_S, SELF_LIMIT_S, WEIGHTS, Physiology, fitting
-from backend.aegis.rooms.records import icu_record, live_record, synthetic_record
+from backend.aegis.rooms.records import icu_record, interface_record, live_record, synthetic_record
 
 EVAL_S = 3.0                      # the monitor's pass: rooms whose inputs changed are re-evaluated
 REFRESH_S = 15.0                  # and every room at least this often
@@ -49,7 +49,13 @@ TREATED_S = 75.0                  # a page accepted this long ago means care has
 _CATEGORY_SPECIFICITY = {"general": 0, "medication": 1}   # prefer a specific category at equal priority
 _ICU_CHANNELS = ("hr", "sbp", "map", "rr", "spo2", "temp_c")
 _LAB_NAME = {"wbc": "WBC", "anc": "ANC", "glucose": "Glucose", "lactate": "Lactate", "potassium": "Potassium",
-             "hemoglobin": "Haemoglobin", "creatinine": "Creatinine", "platelets": "Platelets"}
+             "hemoglobin": "Haemoglobin", "creatinine": "Creatinine", "platelets": "Platelets",
+             # keys an interface feed can deliver (backend/aegis/interop/vocab.py)
+             "sodium": "Sodium", "chloride": "Chloride", "hco3": "HCO₃", "bun": "BUN", "calcium": "Calcium",
+             "ica": "Ionized Ca", "magnesium": "Magnesium", "phosphate": "Phosphate", "hct": "Haematocrit",
+             "bilirubin": "Bilirubin", "bilirubin_direct": "Direct bilirubin", "ast": "AST", "alp": "ALP",
+             "troponin": "Troponin I", "ptt": "aPTT", "inr": "INR", "fibrinogen": "Fibrinogen", "ph": "pH",
+             "paco2": "PaCO₂", "sao2": "SaO₂", "base_excess": "Base excess", "fio2": "FiO₂"}
 
 
 def _seed(*parts: Any) -> int:
@@ -90,6 +96,9 @@ class RoomMonitor:
         self.imported_history: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None
         self.live_history: Optional[Callable[[], Optional[Dict[str, Any]]]] = None
         self.screen: Optional[Callable[..., List[Any]]] = None           # the pharmacopoeia's interaction screen
+        self.feed_status: Optional[Callable[[str], Optional[Dict[str, Any]]]] = None   # integration engine's view
+        # rooms admitted over HL7 (backend/aegis/interop): vitals and results arrive through mappings
+        self.interfaced: Dict[str, Dict[str, Any]] = {}
         self._icu_cache: Dict[str, Tuple[Any, Dict[str, Any]]] = {}
         self._evaluated: Dict[str, Tuple[float, Any]] = {}
         self._last_pass: Dict[str, float] = {}
@@ -117,6 +126,8 @@ class RoomMonitor:
         self.news_hist[room] = deque(maxlen=120)
 
     def _room_kind(self, room: str) -> Optional[str]:
+        if room in self.interfaced:
+            return "interface"
         if room in self.records and self.records[room]["kind"] == "synthetic":
             return "synthetic"
         m = self.engine.monitored.get(room)
@@ -219,7 +230,7 @@ class RoomMonitor:
         return False
 
     def _occupied(self) -> List[str]:
-        return sorted(set(self.phys) | set(self.engine.monitored))
+        return sorted(set(self.phys) | set(self.engine.monitored) | set(self.interfaced))
 
     def _feed_monitored(self, room: str, now: float) -> None:
         m = self.engine.monitored.get(room) or {}
@@ -256,6 +267,18 @@ class RoomMonitor:
                 v["avpu"] = last.get("avpu", "A")
                 v["chronic_confusion"] = last.get("chronic_confusion", False)
             labs = _merge_labs(rec.get("labs") or {}, self.phys[room].labs)
+            return D.Ctx(room, kind, rec, v, series[-1]["t"] if series else None, series, labs, now,
+                         flags=frozenset(rec.get("flags") or []))
+        if kind == "interface":
+            v = {}
+            for k in ("hr", "sbp", "dbp", "map", "rr", "spo2", "temp_c"):
+                xs = [r[k] for r in series[-6:] if r.get(k) is not None][-3:]
+                if xs:
+                    v[k] = statistics.median(xs)     # the median of the last three readings, as for a synthetic feed
+            last_o2 = next((r["o2_lpm"] for r in reversed(series[-6:]) if r.get("o2_lpm") is not None), None)
+            if last_o2 is not None:
+                v["o2_lpm"] = last_o2
+            labs = _merge_labs(rec.get("labs") or {}, self.interfaced[room]["labs"])
             return D.Ctx(room, kind, rec, v, series[-1]["t"] if series else None, series, labs, now,
                          flags=frozenset(rec.get("flags") or []))
         if kind == "replay":
@@ -327,7 +350,7 @@ class RoomMonitor:
             sc["qsofa"] = int(rr is not None and rr >= 22) + int(sbp is not None and sbp <= 100) + int(bool(altered))
         self.scores[room] = sc
         self.body[room] = body_state(rec, c, [st["finding"] for st in cur.values() if st["last_seen"] == now], sc)
-        if rec["kind"] == "synthetic":
+        if rec["kind"] in ("synthetic", "interface"):
             self._escalate(room, rec, c, now)
         return self._status_of(room)
 
@@ -478,7 +501,8 @@ class RoomMonitor:
             f"Room monitor: {best['title']}. {best.get('response', '')}", "monitor", None,
             {"qsofa": q, "infection_signs": infection, "shock_signs": shock,
              "altered": c.v.get("avpu") in ("C", "V", "P", "U") and not c.v.get("chronic_confusion")})
-        page = eng._open_case(tri, text, "monitor", "AegisOS room monitor", synthetic=True)
+        page = eng._open_case(tri, text, "monitor", "AegisOS room monitor",
+                              synthetic=bool((rec.get("provenance") or {}).get("synthetic", True)))
         page["monitor"] = {"findings": [{"key": f["key"], "detector": f["detector"], "title": f["title"],
                                          "severity": f["severity"], "source": f["source"]} for f in paging]}
         ep.update(open=True, page=page["id"], priority=best["page"], linked=False, opened_at=now, clear=0,
@@ -593,6 +617,120 @@ class RoomMonitor:
         self._event(room, now, "order", "info", f"New order: {d.name} {d.dose} {d.route} {d.freq} ({why}, simulated)",
                     simulated=True)
 
+    # ------------------------------------------------------------------ #
+    # interface-fed rooms (called by the paging OS under its lock)
+    # ------------------------------------------------------------------ #
+    def admit_interface(self, room: str, patient: Dict[str, Any], now: float) -> None:
+        rec = interface_record(room, patient, now)
+        fresh = room not in self.interfaced
+        self.records[room] = rec
+        if fresh:
+            self.interfaced[room] = {"labs": {}, "since": now, "withheld": deque(maxlen=40),
+                                     "interface": patient.get("interface_name"), "last_withheld": {}}
+            self.series[room] = deque(maxlen=SERIES_N)
+            self.timeline[room] = deque(maxlen=TIMELINE_N)
+            self.findings[room] = {}
+            self.resolved[room] = deque(maxlen=30)
+            self.news_hist[room] = deque(maxlen=120)
+            for k in (room, f"{room}:med"):
+                self.episodes.pop(k, None)
+            self.scores.pop(room, None)
+            self.body.pop(room, None)
+            self.status.pop(room, None)
+            self._evaluated.pop(room, None)
+            self._event(room, now, "record", "info", f"Admitted by {patient.get('interface_name') or 'the ADT feed'} "
+                                                      f"(HL7 ADT^A01): {rec['patient']['name']}, {rec['admission']['reason']}")
+        else:
+            self._event(room, now, "record", "info", "Record updated by the ADT feed")
+
+    def discharge_interface(self, room: str, why: str, now: float) -> None:
+        if room not in self.interfaced:
+            return
+        name = (self.records.get(room) or {}).get("patient", {}).get("name")
+        self.interfaced.pop(room, None)
+        for d in (self.records, self.series, self.findings, self.scores, self.body, self.news_hist, self.faults,
+                  self._evaluated, self._last_pass):
+            d.pop(room, None)
+        for k in (room, f"{room}:med"):
+            self.episodes.pop(k, None)
+        self.status.pop(room, None)
+        self.resolved.pop(room, None)
+        self._event(room, now, "record", "info", f"{name or 'Patient'} {why} (HL7 ADT)")
+        self.engine.emit("rooms", {room: {}})
+
+    def observe_interface(self, room: str, t: float, vitals: Dict[str, float],
+                          labs: Dict[str, List[Tuple[str, float]]], meta: Dict[str, Any]) -> None:
+        st = self.interfaced.get(room)
+        if st is None:
+            return
+        if vitals:
+            s = self.series[room]
+            if s and abs(s[-1]["t"] - t) < 0.5:
+                s[-1].update(vitals)
+            else:
+                s.append({"t": t, **vitals})
+        shown = []
+        for key, items in labs.items():
+            lst = st["labs"].setdefault(key, [])
+            for oid, v in items:
+                lst.append({"t": t, "v": v, "id": oid})
+                shown.append(f"{_LAB_NAME.get(key, key.replace('_', ' ').capitalize())} {v:g}")
+            lst.sort(key=lambda r: r["t"])
+            del lst[:-24]
+        if shown:      # one line per message, not one per value
+            self._event(room, t, "lab", "info", f"{len(shown)} result{'s' if len(shown) != 1 else ''} from "
+                                                f"{meta.get('name') or 'the interface'}: " + ", ".join(shown[:6])
+                                                + (" …" if len(shown) > 6 else ""))
+
+    def backfill_interface(self, room: str, key: str, rows: List[Tuple[str, float, float]], note: str) -> None:
+        st = self.interfaced.get(room)
+        if st is None or not rows:
+            return
+        lst = st["labs"].setdefault(key, [])
+        have = {r.get("id") for r in lst}
+        for oid, v, t in rows:
+            if oid not in have:
+                lst.append({"t": t, "v": v, "id": oid})
+        lst.sort(key=lambda r: r["t"])
+        del lst[:-24]
+        self._event(room, self.engine.now(), "lab", "info", f"{len(rows)} earlier result(s) delivered: {note}", lab=key)
+
+    def withheld_interface(self, room: str, t: float, items: List[Dict[str, Any]], meta: Dict[str, Any]) -> None:
+        st = self.interfaced.get(room)
+        if st is None:
+            return
+        now = self.engine.now()
+        for it in items:
+            st["withheld"].append({"t": t, **it, "interface": meta.get("name")})
+            last = st["last_withheld"].get(it.get("concept"))
+            if last is None or now - last > 120:          # one line per value kind every two minutes
+                st["last_withheld"][it.get("concept")] = now
+                self._event(room, t, "interface", "watch", f"{it.get('label')} withheld ({it.get('why')}): the value "
+                                                          f"is not shown or used until the feed is reviewed")
+
+    def retract_interface(self, room: str, ids: List[str], vitals_since: Dict[str, float]) -> None:
+        st = self.interfaced.get(room)
+        if st is None:
+            return
+        gone = set(ids)
+        n = 0
+        for key, lst in st["labs"].items():
+            keep = [r for r in lst if r.get("id") not in gone]
+            n += len(lst) - len(keep)
+            st["labs"][key] = keep
+        for ch, since in (vitals_since or {}).items():
+            for r in self.series.get(room) or []:
+                if r["t"] >= since and ch in r:
+                    r.pop(ch, None)
+                    n += 1
+        self._evaluated.pop(room, None)            # re-read the room without them at the next pass
+        if n:
+            self._event(room, self.engine.now(), "interface", "watch", f"{n} value(s) withdrawn from this room's record")
+
+    def event_interface(self, room: str, kind: str, severity: str, text: str) -> None:
+        if room in self.timeline:
+            self._event(room, self.engine.now(), kind, severity, text)
+
     def report(self, room: Optional[str], vitals: Dict[str, Any], text: str, page: Optional[str] = None) -> None:
         """A nurse reported values for a room: they are a measurement, and the room's record takes them.
 
@@ -691,6 +829,9 @@ class RoomMonitor:
         series = list(self.series.get(room) or [])
         ph = self.phys.get(room)
         labs = _merge_labs(rec.get("labs") or {}, ph.labs if ph else {})
+        ist = self.interfaced.get(room)
+        if ist is not None:
+            labs = _merge_labs(labs, {k: [{"t": r["t"], "v": r["v"]} for r in v] for k, v in ist["labs"].items()})
         timeline = list(self.timeline.get(room) or [])
         for a in eng.alerts:
             if a.get("room") == room and a.get("source") != "monitor":
@@ -716,8 +857,11 @@ class RoomMonitor:
             "care_team": self._care_team(room, pages), "devices": self._devices(room, rec, series, now),
             "simulation": ph.scenario.to_dict(now) if ph and ph.scenario else None,
             "monitoring": {"kind": rec["kind"], "sample_s": SAMPLE_S if rec["kind"] == "synthetic" else None,
-                           "eval_period_s": EVAL_S, "pages_from": "room monitor" if rec["kind"] == "synthetic" else "sepsis detector",
+                           "eval_period_s": EVAL_S,
+                           "pages_from": "room monitor" if rec["kind"] in ("synthetic", "interface") else "sepsis detector",
                            "detectors": [n for n, _ in D.DETECTORS]},
+            "feed": self._feed(room) if ist is not None else None,
+            "withheld": list(ist["withheld"])[-12:] if ist is not None else [],
             "risk": (eng.monitored.get(room) or {}).get("risk"),
             "probability": (eng.monitored.get(room) or {}).get("probability"),
             "body": self.body.get(room),
@@ -748,8 +892,30 @@ class RoomMonitor:
                              "specialty": c.specialty})
         return team
 
+    def _feed(self, room: str) -> Optional[Dict[str, Any]]:
+        try:
+            return self.feed_status(room) if self.feed_status else None
+        except Exception:
+            return None
+
     def _devices(self, room: str, rec: Dict[str, Any], series: List[Dict[str, Any]], now: float) -> List[Dict[str, Any]]:
         kind = rec["kind"]
+        if kind == "interface":
+            feed = self._feed(room) or {}
+            by_iface: Dict[str, List[Dict[str, Any]]] = {}
+            for ch in feed.get("channels") or []:
+                by_iface.setdefault(ch["interface"], []).append(ch)
+            out = []
+            for iface, chans in by_iface.items():
+                q = [c["label"] for c in chans if c["status"] == "quarantined"]
+                last = max((c["last_t"] or 0) for c in chans)
+                age = now - last
+                out.append({"name": chans[0].get("interface_name") or iface,
+                            "detail": f"HL7 · {sum(1 for c in chans if c['status'] == 'adopted')} of {len(chans)} codes "
+                                      f"mapped" + (f" · quarantined: {', '.join(q)}" if q else ""),
+                            "status": "quarantined" if q else ("streaming" if age < 120 else
+                                                               "connected" if age < 1800 else "no signal")})
+            return out or [{"name": "Interface feed", "detail": "waiting for the first results", "status": "no signal"}]
         if kind == "replay":
             return [{"name": "Bedside monitor", "detail": "PhysioNet/CinC 2019 replay feed (HR, SpO₂, BP, RR, temperature)",
                      "status": "streaming"},

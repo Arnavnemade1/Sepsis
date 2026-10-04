@@ -418,6 +418,25 @@ PAGING.units.imported_history = lambda bed: patient_terminal.get_history(bed)
 PAGING.units.live_history = lambda: session.core.clinical_history
 PAGING.units.screen = lambda drugs, ctx: pharmacopoeia.screen(drugs, ctx)
 
+# --- The integration plane: the hospital's HL7 feeds into the rooms (backend/aegis/interop) --- #
+# Each sender's local codes are mapped onto AegisOS concepts. A mapping is proposed (LOINC,
+# IEEE 11073, lexical, the language model) and adopted only on evidence from the data; an
+# adopted feed keeps being checked, and one that drifts is quarantined before a wrong value
+# reaches a detector. The demo hospital's systems are simulated and speak only HL7 to it.
+BOOT.checkpoint("interop", "integration plane: HL7 feeds, mappings earned on evidence")
+from backend.aegis.interop.engine import Integration as _Integration
+from backend.aegis.interop.sender import SimulatedHospital as _SimulatedHospital
+from backend.aegis.paging.hospital import ROOMS as _HOSPITAL_ROOMS
+INTEROP = _Integration(rooms=PAGING, llm=_llm_client, hospital_rooms=list(_HOSPITAL_ROOMS))
+PAGING.units.feed_status = INTEROP.room_feed
+PAGING.sentinel.external = INTEROP.sentinel_recs
+INTEROP_SIM = _SimulatedHospital(INTEROP, lambda: [r for r in _HOSPITAL_ROOMS if PAGING.interface_room_free(r)])
+INTEROP_SIM.register()
+procfs.register("/proc/interop", lambda: {k: v for k, v in INTEROP.overview().items()
+                                          if k in ("interfaces", "mappings", "counters", "census", "model",
+                                                   "settings", "reference")})
+BOOT.note(interfaces=len(INTEROP.interfaces), vocabulary=len(INTEROP.vocabulary()["concepts"]))
+
 
 def _bed_susceptibility(bed: str) -> float:
     """Comorbidity risk-prior uplift for a bed (0 when no history imported). Injected
@@ -791,6 +810,23 @@ async def _paging_loop() -> None:
         await asyncio.sleep(1.0)
 
 
+async def _interop_loop() -> None:
+    """Once a second: the simulated hospital's feeds, interface health, and any codes
+    waiting for the language-model proposer (which runs on its own thread)."""
+    _pid = PROCS.spawn("interop", KTHREAD, uid="kernel", cadence_s=1.0,
+                       drives="integration plane: HL7 feeds, live evidence, model proposer").pid
+    def tick() -> None:
+        with PROCS.slice(_pid):
+            INTEROP_SIM.tick()
+            INTEROP.tick()
+    while True:
+        try:
+            await asyncio.to_thread(tick)
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] interop loop error: {exc}")
+        await asyncio.sleep(1.0)
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     # Become ready IMMEDIATELY: start the realtime loops and return so uvicorn
@@ -804,7 +840,13 @@ async def _startup() -> None:
     asyncio.create_task(_drive_loop())
     asyncio.create_task(_cluster_loop())
     asyncio.create_task(_paging_loop())
+    asyncio.create_task(_interop_loop())
     asyncio.create_task(OS_HUB.run())
+    if _os.getenv("AEGIS_MLLP_PORT"):
+        # on-premises: the hospital's interface engine connects over MLLP (off on a hosted deploy)
+        from backend.aegis.interop import mllp as _mllp
+        asyncio.create_task(_mllp.start(int(_os.getenv("AEGIS_MLLP_PORT")), INTEROP.ingest_hl7,
+                                        principal="svc.hl7"))
 
     # The persistence init makes BLOCKING Supabase calls — never run them on the
     # event loop during startup: a slow/cold DB would stall the startup event,

@@ -272,3 +272,26 @@ class PagingStatusIn(BaseModel):
 
 class PagingSettingsIn(BaseModel):
     patch: Dict[str, Any]
+
+
+# --- the integration plane ------------------------------------------------------ #
+class InteropAdoptIn(BaseModel):
+    concept: Optional[str] = None          # the vocabulary key to adopt the code as
+    conversion: Optional[Any] = None       # "declared" | "suggested" | "identity" | {"factor", "offset"}
+
+
+class InteropRejectIn(BaseModel):
+    reason: str = ""
+
+
+class InteropSettingsIn(BaseModel):
+    patch: Dict[str, Any]
+
+
+class InteropDrillIn(BaseModel):
+    kind: str                              # see backend/aegis/interop/sender.py DRILLS, or "clear"
+    on: bool = True
+
+
+class InteropMessageIn(BaseModel):
+    message: str                           # one HL7 v2 message, ER7 text

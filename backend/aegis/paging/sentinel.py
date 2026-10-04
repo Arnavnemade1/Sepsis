@@ -53,6 +53,9 @@ class Sentinel:
     def __init__(self) -> None:
         self.recs: Dict[str, Rec] = {}
         self.last_scan = 0.0
+        # other planes' system-wide findings, folded into each scan (the integration engine's
+        # quarantined feeds). Called under the paging OS's lock: it must not call back into it.
+        self.external: Optional[Callable[[float], List[Rec]]] = None
 
     def scan(self, now: float, alerts: List[Dict[str, Any]], pages: List[Dict[str, Any]],
              roster: Dict[str, Clinician], load: Dict[str, Dict[str, Any]],
@@ -153,6 +156,12 @@ class Sentinel:
                         "Prompt the accepting clinician; pharmacy can prepare the antibiotic now.",
                         [p["id"]])
 
+        if self.external is not None:
+            try:
+                for rec in self.external(now):
+                    found[rec.id] = rec
+            except Exception:
+                pass
         changed: List[Rec] = []
         for key, rec in found.items():
             old = self.recs.get(key)

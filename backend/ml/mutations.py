@@ -708,3 +708,105 @@ def bundle_ignores_policy(mod):
 def stream_journal_unfiltered(mod):
     import backend.aegis.kernel.osstream as O
     O.SENSITIVE_FACILITIES = frozenset()
+
+
+# --------------------------------------------------------------------------- #
+# The integration plane (backend/aegis/interop). Each of these was a real defect found
+# while building it, or the plane's central safety claim: no proposer, human or model,
+# decides on its own what the detectors read.
+# --------------------------------------------------------------------------- #
+INTEROP = "backend.aegis.interop.verify_interop"
+
+
+@mutation("integration", INTEROP, ["ICU and live rooms are still never free"],
+          note="occupancy read from the monitored-bed table alone: at boot, before the ward has ticked, an HL7 "
+               "admission landed in ICU replay room 312 (found running it)")
+def icu_rooms_free_at_boot(mod):
+    import backend.aegis.paging.engine as P
+
+    def free(self, room):
+        r = P.ROOMS.get(room)
+        if r is None or P.ZONES[r.zone].kind in ("or", "imaging", "support"):
+            return False
+        return room not in self.synthetic and room not in self.monitored and room not in self.interfaced
+    P.PagingOS.interface_room_free = free
+
+
+@mutation("integration", INTEROP, ["a withheld haemoglobin is left out of the Hct/Hgb identity"],
+          note="identities read a partner's WITHHELD values: a haemoglobin the partner no longer vouched for "
+               "convicted the haematocrit beside it (a false quarantine, found running the drills)")
+def withheld_partner_convicts(mod):
+    import backend.aegis.interop.engine as En
+    orig = En.Integration._joint_rows
+
+    def rows(self, m, concept, conv, adopted_only=False, since_seq=0):
+        saved = [(g, g["held"]) for g in self.groups.get(m.interface, ())]
+        for g, _h in saved:
+            g["held"] = set()
+        try:
+            return orig(self, m, concept, conv, adopted_only, since_seq)
+        finally:
+            for g, h in saved:
+                g["held"] = h
+    En.Integration._joint_rows = rows
+
+
+@mutation("integration", INTEROP, ["passes the feed-relative test"],
+          note="live evidence judged against the GLOBAL reference with the population band (the rejected "
+               "design): a ward of septic patients cuts its own heart-rate feed when it matters most")
+def drift_against_global_reference(mod):
+    import backend.aegis.interop.evidence as Ev
+    from backend.aegis.interop.units import IDENTITY
+    Ev.drift_checks = lambda c, recent, window, baseline: list(Ev.assess(c, list(recent), IDENTITY).checks)
+
+
+@mutation("integration", INTEROP, ["beats the ÷100 decade guess"],
+          note="decade guesses compete with named units: a creatinine in µmol/L read as ambiguous (÷88.42 vs "
+               "÷100), so a relabelled feed was quarantined with no fix (found running the drills)")
+def decade_guess_competes(mod):
+    import backend.aegis.interop.vocab as Vo
+    from backend.aegis.interop.units import Conversion
+    orig = Vo.Concept.candidate_conversions
+
+    def cands(self):
+        return [Conversion(c.factor, c.offset, c.label.replace("decade shift ", "")) for c in orig(self)]
+    Vo.Concept.candidate_conversions = cands
+
+
+@mutation("integration", INTEROP, ["the model's WRONG answer (B-Hb → haematocrit) is refused"],
+          note="a proposal adopted on its proposer's say-so: the language model decides what every detector "
+               "reads, and its wrong analyte flows into rooms")
+def proposals_adopt_unchecked(mod):
+    import backend.aegis.interop.evidence as Ev
+    orig = Ev.infer
+
+    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN):
+        inf = orig(c, values, declared, ref, n_min)
+        if inf.decision in ("none", "ambiguous") and inf.ranked:
+            return Ev.Inference("inferred", inf.declared, inf.ranked[0], [inf.ranked[0]], inf.ranked)
+        return inf
+    Ev.infer = infer
+
+
+@mutation("integration", INTEROP, ["is not processed twice"],
+          note="no idempotence: an interface engine resending after a lost ACK duplicates every result")
+def resends_reprocessed(mod):
+    import backend.aegis.interop.engine as En
+    orig_init = En.Integration.__init__
+
+    class Forgetful(En.OrderedDict):
+        def get(self, k, d=None):
+            return None
+
+    def init(self, *a, **kw):
+        orig_init(self, *a, **kw)
+        self._acks = Forgetful()
+    En.Integration.__init__ = init
+
+
+@mutation("integration", INTEROP, ["drill glucose_units: GLU quarantined"],
+          note="impossible values withheld one at a time but the feed never judged: it stays 'adopted' while "
+               "sending nothing usable, and nobody is told")
+def never_quarantine(mod):
+    import backend.aegis.interop.engine as En
+    En.Integration._quarantine = lambda self, group, now, effects, cause, checks, since_t=None: None

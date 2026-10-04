@@ -1,0 +1,1714 @@
+{
+ "meta": {
+  "built": "2026-10-04T01:03:37",
+  "fit_digest": "7fbbdd0ad322",
+  "training_patients": 24206,
+  "quantiles": [
+   0.001,
+   0.005,
+   0.01,
+   0.025,
+   0.05,
+   0.1,
+   0.25,
+   0.5,
+   0.75,
+   0.9,
+   0.95,
+   0.975,
+   0.99,
+   0.995,
+   0.999
+  ],
+  "note": "Reference distributions for the integration plane's evidence engine. Training patients of the shipped detector only; values inside each concept's a-priori physiological window.",
+  "holdout_patients": 8062,
+  "sites": {
+   "A": "Beth Israel Deaconess (training_setA)",
+   "B": "Emory (training_setB)"
+  }
+ },
+ "findings": [
+  {
+   "kind": "window",
+   "concept": "calcium",
+   "site": "B",
+   "n": 31139,
+   "outside_window": 0.19111082565271845,
+   "outside_n": 5951,
+   "median": 8.199999809265137,
+   "median_outside": 1.1699999570846558,
+   "holdout": {
+    "n": 10358,
+    "outside_window": 0.1814056767715775,
+    "outside_n": 1879,
+    "median": 8.199999809265137,
+    "median_outside": 1.1799999475479126
+   }
+  },
+  {
+   "kind": "invariant",
+   "invariant": "spo2_sao2",
+   "site": "A",
+   "n": 22962,
+   "violations": 4141,
+   "rate": 0.180341433673025,
+   "p0": 0.02,
+   "holdout": {
+    "n": 7155,
+    "violations": 1293,
+    "rate": 0.18071278825995807,
+    "p0": 0.02
+   }
+  }
+ ],
+ "training": {
+  "columns": {
+   "hr": {
+    "cinc": "HR",
+    "window": [
+     20,
+     300
+    ],
+    "A": {
+     "n": 435922,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 84.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 402124,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 83.0,
+     "median_outside": null
+    }
+   },
+   "spo2": {
+    "cinc": "O2Sat",
+    "window": [
+     40,
+     100
+    ],
+    "A": {
+     "n": 415477,
+     "outside_window": 9.868175615015994e-05,
+     "outside_n": 41,
+     "median": 98.0,
+     "median_outside": 30.0
+    },
+    "B": {
+     "n": 392535,
+     "outside_window": 0.00010190174124600354,
+     "outside_n": 40,
+     "median": 98.0,
+     "median_outside": 24.0
+    }
+   },
+   "temp": {
+    "cinc": "Temp",
+    "window": [
+     25,
+     45
+    ],
+    "A": {
+     "n": 161039,
+     "outside_window": 6.209675917013891e-06,
+     "outside_n": 1,
+     "median": 37.060001373291016,
+     "median_outside": 23.0
+    },
+    "B": {
+     "n": 155245,
+     "outside_window": 6.441431286031756e-06,
+     "outside_n": 1,
+     "median": 36.900001525878906,
+     "median_outside": 50.0
+    }
+   },
+   "sbp": {
+    "cinc": "SBP",
+    "window": [
+     40,
+     300
+    ],
+    "A": {
+     "n": 401443,
+     "outside_window": 8.220345105033591e-05,
+     "outside_n": 33,
+     "median": 118.0,
+     "median_outside": 35.0
+    },
+    "B": {
+     "n": 393554,
+     "outside_window": 8.893315783856853e-05,
+     "outside_n": 35,
+     "median": 124.0,
+     "median_outside": 30.0
+    }
+   },
+   "dbp": {
+    "cinc": "DBP",
+    "window": [
+     15,
+     200
+    ],
+    "A": {
+     "n": 245647,
+     "outside_window": 3.663793980793578e-05,
+     "outside_n": 9,
+     "median": 58.0,
+     "median_outside": 232.0
+    },
+    "B": {
+     "n": 393450,
+     "outside_window": 0.00014741390265599186,
+     "outside_n": 58,
+     "median": 64.5,
+     "median_outside": 260.0
+    }
+   },
+   "map": {
+    "cinc": "MAP",
+    "window": [
+     25,
+     250
+    ],
+    "A": {
+     "n": 424009,
+     "outside_window": 0.0002594284555280666,
+     "outside_n": 110,
+     "median": 77.0,
+     "median_outside": 253.5
+    },
+    "B": {
+     "n": 389733,
+     "outside_window": 0.000171912565782215,
+     "outside_n": 67,
+     "median": 84.0,
+     "median_outside": 280.0
+    }
+   },
+   "rr": {
+    "cinc": "Resp",
+    "window": [
+     2,
+     80
+    ],
+    "A": {
+     "n": 426212,
+     "outside_window": 2.8155002674725252e-05,
+     "outside_n": 12,
+     "median": 18.0,
+     "median_outside": 1.0
+    },
+    "B": {
+     "n": 360148,
+     "outside_window": 0.0009412796961249264,
+     "outside_n": 339,
+     "median": 18.0,
+     "median_outside": 1.0
+    }
+   },
+   "fio2": {
+    "cinc": "FiO2",
+    "window": [
+     0.21,
+     1.0
+    ],
+    "A": {
+     "n": 66957,
+     "outside_window": 0.0027032274444792927,
+     "outside_n": 181,
+     "median": 0.5,
+     "median_outside": 0.03999999910593033
+    },
+    "B": {
+     "n": 10207,
+     "outside_window": 0.005388458900754384,
+     "outside_n": 55,
+     "median": 0.4000000059604645,
+     "median_outside": 0.05999999865889549
+    }
+   },
+   "wbc": {
+    "cinc": "WBC",
+    "window": [
+     0.05,
+     500
+    ],
+    "A": {
+     "n": 35654,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 10.800000190734863,
+     "median_outside": null
+    },
+    "B": {
+     "n": 24040,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 9.600000381469727,
+     "median_outside": null
+    }
+   },
+   "hemoglobin": {
+    "cinc": "Hgb",
+    "window": [
+     2,
+     25
+    ],
+    "A": {
+     "n": 42113,
+     "outside_window": 2.3745636739249164e-05,
+     "outside_n": 1,
+     "median": 10.399999618530273,
+     "median_outside": 32.0
+    },
+    "B": {
+     "n": 26882,
+     "outside_window": 3.719961312402351e-05,
+     "outside_n": 1,
+     "median": 9.899999618530273,
+     "median_outside": 26.600000381469727
+    }
+   },
+   "hematocrit": {
+    "cinc": "Hct",
+    "window": [
+     6,
+     75
+    ],
+    "A": {
+     "n": 56268,
+     "outside_window": 1.7772090708750978e-05,
+     "outside_n": 1,
+     "median": 30.200000762939453,
+     "median_outside": 5.5
+    },
+    "B": {
+     "n": 26643,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 30.399999618530273,
+     "median_outside": null
+    }
+   },
+   "platelets": {
+    "cinc": "Platelets",
+    "window": [
+     1,
+     2500
+    ],
+    "A": {
+     "n": 31026,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 180.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 24405,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 180.0,
+     "median_outside": null
+    }
+   },
+   "glucose": {
+    "cinc": "Glucose",
+    "window": [
+     10,
+     1500
+    ],
+    "A": {
+     "n": 58570,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 124.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 101182,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 128.0,
+     "median_outside": null
+    }
+   },
+   "lactate": {
+    "cinc": "Lactate",
+    "window": [
+     0.1,
+     30
+    ],
+    "A": {
+     "n": 16488,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 1.7999999523162842,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8508,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 2.0,
+     "median_outside": null
+    }
+   },
+   "potassium": {
+    "cinc": "Potassium",
+    "window": [
+     1.0,
+     10.0
+    ],
+    "A": {
+     "n": 51734,
+     "outside_window": 3.8659295627633664e-05,
+     "outside_n": 2,
+     "median": 4.099999904632568,
+     "median_outside": 20.25
+    },
+    "B": {
+     "n": 35192,
+     "outside_window": 0.00019890884291884518,
+     "outside_n": 7,
+     "median": 4.0,
+     "median_outside": 10.600000381469727
+    }
+   },
+   "chloride": {
+    "cinc": "Chloride",
+    "window": [
+     60,
+     150
+    ],
+    "A": {
+     "n": 39465,
+     "outside_window": 2.533890789306981e-05,
+     "outside_n": 1,
+     "median": 106.0,
+     "median_outside": 38.0
+    },
+    "B": {
+     "n": 2661,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 107.0,
+     "median_outside": null
+    }
+   },
+   "hco3": {
+    "cinc": "HCO3",
+    "window": [
+     2,
+     60
+    ],
+    "A": {
+     "n": 38233,
+     "outside_window": 5.2310830957549764e-05,
+     "outside_n": 2,
+     "median": 24.0,
+     "median_outside": 0.0
+    },
+    "B": {
+     "n": 877,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 23.299999237060547,
+     "median_outside": null
+    }
+   },
+   "bun": {
+    "cinc": "BUN",
+    "window": [
+     1,
+     300
+    ],
+    "A": {
+     "n": 38748,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 18.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 25230,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 17.0,
+     "median_outside": null
+    }
+   },
+   "creatinine": {
+    "cinc": "Creatinine",
+    "window": [
+     0.1,
+     25
+    ],
+    "A": {
+     "n": 31567,
+     "outside_window": 0.00012671460702632495,
+     "outside_n": 4,
+     "median": 0.8999999761581421,
+     "median_outside": 28.549999237060547
+    },
+    "B": {
+     "n": 25260,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 1.0,
+     "median_outside": null
+    }
+   },
+   "calcium": {
+    "cinc": "Calcium",
+    "window": [
+     3.5,
+     18
+    ],
+    "A": {
+     "n": 23557,
+     "outside_window": 0.0002971515897610052,
+     "outside_n": 7,
+     "median": 8.300000190734863,
+     "median_outside": 18.399999618530273
+    },
+    "B": {
+     "n": 31139,
+     "outside_window": 0.19111082565271845,
+     "outside_n": 5951,
+     "median": 8.199999809265137,
+     "median_outside": 1.1699999570846558
+    }
+   },
+   "magnesium": {
+    "cinc": "Magnesium",
+    "window": [
+     0.4,
+     10
+    ],
+    "A": {
+     "n": 36791,
+     "outside_window": 2.718056046315675e-05,
+     "outside_n": 1,
+     "median": 2.0,
+     "median_outside": 0.20000000298023224
+    },
+    "B": {
+     "n": 21794,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 2.0,
+     "median_outside": null
+    }
+   },
+   "phosphate": {
+    "cinc": "Phosphate",
+    "window": [
+     0.3,
+     20
+    ],
+    "A": {
+     "n": 23936,
+     "outside_window": 4.177807486631016e-05,
+     "outside_n": 1,
+     "median": 3.4000000953674316,
+     "median_outside": 0.20000000298023224
+    },
+    "B": {
+     "n": 13314,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 3.299999952316284,
+     "median_outside": null
+    }
+   },
+   "bilirubin": {
+    "cinc": "Bilirubin_total",
+    "window": [
+     0.05,
+     60
+    ],
+    "A": {
+     "n": 5936,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.8999999761581421,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8030,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.8999999761581421,
+     "median_outside": null
+    }
+   },
+   "bilirubin_direct": {
+    "cinc": "Bilirubin_direct",
+    "window": [
+     0.0,
+     40
+    ],
+    "A": {
+     "n": 712,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 1.5,
+     "median_outside": null
+    },
+    "B": {
+     "n": 1061,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.20000000298023224,
+     "median_outside": null
+    }
+   },
+   "ast": {
+    "cinc": "AST",
+    "window": [
+     3,
+     30000
+    ],
+    "A": {
+     "n": 7142,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 57.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 7974,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 33.0,
+     "median_outside": null
+    }
+   },
+   "alp": {
+    "cinc": "Alkalinephos",
+    "window": [
+     5,
+     5000
+    ],
+    "A": {
+     "n": 6981,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 79.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8008,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 71.0,
+     "median_outside": null
+    }
+   },
+   "troponin": {
+    "cinc": "TroponinI",
+    "window": [
+     0,
+     1000
+    ],
+    "A": {
+     "n": 584,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 4.099999904632568,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8231,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.2199999988079071,
+     "median_outside": null
+    }
+   },
+   "ptt": {
+    "cinc": "PTT",
+    "window": [
+     10,
+     250
+    ],
+    "A": {
+     "n": 23160,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 32.5,
+     "median_outside": null
+    },
+    "B": {
+     "n": 4318,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 32.29999923706055,
+     "median_outside": null
+    }
+   },
+   "fibrinogen": {
+    "cinc": "Fibrinogen",
+    "window": [
+     20,
+     2000
+    ],
+    "A": {
+     "n": 3766,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 252.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 2543,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 253.0,
+     "median_outside": null
+    }
+   },
+   "ph": {
+    "cinc": "pH",
+    "window": [
+     6.5,
+     8.0
+    ],
+    "A": {
+     "n": 54583,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 7.380000114440918,
+     "median_outside": null
+    },
+    "B": {
+     "n": 10040,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 7.380000114440918,
+     "median_outside": null
+    }
+   },
+   "paco2": {
+    "cinc": "PaCO2",
+    "window": [
+     8,
+     150
+    ],
+    "A": {
+     "n": 41831,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 40.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 10066,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 39.0,
+     "median_outside": null
+    }
+   },
+   "sao2": {
+    "cinc": "SaO2",
+    "window": [
+     30,
+     100
+    ],
+    "A": {
+     "n": 23964,
+     "outside_window": 0.00016691704223001168,
+     "outside_n": 4,
+     "median": 97.0,
+     "median_outside": 26.5
+    },
+    "B": {
+     "n": 8693,
+     "outside_window": 0.00011503508570113885,
+     "outside_n": 1,
+     "median": 97.5,
+     "median_outside": 23.0
+    }
+   },
+   "base_excess": {
+    "cinc": "BaseExcess",
+    "window": [
+     -35,
+     35
+    ],
+    "A": {
+     "n": 49612,
+     "outside_window": 6.0469241312585663e-05,
+     "outside_n": 3,
+     "median": 0.0,
+     "median_outside": 44.0
+    },
+    "B": {
+     "n": 1086,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": -2.4000000953674316,
+     "median_outside": null
+    }
+   },
+   "etco2": {
+    "cinc": "EtCO2",
+    "window": [
+     3,
+     120
+    ],
+    "B": {
+     "n": 34492,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 33.0,
+     "median_outside": null
+    }
+   }
+  },
+  "invariants": {
+   "bp_order": {
+    "A": {
+     "n": 244443,
+     "violations": 4158,
+     "rate": 0.01701010051423031,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 388826,
+     "violations": 937,
+     "rate": 0.0024098182734693667,
+     "p0": 0.02
+    }
+   },
+   "map_estimate": {
+    "A": {
+     "n": 244443,
+     "violations": 3012,
+     "rate": 0.012321890992992232,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 388826,
+     "violations": 1150,
+     "rate": 0.002957621146734015,
+     "p0": 0.02
+    }
+   },
+   "hct_hgb": {
+    "A": {
+     "n": 41287,
+     "violations": 27,
+     "rate": 0.0006539588732530821,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 26357,
+     "violations": 135,
+     "rate": 0.005121978980915886,
+     "p0": 0.02
+    }
+   },
+   "henderson_hasselbalch": {
+    "A": {
+     "n": 10052,
+     "violations": 71,
+     "rate": 0.007063270990847592,
+     "p0": 0.03
+    },
+    "B": {
+     "n": 806,
+     "violations": 3,
+     "rate": 0.0037220843672456576,
+     "p0": 0.03
+    }
+   },
+   "spo2_sao2": {
+    "A": {
+     "n": 22962,
+     "violations": 4141,
+     "rate": 0.180341433673025,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 7471,
+     "violations": 73,
+     "rate": 0.009771114977914603,
+     "p0": 0.02
+    }
+   },
+   "bun_creatinine": {
+    "A": {
+     "n": 31372,
+     "violations": 43,
+     "rate": 0.0013706489863572612,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 25227,
+     "violations": 38,
+     "rate": 0.0015063225908748562,
+     "p0": 0.02
+    }
+   },
+   "bilirubin_fraction": {
+    "A": {
+     "n": 551,
+     "violations": 0,
+     "rate": 0.0,
+     "p0": 0.01
+    },
+    "B": {
+     "n": 1030,
+     "violations": 0,
+     "rate": 0.0,
+     "p0": 0.01
+    }
+   },
+   "van_slyke": {
+    "A": {
+     "n": 12266,
+     "violations": 56,
+     "rate": 0.0045654655144301325,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 806,
+     "violations": 0,
+     "rate": 0.0,
+     "p0": 0.02
+    }
+   }
+  }
+ },
+ "holdout": {
+  "columns": {
+   "hr": {
+    "cinc": "HR",
+    "window": [
+     20,
+     300
+    ],
+    "A": {
+     "n": 146520,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 84.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 135762,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 83.0,
+     "median_outside": null
+    }
+   },
+   "spo2": {
+    "cinc": "O2Sat",
+    "window": [
+     40,
+     100
+    ],
+    "A": {
+     "n": 139428,
+     "outside_window": 0.00014344321083283127,
+     "outside_n": 20,
+     "median": 98.0,
+     "median_outside": 29.5
+    },
+    "B": {
+     "n": 132620,
+     "outside_window": 9.048408988086261e-05,
+     "outside_n": 12,
+     "median": 98.0,
+     "median_outside": 26.5
+    }
+   },
+   "temp": {
+    "cinc": "Temp",
+    "window": [
+     25,
+     45
+    ],
+    "A": {
+     "n": 52506,
+     "outside_window": 5.713632727688264e-05,
+     "outside_n": 3,
+     "median": 37.060001373291016,
+     "median_outside": 21.0
+    },
+    "B": {
+     "n": 51268,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 36.900001525878906,
+     "median_outside": null
+    }
+   },
+   "sbp": {
+    "cinc": "SBP",
+    "window": [
+     40,
+     300
+    ],
+    "A": {
+     "n": 134437,
+     "outside_window": 0.00011901485454153246,
+     "outside_n": 16,
+     "median": 119.0,
+     "median_outside": 34.5
+    },
+    "B": {
+     "n": 133076,
+     "outside_window": 6.763052691694972e-05,
+     "outside_n": 9,
+     "median": 125.0,
+     "median_outside": 35.0
+    }
+   },
+   "dbp": {
+    "cinc": "DBP",
+    "window": [
+     15,
+     200
+    ],
+    "A": {
+     "n": 82824,
+     "outside_window": 2.4147590070510965e-05,
+     "outside_n": 2,
+     "median": 59.0,
+     "median_outside": 267.5
+    },
+    "B": {
+     "n": 133045,
+     "outside_window": 0.00012026006238490736,
+     "outside_n": 16,
+     "median": 65.0,
+     "median_outside": 236.5
+    }
+   },
+   "map": {
+    "cinc": "MAP",
+    "window": [
+     25,
+     250
+    ],
+    "A": {
+     "n": 142684,
+     "outside_window": 0.000315382243278854,
+     "outside_n": 45,
+     "median": 77.0,
+     "median_outside": 23.0
+    },
+    "B": {
+     "n": 131866,
+     "outside_window": 0.00017441948644836424,
+     "outside_n": 23,
+     "median": 85.0,
+     "median_outside": 278.0
+    }
+   },
+   "rr": {
+    "cinc": "Resp",
+    "window": [
+     2,
+     80
+    ],
+    "A": {
+     "n": 143236,
+     "outside_window": 2.094445530453238e-05,
+     "outside_n": 3,
+     "median": 18.0,
+     "median_outside": 1.0
+    },
+    "B": {
+     "n": 122264,
+     "outside_window": 0.000727932997448145,
+     "outside_n": 89,
+     "median": 18.0,
+     "median_outside": 1.0
+    }
+   },
+   "fio2": {
+    "cinc": "FiO2",
+    "window": [
+     0.21,
+     1.0
+    ],
+    "A": {
+     "n": 22967,
+     "outside_window": 0.0027866068707275656,
+     "outside_n": 64,
+     "median": 0.5,
+     "median_outside": 0.03999999910593033
+    },
+    "B": {
+     "n": 3309,
+     "outside_window": 0.003324267150196434,
+     "outside_n": 11,
+     "median": 0.4000000059604645,
+     "median_outside": 0.15000000596046448
+    }
+   },
+   "wbc": {
+    "cinc": "WBC",
+    "window": [
+     0.05,
+     500
+    ],
+    "A": {
+     "n": 11809,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 10.800000190734863,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8114,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 9.600000381469727,
+     "median_outside": null
+    }
+   },
+   "hemoglobin": {
+    "cinc": "Hgb",
+    "window": [
+     2,
+     25
+    ],
+    "A": {
+     "n": 13803,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 10.5,
+     "median_outside": null
+    },
+    "B": {
+     "n": 9018,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 9.899999618530273,
+     "median_outside": null
+    }
+   },
+   "hematocrit": {
+    "cinc": "Hct",
+    "window": [
+     6,
+     75
+    ],
+    "A": {
+     "n": 18177,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 30.299999237060547,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8931,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 30.399999618530273,
+     "median_outside": null
+    }
+   },
+   "platelets": {
+    "cinc": "Platelets",
+    "window": [
+     1,
+     2500
+    ],
+    "A": {
+     "n": 10198,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 184.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8244,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 179.0,
+     "median_outside": null
+    }
+   },
+   "glucose": {
+    "cinc": "Glucose",
+    "window": [
+     10,
+     1500
+    ],
+    "A": {
+     "n": 18886,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 124.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 34145,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 129.0,
+     "median_outside": null
+    }
+   },
+   "lactate": {
+    "cinc": "Lactate",
+    "window": [
+     0.1,
+     30
+    ],
+    "A": {
+     "n": 5379,
+     "outside_window": 0.00018590816136828406,
+     "outside_n": 1,
+     "median": 1.7000000476837158,
+     "median_outside": 31.0
+    },
+    "B": {
+     "n": 2683,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 1.8300000429153442,
+     "median_outside": null
+    }
+   },
+   "potassium": {
+    "cinc": "Potassium",
+    "window": [
+     1.0,
+     10.0
+    ],
+    "A": {
+     "n": 17038,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 4.099999904632568,
+     "median_outside": null
+    },
+    "B": {
+     "n": 11634,
+     "outside_window": 0.00025786487880350697,
+     "outside_n": 3,
+     "median": 4.0,
+     "median_outside": 10.399999618530273
+    }
+   },
+   "chloride": {
+    "cinc": "Chloride",
+    "window": [
+     60,
+     150
+    ],
+    "A": {
+     "n": 13189,
+     "outside_window": 7.582075972401244e-05,
+     "outside_n": 1,
+     "median": 106.0,
+     "median_outside": 26.0
+    },
+    "B": {
+     "n": 867,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 107.0,
+     "median_outside": null
+    }
+   },
+   "hco3": {
+    "cinc": "HCO3",
+    "window": [
+     2,
+     60
+    ],
+    "A": {
+     "n": 12733,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 24.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 218,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 23.424999237060547,
+     "median_outside": null
+    }
+   },
+   "bun": {
+    "cinc": "BUN",
+    "window": [
+     1,
+     300
+    ],
+    "A": {
+     "n": 12869,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 18.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8481,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 17.0,
+     "median_outside": null
+    }
+   },
+   "creatinine": {
+    "cinc": "Creatinine",
+    "window": [
+     0.1,
+     25
+    ],
+    "A": {
+     "n": 10462,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.8999999761581421,
+     "median_outside": null
+    },
+    "B": {
+     "n": 8484,
+     "outside_window": 0.00011786892975011787,
+     "outside_n": 1,
+     "median": 0.9700000286102295,
+     "median_outside": 29.200000762939453
+    }
+   },
+   "calcium": {
+    "cinc": "Calcium",
+    "window": [
+     3.5,
+     18
+    ],
+    "A": {
+     "n": 7891,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 8.300000190734863,
+     "median_outside": null
+    },
+    "B": {
+     "n": 10358,
+     "outside_window": 0.1814056767715775,
+     "outside_n": 1879,
+     "median": 8.199999809265137,
+     "median_outside": 1.1799999475479126
+    }
+   },
+   "magnesium": {
+    "cinc": "Magnesium",
+    "window": [
+     0.4,
+     10
+    ],
+    "A": {
+     "n": 12366,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 2.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 7314,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 2.0,
+     "median_outside": null
+    }
+   },
+   "phosphate": {
+    "cinc": "Phosphate",
+    "window": [
+     0.3,
+     20
+    ],
+    "A": {
+     "n": 7992,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 3.299999952316284,
+     "median_outside": null
+    },
+    "B": {
+     "n": 4539,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 3.200000047683716,
+     "median_outside": null
+    }
+   },
+   "bilirubin": {
+    "cinc": "Bilirubin_total",
+    "window": [
+     0.05,
+     60
+    ],
+    "A": {
+     "n": 1844,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.8999999761581421,
+     "median_outside": null
+    },
+    "B": {
+     "n": 2724,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.800000011920929,
+     "median_outside": null
+    }
+   },
+   "bilirubin_direct": {
+    "cinc": "Bilirubin_direct",
+    "window": [
+     0.0,
+     40
+    ],
+    "A": {
+     "n": 216,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 1.100000023841858,
+     "median_outside": null
+    },
+    "B": {
+     "n": 370,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.20000000298023224,
+     "median_outside": null
+    }
+   },
+   "ast": {
+    "cinc": "AST",
+    "window": [
+     3,
+     30000
+    ],
+    "A": {
+     "n": 2311,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 53.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 2713,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 33.0,
+     "median_outside": null
+    }
+   },
+   "alp": {
+    "cinc": "Alkalinephos",
+    "window": [
+     5,
+     5000
+    ],
+    "A": {
+     "n": 2235,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 78.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 2714,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 69.0,
+     "median_outside": null
+    }
+   },
+   "troponin": {
+    "cinc": "TroponinI",
+    "window": [
+     0,
+     1000
+    ],
+    "A": {
+     "n": 178,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 3.8499999046325684,
+     "median_outside": null
+    },
+    "B": {
+     "n": 2823,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 0.1899999976158142,
+     "median_outside": null
+    }
+   },
+   "ptt": {
+    "cinc": "PTT",
+    "window": [
+     10,
+     250
+    ],
+    "A": {
+     "n": 7593,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 32.099998474121094,
+     "median_outside": null
+    },
+    "B": {
+     "n": 1536,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 32.29999923706055,
+     "median_outside": null
+    }
+   },
+   "fibrinogen": {
+    "cinc": "Fibrinogen",
+    "window": [
+     20,
+     2000
+    ],
+    "A": {
+     "n": 1118,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 246.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 828,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 245.0,
+     "median_outside": null
+    }
+   },
+   "ph": {
+    "cinc": "pH",
+    "window": [
+     6.5,
+     8.0
+    ],
+    "A": {
+     "n": 17953,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 7.389999866485596,
+     "median_outside": null
+    },
+    "B": {
+     "n": 3257,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 7.380000114440918,
+     "median_outside": null
+    }
+   },
+   "paco2": {
+    "cinc": "PaCO2",
+    "window": [
+     8,
+     150
+    ],
+    "A": {
+     "n": 13733,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 40.0,
+     "median_outside": null
+    },
+    "B": {
+     "n": 3275,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 38.79999923706055,
+     "median_outside": null
+    }
+   },
+   "sao2": {
+    "cinc": "SaO2",
+    "window": [
+     30,
+     100
+    ],
+    "A": {
+     "n": 7528,
+     "outside_window": 0.0005313496280552603,
+     "outside_n": 4,
+     "median": 97.0,
+     "median_outside": 28.5
+    },
+    "B": {
+     "n": 2776,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 97.5,
+     "median_outside": null
+    }
+   },
+   "base_excess": {
+    "cinc": "BaseExcess",
+    "window": [
+     -35,
+     35
+    ],
+    "A": {
+     "n": 16357,
+     "outside_window": 6.113590511707526e-05,
+     "outside_n": 1,
+     "median": 0.0,
+     "median_outside": 49.5
+    },
+    "B": {
+     "n": 295,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": -2.5,
+     "median_outside": null
+    }
+   },
+   "etco2": {
+    "cinc": "EtCO2",
+    "window": [
+     3,
+     120
+    ],
+    "B": {
+     "n": 11565,
+     "outside_window": 0.0,
+     "outside_n": 0,
+     "median": 33.0,
+     "median_outside": null
+    }
+   }
+  },
+  "invariants": {
+   "bp_order": {
+    "A": {
+     "n": 82423,
+     "violations": 1526,
+     "rate": 0.01851424966332213,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 131626,
+     "violations": 323,
+     "rate": 0.0024539224773221097,
+     "p0": 0.02
+    }
+   },
+   "map_estimate": {
+    "A": {
+     "n": 82423,
+     "violations": 1104,
+     "rate": 0.013394319546728461,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 131626,
+     "violations": 423,
+     "rate": 0.0032136507984744656,
+     "p0": 0.02
+    }
+   },
+   "hct_hgb": {
+    "A": {
+     "n": 13545,
+     "violations": 9,
+     "rate": 0.000664451827242525,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 8822,
+     "violations": 50,
+     "rate": 0.005667649059170256,
+     "p0": 0.02
+    }
+   },
+   "henderson_hasselbalch": {
+    "A": {
+     "n": 3264,
+     "violations": 26,
+     "rate": 0.007965686274509803,
+     "p0": 0.03
+    },
+    "B": {
+     "n": 191,
+     "violations": 1,
+     "rate": 0.005235602094240838,
+     "p0": 0.03
+    }
+   },
+   "spo2_sao2": {
+    "A": {
+     "n": 7155,
+     "violations": 1293,
+     "rate": 0.18071278825995807,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 2450,
+     "violations": 19,
+     "rate": 0.007755102040816327,
+     "p0": 0.02
+    }
+   },
+   "bun_creatinine": {
+    "A": {
+     "n": 10380,
+     "violations": 13,
+     "rate": 0.0012524084778420038,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 8479,
+     "violations": 18,
+     "rate": 0.002122891850454063,
+     "p0": 0.02
+    }
+   },
+   "bilirubin_fraction": {
+    "A": {
+     "n": 152,
+     "violations": 0,
+     "rate": 0.0,
+     "p0": 0.01
+    },
+    "B": {
+     "n": 358,
+     "violations": 1,
+     "rate": 0.002793296089385475,
+     "p0": 0.01
+    }
+   },
+   "van_slyke": {
+    "A": {
+     "n": 4014,
+     "violations": 19,
+     "rate": 0.004733432984554061,
+     "p0": 0.02
+    },
+    "B": {
+     "n": 190,
+     "violations": 0,
+     "rate": 0.0,
+     "p0": 0.02
+    }
+   }
+  }
+ }
+}

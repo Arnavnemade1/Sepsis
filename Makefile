@@ -1,4 +1,4 @@
-.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build verify-paging verify-rooms verify-ward ward-auroc icu-detector screens audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
+.PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build verify-paging verify-rooms verify-interop interop-reference verify-ward ward-auroc icu-detector screens audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition
 
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
@@ -275,6 +275,7 @@ verify-os:
 	$(PY) -m backend.aegis.verify_fastpaths
 	$(PY) -m backend.aegis.paging.verify_paging
 	$(PY) -m backend.aegis.rooms.verify_rooms
+	$(PY) -m backend.aegis.interop.verify_interop
 	$(PY) -m backend.aegis.verify_ward_risk
 
 # Every optimised path in the ward tick (bind-table encoder, memoised frames, batched
@@ -464,6 +465,16 @@ icu-detector:
 
 # The room monitor: every occupied room watched as a unit (record + vitals + detectors).
 # Record-aware claims are checked in pairs, the ICU firewall against a planted future value.
+# The integration plane: HL7 codec, evidence engine, onboarding, live quarantine, the paging
+# OS wiring; every guard as a pair, the silent ones re-run with the guard removed.
+verify-interop:
+	$(PY) -m backend.aegis.interop.verify_interop
+
+# Reference distributions from the shipped detector's training patients, and the audit of
+# what the a-priori checks find in the CinC data itself (artifacts/interop/cinc_audit.json).
+interop-reference:
+	$(PY) -m backend.ml.scripts.interop_reference
+
 verify-rooms:
 	$(PY) -m backend.aegis.rooms.verify_rooms
 
