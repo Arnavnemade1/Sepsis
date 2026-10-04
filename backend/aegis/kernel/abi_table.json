@@ -1444,7 +1444,152 @@
    "name": "interop.sim.drill",
    "method": "POST",
    "path": "/aegis/interop/sim/drill",
-   "cap": "drill:device",
+   "cap": "interop:read",
+   "refine": "drill",
+   "class": "write"
+  },
+  {
+   "nr": 181,
+   "name": "cds-services",
+   "method": "GET",
+   "path": "/aegis/cds-services",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 182,
+   "name": "fhir.R4.Communication",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Communication",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 183,
+   "name": "fhir.R4.Encounter",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Encounter",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 184,
+   "name": "fhir.R4.Flag",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Flag",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 185,
+   "name": "fhir.R4.Observation",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Observation",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 186,
+   "name": "fhir.R4.Patient",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Patient",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 187,
+   "name": "fhir.R4.Patient[pid]",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/Patient/{pid}",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 188,
+   "name": "fhir.R4.RiskAssessment",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/RiskAssessment",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 189,
+   "name": "fhir.R4.metadata",
+   "method": "GET",
+   "path": "/aegis/fhir/R4/metadata",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 190,
+   "name": "interop.bench",
+   "method": "GET",
+   "path": "/aegis/interop/bench",
+   "cap": "view:public",
+   "class": "read"
+  },
+  {
+   "nr": 191,
+   "name": "interop.webhooks",
+   "method": "GET",
+   "path": "/aegis/interop/webhooks",
+   "cap": "interop:read",
+   "class": "read"
+  },
+  {
+   "nr": 192,
+   "name": "cds-services[service_id]",
+   "method": "POST",
+   "path": "/aegis/cds-services/{service_id}",
+   "cap": "interop:read",
+   "class": "compute"
+  },
+  {
+   "nr": 193,
+   "name": "cds-services[service_id].feedback",
+   "method": "POST",
+   "path": "/aegis/cds-services/{service_id}/feedback",
+   "cap": "interop:read",
+   "class": "write"
+  },
+  {
+   "nr": 194,
+   "name": "fhir.R4",
+   "method": "POST",
+   "path": "/aegis/fhir/R4",
+   "cap": "interop:ingest",
+   "class": "write"
+  },
+  {
+   "nr": 195,
+   "name": "fhir.R4.Observation.set",
+   "method": "POST",
+   "path": "/aegis/fhir/R4/Observation",
+   "cap": "interop:ingest",
+   "class": "write"
+  },
+  {
+   "nr": 196,
+   "name": "interop.webhooks.set",
+   "method": "POST",
+   "path": "/aegis/interop/webhooks",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 197,
+   "name": "interop.webhooks[sid].delete",
+   "method": "POST",
+   "path": "/aegis/interop/webhooks/{sid}/delete",
+   "cap": "interop:configure",
+   "class": "write"
+  },
+  {
+   "nr": 198,
+   "name": "interop.webhooks[sid].test",
+   "method": "POST",
+   "path": "/aegis/interop/webhooks/{sid}/test",
+   "cap": "interop:configure",
    "class": "write"
   }
  ]

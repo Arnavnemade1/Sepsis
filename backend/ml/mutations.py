@@ -773,7 +773,7 @@ def decade_guess_competes(mod):
     Vo.Concept.candidate_conversions = cands
 
 
-@mutation("integration", INTEROP, ["the model's WRONG answer (B-Hb → haematocrit) is refused"],
+@mutation("integration", INTEROP, ["the model's WRONG answer in the right unit"],
           note="a proposal adopted on its proposer's say-so: the language model decides what every detector "
                "reads, and its wrong analyte flows into rooms")
 def proposals_adopt_unchecked(mod):
@@ -782,8 +782,9 @@ def proposals_adopt_unchecked(mod):
 
     def infer(c, values, declared, ref=None, n_min=Ev.N_MIN):
         inf = orig(c, values, declared, ref, n_min)
-        if inf.decision in ("none", "ambiguous") and inf.ranked:
-            return Ev.Inference("inferred", inf.declared, inf.ranked[0], [inf.ranked[0]], inf.ranked)
+        if inf.decision != "declared" and inf.ranked:
+            top = inf.ranked[0]
+            return Ev.Inference("declared", top, top, [top], inf.ranked)
         return inf
     Ev.infer = infer
 
@@ -810,3 +811,119 @@ def resends_reprocessed(mod):
 def never_quarantine(mod):
     import backend.aegis.interop.engine as En
     En.Integration._quarantine = lambda self, group, now, effects, cause, checks, since_t=None: None
+
+
+# the post-hoc fixes the registered interop benchmark motivated (docs/INTEROP.md)
+@mutation("integration", INTEROP, ["cannot be the proposed concept refuses it"],
+          note="a written unit that cannot be the concept treated as no unit: heart-rate values written '/min' "
+               "adopt as mean arterial pressure (the defect the benchmark's smoke run found; H5 6.9% unsafe)")
+def unit_mismatch_as_missing(mod):
+    import backend.aegis.interop.vocab as Vo
+    from backend.aegis.interop.units import norm
+    orig = Vo.resolve_unit
+
+    def resolve(c, written):
+        tok, conv = orig(c, written)
+        return ("", None) if (tok and conv is None) else (tok, conv)
+    Vo.resolve_unit = resolve
+    import backend.aegis.interop.engine as En
+    En.resolve_unit = resolve
+
+
+@mutation("integration", INTEROP, ["a feed with no unit waits for a person"],
+          note="a feed that writes no unit adopted on whatever fits: potassium treated as unitless by convention")
+def unitless_auto_adopts(mod):
+    import backend.aegis.interop.vocab as Vo
+    Vo.UNITLESS_BY_CONVENTION = ("ph", "inr", "potassium")
+
+
+@mutation("integration", INTEROP, ["moving back INTO the population band"],
+          note="the jump test without the population condition: a dozen high early bilirubins made the baseline, "
+               "and the feed returning to normal was quarantined (registered run, H4)")
+def jump_ignores_population(mod):
+    import backend.aegis.interop.evidence as Ev
+    Ev.references = lambda: {}
+
+
+@mutation("integration", INTEROP, ["CUSUM waits"],
+          note="live identities judged by overlapping binomial windows again: chance bursts at the clean rate "
+               "quarantine blood pressure (registered run, H4: hospital A 2.71 per 100k)")
+def cusum_is_windowed(mod):
+    import backend.aegis.interop.evidence as Ev
+    Ev.cusum_identity = lambda inv, samples, h=13.0: Ev.check_invariant(inv, list(samples)[-12:])
+
+
+@mutation("integration", INTEROP, ["withholds exactly those two"],
+          note="no swap explanation: an identity failure withholds every field in it, and a partial quarantine "
+               "blinds Henderson-Hasselbalch (registered run: 6,821 PaCO2 values delivered)")
+def swap_unexplained(mod):
+    import backend.aegis.interop.engine as En
+    En.Integration._explain_swap = lambda self, m, failing: None
+
+
+@mutation("integration", INTEROP, ["mg/dL values labelled mEq/L (x1.22) are ambiguous"],
+          note="a written unit confirmed even when another unit the analyte comes in fits the same values: "
+               "magnesium mg/dL labelled mEq/L adopted (registered run, H5: 3.4% unsafe)")
+def units_never_ambiguous(mod):
+    import backend.aegis.interop.evidence as Ev
+    orig = Ev.infer
+
+    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN):
+        inf = orig(c, values, declared, ref, n_min)
+        if inf.decision == "ambiguous" and inf.declared is not None and inf.declared.status == "pass":
+            return Ev.Inference("declared", inf.declared, inf.declared, inf.passing, inf.ranked)
+        return inf
+    Ev.infer = infer
+
+
+@mutation("integration", INTEROP, ["base excess (linear, centred on zero) is confirmed"],
+          note="no spread check on linear scales: base excess read x0.001 keeps its median at zero, so it "
+               "rivals the right reading and a correct feed is held as ambiguous")
+def spread_unchecked(mod):
+    import backend.aegis.interop.evidence as Ev
+    orig = Ev.assess
+
+    def assess(c, values, conv, ref=None, n_min=Ev.N_MIN):
+        f = orig(c, values, conv, ref, n_min)
+        if any(ch.name == "spread" and ch.status == "fail" for ch in f.checks):
+            f.checks = [ch for ch in f.checks if ch.name != "spread"]
+            if all(ch.status in ("pass", "skip") for ch in f.checks) and f.n >= n_min:
+                f.status = "pass"
+        return f
+    Ev.assess = assess
+
+
+@mutation("integration", INTEROP, ["ONE card at the higher severity"],
+          note="a card per knowledge-layer report: DDInter (moderate) and the curated QT layer (major) each "
+               "carded the same levofloxacin + azithromycin pair, two severities for one hazard (found live in "
+               "the CDS Hooks try-out)")
+def cds_card_per_source(mod):
+    import itertools
+    import backend.aegis.interop.cdshooks as C
+    n = itertools.count()
+    C.frozenset = lambda xs: frozenset([*xs, f"#{next(n)}"])      # no two reports ever share a group
+
+
+@mutation("integration", INTEROP, ["no room still lists creatinine as withheld"],
+          note="the fix delivered the withheld values but the room kept listing them as withheld (found live: "
+               "the Feeds panel still said creatinine was withheld after the chief accepted the fix)")
+def release_keeps_withheld(mod):
+    import backend.aegis.rooms.monitor as Mo
+    Mo.RoomMonitor.released_interface = lambda self, room, concept, interface: None
+
+
+@mutation("integration", INTEROP, ["a failed model call (quota, timeout) is no answer"],
+          note="a failed model call recorded as the model declining: every code in the batch left the review "
+               "queue as 'unmapped' (found while tracing why B-Hb was unmapped in one boot and adopted in the next)")
+def model_failure_is_decline(mod):
+    import backend.aegis.interop.engine as En
+    orig = En.ask_model
+
+    def ask(llm, items, max_batch=12, outcomes=None):
+        props, model_id = orig(llm, items, max_batch, outcomes)
+        if outcomes is not None:
+            for it in items:
+                if it["code"] not in props:
+                    outcomes.setdefault(it["code"], "declined")
+        return props, model_id
+    En.ask_model = ask

@@ -137,6 +137,50 @@ def interop_audit() -> Dict[str, Any]:
         return {"status": "error", "detail": "no audit artifact (run python -m backend.ml.scripts.interop_reference)"}
 
 
+_BENCH = os.path.join(os.path.dirname(_AUDIT), "interop_bench.json")
+
+
+@router.get("/aegis/interop/bench")
+def interop_bench() -> Dict[str, Any]:
+    """The registered benchmark's verdicts and per-fault rows (docs/INTEROP.md)."""
+    try:
+        with open(_BENCH) as fh:
+            b = json.load(fh)
+    except (OSError, ValueError):
+        return {"available": False}
+    rows = []
+    for fid, v in (b.get("faults") or {}).items():
+        arms = v.get("arms") or {}
+        has_fix = any((v.get("fixes") or {}).values())
+        rows.append({"id": fid, "what": v.get("what"), "silent_dauroc": v["silent"]["vs_clean"]["delta"],
+                     "silent_dfar": v["silent"]["far"] - b["clean"]["far"], "detected": v.get("detected"),
+                     "faulty_to_quarantine": v.get("faulty_to_quarantine"),
+                     "delivered_faulty": sum((v.get("delivered_faulty") or {}).values()),
+                     "quarantine_dauroc": arms.get("gate_quarantine", {}).get("vs_clean", {}).get("delta"),
+                     "fix_dauroc": arms.get("gate_fix", {}).get("vs_clean", {}).get("delta") if has_fix else None})
+    post = None
+    try:
+        with open(os.path.join(os.path.dirname(_AUDIT), "interop_bench_posthoc.json")) as fh:
+            ph = json.load(fh)
+        pv = ph.get("verdicts") or {}
+        post = {"note": ph.get("note"),
+                "h4_per_100k": {k: v.get("per_100k") for k, v in (ph.get("h4") or {}).items()},
+                "h5": {k: (pv.get("H5_onboarding") or {}).get(k) for k in
+                       ("correct_auto_adopted", "unsafe_wrong_unit", "unsafe_wrong_concept")},
+                "delivered_faulty": {fid: sum((v.get("delivered_faulty") or {}).values())
+                                     for fid, v in (ph.get("faults") or {}).items()},
+                "fix_dauroc": {fid: (v.get("arms") or {}).get("gate_fix", {}).get("vs_clean", {}).get("delta")
+                               for fid, v in (ph.get("faults") or {}).items()},
+                "detected": (pv.get("H2_detection") or {}).get("detected")}
+    except (OSError, ValueError):
+        post = None
+    return {"available": True, "clean": b.get("clean"), "verdicts": b.get("verdicts"), "faults": rows,
+            "posthoc": post,
+            "h4": {k: {kk: vv for kk, vv in v.items() if kk in ("observations", "false", "per_100k", "refused_at_onboarding")}
+                   for k, v in (b.get("h4") or {}).items()},
+            "proposers": {k: v for k, v in (b.get("proposers") or {}).items() if k != "rows"}}
+
+
 @router.get("/aegis/interop/sim")
 def interop_sim() -> Dict[str, Any]:
     """The simulated hospital on the other side of the interfaces, and its fault drills."""
@@ -223,9 +267,12 @@ def interop_settings(payload: InteropSettingsIn) -> Dict[str, Any]:
 
 @router.post("/aegis/interop/sim/drill")
 def interop_drill(payload: InteropDrillIn) -> Dict[str, Any]:
-    """Break the SIMULATED hospital's interface on purpose and watch the evidence catch it."""
+    """Break the SIMULATED hospital's interface on purpose and watch the evidence catch it.
+    The integration plane's administrator (``interop:configure``, the chief, who then
+    decides the fix) or a clinician who may drill devices (``drill:device``) runs one."""
     try:
-        cred = _need("drill:device", "run an interface fault drill")
+        cap = "interop:configure" if _cred().has("interop:configure") else "drill:device"
+        cred = _need(cap, "run an interface fault drill")
     except (_PermissionDenied, _SessionRejected) as exc:
         return _deny(exc)
     out = INTEROP_SIM.drill(payload.kind, payload.on)

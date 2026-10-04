@@ -143,6 +143,8 @@ RESET_MODULES = [
     "backend.aegis.interop.proposer",
     "backend.aegis.interop.engine",
     "backend.aegis.interop.sender",
+    "backend.aegis.interop.cdshooks",
+    "backend.aegis.rooms.monitor",
     "backend.aegis.paging.engine",
 ]
 

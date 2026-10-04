@@ -125,8 +125,8 @@ SYSTEM_ACCOUNTS = (
             title="Acts only on a clinician's behalf"),
     # the hospital's interface engine. A deployment gives it a passphrase through
     # AEGIS_ACCOUNTS; while demo sign-in is on it signs in like the demo staff
-    Account(910, "svc.hl7", "Interface engine (HL7 feeds)", "interface", kind="service", loginable=True,
-            demo=True, title="Sends ADT, results and device alarms; reads nothing"),
+    Account(910, "svc.hl7", "Interface engine (HL7, FHIR, CDS Hooks)", "interface", kind="service", loginable=True,
+            demo=True, title="Sends ADT, results and device alarms; the EHR reads findings back"),
     Account(65534, GUEST_USER, "Guest (view only)", "guest", kind="guest", loginable=True,
             demo=True, title="View the ward; change nothing"),
 )

@@ -1,0 +1,142 @@
+holdout 8,062 patients / 312,901 rows (fingerprint bbc2a255253ae549); detector icu:lgbm-all40~platt#7fbbdd0ad322
+clean: AUROC 0.8463  FAR 0.141  detection 0.680
+  creatinine_umol    silent ΔAUROC -0.0056 [-0.0096,-0.0014] ΔFAR +0.082 | Q@4 delivered 0 | quar -0.0000 fix +0.0000 miss -0.0000  [54s]
+  glucose_mmol       silent ΔAUROC -0.0001 [-0.0017,+0.0015] ΔFAR +0.027 | Q@4 delivered 0 | quar -0.0007 fix +0.0000 miss -0.0007  [57s]
+  bun_urea_mmol      silent ΔAUROC -0.0005 [-0.0016,+0.0005] ΔFAR -0.008 | Q@6073 delivered 6066 | quar -0.0001 fix -0.0006 miss -0.0001  [55s]
+  lactate_mgdl       silent ΔAUROC -0.0001 [-0.0011,+0.0008] ΔFAR -0.012 | Q@12 delivered 10 | quar -0.0026 fix -0.0000 miss -0.0026  [50s]
+  bilirubin_umol     silent ΔAUROC +0.0007 [-0.0005,+0.0020] ΔFAR -0.001 | Q@12 delivered 10 | quar -0.0005 fix +0.0000 miss -0.0005  [50s]
+  hgb_gl             silent ΔAUROC +0.0001 [-0.0008,+0.0009] ΔFAR -0.003 | Q@4 delivered 0 | quar -0.0000 fix -0.0000 miss -0.0000  [54s]
+  platelets_per_ul   silent ΔAUROC -0.0026 [-0.0062,+0.0009] ΔFAR +0.043 | Q@4 delivered 0 | quar -0.0009 fix +0.0000 miss -0.0009  [52s]
+  wbc_per_ul         silent ΔAUROC -0.0122 [-0.0166,-0.0075] ΔFAR +0.131 | Q@4 delivered 0 | quar -0.0017 fix +0.0001 miss -0.0017  [52s]
+  temp_f             silent ΔAUROC -0.0463 [-0.0564,-0.0367] ΔFAR +0.350 | Q@4 delivered 0 | quar -0.0123 fix -0.0000 miss -0.0123  [61s]
+  fio2_percent       silent ΔAUROC -0.0001 [-0.0004,+0.0002] ΔFAR +0.001 | NOT detected delivered 0 | quar -0.0141 fix -0.0141 miss -0.0141  [52s]
+  calcium_mmol       silent ΔAUROC -0.0003 [-0.0010,+0.0003] ΔFAR -0.007 | Q@4 delivered 0 | quar -0.0010 fix +0.0000 miss -0.0010  [51s]
+  magnesium_mmol     silent ΔAUROC -0.0000 [-0.0008,+0.0008] ΔFAR +0.005 | Q@43 delivered 43 | quar +0.0003 fix +0.0000 miss +0.0003  [57s]
+  phosphate_mmol     silent ΔAUROC +0.0001 [-0.0005,+0.0006] ΔFAR -0.005 | Q@33 delivered 33 | quar +0.0002 fix +0.0000 miss +0.0002  [51s]
+  troponin_ngl       silent ΔAUROC -0.0004 [-0.0011,+0.0003] ΔFAR +0.000 | NOT detected delivered 0 | quar -0.0000 fix -0.0000 miss -0.0000  [51s]
+  potassium_x10      silent ΔAUROC -0.0009 [-0.0020,+0.0001] ΔFAR -0.004 | Q@4 delivered 0 | quar -0.0012 fix -0.0000 miss -0.0012  [58s]
+  swap_sbp_map       silent ΔAUROC -0.0092 [-0.0133,-0.0056] ΔFAR -0.030 | Q@6 delivered 13 | quar -0.0172 fix +0.0000 miss -0.0173  [126s]
+  swap_hgb_hct       silent ΔAUROC -0.0001 [-0.0014,+0.0011] ΔFAR -0.002 | Q@4 delivered 10 | quar -0.0003 fix -0.0003 miss -0.0002  [70s]
+  swap_paco2_hco3    silent ΔAUROC -0.0025 [-0.0042,-0.0005] ΔFAR +0.004 | Q@6 delivered 11 | quar -0.0001 fix -0.0000 miss -0.0020  [61s]
+  swap_hr_resp       silent ΔAUROC -0.0066 [-0.0107,-0.0025] ΔFAR +0.044 | Q@5 delivered 4 | quar -0.0073 fix -0.0073 miss -0.0064  [237s]
+    H4 clean: 100,000 rows  [117s]
+    H4 clean: 200,000 rows  [229s]
+    H4 clean: 300,000 rows  [328s]
+  H4 clean        2,109,576 obs: 10 false quarantines (0.47/100k), 309 excluded; not adopted: {'O2Sat': 'review', 'FiO2': 'review', 'TroponinI': 'review', 'EtCO2': 'review'}
+    H4 site_A: 100,000 rows  [124s]
+  H4 site_A       1,108,460 obs: 11 false quarantines (0.99/100k), 0 excluded; not adopted: {'O2Sat': 'review', 'FiO2': 'review', 'Bilirubin_direct': 'review', 'TroponinI': 'review'}
+    H4 site_B: 100,000 rows  [116s]
+  H4 site_B       1,001,116 obs: 2 false quarantines (0.20/100k), 0 excluded; not adopted: {'O2Sat': 'review', 'SaO2': 'review', 'Calcium': 'review', 'EtCO2': 'review', 'TroponinI': 'review', 'Bilirubin_direct': 'review'}
+  H4 septic_ward  116,474 obs: 0 false quarantines (0.00/100k), 26 excluded; not adopted: {'O2Sat': 'review', 'FiO2': 'review', 'TroponinI': 'review', 'EtCO2': 'review'}
+  H5 adopted correct a [61, 65], b [60, 64]; unsafe c [2, 58], d [5, 2359], d_blind [40, 46]
+{
+ "H1_harm": {
+  "harmful": [
+   "creatinine_umol",
+   "wbc_per_ul",
+   "temp_f"
+  ],
+  "pass": true
+ },
+ "H2_detection": {
+  "detected": [
+   "creatinine_umol",
+   "glucose_mmol",
+   "bun_urea_mmol",
+   "lactate_mgdl",
+   "bilirubin_umol",
+   "hgb_gl",
+   "platelets_per_ul",
+   "wbc_per_ul",
+   "temp_f",
+   "calcium_mmol",
+   "magnesium_mmol",
+   "phosphate_mmol",
+   "potassium_x10",
+   "swap_sbp_map",
+   "swap_hgb_hct",
+   "swap_paco2_hco3",
+   "swap_hr_resp"
+  ],
+  "missed": [
+   "fio2_percent",
+   "troponin_ngl"
+  ],
+  "median_faulty_to_quarantine": 4.0,
+  "pass": true
+ },
+ "H3_recovery": {
+  "rows": [
+   {
+    "fault": "creatinine_umol",
+    "quarantine_vs_missing": 0.0,
+    "fix_vs_clean": 4.345957668072664e-05,
+    "pass": true
+   },
+   {
+    "fault": "wbc_per_ul",
+    "quarantine_vs_missing": 0.0,
+    "fix_vs_clean": 5.91675380352541e-05,
+    "pass": true
+   },
+   {
+    "fault": "temp_f",
+    "quarantine_vs_missing": 0.0,
+    "fix_vs_clean": -1.5526917385044747e-05,
+    "pass": true
+   }
+  ],
+  "pass": true
+ },
+ "H4_false_quarantine": {
+  "clean": {
+   "per_100k": 0.4740289043864739,
+   "pass": true
+  },
+  "site_A": {
+   "per_100k": 0.9923677895458564,
+   "pass": true
+  },
+  "site_B": {
+   "per_100k": 0.1997770488135241,
+   "pass": true
+  },
+  "septic_ward": {
+   "per_100k": 0.0,
+   "pass": true
+  }
+ },
+ "H5_onboarding": {
+  "correct_auto_adopted": 0.937984496124031,
+  "unsafe_wrong_unit": {
+   "k": 2,
+   "n": 58,
+   "rate": 0.034482758620689655,
+   "wilson": [
+    0.009507728866485682,
+    0.11729364755327057
+   ]
+  },
+  "unsafe_wrong_concept": {
+   "k": 5,
+   "n": 2359,
+   "rate": 0.00211954217888936,
+   "wilson": [
+    0.0009056576426595779,
+    0.004952373636288617
+   ]
+  },
+  "unsafe_wrong_concept_blind": {
+   "k": 40,
+   "n": 46,
+   "rate": 0.8695652173913043,
+   "wilson": [
+    0.7433386576963866,
+    0.9388224286250797
+   ]
+  },
+  "pass": false
+ }
+}
+wrote /Users/arnavnemade/Sepsis/artifacts/interop/interop_bench_posthoc.json [2078s]
+EXIT 0

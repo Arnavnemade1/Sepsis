@@ -158,23 +158,45 @@ def model_prompt(items: Sequence[Dict[str, Any]]) -> str:
             + "\n\nLOCAL CODES TO MAP:\n" + "\n".join(lines))
 
 
-def parse_model_answer(text: Optional[str], codes: Sequence[str]) -> Dict[str, Proposal]:
-    """Proposals from the model's JSON. Anything not in the vocabulary, or about a code we
-    did not ask about, is dropped: the model cannot widen what it is choosing from."""
+def _answer_rows(text: Optional[str]) -> List[Dict[str, Any]]:
     if not text:
-        return {}
+        return []
     m = re.search(r"\{.*\}", text, re.S)
     if not m:
-        return {}
+        return []
     try:
         data = json.loads(m.group(0))
     except ValueError:
-        return {}
+        return []
+    rows = (data.get("mappings") or []) if isinstance(data, dict) else []
+    return [r for r in rows if isinstance(r, dict)]
+
+
+def model_outcomes(text: Optional[str], codes: Sequence[str]) -> Dict[str, str]:
+    """What the model said about each code it did NOT propose a vocabulary key for:
+    ``declined`` (it answered null) or ``outside:<key>`` (it named something the vocabulary
+    lacks). A code missing here and from the proposals got no answer at all: the call
+    failed, or the model skipped it. Only an answer may mark a code as outside the
+    vocabulary; no answer sends it to a person."""
+    out: Dict[str, str] = {}
+    asked = set(codes)
+    for row in _answer_rows(text):
+        code, key = str(row.get("code", "")), row.get("concept")
+        if code not in asked:
+            continue
+        if key is None or (isinstance(key, str) and key.strip().lower() in ("", "null", "none")):
+            out[code] = "declined"
+        elif not isinstance(key, str) or key not in BY_KEY:
+            out[code] = f"outside:{str(key)[:40]}"
+    return out
+
+
+def parse_model_answer(text: Optional[str], codes: Sequence[str]) -> Dict[str, Proposal]:
+    """Proposals from the model's JSON. Anything not in the vocabulary, or about a code we
+    did not ask about, is dropped: the model cannot widen what it is choosing from."""
     out: Dict[str, Proposal] = {}
     asked = set(codes)
-    for row in (data.get("mappings") or []) if isinstance(data, dict) else []:
-        if not isinstance(row, dict):
-            continue
+    for row in _answer_rows(text):
         code, key = str(row.get("code", "")), row.get("concept")
         if code not in asked or not isinstance(key, str) or key not in BY_KEY:
             continue
@@ -188,8 +210,10 @@ def parse_model_answer(text: Optional[str], codes: Sequence[str]) -> Dict[str, P
     return out
 
 
-def ask_model(llm: Any, items: Sequence[Dict[str, Any]], max_batch: int = 12) -> Tuple[Dict[str, Proposal], Optional[str]]:
-    """One call per batch of unmapped codes. Returns (proposals by code, model id)."""
+def ask_model(llm: Any, items: Sequence[Dict[str, Any]], max_batch: int = 12,
+              outcomes: Optional[Dict[str, str]] = None) -> Tuple[Dict[str, Proposal], Optional[str]]:
+    """One call per batch of unmapped codes. Returns (proposals by code, model id); fills
+    ``outcomes`` (if given) with what the model said about the codes it did not map."""
     if llm is None or not getattr(llm, "available", False) or not items:
         return {}, None
     out: Dict[str, Proposal] = {}
@@ -202,6 +226,8 @@ def ask_model(llm: Any, items: Sequence[Dict[str, Any]], max_batch: int = 12) ->
         except Exception:
             text = None
         got = parse_model_answer(text, [b["code"] for b in batch])
+        if outcomes is not None:
+            outcomes.update(model_outcomes(text, [b["code"] for b in batch]))
         model_id = getattr(llm, "_last_model", None) or model_id
         for code, p in got.items():
             p.proposer = f"model:{model_id or 'llm'}"

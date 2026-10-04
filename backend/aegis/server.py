@@ -437,6 +437,40 @@ procfs.register("/proc/interop", lambda: {k: v for k, v in INTEROP.overview().it
                                                    "settings", "reference")})
 BOOT.note(interfaces=len(INTEROP.interfaces), vocabulary=len(INTEROP.vocabulary()["concepts"]))
 
+# --- The standards surface: FHIR R4 reads, CDS Hooks, outbound webhooks ------- #
+# An EHR reads what AegisOS sees in FHIR, gets its findings as CDS Hooks cards at the
+# moment a chart is opened or an order signed, and the hospital's messaging receives
+# its events as signed webhooks. All three read the same live state as the console.
+from backend.aegis.interop.cdshooks import CDSHooks as _CDSHooks
+from backend.aegis.interop.fhir import FHIRFacade as _FHIRFacade, room_of as _fhir_room_of
+from backend.aegis.interop.webhooks import Webhooks as _Webhooks
+FHIR = _FHIRFacade(room_unit=PAGING.room_unit, board=PAGING.rooms_board,
+                   pages=lambda: list(PAGING.snapshot()["pages"]))
+
+
+def _cds_room(pid: str) -> Optional[str]:
+    r = _fhir_room_of(pid)
+    if r:
+        return r
+    for row in PAGING.rooms_board().get("rooms") or []:
+        if row.get("mrn") == pid:
+            return row["room"]
+    return None
+
+
+def _cds_journal(event: str, **kw: Any) -> None:
+    from backend.aegis.kernel.journal import INFO as _INFO
+    KJOURNAL.append("interop", event, severity=_INFO, uid=str(kw.pop("by", "cds")), **kw)
+
+
+CDS = _CDSHooks(room_for=_cds_room, room_unit=PAGING.room_unit, feed=INTEROP.room_feed,
+                screen=lambda drugs, ctx: pharmacopoeia.screen(drugs, ctx) if "pharmacopoeia" in globals() else [],
+                app_url=_os.getenv("AEGIS_APP_URL", "https://aegis-clinical-beryl.vercel.app"), journal=_cds_journal)
+WEBHOOKS = _Webhooks()
+INTEROP.listeners.append(WEBHOOKS.from_interop)
+procfs.register("/proc/webhooks", lambda: {k: v for k, v in WEBHOOKS.status().items()
+                                           if k in ("subscriptions", "queued", "counters")})
+
 
 def _bed_susceptibility(bed: str) -> float:
     """Comorbidity risk-prior uplift for a bed (0 when no history imported). Injected
@@ -804,6 +838,7 @@ async def _paging_loop() -> None:
             await asyncio.to_thread(tick)
             events = PAGING.drain()
             if events:
+                WEBHOOKS.from_paging(events)
                 await _fanout(_paging_clients, {"type": "batch", "events": events})
         except Exception as exc:  # pragma: no cover
             print(f"[aegis] paging loop error: {exc}")
@@ -827,6 +862,22 @@ async def _interop_loop() -> None:
         await asyncio.sleep(1.0)
 
 
+async def _webhook_loop() -> None:
+    """Deliver due webhooks once a second, off the event loop. A slow receiver delays
+    only this loop, never a feed or a page."""
+    _pid = PROCS.spawn("webhooks", KTHREAD, uid="kernel", cadence_s=1.0,
+                       drives="signed outbound events: retries, dead letters").pid
+    def pump() -> None:
+        with PROCS.slice(_pid):
+            WEBHOOKS.pump()
+    while True:
+        try:
+            await asyncio.to_thread(pump)
+        except Exception as exc:  # pragma: no cover
+            print(f"[aegis] webhook loop error: {exc}")
+        await asyncio.sleep(1.0)
+
+
 @app.on_event("startup")
 async def _startup() -> None:
     # Become ready IMMEDIATELY: start the realtime loops and return so uvicorn
@@ -841,6 +892,7 @@ async def _startup() -> None:
     asyncio.create_task(_cluster_loop())
     asyncio.create_task(_paging_loop())
     asyncio.create_task(_interop_loop())
+    asyncio.create_task(_webhook_loop())
     asyncio.create_task(OS_HUB.run())
     if _os.getenv("AEGIS_MLLP_PORT"):
         # on-premises: the hospital's interface engine connects over MLLP (off on a hosted deploy)

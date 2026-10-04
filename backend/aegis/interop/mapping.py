@@ -96,6 +96,10 @@ class Mapping:
             "adopted_by": self.adopted_by, "counts": dict(self.counts), "n": len(self.samples),
             "fault": self.fault, "checks_run": self.checks_run,
         }
+        # the leading proposal while nothing is adopted: what a reviewer would be confirming
+        lead = self.candidates[0] if self.candidates and not self.concept else None
+        d["lead"] = {"concept": lead["concept"], "proposer": lead["proposal"]["proposer"],
+                     "decision": lead["decision"]} if lead else None
         if detail:
             d["candidates"] = self.candidates
             d["evidence"] = self.evidence

@@ -39,6 +39,7 @@ taken. The paging OS may call ``sentinel_recs`` under its own lock; that order
 from __future__ import annotations
 
 import copy
+import math
 import itertools
 import statistics
 import threading
@@ -63,6 +64,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "simulated_feeds": True,
 }
 N_PROPOSE = E.N_MIN                  # values before a proposal is judged
+_PROPOSER_NAMES = {"loinc": "the LOINC code", "mdc": "the IEEE 11073 code", "lexical": "the lexical rules"}
 DRIFT_EVERY = 4                      # re-assess an adopted mapping every this many values
 DRIFT_RECENT = 12                    # ... over its last 12 values (fast)
 DRIFT_WINDOW = 40                    # ... and its last 40 (sensitive)
@@ -674,6 +676,97 @@ class Integration:
                 ch.name = f"{ch.name}:{tag}"
         return checks
 
+    def _joint_live(self, m: Mapping, concept: str, conv: Conversion) -> List[E.Check]:
+        """The identities involving ``concept``, over every co-observed message since the
+        feed's evidence window began, judged by Page's CUSUM (``evidence.cusum_identity``)."""
+        partners = self._partners(m, adopted_only=True)
+        keys = {concept} | {c for c, _ in partners.values()}
+        invs = [inv for inv in E.INVARIANTS if concept in inv.concepts and set(inv.concepts) <= keys]
+        if not invs:
+            return []
+        rows = [r for _t, r in self._joint_rows(m, concept, conv, adopted_only=True, since_seq=m.drift_from)]
+        return [E.cusum_identity(inv, rows) for inv in invs]
+
+    def _explain_swap(self, m: Mapping, failing: List[str]) -> Optional[Dict[str, Any]]:
+        """Does exchanging two adopted fields' readings restore every identity they take part
+        in, over the messages since the violations began? Then those two were swapped."""
+        maps = {o.concept: o for o in self.by_id.values()
+                if o.interface == m.interface and o.status == "adopted" and o.concept and o.conversion}
+        hot = set()
+        for n in failing:
+            hot |= set(E.INVARIANT_BY_NAME[n].concepts)
+        invs = [inv for inv in E.INVARIANTS if set(inv.concepts) & hot and all(k in maps for k in inv.concepts)]
+        fields = sorted({k for inv in invs for k in inv.concepts})
+        if len(fields) < 2:
+            return None
+        rows: List[Dict[str, float]] = []
+        for g in self.groups.get(m.interface, ()):
+            row = {}
+            for k in fields:
+                o = maps[k]
+                if o.id in g["vals"] and o.id not in g["held"] and g["seq"].get(o.id, 0) > o.drift_from:
+                    row[k] = o.conversion.apply(g["vals"][o.id])
+            if len(row) >= 2:
+                rows.append(row)
+        # only the current excursion: from where the failing identities' CUSUM last left zero
+        start = len(rows)
+        for n in failing:
+            inv = E.INVARIANT_BY_NAME[n]
+            lp, lq = math.log(E.CUSUM_P1 / inv.p0), math.log((1 - E.CUSUM_P1) / (1 - inv.p0))
+            S, st = 0.0, len(rows)
+            for i, r in enumerate(rows):
+                if not all(k in r for k in inv.concepts):
+                    continue
+                try:
+                    v = bool(inv.violated(r))
+                except (ZeroDivisionError, ValueError, KeyError):
+                    v = True
+                S2 = max(0.0, S + (lp if v else lq))
+                if S == 0.0 and S2 > 0.0:
+                    st = i
+                S = S2
+            start = min(start, st)
+        recent = rows[start:]
+
+        def rate(inv: E.Invariant, rs: List[Dict[str, float]]) -> Tuple[int, int]:
+            n = k = 0
+            for r in rs:
+                if all(x in r for x in inv.concepts):
+                    n += 1
+                    try:
+                        k += bool(inv.violated(r))
+                    except (ZeroDivisionError, ValueError, KeyError):
+                        k += 1
+            return k, n
+
+        best = None
+        for i, a in enumerate(fields):
+            for b in fields[i + 1:]:
+                swapped = []
+                for r in recent:
+                    r2 = dict(r)
+                    if a in r and b in r:
+                        r2[a], r2[b] = r[b], r[a]
+                    swapped.append(r2)
+                touched = [inv for inv in invs if a in inv.concepts or b in inv.concepts]
+                ok, worst, told = True, 0.0, []
+                for inv in touched:
+                    k0, n0 = rate(inv, recent)
+                    k1, n1 = rate(inv, swapped)
+                    if n1 < 3:
+                        ok = False
+                        break
+                    if k1 / n1 > max(1.5 * inv.p0, 1.0 / n1) or k1 >= k0:
+                        ok = False
+                        break
+                    worst = max(worst, k1 / n1)
+                    told.append(f"{inv.statement} holds in {n1 - k1} of {n1}")
+                if ok and touched and (best is None or worst < best[0]):
+                    best = (worst, a, b, told)
+        if best is None:
+            return None
+        return {"a": maps[best[1]], "b": maps[best[2]], "restored": "; ".join(best[3])}
+
     def _joint_change(self, m: Mapping, inv_names: List[str]) -> Optional[float]:
         """Group time where the trailing run of identity violations begins (≥ 75% violated)."""
         rows = self._joint_rows(m, m.concept, m.conversion, adopted_only=True, since_seq=m.drift_from)
@@ -698,7 +791,8 @@ class Integration:
         return None
 
     def _propose(self, m: Mapping, now: float, effects: List[Tuple[Any, ...]],
-                 model: Optional[Dict[str, Proposal]] = None, force: bool = False) -> None:
+                 model: Optional[Dict[str, Proposal]] = None, force: bool = False,
+                 outcomes: Optional[Dict[str, str]] = None) -> None:
         props: List[Proposal] = []
         cp = coded(m.code, m.text, m.system)
         if cp:
@@ -728,16 +822,36 @@ class Integration:
         results: List[Dict[str, Any]] = []
         for p in props:
             c = BY_KEY[p.concept]
-            _tok, declared = resolve_unit(c, m.unit_written)
+            tok, declared = resolve_unit(c, m.unit_written)
+            if tok and declared is None:
+                # the feed wrote a unit and it cannot be this concept (a pressure written "/min",
+                # a count written "mg/dL"): evidence AGAINST the proposal, not missing evidence.
+                # (Found by the registered benchmark's smoke run; fixed after the registered run.)
+                why = (f"the feed writes {m.unit_written!r}, which is not a unit {c.label.lower()} can be reported in"
+                       if not tok.startswith("?") else f"the unit {m.unit_written!r} is not recognised")
+                results.append({"proposal": p.to_dict(), "concept": c.key, "label": c.label, "decision": "unit mismatch",
+                                "declared": None, "conversion": None, "_conv": None, "_declared_missing": False,
+                                "inference": {"decision": "unit mismatch", "declared": None, "best": None,
+                                              "alternatives": [], "why": why},
+                                "joint": [], "viable": False})
+                continue
             inf = E.infer(c, values, declared)
             conv = inf.conversion
+            rival_why = None
+            if inf.decision == "ambiguous" and declared is not None and inf.declared is not None \
+                    and inf.declared.status == "pass":
+                alts = [f.conversion.label for f in inf.passing if f.conversion.factor != declared.factor
+                        and not f.conversion.label.startswith("decade shift")]
+                rival_why = (f"the values fit the written unit ({declared.label}) and also "
+                             f"{' / '.join(alts[:2])}: the data cannot tell them apart, so a person confirms the unit")
             joint = self._joint(m, c.key, conv) if conv is not None else []
             joint_fail = [j for j in joint if j.status == "fail"]
             results.append({"proposal": p.to_dict(), "concept": c.key, "label": c.label, "decision": inf.decision,
                             "declared": declared.to_dict() if declared else None,
                             "conversion": conv.to_dict() if conv else None, "_conv": conv,
                             "_declared_missing": declared is None,
-                            "inference": inf.to_dict(), "joint": [j.to_dict() for j in joint],
+                            "inference": {**inf.to_dict(), **({"why": rival_why} if rival_why else {})},
+                            "joint": [j.to_dict() for j in joint],
                             "viable": inf.decision in ("declared", "inferred") and not joint_fail})
         results.sort(key=lambda r: (not r["viable"], -r["proposal"]["score"]))
         m.candidates = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
@@ -747,19 +861,21 @@ class Integration:
             r = viable[0]
             m.tentative = (r["concept"], r["_conv"])
             src = r["proposal"]["proposer"]
-            auto = self.settings["adoption"] == "evidence" and (
-                r["decision"] == "declared" or (r["_declared_missing"] and r["_conv"].identity))
+            who = _PROPOSER_NAMES.get(src) or ("the language model" if src.startswith("model") else src)
+            # only a unit the feed WROTE can be confirmed: a feed with no unit waits for a person,
+            # whatever fits (pH and INR, unitless by convention, resolve to their unit above)
+            auto = self.settings["adoption"] == "evidence" and r["decision"] == "declared"
             if auto:
                 self._adopt(m, BY_KEY[r["concept"]], r["_conv"], "loinc" if src == "loinc" else "declared", src,
                             "engine (evidence)", now, effects,
-                            why=f"{src} proposed {r['label']}; the data agrees "
+                            why=f"{who} proposed {r['label']}; the data agrees "
                                 + ("in the written unit" if r["decision"] == "declared" else "with no unit written"))
                 self.counters["adopted_auto"] += 1
             else:
-                why = (f"{src} proposed {r['label']}; the values only fit read as "
+                why = (f"{who} proposed {r['label']}; the values only fit read as "
                        f"{r['conversion']['label']} (written {m.unit_written!r}): a person confirms the unit"
                        if r["decision"] == "inferred" else
-                       f"{src} proposed {r['label']}; policy: every mapping is adopted by a person")
+                       f"{who} proposed {r['label']}; policy: every mapping is adopted by a person")
                 m.transition("review", "engine", why, now)
                 self.counters["review"] += 1
         elif len(concepts_viable) > 1:
@@ -775,15 +891,28 @@ class Integration:
                 top = results[0]
                 fit = top["inference"].get("declared") or top["inference"].get("best") or {}
                 why = [c["detail"] for c in (fit.get("checks") or []) if c["status"] in ("fail", "unsure")][:2]
+                if top["inference"].get("why"):
+                    why.insert(0, top["inference"]["why"])
                 why += [j["detail"] for j in top["joint"] if j["status"] == "fail"][:1]
                 m.transition("review", "engine", f"the evidence could not confirm any proposal ({top['label']}"
                              + (f" read in {m.unit_written!r}" if m.unit_written else "") + ": "
                              + ("; ".join(why) or "no reading passes") + ")", now)
                 self.counters["review"] += 1
-        elif m.model_asked and m.status == "proposing":
+        elif m.model_asked and m.status == "proposing" and (outcomes or {}).get(m.code, "").startswith("outside:"):
+            m.tentative = None
+            m.transition("unmapped", "engine", f"not in the vocabulary: the language model named "
+                                               f"{outcomes[m.code][8:]!r}, which AegisOS does not carry", now)
+        elif m.model_asked and m.status == "proposing" and (outcomes or {}).get(m.code) == "declined":
             m.tentative = None
             m.transition("unmapped", "engine", "no match in the vocabulary: the lexical rules and the language model "
                                                "both declined", now)
+        elif m.model_asked and m.status == "proposing":
+            # no answer is not a decline: a failed call (quota, timeout) or a skipped code goes
+            # to a person, never silently out of the review queue
+            m.tentative = None
+            m.transition("review", "engine", "no proposer recognised this code and the language model gave no "
+                                             "answer for it: map it by hand", now)
+            self.counters["review"] += 1
         else:
             m.tentative = None
             m.transition("review", "engine", "no proposer recognised this code"
@@ -850,11 +979,12 @@ class Integration:
         if len(win) < 4:
             return
         vals = [v for _s, v in win]
+        if m.baseline is None and len(vals) >= DRIFT_RECENT:
+            # after a person's fix the baseline is re-learned from what arrives under the fix,
+            # never from values the new reading would misread
+            m.baseline = E.feed_baseline(c, vals)
         checks = E.drift_checks(c, vals[-DRIFT_RECENT:], vals, m.baseline)
-        joint = (self._joint(m, c.key, m.conversion, adopted_only=True, since_seq=m.drift_from, last=DRIFT_RECENT,
-                             tag="recent")
-                 + self._joint(m, c.key, m.conversion, adopted_only=True, since_seq=m.drift_from, last=DRIFT_WINDOW,
-                               tag="window"))
+        joint = self._joint_live(m, c.key, m.conversion)
         live: Dict[str, Any] = {"at": now, "n": len(win), "checks": [ch.to_dict() for ch in checks],
                                 "invariants": [j.to_dict() for j in joint], "liveness": None}
         failing = [ch for ch in checks if ch.status == "fail"]
@@ -872,13 +1002,6 @@ class Integration:
         if not (failing or joint_fail) or not self.settings["quarantine"]:
             return
         if joint_fail and not failing:
-            # an identity failed and no single field moved on its own: it cannot say which
-            # field is wrong, so every adopted field in the identity is withheld
-            names = set()
-            for j in joint_fail:
-                names |= set(E.INVARIANT_BY_NAME[j.name.split(":")[1]].concepts)
-            group = [o for o in self.by_id.values() if o.interface == m.interface and o.status == "adopted"
-                     and o.concept in names]
             seen, causes = set(), []
             for j in joint_fail:
                 base = j.name.split(":")[1]
@@ -886,6 +1009,23 @@ class Integration:
                     seen.add(base)
                     causes.append(j.detail)
             since_t = self._joint_change(m, sorted(seen))
+            swap = self._explain_swap(m, sorted(seen))
+            if swap is not None:
+                # exchanging two fields' readings restores every identity they take part in:
+                # that pair is the fault, and only that pair is withheld
+                a, b = swap["a"], swap["b"]
+                cause = (f"{a.code} ({BY_KEY[a.concept].label}) and {b.code} ({BY_KEY[b.concept].label}) look exchanged: "
+                         + "; ".join(causes) + f"; read the other way round, {swap['restored']}")
+                self._quarantine([a, b], now, effects, cause, joint_fail, since_t=since_t,
+                                 swap={"a": a.id, "b": b.id, "codes": [a.code, b.code]})
+                return
+            # an identity failed and no single field moved, and no exchange explains it: it
+            # cannot say which field is wrong, so every adopted field in the identity is withheld
+            names = set()
+            for j in joint_fail:
+                names |= set(E.INVARIANT_BY_NAME[j.name.split(":")[1]].concepts)
+            group = [o for o in self.by_id.values() if o.interface == m.interface and o.status == "adopted"
+                     and o.concept in names]
             self._quarantine(group or [m], now, effects, "; ".join(causes), joint_fail, since_t=since_t)
         else:
             seen, causes = set(), []
@@ -949,7 +1089,8 @@ class Integration:
             self._emit("mapping", m.to_dict())
 
     def _quarantine(self, group: List[Mapping], now: float, effects: List[Tuple[Any, ...]], cause: str,
-                    checks: List[E.Check], since_t: Optional[float] = None) -> None:
+                    checks: List[E.Check], since_t: Optional[float] = None,
+                    swap: Optional[Dict[str, Any]] = None) -> None:
         for m in group:
             if m.status == "quarantined":
                 continue
@@ -987,6 +1128,12 @@ class Integration:
                        "first_suspect_seq": suspects[0].seq if suspects else None, "withdrawn": n_retracted,
                        "suggested": suggested.to_dict() if suggested else None,
                        "inference": inf.to_dict() if inf else None}
+            if swap is not None:
+                other = swap["b"] if swap["a"] == m.id else swap["a"]
+                om = self.by_id.get(other)
+                m.fault["swap"] = {"with": other, "code": om.code if om else None,
+                                   "concept": om.concept if om else None,
+                                   "label": f"exchange {m.code} and {om.code if om else other}"}
             m.transition("quarantined", "drift monitor", cause, now)
             self.counters["quarantines"] += 1
             iface = self.interfaces.get(m.interface)
@@ -1026,6 +1173,31 @@ class Integration:
             if c is None:
                 return {"status": "error", "detail": "name a concept to adopt this mapping as"}
             now = self.now()
+            sw = (m.fault or {}).get("swap") if conversion == "swap" else None
+            if conversion == "swap":
+                partner = self.by_id.get((sw or {}).get("with") or "")
+                if partner is None or partner.concept is None or m.concept is None:
+                    return {"status": "error", "detail": "no exchange to accept"}
+                pairs = [(m, BY_KEY[partner.concept], partner.conversion or IDENTITY),
+                         (partner, BY_KEY[m.concept], m.conversion or IDENTITY)]
+                for x, cx, cv in pairs:
+                    x.unit_written_adopted = x.samples[-1].unit if x.samples else x.unit_written
+                    self._adopt(x, cx, cv, "human", f"human:{by}", f"human:{by}", now, effects,
+                                why=f"accepted by {by}: {m.code} and {partner.code} were exchanged at the sender; "
+                                    f"{x.code} is now read as {cx.label}", backfill=False)
+                    x.drift_from = max((smp.seq for smp in x.samples), default=0)
+                    x.baseline = None
+                self.counters["adopted_human"] += 2
+                result = {"status": "ok", "mapping": m.to_dict(detail=True), "against_evidence": False,
+                          "exchanged": [m.code, partner.code]}
+        if conversion == "swap":
+            self._apply(effects)
+            return result
+        with self._lock:
+            m = self.by_id.get(mapping_id)
+            if m is None:
+                return {"status": "error", "detail": "no such mapping"}
+            now = self.now()
             conv = self._resolve_choice(m, c, conversion)
             if conv is None:
                 return {"status": "error", "detail": "no conversion for that choice (the written unit has no rule "
@@ -1044,6 +1216,7 @@ class Integration:
                 # after a fix: read only what arrives from now on, and deliver what was withheld
                 # during the quarantine if it now reads as the concept
                 m.drift_from = max((s.seq for s in m.samples), default=0)
+                m.baseline = None
                 rows: Dict[str, List[Tuple[str, float, float]]] = {}
                 if c.room_key and c.room_key not in VITAL_KEYS:
                     for s in withheld:
@@ -1056,6 +1229,11 @@ class Integration:
                             self.counters["backfilled"] += 1
                 for room, rr in rows.items():
                     effects.append(("backfill", room, c.room_key, rr, f"{c.label} · withheld values released after fix"))
+                # a room whose withheld values were ALL released stops listing them as withheld
+                iface = self.interfaces.get(m.interface)
+                for room in {s.room for s in withheld if s.room and self.room_of.get(s.room)}:
+                    if all(s.delivered for s in withheld if s.room == room):
+                        effects.append(("released", room, c.key, iface.name if iface else m.interface))
             m.evidence = {**(m.evidence or {}), "human": {"fit": fit.to_dict(), "against_evidence": against}}
             self.counters["adopted_human"] += 1
             out = m.to_dict(detail=True)
@@ -1170,20 +1348,22 @@ class Integration:
 
     def _pump(self, batch: List[str], items: List[Dict[str, Any]], now: float) -> None:
         t0 = time.perf_counter()
+        outcomes: Dict[str, str] = {}
         try:
-            props, model_id = ask_model(self.llm, items)
+            props, model_id = ask_model(self.llm, items, outcomes=outcomes)
         except Exception:
             props, model_id = {}, None
         effects: List[Tuple[Any, ...]] = []
         with self._lock:
             self._model_busy = False
             self.model_calls.append({"at": now, "codes": [it["code"] for it in items], "model": model_id,
-                                     "answered": sorted(props), "ms": round((time.perf_counter() - t0) * 1000)})
+                                     "answered": sorted(props), "outcomes": dict(outcomes),
+                                     "ms": round((time.perf_counter() - t0) * 1000)})
             del self.model_calls[:-30]
             for i in batch:
                 m = self.by_id.get(i)
                 if m is not None and m.status == "proposing":
-                    self._propose(m, self.now(), effects, model=props, force=True)
+                    self._propose(m, self.now(), effects, model=props, force=True, outcomes=outcomes)
         self._apply(effects)
 
     # ------------------------------------------------------------------ #
@@ -1207,6 +1387,8 @@ class Integration:
                                + (f" Withdrew {f.get('withdrawn')} delivered value(s)." if f.get("withdrawn") else ""),
                                ("Accept the evidence's fix (" + sug["label"] + ") in Integrations, or restore once the "
                                 "sender is corrected." if sug else
+                                "Accept the exchange (" + f["swap"]["label"] + ") in Integrations, or restore once the "
+                                "sender is corrected." if f.get("swap") else
                                 "Check the sender's configuration, then restore the mapping in Integrations.")
                                + " New values stay withheld meanwhile.",
                                [m.id, m.code]))
@@ -1226,12 +1408,16 @@ class Integration:
         with self._lock:
             now = self.now()
             by_status: Dict[str, int] = {}
+            by_iface: Dict[str, Dict[str, int]] = {}
             for m in self.by_id.values():
                 by_status[m.status] = by_status.get(m.status, 0) + 1
+                bi = by_iface.setdefault(m.interface, {"total": 0})
+                bi["total"] += 1
+                bi[m.status] = bi.get(m.status, 0) + 1
             return copy.deepcopy({
                 "now": now, "since": self.started_at, "settings": self.settings,
                 "interfaces": [i.to_dict(now) for i in self.interfaces.values()],
-                "mappings": {"total": len(self.by_id), "by_status": by_status},
+                "mappings": {"total": len(self.by_id), "by_status": by_status, "by_interface": by_iface},
                 "review": [m.to_dict() for m in self.by_id.values() if m.status == "review"],
                 "quarantined": [m.to_dict() for m in self.by_id.values() if m.status == "quarantined"],
                 "census": len(self.patients), "counters": dict(self.counters),

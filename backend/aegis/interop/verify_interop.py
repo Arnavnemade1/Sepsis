@@ -28,6 +28,16 @@ to show the check can go red at all.
   [8] paging       interface rooms are watched by the room monitor; ICU and live rooms are
                    never admitted over HL7; a device alarm pages once; a quarantined feed
                    reaches the Sentinel; no deadlock between ingest and the Sentinel
+  [10] post-hoc    the fixes the registered benchmark motivated (docs/INTEROP.md): a written
+                   unit that cannot be the concept refuses; no unit never auto-adopts (pH
+                   excepted); a jump back into the population band is not a fault; a burst
+                   at the clean rate no longer quarantines (Page's CUSUM) while a swap still
+                   does; a swap withholds only the exchanged pair and its un-swap is accepted
+  [9] standards    FHIR resources are valid and label synthetic data HTEST; an inbound
+                   FHIR bundle is mapped on evidence like HL7; CDS Hooks cards for risk,
+                   a quarantined feed, an allergy and an interaction; webhooks sign, a
+                   tampered body fails verification, private targets are refused, and a
+                   failing receiver retries into the dead-letter list
 
     .venv/bin/python -m backend.aegis.interop.verify_interop
 """
@@ -36,6 +46,7 @@ from __future__ import annotations
 import json
 import math
 import random
+import zlib
 import re
 import threading
 import time
@@ -110,10 +121,14 @@ class FakeLLM:
 
 
 def ref_sample(key: str, n: int, seed: int = 0) -> List[float]:
-    """Values shaped like the reference (inverse CDF through its stored quantiles)."""
+    """Values shaped like the reference: inverse CDF through its stored quantiles, interpolated
+    on the concept's own scale (log for skewed analytes; raw-space interpolation distorts an
+    analyte spanning four decades, like troponin)."""
     r = V.references()[key]
+    log = V.BY_KEY[key].scale == "log"
     ps = sorted(r.quantiles)
     xs = [r.quantiles[p] for p in ps]
+    ts = [math.log(max(x, 1e-6)) if log else x for x in xs]
     rng = random.Random(seed)
     out = []
     for _ in range(n):
@@ -121,7 +136,8 @@ def ref_sample(key: str, n: int, seed: int = 0) -> List[float]:
         for i in range(len(ps) - 1):
             if ps[i] <= u <= ps[i + 1]:
                 w = (u - ps[i]) / (ps[i + 1] - ps[i])
-                out.append(xs[i] + w * (xs[i + 1] - xs[i]))
+                t = ts[i] + w * (ts[i + 1] - ts[i])
+                out.append(math.exp(t) if log else t)
                 break
     return out
 
@@ -199,7 +215,7 @@ def check_evidence() -> None:
     for c in V.CONCEPTS:
         if c.key not in V.references() or c.scale == "none":
             continue
-        xs = ref_sample(c.key, 80, seed=hash(c.key) % 1000)
+        xs = ref_sample(c.key, 80, seed=zlib.crc32(c.key.encode()))     # hash() is salted per process
         f = E.assess(c, xs, U.IDENTITY)
         ok(f.status == "pass", f"{c.key}: reference-shaped values in the canonical unit pass")
     faults = [("glucose", "mg/dL", 1 / 18.016, "mmol/L"), ("creatinine", "mg/dL", 88.42, "umol/L"),
@@ -300,25 +316,43 @@ def _sim(llm: Any = None, adoption: str = "evidence", occupied: Optional[set] = 
 
 def check_onboarding() -> None:
     section("[5] onboarding: proposals adopted only on evidence")
-    llm = FakeLLM({"RL101": "creatinine", "RL102": "sodium", "RL103": "wbc", "RL104": "hematocrit",
+    llm = FakeLLM({"RL101": "creatinine", "RL102": "chloride", "RL103": "wbc", "RL104": "hematocrit",
                    "PCT": None, "AGAP": "procalcitonin_typo"})
     eng, sim, rooms, run, _ = _sim(llm)
     run(600)
     maps = {m["code"]: m for m in eng.mapping_list()}
     want = {"147842": ("hr", "identity"), "150364": ("temp", "[degF]"), "CREA": ("creatinine", "umol/L"),
             "GLU": ("glucose", "mmol/L"), "HGB": ("hemoglobin", "g/L"), "UREA": ("bun", "mmol/L"),
-            "TBIL": ("bilirubin", "umol/L"), "HCT": ("hematocrit", "1 →"), "ANC": ("anc", "10*9/L"),
+            "HCT": ("hematocrit", "1 →"), "ANC": ("anc", "10*9/L"),
             "CA": ("calcium", "mmol/L"), "150021": ("sbp", "identity")}
     for code, (concept, conv) in want.items():
         m = maps[code]
         ok(m["status"] == "adopted" and m["concept"] == concept and conv in m["conversion"]["label"],
            f"{code} adopted as {concept} ({m['conversion']['label']}) by {m['proposer']}")
+    ok(maps["TBIL"]["status"] == "review" and "mg/L" in maps["TBIL"]["reason"],
+       "bilirubin in µmol/L waits for a person: the values fit µmol/L and mg/L alike (x1.7, inside its band)")
     ok(maps["RL101"]["status"] == "adopted" and maps["RL101"]["proposer"].startswith("model:"),
        "the model's right answer (P-Kreat → creatinine) is adopted, on the data's evidence")
-    ok(maps["RL104"]["status"] == "review" and maps["RL104"]["concept"] is None,
-       "the model's WRONG answer (B-Hb → haematocrit) is refused by the evidence and waits for a person")
-    ok(maps["AGAP"]["status"] == "unmapped" and maps["PCT"]["status"] == "unmapped",
-       "a key outside the vocabulary is dropped, and a declined code is left unmapped")
+    ok(maps["RL102"]["status"] == "review" and maps["RL102"]["concept"] is None,
+       "the model's WRONG answer in the right unit (B-Natr, a sodium, → chloride) is refused by the data and waits")
+    hb = [c for c in (eng.mapping(maps["RL104"]["id"]) or {}).get("candidates", []) if c["concept"] == "hematocrit"]
+    ok(maps["RL104"]["status"] == "review" and hb and hb[0]["decision"] == "unit mismatch",
+       "a wrong answer whose written unit cannot be the concept (B-Hb in mmol/L → haematocrit %) is refused first")
+    ok(maps["AGAP"]["status"] == "unmapped" and maps["PCT"]["status"] == "unmapped"
+       and "procalcitonin_typo" in maps["AGAP"]["reason"],
+       "a key outside the vocabulary is dropped (and named), and a declined code is left unmapped")
+
+    class DownLLM(FakeLLM):
+        def chat(self, system: str, user: str, **kw: Any) -> str:
+            self.calls += 1
+            raise TimeoutError("quota exceeded")
+    down = DownLLM({})
+    eng_d, _s, _r, run_d, _ = _sim(down)
+    run_d(600)
+    md = {m["code"]: m for m in eng_d.mapping_list()}
+    ok(down.calls > 0 and all(md[c]["status"] == "review" for c in ("RL101", "PCT", "AGAP")),
+       "a failed model call (quota, timeout) is no answer, not a decline: its codes wait for a person "
+       "instead of leaving the review queue as 'unmapped'")
     ok(maps["TNIHS"]["status"] == "review", "hs-troponin, whose ward population sits far from the ICU reference, waits for a person")
     pre = [c for c in rooms.of("observe") if any(k == "creatinine" for k in c[4])]
     ok(all(c[4]["creatinine"][0][0].startswith("OBS-") for c in pre), "only adopted mappings deliver values to rooms")
@@ -539,6 +573,14 @@ def check_paging() -> None:
     recs = P.sentinel.active()
     ok(any(r["kind"] == "interface_fault" and "umol/L" in r["action"] for r in recs),
        "the quarantined feed reaches the Sentinel with the evidence's fix")
+
+    def held(r: str) -> bool:
+        return any(w.get("concept") == "creatinine" for w in P.room_unit(r)["withheld"])
+    held_rooms = [r for r in P.interfaced if held(r)]
+    crea = next(x for x in eng.mapping_list() if x["code"] == "CREA")
+    eng.adopt(crea["id"], "verify", None, "suggested")
+    ok(held_rooms and not any(held(r) for r in held_rooms),
+       f"once the fix releases them, no room still lists creatinine as withheld ({len(held_rooms)} did)")
     sim.drill("creatinine_label", False)
     # no deadlock: ingest (interop lock → paging lock, released in between) against the
     # Sentinel (paging lock → interop lock)
@@ -569,12 +611,238 @@ def check_paging() -> None:
     ok(not any(t.is_alive() for t in ts) and not errs, "three seconds of concurrent ingest and Sentinel scans: no deadlock")
 
 
+def check_standards() -> None:
+    section("[9] FHIR, CDS Hooks, webhooks")
+    from backend.aegis.interop import fhir as F
+    from backend.aegis.interop import webhooks as W
+    from backend.aegis.interop.cdshooks import CDSHooks
+    from backend.aegis.paging.engine import PagingOS
+    from backend.aegis.paging.hospital import ROOMS
+    clock = Clock()
+    P = PagingOS(llm=None, clock=clock, seed=7, demo_history=False)
+    P.settings["demo_traffic"] = False
+    eng = Integration(rooms=P, clock=clock, hospital_rooms=list(ROOMS))
+    eng.sync_model = True
+    P.units.feed_status = eng.room_feed
+    sim = SimulatedHospital(eng, lambda: [r for r in ROOMS if P.interface_room_free(r)], clock=clock)
+    sim.register()
+    for _ in range(420):
+        sim.tick()
+        eng.tick()
+        P.tick()
+        clock.t += 1.0
+    fx = F.FHIRFacade(P.room_unit, P.rooms_board, lambda: list(P.snapshot()["pages"]))
+    cap = fx.capability()
+    kinds = {r["type"] for r in cap["rest"][0]["resource"]}
+    ok(cap["fhirVersion"] == "4.0.1" and {"Patient", "Observation", "RiskAssessment", "Flag", "Communication"} <= kinds,
+       "the CapabilityStatement declares FHIR 4.0.1 and the resources served")
+    room = sorted(P.interfaced)[0]
+    pt = fx.patient(room)
+    ok(pt["resourceType"] == "Patient" and pt["identifier"][0]["value"] == eng.room_of[room]
+       and any(sec.get("code") == "HTEST" for sec in pt["meta"].get("security", [])),
+       "an HL7-admitted patient reads back as a FHIR Patient with its MRN, labelled HTEST (simulated)")
+    obs = fx.observations(room, "vital-signs")
+    ok(obs and all(o["code"]["coding"][0]["system"] == F.LOINC and o["valueQuantity"]["system"] == F.UCUM for o in obs),
+       f"vital signs come back LOINC-coded with UCUM units ({len(obs)} observations)")
+    hr = next((o for o in obs if o["code"]["coding"][0]["code"] == "8867-4"), None)
+    ok(hr is not None and hr["valueQuantity"]["code"] == "/min", "heart rate is LOINC 8867-4 in /min")
+    syn = next(r for r in P.rooms_board()["rooms"] if r.get("kind") == "synthetic")
+    ok(any(s.get("code") == "HTEST" for s in fx.patient(syn["room"])["meta"].get("security", [])),
+       "a synthetic demo patient is labelled HTEST too")
+    # inbound FHIR: a new sender's LOINC-coded Observations earn their mapping on evidence
+    mrn = eng.room_of[room]
+    acks = []
+    for i, k in enumerate(range(14)):
+        o = {"resourceType": "Observation", "status": "final", "subject": {"reference": f"Patient/{mrn}"},
+             "code": {"coding": [{"system": F.LOINC, "code": "2823-3", "display": "Potassium"}]},
+             "valueQuantity": {"value": 4.0 + 0.05 * (i % 7), "unit": "mmol/L", "code": "mmol/L"}}
+        er7, probs = F.FHIRFacade.to_oru([o], sender=("FHIRSRC", "EHR"), ctl=f"FH{i}")
+        ack, rec = eng.ingest_hl7(er7)
+        acks.append(rec["ack"])
+    fm = next(m for m in eng.mapping_list() if m["interface"].startswith("fhirsrc"))
+    ok(all(a == "AA" for a in acks) and fm["status"] == "adopted" and fm["proposer"] == "loinc",
+       "a FHIR sender's Observations are acknowledged and its LOINC code adopted on evidence")
+    bad, probs = F.FHIRFacade.to_oru([{"resourceType": "Observation", "subject": {"reference": "Patient/room-512"},
+                                       "code": {"coding": [{"code": "x"}]}, "valueQuantity": {"value": 1}}])
+    ok(bad is None and probs, "an Observation naming a room instead of the sender's patient is refused, with a reason")
+    # CDS Hooks
+    cds = CDSHooks(room_for=lambda pid: F.room_of(pid), room_unit=P.room_unit, feed=eng.room_feed,
+                   screen=lambda drugs, ctx: [], app_url="https://app.example")
+    ok(len(cds.discovery()["services"]) == 2, "discovery lists patient-view and order-sign")
+    cards = cds.call("aegis-patient-view", {"hook": "patient-view", "context": {"patientId": F.patient_id(room)}})["cards"]
+    ok(cards and all(c["indicator"] in ("info", "warning", "critical") and len(c["summary"]) <= 140 for c in cards)
+       and cards[0]["links"][0]["url"].endswith(f"/room/?id={room}"),
+       "patient-view returns spec-shaped cards linking back to the room")
+    sim.drill("creatinine_label", True)
+    for _ in range(30):
+        sim.tick()
+        eng.tick()
+        P.tick()
+        clock.t += 1.0
+    q_rooms = [r for r in P.interfaced if any(c["status"] == "quarantined" for c in (eng.room_feed(r) or {}).get("channels", []))]
+    qc = cds.call("aegis-patient-view", {"hook": "patient-view", "context": {"patientId": F.patient_id(q_rooms[0])}})["cards"] if q_rooms else []
+    ok(any("withheld" in c["summary"] and c["indicator"] == "warning" for c in qc),
+       "a quarantined feed reaches the EHR as a warning card: the value it shows may come from that feed")
+    sim.drill("creatinine_label", False)
+    allergic = next((r for r in P.interfaced if any("penicillin" in a.get("substance", "")
+                                                   for a in (P.room_unit(r) or {}).get("record", {}).get("allergies", []))), None)
+    if allergic is None:                       # make one: the sim's case mix is random
+        allergic = room
+        P.units.records[allergic]["allergies"] = [{"substance": "penicillin"}]
+    draft = {"resourceType": "Bundle", "entry": [{"resource": {"resourceType": "MedicationRequest", "id": "d1",
+                                                               "medicationCodeableConcept": {"text": "piperacillin-tazobactam 4.5 g IV"}}}]}
+    oc = cds.call("aegis-order-sign", {"hook": "order-sign", "context": {"patientId": F.patient_id(allergic),
+                                                                         "draftOrders": draft}})["cards"]
+    ok(any(c["indicator"] == "critical" and c["suggestions"][0]["actions"][0]["type"] == "delete" for c in oc),
+       "order-sign: a penicillin-class order for a penicillin-allergic patient is a critical card with a removal")
+    from backend.aegis.pharmacopoeia import Interaction
+    cds2 = CDSHooks(room_for=lambda pid: F.room_of(pid), room_unit=P.room_unit, feed=eng.room_feed,
+                    screen=lambda drugs, ctx: [Interaction("levofloxacin", "amiodarone", "Major", "additive QT", "test")]
+                    if "levofloxacin" in drugs else [])
+    lc = cds2.call("aegis-order-sign", {"hook": "order-sign", "context": {"patientId": F.patient_id(room), "draftOrders": {
+        "resourceType": "Bundle", "entry": [{"resource": {"resourceType": "MedicationRequest", "id": "d2",
+                                                          "medicationCodeableConcept": {"text": "Levofloxacin 750 MG Injection"}}}]}}})["cards"]
+    ok(any("interaction" in c["summary"] and c["indicator"] == "critical" for c in lc),
+       "order-sign normalises an EHR drug string to its generic and surfaces a major interaction")
+    cds3 = CDSHooks(room_for=lambda pid: F.room_of(pid), room_unit=P.room_unit, feed=eng.room_feed,
+                    screen=lambda drugs, ctx: [Interaction("levofloxacin", "azithromycin", "Moderate", "documented", "DDInter"),
+                                               Interaction("levofloxacin, azithromycin", None, "Major", "additive QT",
+                                                           "CredibleMeds")] if "levofloxacin" in drugs else [])
+    dc = cds3.call("aegis-order-sign", {"hook": "order-sign", "context": {"patientId": F.patient_id(room), "draftOrders": {
+        "resourceType": "Bundle", "entry": [{"resource": {"resourceType": "MedicationRequest", "id": "d3",
+                                                          "medicationCodeableConcept": {"text": "levofloxacin 750 MG IV"}}}]}}})["cards"]
+    ok(len(dc) == 1 and dc[0]["indicator"] == "critical" and "DDInter" in dc[0]["detail"]
+       and "CredibleMeds" in dc[0]["detail"],
+       "one hazard reported by two knowledge layers (moderate and major) is ONE card at the higher severity, "
+       "citing both")
+    # webhooks
+    wh = W.Webhooks(clock=clock)
+    sub = wh.subscribe("internal://echo", [], "verify")["subscription"]
+    ok(sub["secret"].startswith("whsec_"), "a subscription's secret is a whsec_ key, returned once")
+    wh.from_paging([{"type": "page", "data": {"id": "PG-1", "status": "paging", "priority": 1}},
+                    {"type": "page", "data": {"id": "PG-1", "status": "paging", "priority": 1}},
+                    {"type": "page", "data": {"id": "PG-1", "status": "accepted", "priority": 1}}])
+    wh.pump()
+    echo = list(wh.echo)
+    ok([e["type"] for e in echo] == ["page.created", "page.accepted"] and all(e["verified"] for e in echo),
+       "page transitions become one event each, and the built-in receiver verifies every signature")
+    body = '{"type":"page.created"}'
+    hdr = {"webhook-id": "msg_1", "webhook-timestamp": str(int(clock.t)),
+           "webhook-signature": W.sign(sub["secret"], "msg_1", int(clock.t), body)}
+    ok(W.verify(sub["secret"], hdr, body, clock.t) and not W.verify(sub["secret"], hdr, body + " ", clock.t)
+       and not W.verify(sub["secret"], hdr, body, clock.t + 3600),
+       "pair: the signature verifies; a one-byte change, or a stale timestamp, does not")
+    import os as _os
+    prev = _os.environ.pop("AEGIS_WEBHOOK_ALLOW_PRIVATE", None)
+    ok(W.check_url("https://127.0.0.1/x") and W.check_url("https://10.0.0.5/x") and W.check_url("http://example.com"),
+       "loopback, private and plain-http targets are refused (no SSRF through webhooks)")
+    if prev is not None:
+        _os.environ["AEGIS_WEBHOOK_ALLOW_PRIVATE"] = prev
+    calls = []
+    failing = W.Webhooks(post=lambda url, h, b: (calls.append(1), (500, "boom"))[1], clock=clock)
+    failing.subs["s"] = W.Subscription("s", "https://example.org/hook", list(W.EVENT_TYPES), W.new_secret(), "verify")
+    failing.publish("page.created", {"id": "PG-2"})
+    for _ in range(len(W.BACKOFF_S) + 1):
+        failing.pump()
+        clock.t += 2000
+    st = failing.status()
+    ok(len(calls) == len(W.BACKOFF_S) and st["counters"]["dead"] == 1 and st["dead"],
+       f"a receiver that keeps failing is retried {len(W.BACKOFF_S)} times, then dead-lettered")
+
+
+def check_posthoc() -> None:
+    section("[10] post-hoc fixes motivated by the registered run")
+    clock = Clock()
+    fr = FakeRooms(set())
+    e = Integration(rooms=fr, clock=clock)
+    e.register(Interface("lab3", "Lab 3", "HL7 v2.5.1", "inbound", "HTTP", "LAB3", "SITE", "mixed"))
+    _admit(e, "P1", "512", app="ADT3")
+    rng = random.Random(9)
+    for i in range(16):
+        # heart-rate values written "/min" under a code the lexical rules read as mean arterial pressure
+        _oru(e, "LAB3", "SITE", "P1", [("MAP", "Mean arterial pressure", "L", rng.randint(70, 95), "/min"),
+                                       ("K", "Potassium", "L", round(rng.uniform(3.7, 4.6), 1), ""),
+                                       ("PH", "pH arterial", "L", round(rng.uniform(7.36, 7.44), 2), "")], f"U{i}")
+    ms = {m["code"]: m for m in e.mapping_list()}
+    cand = [c for c in e.mapping(ms["MAP"]["id"])["candidates"] if c["concept"] == "map"]
+    ok(ms["MAP"]["status"] == "review" and cand and not cand[0]["viable"] and cand[0]["decision"] == "unit mismatch"
+       and "/min" in ms["MAP"]["reason"],
+       "a unit the feed wrote that cannot be the proposed concept refuses it ('/min' is not a pressure): "
+       "the console offers no 'adopt' for it")
+    ok(ms["K"]["status"] == "review" and ms["PH"]["status"] == "adopted",
+       "a feed with no unit waits for a person; pH, unitless by convention, is adopted")
+    mg = V.BY_KEY["magnesium"]
+    mgv = ref_sample("magnesium", 60, seed=8)
+    ok(E.infer(mg, [x / 2.431 for x in mgv], mg.conversion("mmol/L")).decision == "declared"
+       and E.infer(mg, mgv, mg.conversion("meq/L")).decision == "ambiguous",
+       "pair: magnesium in mmol/L is confirmed; mg/dL values labelled mEq/L (x1.22) are ambiguous, not adopted")
+    be = V.BY_KEY["base_excess"]
+    bev = ref_sample("base_excess", 60, seed=8)
+    ok(E.infer(be, bev, U.IDENTITY).decision == "declared",
+       "base excess (linear, centred on zero) is confirmed: reading it x0.001 crushes its spread and is refused")
+    bil = V.BY_KEY["bilirubin"]
+    high = E.feed_baseline(bil, [7.5, 8.2, 9.1, 6.8, 8.8, 7.9, 9.4, 8.0, 7.2, 8.6, 9.0, 7.7])
+    back = [0.6, 0.9, 1.1, 0.7, 0.8, 1.3, 0.5, 0.9, 1.0, 0.7, 0.8, 1.2]
+    wild = [x * 20 for x in [7.5, 8.2, 9.1, 6.8, 8.8, 7.9, 9.4, 8.0, 7.2, 8.6, 9.0, 7.7]]
+    ok(all(c.status == "pass" for c in E.drift_checks(bil, back, back, high))
+       and any(c.status == "fail" for c in E.drift_checks(bil, wild, wild, high)),
+       "pair: a feed moving back INTO the population band from an unrepresentative baseline passes; x20 out of it fails")
+    inv = E.INVARIANT_BY_NAME["bp_order"]
+    good, bad = {"sbp": 120, "map": 85, "dbp": 70}, {"sbp": 85, "map": 120, "dbp": 70}
+    burst = [good] * 8 + [bad] * 4
+    swapped = [good] * 8 + [bad] * 6
+    ok(E.check_invariant(inv, burst).status == "fail" and E.cusum_identity(inv, burst).status != "fail",
+       "pair: four violations in twelve failed the old windowed test (the registered H4 false alarms); CUSUM waits")
+    ok(E.cusum_identity(inv, swapped).status == "fail", "... while six consecutive violations (a swap) fail it")
+    rr = random.Random(3)
+    clean = [bad if rr.random() < 0.02 else good for _ in range(20000)]
+    peak, S = 0.0, 0.0
+    lp, lq = math.log(E.CUSUM_P1 / inv.p0), math.log((1 - E.CUSUM_P1) / (1 - inv.p0))
+    for r in clean:
+        S = max(0.0, S + (lp if inv.violated(r) else lq))
+        peak = max(peak, S)
+    ok(0 < peak < E.CUSUM_H, f"20,000 rows at the identity's own allowance (2%) never reach the threshold (peak {peak:.1f})")
+    # a PaCO2/HCO3 swap: only the pair is withheld, and the exchange is the fix
+    e2 = Integration(rooms=FakeRooms(set()), clock=clock)
+    e2.register(Interface("abg", "Blood gas", "HL7 v2.5.1", "inbound", "HTTP", "ABG", "SITE", "gas"))
+    _admit(e2, "P2", "513", app="ADT4")
+    g = random.Random(5)
+
+    def panel(i: int, swap: bool = False) -> None:
+        pco2 = g.uniform(35, 45)
+        hco3 = g.uniform(22, 26)
+        ph = 6.1 + math.log10(hco3 / (0.0307 * pco2)) + g.uniform(-0.02, 0.02)
+        be = 0.93 * (hco3 - 24.4 + 14.8 * (ph - 7.4)) + g.uniform(-1, 1)
+        a, b = (hco3, pco2) if swap else (pco2, hco3)
+        _oru(e2, "ABG", "SITE", "P2", [("2744-1", "pH", "LN", round(ph, 3), "[pH]"),
+                                       ("2019-8", "PaCO2", "LN", round(a, 1), "mm[Hg]"),
+                                       ("1963-8", "HCO3", "LN", round(b, 1), "mmol/L"),
+                                       ("1925-7", "BE", "LN", round(be, 1), "mmol/L")], f"G{i}")
+    for i in range(40):
+        panel(i)
+    for i in range(40, 60):
+        panel(i, swap=True)
+    q = {m["code"] for m in e2.mapping_list() if m["status"] == "quarantined"}
+    pco2m = next(m for m in e2.mapping_list() if m["code"] == "2019-8")
+    ok(q == {"2019-8", "1963-8"} and (pco2m["fault"] or {}).get("swap"),
+       "a PaCO2/HCO3 swap withholds exactly those two; pH and base excess keep flowing (the registered run lost 6,821 values here)")
+    res = e2.adopt(pco2m["id"], "verify", None, "swap")
+    after = {m["code"]: m for m in e2.mapping_list()}
+    ok(res["status"] == "ok" and after["2019-8"]["concept"] == "hco3" and after["1963-8"]["concept"] == "paco2"
+       and after["2019-8"]["status"] == after["1963-8"]["status"] == "adopted",
+       "accepting the exchange re-reads each code as the other's concept")
+    for i in range(60, 75):
+        panel(i, swap=True)
+    ok(all(after_m["status"] == "adopted" for after_m in e2.mapping_list()),
+       "... and the exchanged feed then passes its live evidence")
+
+
 def main() -> None:
     t0 = time.time()
     _results.clear()
     print("verify_interop: the integration plane")
     for part in (check_codec, check_vocab, check_evidence, check_identities, check_onboarding, check_protocol,
-                 check_live, check_paging):
+                 check_live, check_paging, check_standards, check_posthoc):
         try:
             part()
         except Exception as exc:                  # a crashed section is a failed check, never a pass

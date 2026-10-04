@@ -18,7 +18,8 @@ Each entry:
     class   read | compute | write | egress | stream | auth
     cap     the capability the caller must hold (rbac.CAP_MIN_RING)
     refine  optional: the handler narrows further (``syscall`` checks the per-trap
-            capability; ``signal`` lets owners signal their own processes)
+            capability; ``signal`` lets owners signal their own processes; ``drill``
+            accepts either of two capabilities)
 
 CLASSES
     read     observes state                      never journalled
@@ -166,12 +167,22 @@ RULES: List[Tuple[str, str, str, str, str]] = [
     ("POST", r"^/aegis/ingest$", "write", "telemetry:ingest", ""),
     ("POST", r"^/aegis/(simulate/|ppg/vasodilation|hdkernel/run|scenarios/)", "write",
      "sim:control", ""),
+    # --- the standards surface: FHIR R4, CDS Hooks, webhooks
+    ("GET", r"^/aegis/fhir/R4/metadata$", "read", "view:public", ""),
+    ("GET", r"^/aegis/fhir/", "read", "interop:read", ""),
+    ("POST", r"^/aegis/fhir/R4(/Observation)?$", "write", "interop:ingest", ""),
+    ("GET", r"^/aegis/cds-services$", "read", "view:public", ""),
+    ("POST", r"^/aegis/cds-services/[^/]+/feedback$", "write", "interop:read", ""),
+    ("POST", r"^/aegis/cds-services/[^/]+$", "compute", "interop:read", ""),
+    ("POST", r"^/aegis/interop/webhooks", "write", "interop:configure", ""),
     # --- the integration plane (backend/aegis/interop)
     ("POST", r"^/aegis/interop/hl7$", "write", "interop:ingest", ""),
     ("POST", r"^/aegis/interop/mappings/[^/]+/reevaluate$", "compute", "interop:read", ""),
     ("POST", r"^/aegis/interop/(mappings/|settings)", "write", "interop:configure", ""),
-    ("POST", r"^/aegis/interop/sim/drill$", "write", "drill:device", ""),
-    ("GET", r"^/aegis/interop/(vocabulary|audit|sim)$", "read", "view:public", ""),
+    # a drill on the simulated feeds: the integration plane's administrator or anyone
+    # who may drill devices (the handler requires interop:configure or drill:device)
+    ("POST", r"^/aegis/interop/sim/drill$", "write", "interop:read", "drill"),
+    ("GET", r"^/aegis/interop/(vocabulary|audit|sim|bench)$", "read", "view:public", ""),
     ("GET", r"^/aegis/interop", "read", "interop:read", ""),
     # --- analyses that change nothing
     ("POST", r"^/aegis/(llm/|doctor/|agent/invoke|speech)", "compute", "compute:ask", ""),

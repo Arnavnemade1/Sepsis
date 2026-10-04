@@ -295,3 +295,9 @@ class InteropDrillIn(BaseModel):
 
 class InteropMessageIn(BaseModel):
     message: str                           # one HL7 v2 message, ER7 text
+
+
+class WebhookIn(BaseModel):
+    url: str                               # https://... (or internal://echo)
+    events: List[str] = []                 # empty = every event type
+    description: str = ""

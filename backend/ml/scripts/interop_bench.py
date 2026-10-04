@@ -244,9 +244,19 @@ def identity_partners(cols: List[str]) -> List[str]:
 # --------------------------------------------------------------------------- #
 # H5: onboarding decisions
 # --------------------------------------------------------------------------- #
-def auto_adopts(c: V.Concept, values: List[float], written: str) -> Tuple[bool, str]:
-    """The engine's auto-adopt rule for one proposal (engine._propose)."""
+def auto_adopts(c: V.Concept, values: List[float], written: str, rule: str = "registered") -> Tuple[bool, str]:
+    """The engine's auto-adopt rule for one proposal (engine._propose).
+
+    ``registered``: the rule as committed in 082a142 (what the registered run measured).
+    ``fixed``: after the post-hoc fix: a written unit that cannot be the concept refuses,
+    and only a written (or unitless-by-convention) unit can be confirmed."""
     tok = norm(written)
+    if rule == "fixed":
+        tok, declared = V.resolve_unit(c, written)
+        if tok and declared is None:
+            return False, "unit mismatch"
+        inf = E.infer(c, values, declared)
+        return (True, "declared") if inf.decision == "declared" else (False, inf.decision)
     declared = c.conversion(tok) if tok else None
     inf = E.infer(c, values, declared)
     if inf.decision == "declared":
@@ -270,7 +280,7 @@ def alt_units(c: V.Concept) -> List[Tuple[str, float, float]]:
     return out
 
 
-def h5(sub, order: np.ndarray, blind: List[List[str]]) -> Dict[str, Any]:
+def h5(sub, order: np.ndarray, blind: List[List[str]], rule: str = "registered") -> Dict[str, Any]:
     columns = list(sub.columns)
     site_row = sub.site[sub.seg]
     res = {"a": [0, 0], "b": [0, 0], "c": [0, 0], "d": [0, 0], "d_blind": [0, 0], "unsafe_c": [], "unsafe_d": [],
@@ -288,19 +298,19 @@ def h5(sub, order: np.ndarray, blind: List[List[str]]) -> Dict[str, Any]:
             vals = [float(v[r]) for r in rows]
             if (col == "Calcium" and s == 1) or (col == "SaO2" and s == 0):
                 continue                                  # audited contaminated: reported in H4
-            ok, why = auto_adopts(c, vals, c.unit)
+            ok, why = auto_adopts(c, vals, c.unit, rule)
             res["a"][0] += ok
             res["a"][1] += 1
             if not ok:
                 res["not_adopted_a"].append(f"{c.key}@{'AB'[s]}: {why}")
             for tok, f, o in alt_units(c):
                 raw = [(x - o) / f for x in vals]           # the same values, in that unit
-                ok_b, _ = auto_adopts(c, raw, tok)
+                ok_b, _ = auto_adopts(c, raw, tok, rule)
                 res["b"][0] += ok_b
                 res["b"][1] += 1
                 if abs(f - 1.0) < 1e-9 and o == 0.0:
                     continue        # an equivalent unit (10^9/L = 10^3/uL, mEq/L = mmol/L) is not a wrong label
-                bad, _ = auto_adopts(c, vals, tok)          # canonical values under that label
+                bad, _ = auto_adopts(c, vals, tok, rule)    # canonical values under that label
                 res["c"][0] += bad
                 res["c"][1] += 1
                 if bad:
@@ -309,7 +319,7 @@ def h5(sub, order: np.ndarray, blind: List[List[str]]) -> Dict[str, Any]:
                 if c2.key == c.key or c2.key not in V.references():
                     continue
                 # the feed writes the values' TRUE unit; only the proposal is wrong
-                bad, _ = auto_adopts(c2, vals, c.unit)
+                bad, _ = auto_adopts(c2, vals, c.unit, rule)
                 key = "d_blind" if (c.key, c2.key) in blind_set else "d"
                 res[key][0] += bad
                 res[key][1] += 1
@@ -391,6 +401,9 @@ def main() -> None:
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--smoke", type=int, default=0,
                     help="bug check only: the first N patients, two faults, output to a scratch file")
+    ap.add_argument("--posthoc", action="store_true",
+                    help="EXPLORATORY: the gate after the fixes the registered run motivated, on the same "
+                         "patients; silent harm reused from the registered run; writes interop_bench_posthoc.json")
     args = ap.parse_args()
     t_all = time.time()
     with open(PREREG) as fh:
@@ -403,6 +416,11 @@ def main() -> None:
         prereg = {**prereg, "faults": [f for f in prereg["faults"] if f["id"] in ("creatinine_umol", "swap_sbp_map")]}
         out_path = os.path.join(config.ARTIFACTS_DIR, "interop", "interop_bench_smoke.json")
         args.boot = 50
+    registered = None
+    if args.posthoc:
+        out_path = os.path.join(config.ARTIFACTS_DIR, "interop", "interop_bench_posthoc.json")
+        with open(OUT) as fh:
+            registered = json.load(fh)
     det = joblib.load(os.path.join(config.ARTIFACTS_DIR, "gbm_icu.joblib"))
     assert det.detector_id == prereg["data"]["detector"].split(" ")[0], det.detector_id
     thr = float(prereg["data"]["threshold"])
@@ -427,13 +445,17 @@ def main() -> None:
     for f in prereg["faults"]:
         fid, cols, spec = f["id"], f["columns"].split("|"), f["transform"]
         t0 = time.time()
-        # H1: silent, every observation
-        Xs = apply_fault(X0, cols, spec, columns, np.arange(sub.n_rows))
-        p_s = score(det, sub, Xs)
-        far_s, det_s = alarm_rates(p_s, y, seg, thr)
-        silent = {"auroc": auroc(y, p_s), "far": far_s, "detection": det_s,
-                  "vs_clean": paired_boot(y, p_s, p_clean, groups, args.boot, 1)}
-        del Xs
+        # H1: silent, every observation (the gate plays no part, so post hoc reuses the registered run)
+        if registered is not None:
+            silent = registered["faults"][fid]["silent"]
+        else:
+            Xs = apply_fault(X0, cols, spec, columns, np.arange(sub.n_rows))
+            p_s = score(det, sub, Xs)
+            far_s, det_s = alarm_rates(p_s, y, seg, thr)
+            silent = {"auroc": auroc(y, p_s), "far": far_s, "detection": det_s,
+                      "vs_clean": paired_boot(y, p_s, p_clean, groups, args.boot, 1)}
+            del Xs
+        far_s = silent["far"]
         # H2/H3: the stream through the deployed engine, fault from row FAULT_START
         Xf = apply_fault(X0, cols, spec, columns, late)
         watch = cols
@@ -463,10 +485,16 @@ def main() -> None:
             Xq[m, j] = np.where(deliver[m], vals[m], np.nan)
             mp = rp["mappings"].get(c) or {}
             sug = ((mp.get("fault") or {}).get("suggested"))
-            fixes[c] = sug
+            sw = ((mp.get("fault") or {}).get("swap"))
+            fixes[c] = sug or (sw and {"label": sw.get("label"), "swap": sw.get("concept")})
             if sug:
                 fixed = vals * sug["factor"] + sug["offset"]
                 Xfix[m, j] = np.where(deliver[m], vals[m], fixed[m])
+            elif sw and V.BY_KEY.get(sw.get("concept") or "") and V.BY_KEY[sw["concept"]].cinc in columns:
+                # the accepted exchange: this code's withheld values are read as the partner's concept,
+                # i.e. the partner column's true values come back from this column and vice versa
+                other = columns.index(V.BY_KEY[sw["concept"]].cinc)
+                Xfix[m, j] = np.where(deliver[m], vals[m], Xf[m, other])
             else:
                 Xfix[m, j] = Xq[m, j]
         p_q, p_fix, p_m = score(det, sub, Xq), score(det, sub, Xfix), score(det, sub, Xmiss)
@@ -536,7 +564,8 @@ def main() -> None:
     results["h4"] = h4
 
     # H5: onboarding
-    r5 = h5(sub, order, prereg["hypotheses"]["H5_onboarding"]["blind_pairs"])
+    r5 = h5(sub, order, prereg["hypotheses"]["H5_onboarding"]["blind_pairs"],
+            rule="fixed" if args.posthoc else "registered")
     results["h5"] = {k: v for k, v in r5.items()}
     for k in ("a", "b", "c", "d", "d_blind"):
         kk, nn = r5[k]
@@ -546,15 +575,21 @@ def main() -> None:
 
     # descriptive: proposers
     llm = None
-    if not args.no_llm:
+    if not args.no_llm and not args.posthoc:
         try:
             from backend.llm.provider import LLMProvider
             llm = LLMProvider()
         except Exception:
             llm = None
-    results["proposers"] = proposer_accuracy(llm)
-    print(f"  proposers: lexical {results['proposers']['lexical'][None]}, model {results['proposers']['model']} "
-          f"{(results['proposers']['model_acc'] or {}).get(None)}")
+    results["proposers"] = proposer_accuracy(llm) if not args.posthoc else registered.get("proposers")
+    if args.posthoc:
+        results["note"] = ("EXPLORATORY post-hoc run: the gate after the fixes the registered run motivated (unit "
+                           "mismatch refuses; only a written unit is confirmed; a jump must also leave the population "
+                           "band; identities by Page's CUSUM; swap explanation). Same patients as the registered run; "
+                           "silent harm reused from it. Not a confirmation.")
+    if not args.posthoc:
+        print(f"  proposers: lexical {results['proposers']['lexical'][None]}, model {results['proposers']['model']} "
+              f"{(results['proposers']['model_acc'] or {}).get(None)}")
 
     # verdicts against the registered bars
     F = results["faults"]

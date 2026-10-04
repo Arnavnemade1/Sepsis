@@ -959,6 +959,10 @@ class PagingOS:
         with self._lock:
             self.units.backfill_interface(room, key, rows, note)
 
+    def interface_released(self, room: str, concept: str, interface: str) -> None:
+        with self._lock:
+            self.units.released_interface(room, concept, interface)
+
     def interface_retract(self, room: str, ids: List[str], vitals_since: Dict[str, float]) -> None:
         with self._lock:
             self.units.retract_interface(room, ids, vitals_since)

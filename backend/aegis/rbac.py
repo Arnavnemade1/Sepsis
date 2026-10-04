@@ -135,8 +135,9 @@ GRANTS: Dict[str, frozenset] = {
                                       "policy:write", "page:raise", "page:respond",
                                       "page:dispatch", "page:configure",
                                       "interop:read", "interop:configure"}),
-    # the interface engine sends feeds and reads nothing it was not sent: no clinical views
-    "interface": PUBLIC_CAPS | frozenset({"interop:ingest"}),
+    # the hospital's systems: the interface engine sends feeds, and the EHR reads AegisOS's
+    # findings back (FHIR, CDS Hooks); no clinical views of the console, no orders
+    "interface": PUBLIC_CAPS | frozenset({"interop:ingest", "interop:read"}),
 }
 
 #: Break-glass: what an emergency elevation ADDS for its duration — read access to
@@ -157,8 +158,12 @@ FORBIDDEN_ELEVATION = frozenset({"order:treat", "order:clear", "order:approve_pr
 #: Capabilities the AI agent never holds, whoever it acts for. Everything else it
 #: may use only if the clinician it acts on behalf of holds it too (euid ∩ ruid).
 #: Break-glass needs a human's stated reason; reviewing it and administering
-#: sessions are accountability functions a model cannot carry.
-AGENT_DENY = frozenset({"breakglass:invoke", "breakglass:review", "session:admin"})
+#: sessions are accountability functions a model cannot carry. Deciding what a
+#: hospital's local code means (interop:configure) and sending data into the
+#: hospital (interop:ingest) are kept from it too: in the integration plane a
+#: model only ever PROPOSES, and that holds even when a chief asks the agent.
+AGENT_DENY = frozenset({"breakglass:invoke", "breakglass:review", "session:admin",
+                        "interop:configure", "interop:ingest"})
 
 # write-syscall name -> capability it requires (gates the existing trap gate)
 SYSCALL_CAP: Dict[str, str] = {

@@ -708,6 +708,17 @@ class RoomMonitor:
                 self._event(room, t, "interface", "watch", f"{it.get('label')} withheld ({it.get('why')}): the value "
                                                           f"is not shown or used until the feed is reviewed")
 
+    def released_interface(self, room: str, concept: str, interface: str) -> None:
+        """A person fixed the mapping and the withheld values were delivered: the room
+        stops listing them as withheld (values withheld from another feed stay)."""
+        st = self.interfaced.get(room)
+        if st is None:
+            return
+        keep = [w for w in st["withheld"] if not (w.get("concept") == concept and w.get("interface") == interface)]
+        if len(keep) != len(st["withheld"]):
+            st["withheld"] = deque(keep, maxlen=st["withheld"].maxlen)
+            st["last_withheld"].pop(concept, None)
+
     def retract_interface(self, room: str, ids: List[str], vitals_since: Dict[str, float]) -> None:
         st = self.interfaced.get(room)
         if st is None:

@@ -156,6 +156,16 @@ def assess(c: Concept, values: Sequence[float], conv: Conversion,
                                 + (f"×{math.exp(c.band):.2f}" if c.scale == "log" else f"±{c.band:g}") + ")"))
         else:
             checks.append(Check("location", "unsure", None, c.band, len(ts), "too few positive values"))
+        if c.scale == "linear" and len(ts) >= n_min:
+            # on a linear scale a wrong factor can leave the median in place (base excess centred
+            # on zero read x0.001 is still centred on zero) while crushing or inflating the spread;
+            # log-scale concepts need no such check, since a factor only moves their location
+            sd_obs = _robust_sd(ts)
+            if sd_obs > 0:
+                ratio = sd_obs / max(ref.spread, 1e-9)
+                checks.append(Check("spread", "fail" if (ratio < 0.1 or ratio > 10) else "pass", ratio, None, len(ts),
+                                    f"spread {sd_obs:.3g} vs reference {ref.spread:.3g} (×{ratio:.2f}; "
+                                    f"allowed ×0.1–×10)"))
         kt = sum(1 for x in xs if x < ref.tail[0] or x > ref.tail[1])
         tail_frac = kt / n
         pt = binom_sf(kt, n, P_TAIL)
@@ -223,6 +233,14 @@ def infer(c: Concept, values: Sequence[float], declared: Optional[Conversion],
     fits.sort(key=lambda f: f.score)
     passing = [f for f in fits if f.status == "pass"]
     if d_fit is not None and d_fit.status == "pass":
+        # the written unit is confirmed only if the data can tell it apart from every other unit
+        # this analyte is reported in: magnesium in mEq/L and in mg/dL differ by x1.22, inside its
+        # population band, so values that fit one fit the other and a person must say which
+        rivals = [f for f in passing if not f.conversion.label.startswith("decade shift")
+                  and not (abs(f.conversion.factor - d_fit.conversion.factor) < 1e-9
+                           and abs(f.conversion.offset - d_fit.conversion.offset) < 1e-9)]
+        if rivals:
+            return Inference("ambiguous", d_fit, d_fit, passing, fits)
         return Inference("declared", d_fit, d_fit, passing, fits)
     if d_fit is not None and d_fit.status == "unsure" and not any(
             f.status == "pass" and f.conversion is not d_fit.conversion for f in fits):
@@ -368,6 +386,7 @@ def drift_checks(c: Concept, recent: Sequence[float], window: Sequence[float],
                          f"{k} of the last {n} outside the physiological window {lo:g}–{hi:g} {c.unit}"))
     if baseline is not None and c.scale != "none":
         tol = jump_tolerance(c)
+        ref = references().get(c.key)
         for name, xs in (("recent", list(recent)), ("window", list(window))):
             ts = [t for t in (transform(c, x) for x in xs) if t is not None]
             if len(ts) < 8:
@@ -376,11 +395,47 @@ def drift_checks(c: Concept, recent: Sequence[float], window: Sequence[float],
             sd = max(_robust_sd(ts), 0.25 * baseline["spread"], 1e-6)
             h = Z_CI * 1.2533 * sd / math.sqrt(len(ts))
             d = m - baseline["loc"]
+            # a unit error moves a feed away from its own baseline AND out of the population
+            # band; a feed whose baseline happened to be unrepresentative (a dozen high early
+            # bilirubins) moves back INTO the population, which is not a fault
+            outside = ref is None or abs(m - ref.loc) > c.band
             shown = ("×%.2f" % math.exp(d)) if c.scale == "log" else ("%+.2f %s" % (d, c.unit))
-            out.append(Check(f"jump:{name}", "fail" if abs(d) - h > tol else "pass", d, tol, len(ts),
+            out.append(Check(f"jump:{name}", "fail" if (abs(d) - h > tol and outside) else "pass", d, tol, len(ts),
                              f"median of the last {len(ts)} moved {shown} from this feed's baseline (limit "
-                             + (f"×{math.exp(tol):.2f}" if c.scale == "log" else f"±{tol:g} {c.unit}") + ")"))
+                             + (f"×{math.exp(tol):.2f}" if c.scale == "log" else f"±{tol:g} {c.unit}") + ")"
+                             + ("" if outside else ", back inside the population band")))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Sequential identity monitoring (Page's CUSUM)
+# --------------------------------------------------------------------------- #
+CUSUM_P1 = 0.5          # what a swap or mis-mapping looks like: the identity fails half the time or more
+CUSUM_H = 13.0          # simulated under each identity's a-priori violation rate: ~4 million clean rows
+                        # between false alarms in the worst case (true rate = allowance); a swap needs 5
+
+
+def cusum_identity(inv: "Invariant", samples: Sequence[Dict[str, float]], h: float = CUSUM_H) -> Check:
+    """Page's CUSUM over co-observed samples in arrival order. Each violation adds
+    log(p1/p0), each clean sample adds log((1-p1)/(1-p0)); the statistic never goes below
+    zero, so a burst that has passed decays and only evidence that persists alarms. This
+    replaces repeated overlapping binomial windows, whose many correlated tests turned
+    chance bursts at the clean rate into quarantines (registered run, H4)."""
+    lp, lq = math.log(CUSUM_P1 / inv.p0), math.log((1 - CUSUM_P1) / (1 - inv.p0))
+    S, n, k = 0.0, 0, 0
+    for s in samples:
+        if not all(key in s and s[key] is not None for key in inv.concepts):
+            continue
+        n += 1
+        try:
+            v = bool(inv.violated(s))
+        except (ZeroDivisionError, ValueError, KeyError):
+            v = True
+        k += v
+        S = max(0.0, S + (lp if v else lq))
+    st = "fail" if S >= h else ("pass" if n >= N_MIN_INV else ("skip" if n == 0 else "unsure"))
+    return Check(f"invariant:{inv.name}", st, S, h, n,
+                 f"{inv.statement}: violated in {k} of {n} co-observed samples (CUSUM {S:.1f} of {h:g})")
 
 
 def stuck_run(values: Sequence[float], ceiling: Optional[float] = None) -> int:

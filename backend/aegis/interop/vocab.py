@@ -281,9 +281,14 @@ def concept(key: str) -> Optional[Concept]:
     return BY_KEY.get(key)
 
 
+UNITLESS_BY_CONVENTION = ("ph", "inr")     # a feed that writes no unit for these means the canonical one
+
+
 def resolve_unit(c: Concept, written: str) -> Tuple[str, Optional[Conversion]]:
     """(token, conversion to canonical) for a unit as written in the message."""
     tok = norm(written)
     if not tok:
+        if c.key in UNITLESS_BY_CONVENTION:
+            return c.unit, IDENTITY
         return tok, None
     return tok, c.conversion(tok)

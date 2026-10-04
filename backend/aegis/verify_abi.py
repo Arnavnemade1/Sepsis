@@ -113,6 +113,18 @@ def main() -> int:
               any(e["event"] == "treat" and e["uid"] == "dr.alvarez"
                   for e in S.KJOURNAL.tail(limit=200)))
 
+        # an interface drill accepts either of two capabilities (refine "drill"): the chief,
+        # who decides the fix, may run one; a nurse may not, and the drill does not start
+        nurse2 = client.post("/aegis/sys/login", json={"username": "rn.patel"}).json()["token"]
+        r = client.post("/aegis/interop/sim/drill", json={"kind": "temp_celsius", "on": True},
+                        headers={"Authorization": f"Bearer {nurse2}"}).json()
+        check("a nurse is refused an interface fault drill, and the drill does not start",
+              r.get("errno") == "EPERM" and "temp_celsius" not in S.INTEROP_SIM.faults, str(r)[:100])
+        r = client.post("/aegis/interop/sim/drill", json={"kind": "temp_celsius", "on": True}, headers=HC).json()
+        started = "temp_celsius" in S.INTEROP_SIM.faults
+        client.post("/aegis/interop/sim/drill", json={"kind": "temp_celsius", "on": False}, headers=HC)
+        check("the chief (interop:configure) may run one, without drill:device", started, str(r)[:100])
+
         # -- 4. Dr. Aegis through the real registry --------------------------- #
         out = S._tools.invoke("manage_package", {"action": "install", "name": "tachy"},
                               on_behalf_of=GUEST)
