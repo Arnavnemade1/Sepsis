@@ -62,6 +62,19 @@ type Evidence = {
     personalised: { auroc: number; hour_matched: number };
     delta: { delta: number; lo: number; hi: number; draws: number };
     index_map: { p_medium: number; p_high: number; index_medium: number; index_high: number };
+    icu?: {
+      detector: string;
+      shipped: boolean;
+      matches_operating_point: boolean;
+      score: { auroc: number; hour_matched: number; ece: number };
+      delta: { delta: number; lo: number; hi: number; draws: number };
+      alarms: Record<"candidate" | "incumbent", { threshold: number; detection: number; false_alarm: number }>;
+      budget15: { delta: number; lo: number; hi: number };
+      high: number;
+      medium: number;
+      trees: number;
+      train_patients: number;
+    };
   };
   falsification: null | {
     generated: string;
@@ -352,10 +365,14 @@ function Bar({ label, v, cap, note }: { label: string; v: number; cap?: number; 
 function WardPlate({ w }: { w: NonNullable<Evidence["ward"]> }) {
   // AUROC on its meaningful range: 0.5 is chance
   const pos = (a: number) => `${Math.max(0, Math.min(1, (a - 0.5) / 0.5)) * 100}%`;
+  const icu = w.icu?.shipped ? w.icu : null;
   const rows = [
-    { k: "Bedside-rules fusion, the ICU rooms' risk until 2026-10-03", a: w.before, tone: "bg-dim" },
-    { k: "The deployed detector, what every bed reads now", a: w.after, tone: "bg-ink" },
+    { k: "Bedside-rules fusion, the ICU rooms' risk until 2026-10-03", a: w.before, tone: "bg-faint" },
+    { k: icu ? "The 7-vital stack, what the live room reads" : "The deployed detector, what every bed reads now", a: w.after, tone: icu ? "bg-dim" : "bg-ink" },
+    ...(icu ? [{ k: "The all-variable detector, what the ICU rooms read", a: icu.score, tone: "bg-ink" }] : []),
   ];
+  const high = icu ? icu.high : w.index_map.p_high;
+  const medium = icu ? icu.medium : w.index_map.p_medium;
   return (
     <Plate title="What it scores" eyebrow="Every monitored bed: the twelve ICU rooms and the live room" right={<Stamp ok={w.matches_detector} />}>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
@@ -382,32 +399,40 @@ function WardPlate({ w }: { w: NonNullable<Evidence["ward"]> }) {
             ))}
           </div>
           <p className="mt-4 text-[12px] leading-relaxed text-dim">
-            The ICU rooms raise most detector pages, and until this change a hand-weighted qSOFA/SIRS score decided them while the validated
-            detector served only the live room. Paired bootstrap over patients ({w.delta.draws} draws): +{w.delta.delta.toFixed(3)} [
-            {w.delta.lo >= 0 ? "+" : ""}
-            {w.delta.lo.toFixed(3)}, +{w.delta.hi.toFixed(3)}]. Own-baseline learning on top of the detector scored {w.personalised.auroc.toFixed(3)}, so it
-            explains a record and no longer moves the alarm.
+            The ICU rooms raise most detector pages, and until 2026-10-03 a hand-weighted qSOFA/SIRS score decided them while the validated
+            detector served only the live room (+{w.delta.delta.toFixed(3)} [+{w.delta.lo.toFixed(3)}, +{w.delta.hi.toFixed(3)}] once it did).
+            {icu && (
+              <>
+                {" "}They replay full ICU records, so they are now read by a LightGBM over all 40 variables, trained on the same{" "}
+                {icu.train_patients.toLocaleString()} patients and judged on the same ones: +{icu.delta.delta.toFixed(3)} [+{icu.delta.lo.toFixed(3)}, +
+                {icu.delta.hi.toFixed(3)}] over the stack, registered before it ran. The gain is in ranking: inside a fixed 15% alarm budget its
+                detection is a tie ({icu.budget15.delta >= 0 ? "+" : ""}
+                {icu.budget15.delta.toFixed(3)} [{icu.budget15.lo.toFixed(3)}, +{icu.budget15.hi.toFixed(3)}]).
+              </>
+            )}{" "}
+            Own-baseline learning on top of the detector scored {w.personalised.auroc.toFixed(3)}, so it explains a record and no longer moves the alarm.
           </p>
         </div>
         <div className="border-t border-line-soft pt-4 lg:border-l lg:border-t-0 lg:pl-6 lg:pt-0">
-          <div className="text-[11.5px] text-dim">The scale every room is read on</div>
+          <div className="text-[11.5px] text-dim">{icu ? "The scale the ICU rooms are read on" : "The scale every room is read on"}</div>
           <div className="mt-3 space-y-2.5 text-[12.5px]">
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-muted">Pages at index</span>
               <span className="num font-mono text-ink">
-                {w.index_map.index_high.toFixed(2)} <span className="text-dim">= P {pct(w.index_map.p_high, 2)}</span>
+                {w.index_map.index_high.toFixed(2)} <span className="text-dim">= P {pct(high, 2)}</span>
               </span>
             </div>
             <div className="flex items-baseline justify-between gap-3">
               <span className="text-muted">Medium from</span>
               <span className="num font-mono text-ink">
-                {w.index_map.index_medium.toFixed(2)} <span className="text-dim">= P {pct(w.index_map.p_medium, 2)}</span>
+                {w.index_map.index_medium.toFixed(2)} <span className="text-dim">= P {pct(medium, 2)}</span>
               </span>
             </div>
           </div>
           <p className="mt-3 text-[12px] leading-relaxed text-dim">
-            The index is the calibrated probability mapped by a strictly monotone curve pinned at the operating point above, so the paging line is
-            the detector&rsquo;s own alarm and the ranking, and AUROC, are unchanged. Every room shows the probability beside it.
+            The index is the calibrated probability mapped by a strictly monotone curve pinned at the scoring detector&rsquo;s own operating point,
+            so the paging line is that detector&rsquo;s alarm and the ranking, and AUROC, are unchanged. Each detector has its own point; the live
+            room&rsquo;s is the operating point below. Every room shows the probability beside its index.
           </p>
         </div>
       </div>

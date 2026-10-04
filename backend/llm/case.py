@@ -158,11 +158,11 @@ def _scale_note(prob: Optional[float], bands: Optional[Dict[str, float]]) -> Lis
            f"HIGH>={bands.get('high')}, MEDIUM>={bands.get('medium')}, else LOW."]
     op = (provenance().get("operating_point") or {}).get("high")
     if op is not None and bands.get("high") is not None and abs(float(bands["high"]) - float(op)) > 1e-6:
-        out.append("  DO NOT compare this probability against the detector's "
-                   f"published operating point ({op}) quoted below — that threshold "
-                   "is on the detector's own calibrated out-of-fold scale, and this "
-                   "number is the fused per-bed risk. Different scales. Quoting one "
-                   "against the other is meaningless; if asked, say so.")
+        out.append("  DO NOT compare this probability against the operating point "
+                   f"({op}) quoted below — that threshold belongs to a different model "
+                   "(the wearable detector) or a different scale than the one that "
+                   "scored this bed; the banding above is the one in effect here. "
+                   "Quoting one against the other is meaningless; if asked, say so.")
     return out
 
 

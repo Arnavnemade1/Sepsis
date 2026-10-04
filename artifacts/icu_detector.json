@@ -1,0 +1,63 @@
+{
+  "generated": "2026-10-03T20:15:15",
+  "prereg": "artifacts/icu_detector_prereg.json",
+  "detector": "icu:lgbm-all40~platt#7fbbdd0ad322",
+  "incumbent": "patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322",
+  "train_patients": 24206,
+  "judged_patients": 8062,
+  "rows": 312901,
+  "trees": 539,
+  "scores": {
+    "candidate": {
+      "auroc": 0.8463322347901104,
+      "hour_matched": 0.7986185710529246,
+      "auprc": 0.13768713811011202,
+      "ece": 0.0024971201673433872
+    },
+    "incumbent": {
+      "auroc": 0.7999945054001254,
+      "hour_matched": 0.7332625473143367,
+      "auprc": 0.09574461441025542,
+      "ece": 0.0030359971353192184
+    }
+  },
+  "delta": {
+    "delta": 0.04633772938998493,
+    "lo": 0.03508363890035594,
+    "hi": 0.05726742729213064,
+    "draws": 1000
+  },
+  "alarms_half_b": {
+    "candidate": {
+      "threshold": 0.045,
+      "detection": 0.5107692307692308,
+      "false_alarm": 0.14335758555645378,
+      "median_lead_h": 50.5,
+      "utility": 0.446138793082361
+    },
+    "incumbent": {
+      "threshold": 0.0525,
+      "detection": 0.4676923076923077,
+      "false_alarm": 0.09188897871193748,
+      "median_lead_h": 48.5,
+      "utility": 0.3941831168513494
+    }
+  },
+  "budget15_half_b": {
+    "delta": -0.009230769230769265,
+    "lo": -0.0492307692307693,
+    "hi": 0.03692307692307695
+  },
+  "operating_point": {
+    "high": 0.045,
+    "medium": 0.0225
+  },
+  "gates": {
+    "auroc>=0.83": true,
+    "delta_lo>0": true,
+    "budget15_not_worse": true,
+    "operating_point_exists": true
+  },
+  "passed": true,
+  "shipped": true
+}

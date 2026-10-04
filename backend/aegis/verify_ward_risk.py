@@ -17,6 +17,9 @@ WIRING is different, and each check below plants that failure and shows it is ca
   [9] conformal: a bed's set is the detector's own; a shifted bed carries no claim
   [10] without a detector the ward still runs, on the fusion engine, and says so
   [11] the measurement artifact describes THIS detector
+  [12-15] the all-variable ICU detector that serves the replay beds: its own lines
+       (the stack's are refused), per-record features equal packed and training rows,
+       causal scores, and its registered judgement passed
 
     python -m backend.aegis.verify_ward_risk
 """
@@ -244,6 +247,93 @@ def check_artifact(ward: WardDetector) -> None:
         f"with own-baseline learning on top {sc['index_pers']['auroc']:.3f}")
 
 
+# --------------------------------------------------------------------------- #
+# The all-variable ICU detector (what serves the ICU replay beds)
+# --------------------------------------------------------------------------- #
+def check_icu_identity() -> "ICUDetector":
+    print("[12] ICU detector: its own lines, refused against anyone else's")
+    from backend.aegis.ward_risk import ICUDetector, ward_detector
+    icu = ICUDetector()
+    assert icu.ready, f"ICU detector not ready: {icu.fit_mismatch or 'artifact missing'}"
+    assert icu.op.detector == icu.model.detector_id
+    assert isinstance(ward_detector(), ICUDetector), "the ward is not served by the ICU detector"
+    assert icu.model.fit_digest_ == heldout().get("fit_digest"), "ICU fit is not the held-out list's fit"
+    m = icu.map
+    assert abs(m.index(m.p_high) - INDEX_HIGH) < 1e-12 and abs(m.index(m.p_medium) - INDEX_MEDIUM) < 1e-12
+    stack_op = WardDetector().op            # same training digest, different model
+    planted = ICUDetector(model=icu.model, op=stack_op)
+    assert not planted.ready and planted.fit_mismatch, "the stack's lines were accepted for the ICU model"
+    _ok(f"{icu.detector_id}: HIGH {icu.op.high} -> 0.70, MEDIUM {icu.op.medium} -> 0.35; serves the ward")
+    _caught("the stack's operating point (same training digest) is refused for this model")
+    return icu
+
+
+def check_icu_features(icu) -> None:
+    print("[13] ICU features: one record alone = the same record packed beside another")
+    from backend.ml.genesis import features as feat
+    from backend.ml.genesis.rawstore import DYNAMIC, STATIC, RawStore
+    pts = build_cohort(n=12, seed=7)
+    a, b = pts[0].record, pts[1].record
+    alone = icu.model.record_features(b.frame, b.patient_id)
+    cols = DYNAMIC + STATIC
+
+    def pack(recs, lens):
+        X = np.vstack([np.column_stack([r.frame[c].to_numpy(dtype=np.float32) for c in cols]) for r in recs])
+        return RawStore(X=X, y=np.zeros(len(X), np.int8), lens=np.array(lens, dtype=np.int64),
+                        pid=np.array([f"r{i}" for i in range(len(lens))]), site=np.zeros(len(lens), np.int8),
+                        columns=list(cols))
+    spec = icu.model.feature_spec()
+    F2, _ = feat.build(pack([a, b], [a.n_hours, b.n_hours]), spec)
+    same = np.array_equal(F2[a.n_hours:], alone, equal_nan=True)
+    assert same, "a record's features changed when another patient was packed before it"
+    leak, _ = feat.build(pack([a, b], [a.n_hours + b.n_hours]), spec)     # planted: one stay
+    assert not np.array_equal(leak[a.n_hours:], alone, equal_nan=True)
+    _ok(f"{b.patient_id}: {alone.shape[1]} features x {b.n_hours} hours identical alone and packed")
+    _caught("the same rows read as one stay with the patient before them differ")
+    # where the training matrix is on disk, the served features must be its rows exactly
+    try:
+        from backend.ml.genesis import harness as H
+        c = H.Cohort.load()
+    except Exception:
+        print("      [SKIP] GENESIS feature cache absent (exact match against the training matrix)")
+        return
+    for p in pts[:4]:
+        k = int(np.flatnonzero(c.raw.pid == p.record.patient_id)[0])
+        rows = np.arange(c.raw.starts[k], c.raw.starts[k] + c.raw.lens[k])
+        mine = icu.model.record_features(p.record.frame, p.record.patient_id)
+        assert np.array_equal(np.asarray(c.F[rows]), mine, equal_nan=True), p.record.patient_id
+    _ok("4 ward patients: served features equal the training matrix's rows, bit for bit")
+
+
+def check_icu_causal(icu) -> None:
+    print("[14] ICU scores are causal: rewriting the future moves no past score")
+    rec = _first_held_out_record()
+    full = icu.series(rec)
+    n = len(full)
+    cuts = sorted({max(2, n // 3), max(3, (2 * n) // 3)})
+    for h in cuts:
+        fut = copy.deepcopy(rec)
+        f = fut.frame.copy()
+        f.loc[h + 1:, ["HR", "Resp", "MAP", "Lactate", "WBC", "Creatinine"]] = [190.0, 44.0, 45.0, 9.0, 30.0, 4.0]
+        fut.frame = f
+        moved = np.max(np.abs(icu.series(fut)[:h + 1] - full[:h + 1]))
+        assert moved == 0.0, (h, moved)
+    _ok(f"{rec.patient_id}: vitals and labs rewritten after hours {cuts}; every earlier score identical")
+
+
+def check_icu_artifact(icu) -> None:
+    print("[15] the ICU detector's judgement describes THIS model, and it passed")
+    from backend.ml import config as mlcfg
+    path = os.path.join(mlcfg.ARTIFACTS_DIR, "icu_detector.json")
+    with open(path) as fh:
+        r = json.load(fh)
+    assert r["detector"] == icu.detector_id and r["passed"] and r["shipped"]
+    assert r["delta"]["lo"] > 0
+    _ok(f"{r['judged_patients']:,} held-out patients: {r['scores']['incumbent']['auroc']:.3f} -> "
+        f"{r['scores']['candidate']['auroc']:.3f} ({r['delta']['delta']:+.3f} "
+        f"[{r['delta']['lo']:+.3f}, {r['delta']['hi']:+.3f}]); gates {sorted(k for k, v in r['gates'].items() if v)}")
+
+
 def report_sample(ward: WardDetector) -> None:
     print("[--] the bundled sample, for the record (32 patients: too few to judge by)")
     pts = build_cohort(n=32, seed=7)
@@ -280,7 +370,11 @@ def main() -> int:
     check_conformal(cl)
     check_fallback()
     check_artifact(ward)
-    report_sample(ward)
+    icu = check_icu_identity()
+    check_icu_features(icu)
+    check_icu_causal(icu)
+    check_icu_artifact(icu)
+    report_sample(icu)
     print("-" * 70)
     print("ALL WARD-RISK CHECKS PASSED")
     return 0

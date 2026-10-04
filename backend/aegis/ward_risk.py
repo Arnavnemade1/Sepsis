@@ -252,6 +252,84 @@ class WardDetector:
         }
 
 
+class ICUDetector:
+    """The ICU replay beds' detector: one LightGBM over all 40 CinC variables.
+
+    The beds replay full ICU records, labs included, which the 7-vital stack never
+    reads. Fitted on the same 24,206 patients as the stack and judged on the same 8,062
+    (``artifacts/icu_detector.json``, registered in ``icu_detector_prereg.json``): AUROC
+    0.846 vs 0.800, hour-matched 0.799 vs 0.733, +0.046 [+0.035, +0.057]. Inside a fixed
+    15% alarm budget its detection is a tie, so the gain is in ranking, not alarm count.
+
+    Same interface as :class:`WardDetector`. Its lines are its OWN operating point
+    (``operating_point_icu.json``), and the identity check is the full detector id, not
+    just the training digest: both detectors share the digest (same patients), so a
+    digest check could not tell the stack's thresholds from this model's."""
+
+    MODEL = "gbm_icu.joblib"
+    OP = "operating_point_icu.json"
+
+    def __init__(self, model: Any = None, op: Any = None):
+        from backend.ml import config as mlcfg
+        from backend.ml.operating_point import load as load_op
+        self.model = model
+        if self.model is None:
+            try:
+                import joblib
+                self.model = joblib.load(os.path.join(mlcfg.ARTIFACTS_DIR, self.MODEL))
+            except Exception as exc:  # pragma: no cover - reported, not raised
+                print(f"[ward] ICU detector unavailable ({exc})")
+        self.op = op if op is not None else load_op(os.path.join(mlcfg.ARTIFACTS_DIR, self.OP))
+        self.conformal = None            # no bands were derived for this fit: no claim
+        self.map: Optional[IndexMap] = None
+        self.fit_mismatch: Optional[str] = None
+        if self.model is not None and self.op is not None:
+            have = getattr(self.model, "detector_id", None)
+            if self.op.detector != have:
+                self.fit_mismatch = f"operating point is {self.op.detector}, model is {have}"
+            else:
+                self.map = IndexMap.pinned(self.op.medium, self.op.high, have)
+
+    @property
+    def ready(self) -> bool:
+        return self.model is not None and self.map is not None
+
+    @property
+    def detector_id(self) -> Optional[str]:
+        return getattr(self.model, "detector_id", None)
+
+    def score(self, record: Any) -> Optional[Dict[str, np.ndarray]]:
+        if not self.ready:
+            return None
+        p = np.asarray(self.model.predict_record(record), dtype=np.float64)
+        if not (np.isfinite(p).all() and (p >= 0).all() and (p <= 1).all()):
+            raise ValueError(f"ICU detector produced a non-probability for {record.patient_id}")
+        return {"p": p}
+
+    def series(self, record: Any) -> Optional[np.ndarray]:
+        s = self.score(record)
+        return None if s is None else s["p"]
+
+    def certainty(self, p: Optional[float], stratum: Optional[str]) -> Optional[Dict[str, Any]]:
+        return None
+
+    def describe(self) -> Dict[str, Any]:
+        return {"source": "icu detector" if self.ready else "unavailable",
+                "detector": self.detector_id, "fit_mismatch": self.fit_mismatch,
+                "map": self.map.to_dict() if self.map else None, "measured": measured()}
+
+
+def ward_detector(stack_model: Any = None) -> Any:
+    """What scores the ICU replay beds: the all-variable detector when its artifact and
+    its own operating point load and agree, else the 7-vital stack."""
+    icu = ICUDetector()
+    if icu.ready:
+        return icu
+    if icu.fit_mismatch:
+        print(f"[ward] ICU detector refused: {icu.fit_mismatch}; the stack scores the ward")
+    return WardDetector(model=stack_model)
+
+
 # --------------------------------------------------------------------------- #
 # Held-out patients
 # --------------------------------------------------------------------------- #

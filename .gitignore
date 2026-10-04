@@ -36,6 +36,7 @@ artifacts/*.joblib
 artifacts/*.log
 # …except the production model, which must ship so the deployed backend can load it
 !artifacts/gbm_wearable.joblib
+!artifacts/gbm_icu.joblib
 # Promotion backups of the previous detector: git history already holds it.
 artifacts/*.joblib.*.bak
 # Proof-signing keystore — the Ed25519 PRIVATE key must NEVER be committed.

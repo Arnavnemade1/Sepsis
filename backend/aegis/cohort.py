@@ -496,8 +496,8 @@ class CohortCluster:
         # The ward's risk is the shipped detector's (see ward_risk): every record is
         # scored once, hour by hour, and the tick reads the current hour's score. The
         # server passes the live session's detector in so the process holds one copy.
-        from backend.aegis.ward_risk import WardDetector
-        self.ward = ward if ward is not None else WardDetector()
+        from backend.aegis.ward_risk import ward_detector
+        self.ward = ward if ward is not None else ward_detector()
         for p in self.patients:
             p.score(self.ward)
         self.bus = DevBio()

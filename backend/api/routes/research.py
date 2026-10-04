@@ -100,6 +100,22 @@ def lab_evidence() -> Dict[str, Any]:
             "scores": ["ICU rooms 301-312 (replayed CinC stays the detector never trained on)",
                        "room 402 (the live session)"],
         }
+    # The all-variable detector that now serves the ICU replay beds, judged on the same
+    # patients (backend/ml/scripts/train_icu_detector.py, registered beforehand).
+    icu = art("icu_detector.json")
+    op_icu = art("operating_point_icu.json")
+    if icu and out["ward"] is not None:
+        sc = icu.get("scores") or {}
+        out["ward"]["icu"] = {
+            "detector": icu.get("detector"), "shipped": bool(icu.get("shipped")),
+            "matches_operating_point": bool(op_icu) and op_icu.get("detector") == icu.get("detector"),
+            "score": sc.get("candidate"), "incumbent": sc.get("incumbent"), "delta": icu.get("delta"),
+            "alarms": icu.get("alarms_half_b"), "budget15": icu.get("budget15_half_b"),
+            "high": (op_icu or {}).get("high"), "medium": (op_icu or {}).get("medium"),
+            "trees": icu.get("trees"), "train_patients": icu.get("train_patients"),
+        }
+        out["ward"]["scores"] = ["ICU rooms 301-312: the all-variable detector",
+                                 "room 402 (the live session): the wearable detector"]
     fz = art("falsification.json")
     if fz:
         out["falsification"] = {

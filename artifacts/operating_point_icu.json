@@ -1,0 +1,17 @@
+{
+  "high": 0.045,
+  "medium": 0.0225,
+  "objective": "constrained",
+  "max_false_alarm_rate": 0.15,
+  "oof_utility": 0.445502453714031,
+  "oof_detection_rate": 0.48936170212765956,
+  "oof_false_alarm_rate": 0.13808760683760685,
+  "oof_median_lead_hours": 40.5,
+  "prob_p95": 0.06617617989770273,
+  "prob_p99": 0.21360551789896007,
+  "prob_max": 0.6926889112537717,
+  "frac_above_high": 0.07600877024272032,
+  "n_patients": 4026,
+  "detector": "icu:lgbm-all40~platt#7fbbdd0ad322",
+  "oof_false_alarm_upper": 0.1495926816239316
+}

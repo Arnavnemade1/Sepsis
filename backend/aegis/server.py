@@ -126,9 +126,9 @@ BOOT.checkpoint("wing", "mount the ICU wing on /dev/bio")
 try:
     # The ward is scored by the same detector the live session serves, in the same
     # object: one copy of the stack in the process (backend/aegis/ward_risk.py).
-    from backend.aegis.ward_risk import WardDetector as _WardDetector
+    from backend.aegis.ward_risk import ward_detector as _ward_detector
     cluster = CohortCluster(n=12, lane_budget=160, seed=7, ebpf_optical=3,
-                            ward=_WardDetector(model=session.core.model))
+                            ward=_ward_detector(stack_model=session.core.model))
     if not cluster.node_ids:
         raise RuntimeError("CinC-2019 corpus not found under data/cinc2019")
     DATA_MODE = "real-cinc2019"
@@ -1735,7 +1735,17 @@ def _doctor_dossier(bed: Optional[str]) -> Dict[str, Any]:
         roster = _patient_roster()
     except Exception:
         roster = None
-    return _doctor.dossier(snap or {}, cohort=roster, tier_bands=_TIER_BANDS)
+    return _doctor.dossier(snap or {}, cohort=roster, tier_bands=_bands_for(bed))
+
+
+def _bands_for(bed: Optional[str]) -> Dict[str, float]:
+    """The bands the bed's own detector reads its probability against: a ward bed is
+    scored by the ward's detector (the all-variable ICU model when it is serving), the
+    live session by the stack."""
+    op = getattr(getattr(cluster, "ward", None), "op", None) if bed else None
+    if op is not None and getattr(cluster.ward, "ready", False):
+        return {"high": float(op.high), "medium": float(op.medium)}
+    return _TIER_BANDS
 
 
 from backend.aegis.hyperscan import (Hyperscan as _Hyperscan, STAGES as _HYPERSCAN_STAGES,
@@ -2155,8 +2165,8 @@ def _agent_list_patients() -> Dict[str, Any]:
                     "septic_course": p.get("septic"), "icu_hour": p.get("icu_hour")})
     out.sort(key=lambda r: (r["risk"] is None, -(r["risk"] or 0.0)))
     return {"n": len(out), "sorted_by": "risk, highest first", "patients": out,
-            "note": "risk is the live fused per-bed risk; tier bands at "
-                    f"HIGH>={_TIER_BANDS['high']}, MEDIUM>={_TIER_BANDS['medium']}. "
+            "note": "risk is each bed's sepsis risk index (0-1; it pages at 0.70, MEDIUM from "
+                    "0.35, the scoring detector's own operating point). "
                     "'bed_handle' is an internal identifier for passing to other "
                     "tools — refer to patients by NAME when you speak.",
             "patients_by_risk": [p["name"] for p in out[:5]]}

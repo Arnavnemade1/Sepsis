@@ -15,6 +15,10 @@ joblib==1.5.3
 # XGBoost booster unpickled by a different major version is not guaranteed to score
 # identically. ~7.5 MB installed.
 xgboost==2.1.4
+# The ICU replay beds are scored by an all-variable LightGBM (artifacts/gbm_icu.joblib,
+# backend/ml/models/allvar.py), stored as LightGBM model text and rebuilt at load. Pinned
+# to the training version. Without it the ward falls back to the stack above.
+lightgbm==4.6.0
 z3-solver==4.16.0.0
 supabase==2.31.0
 python-dotenv==1.2.1
