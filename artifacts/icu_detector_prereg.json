@@ -1,0 +1,24 @@
+{
+  "registered": "2026-10-03",
+  "question": "Should the twelve ICU replay beds be scored by a single tuned LightGBM over all 40 CinC variables instead of the shipped 7-vital stacked detector?",
+  "evidence_so_far": {
+    "GENESIS locked test (8,067 patients, scored once 2026-09-24)": "tuned single LightGBM, all 40 variables: AUROC 0.862 (hour-matched 0.816) vs the shipped stack's architecture refitted on the same patients 0.805; delta +0.0565 [+0.0456, +0.0682] (docs/GENESIS.md section 5)",
+    "why it was never served": "the locked run saved scores, not a model (artifacts/genesis/locked/head_direct_slow.npy)"
+  },
+  "incumbent": "the DEPLOYED artifact patient:hgb+hgb2+et+lr+xgb@utility~centred#7fbbdd0ad322 (artifacts/gbm_wearable.joblib), scored not refitted, read at its shipped operating point HIGH 0.0525",
+  "candidate": "LightGBM, challenge label, GENESIS default FeatureSpec (510 causal features over all 40 variables, missing kept missing), params of genesis_spec.json heads.direct (lr 0.02, 31 leaves, min_data_in_leaf 800, feature_fraction 0.3, bagging_fraction 0.7, lambda_l2 10; LGB_BASE otherwise), early stopping and a Platt map on a 10% patient-held-out slice of the training patients (genesis.stack.fit_head), seed 99",
+  "training_patients": "exactly the shipped detector's 24,206 training patients (promotion_split of artifacts/detector_manifest.json, digest 7fbbdd0ad322), so the bundled demo sample and the holdout stay unseen by both models. The GENESIS locked 8,067 are not touched.",
+  "judged_patients": "the 8,062-patient promotion holdout (every hour, challenge label). For alarm decisions it is split by patient (stratified_group_split, seed 43, as promote_frontier does): the candidate's operating point is derived on half A (operating_point.derive, constrained, max false-alarm rate 0.15) and both detectors are judged on half B, each at its own threshold.",
+  "predictions": {
+    "holdout AUROC": ">= 0.83 (expected 0.84-0.85: dev-CV 0.845 on 26k patients, locked 0.862 on 32k)",
+    "delta vs incumbent": "paired patient bootstrap (1,000 draws) lower bound > 0",
+    "hour-matched AUROC": "higher than the incumbent's 0.733",
+    "alarm budget": "detection inside a 15% alarm budget on half B: no significant regression (paired bootstrap upper bound >= 0)"
+  },
+  "decision_rule": "Ship iff all of: holdout AUROC >= 0.83, delta lower bound > 0, no significant regression at the 15% budget, and an operating point exists under the 15% cap. Shipped as artifacts/gbm_icu.joblib with artifacts/operating_point_icu.json, both stamped with the training digest; it scores the ICU replay beds only, the live room keeps the wearable stack. Otherwise nothing is written but the result.",
+  "disclosures": [
+    "This holdout has judged the incumbent's promotion and the ward before/after (artifacts/ward_risk.json); this is its first look at any all-variable model.",
+    "The all-variable model's advantage is already known from the locked set; this test is whether it holds on these patients for a fit on 24k rather than 32k, and whether its alarms are at least as good."
+  ],
+  "rules": ["No gate, parameter or code path changes after the run.", "The result is reported whatever it is. If refused, this candidate is not re-tested on these patients."]
+}
