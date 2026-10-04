@@ -151,3 +151,104 @@ Protocol: `artifacts/interop/interop_prereg.json`, committed before
 | **H5 onboarding** | Correct mappings (canonical or alternative unit, written correctly) ≥ 80% auto-adopted. Wrong unit label ≤ 1% unsafely adopted. Wrong concept ≤ 1% unsafely adopted over the non-blind pairs; the 28 blind pairs are reported separately |
 
 Results are appended below once, as they come out, including the bars that fail.
+
+## Results: the registered run (2026-10-04)
+
+`backend/ml/scripts/interop_bench.py` as committed in `9c75f1f`, against the gate as
+committed in `082a142`, on the registered holdout (fingerprint `bbc2a255253ae549`). One
+run, 43 minutes; `artifacts/interop/interop_bench.json` and `interop_bench.log`.
+
+Clean detector on these patients: AUROC 0.8463 (hour-matched 0.7986). At its deployed
+threshold it alarms on 14.1% of never-septic patients and 68.0% of septic patients at
+least once.
+
+| Fault (from row 2,000 on) | Silent ΔAUROC [95% CI] | Silent Δ false alarms | Caught after (faulty values) | Faulty values delivered | Gate→quarantine | Gate→fix | Variable missing |
+|:--|--:|--:|--:|--:|--:|--:|--:|
+| temperature °F read as °C | **−0.0463** [−0.0564, −0.0367] | **+35.0 pt** | 4 | 0 | −0.0123 | **−0.0000** | −0.0123 |
+| white cells /µL read as 10³/µL | **−0.0122** [−0.0166, −0.0075] | **+13.1 pt** | 4 | 0 | −0.0017 | **+0.0001** | −0.0017 |
+| SBP ↔ MAP swapped | −0.0092 [−0.0133, −0.0056] | −3.0 pt | 5 | 11 | −0.0172 | (no fix) | −0.0173 |
+| HR ↔ respiratory rate swapped | −0.0066 [−0.0107, −0.0025] | +4.4 pt | 5 | 4 | −0.0073 | (no fix) | −0.0064 |
+| creatinine µmol/L read as mg/dL | −0.0056 [−0.0096, −0.0014] | **+8.2 pt** | 4 | 0 | −0.0000 | +0.0000 | −0.0000 |
+| platelets /µL read as 10³/µL | −0.0026 [−0.0062, +0.0009] | +4.3 pt | 4 | 0 | −0.0009 | +0.0000 | −0.0009 |
+| PaCO₂ ↔ HCO₃ swapped | −0.0025 [−0.0042, −0.0005] | +0.4 pt | 4 | **6,821** | −0.0006 | (no fix) | −0.0020 |
+| potassium decimal slip (×10) | −0.0009 [−0.0020, +0.0001] | −0.4 pt | 4 | 0 | −0.0012 | −0.0000 | −0.0012 |
+| urea mmol/L read as BUN mg/dL | −0.0005 [−0.0016, +0.0005] | −0.8 pt | **4,378** | **4,374** | −0.0004 | (no fix) | −0.0001 |
+| troponin ng/L read as ng/mL | −0.0004 [−0.0011, +0.0003] | +0.0 pt | never adopted | 0 | −0.0000 | — | −0.0000 |
+| calcium mmol/L read as mg/dL | −0.0003 [−0.0010, +0.0003] | −0.7 pt | 4 | 0 | −0.0010 | +0.0000 | −0.0010 |
+| glucose mmol/L read as mg/dL | −0.0001 [−0.0017, +0.0015] | +2.7 pt | 4 | 0 | −0.0007 | +0.0000 | −0.0007 |
+| lactate mg/dL read as mmol/L | −0.0001 [−0.0011, +0.0008] | −1.2 pt | 12 | 10 | −0.0026 | −0.0000 | −0.0026 |
+| FiO₂ % read as fraction | −0.0001 [−0.0004, +0.0002] | +0.1 pt | never adopted | 0 | −0.0141 | — | −0.0141 |
+| Hgb ↔ Hct swapped | −0.0001 [−0.0014, +0.0011] | −0.2 pt | 4 | 10 | −0.0003 | (no fix) | −0.0002 |
+| haemoglobin g/L read as g/dL | +0.0001 [−0.0008, +0.0009] | −0.3 pt | 4 | 0 | −0.0000 | −0.0000 | −0.0000 |
+| phosphate mmol/L read as mg/dL | +0.0001 [−0.0005, +0.0006] | −0.5 pt | 33 | 33 | +0.0002 | +0.0000 | +0.0002 |
+| bilirubin µmol/L read as mg/dL | +0.0007 [−0.0005, +0.0020] | −0.1 pt | 12 | 10 | −0.0005 | +0.0000 | −0.0005 |
+| magnesium mmol/L read as mg/dL | −0.0000 [−0.0008, +0.0008] | +0.5 pt | 43 | 43 | +0.0003 | +0.0000 | +0.0003 |
+
+### Verdicts against the registered bars
+
+| | Bar | Result | |
+|:--|:--|:--|:--|
+| **H1 harm** | ≥ 3 harmful faults | temperature, white cells, creatinine | **met** |
+| **H2 detection** | ≥ 15 of 19 quarantined; median ≤ 40 | 17 of 19; median 4 faulty values | **met** |
+| **H3 recovery** | quarantine within 0.005 of missing; fix within 0.002 of clean | all three harmful faults: quarantine = missing exactly; fix +0.00004, +0.00006, −0.00002 | **met** |
+| **H4 false quarantines** | ≤ 1 per 100k observations on each stream | clean 1.23 · hospital A 2.71 · hospital B 0.20 · septic ward **0.00** | **missed** |
+| **H5 onboarding** | ≥ 80% correct auto-adopted; ≤ 1% unsafe | 93.8% adopted (121/129); wrong-unit 3.4% unsafe (2/58); wrong-concept 6.9% (162/2,359) | **missed** |
+
+Descriptive (no bar): on 43 local code names in three dialects, the lexical rules named
+31 correctly (all 24 US mnemonics) and abstained on the rest, with no wrong concepts.
+The language model (`gemini-3.5-flash`) named **43 of 43** correctly, including every
+Nordic `P-Kreatinin`-style name and vendor string, and declined the four analytes
+outside the vocabulary. The model does the semantic work, and the gate checks the
+scale.
+
+### What the numbers say
+
+1. **Silent interface faults are clinically material for this detector, mostly as
+   alarm burden.** A Fahrenheit temperature triples the share of never-septic patients
+   who are alarmed; a white count in cells/µL nearly doubles it. The ranking loss is
+   smaller than the alarm loss: a tree model ranks patients on many variables at once,
+   but its absolute threshold is crossed far more often.
+2. **The gate catches unit errors before they deliver anything.** In 12 of the 14 unit
+   faults the first impossible value is withheld and the feed is quarantined after 4
+   values, with none delivered. The suggested fix restores the detector to clean
+   (within 0.0001).
+3. **Withholding has a price of its own.** For lactate, withholding costs 0.0026 AUROC
+   against 0.0001 for the silent fault, because the detector reads *when* lactate is
+   measured (a proxy for clinical suspicion) as well as its value, and withholding
+   removes both. For swaps the gate suggests no fix, and withholding SBP and MAP
+   (−0.017) costs more than the swap (−0.009). Quarantine-then-fix is the design point;
+   quarantine-and-forget is not free.
+4. **Three honest failures of detection.** (a) Urea in mmol/L read as BUN mg/dL is a
+   ×0.36 shift that stays plausible: caught only after 4,374 delivered values, as the
+   pre-registration predicted it might not be caught at all. (b) The PaCO₂↔HCO₃ swap was
+   caught by the Van Slyke identity, which quarantined base excess, HCO₃ and pH but not
+   PaCO₂. With HCO₃ withheld, Henderson–Hasselbalch could no longer be evaluated, and
+   PaCO₂, now carrying bicarbonate values, delivered 6,821 wrong values. A partial
+   quarantine can blind the identity that would have caught the rest. (c) FiO₂ and
+   troponin were never adopted, so there was nothing to quarantine: CinC's FiO₂ column
+   mixes percentages (which the ICU detector's own feature builder silently repairs),
+   and its troponin populations differ ×20 between the two hospitals. Refusing FiO₂
+   costs the detector 0.014 AUROC.
+5. **H4 missed.** Of the false quarantines the artifact lists, most fall in the last 0.4%
+   of the stream. The registered stream orders patients by hour since admission, so its
+   tail is a few very-long-stay patients; a 12-message window then comes from one or two
+   patients and stops being independent. The rest are genuine: two bilirubin "jumps"
+   against a baseline that 12 early values made unrepresentative, and BP-order bursts at
+   hospital A, whose clean violation rate (1.7%) sits close to the identity's 2%
+   allowance. The stream of patients getting sicker had **zero** false quarantines in
+   116,474 observations, which is the property the feed-relative design was built for.
+6. **H5 missed, for two reasons, one of them a defect.** Magnesium written in mEq/L
+   (×1.22, inside magnesium's band) is adopted: a small-factor unit confusion
+   single-variable evidence cannot see. The 162 wrong-concept adoptions are almost all
+   one defect, found by this benchmark's own smoke run before the registered run and
+   deliberately not fixed before it: a written unit that cannot be the proposed concept
+   (heart-rate values written "/min", proposed as mean arterial pressure) was treated
+   as no unit at all, so numerically fitting values were adopted. The 28 blind pairs
+   were adopted 87% of the time, as expected.
+7. **Pulse oximetry was never auto-adopted** at hospital A, B or mixed. At onboarding,
+   the SpO₂/SaO₂ identity fails against hospital A's venous-contaminated SaO₂ (and
+   hospital B's SaO₂ is itself refused), so SpO₂ waits for a person. This is safe, and
+   operationally costly.
+
+Post-hoc work, labelled exploratory, follows below. It is measured on the same patients
+and is not a confirmation.
