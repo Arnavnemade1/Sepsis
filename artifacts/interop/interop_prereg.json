@@ -1,0 +1,347 @@
+{
+ "registered": "2026-10-04T09:33:35",
+ "question": "Does a silent HL7 interface fault harm the shipped ICU detector, and does the integration plane's evidence gate detect it, recover the harm, avoid cutting clean feeds, and refuse wrong mappings at onboarding?",
+ "code": {
+  "commit": "082a142",
+  "gate": "backend/aegis/interop (thresholds as committed; nothing tuned on these patients)",
+  "thresholds": {
+   "alpha": 0.0001,
+   "n_min": 12,
+   "p_implausible": 0.02,
+   "p_tail": 0.08,
+   "drift_every": 4,
+   "drift_recent": 12,
+   "drift_window": 40
+  }
+ },
+ "data": {
+  "patients": "the shipped detectors' promotion holdout (8,062 patients, never trained on); the GENESIS locked test set is not touched",
+  "holdout_fingerprint": "bbc2a255253ae549",
+  "n_holdout": 8062,
+  "fit_digest": "7fbbdd0ad322",
+  "detector": "icu:lgbm-all40~platt#7fbbdd0ad322 (artifacts/gbm_icu.joblib)",
+  "threshold": 0.045,
+  "reference": "backend/aegis/interop/reference.json (training patients of the same fit)"
+ },
+ "stream": "the holdout's patient-hours replayed through the DEPLOYED Integration engine as HL7 ORU^R01 messages (one message per patient-hour, LOINC-coded, canonical units written), patients interleaved round-robin by hour since admission (a site-level feed of concurrent patients). Mappings are learned and adopted on the stream itself, as at onboarding.",
+ "faults": [
+  {
+   "id": "creatinine_umol",
+   "columns": "Creatinine",
+   "transform": [
+    "mul",
+    88.42
+   ],
+   "what": "creatinine in umol/L read as mg/dL"
+  },
+  {
+   "id": "glucose_mmol",
+   "columns": "Glucose",
+   "transform": [
+    "mul",
+    0.05550621669626999
+   ],
+   "what": "glucose in mmol/L read as mg/dL"
+  },
+  {
+   "id": "bun_urea_mmol",
+   "columns": "BUN",
+   "transform": [
+    "mul",
+    0.3570153516601214
+   ],
+   "what": "urea in mmol/L read as BUN mg/dL"
+  },
+  {
+   "id": "lactate_mgdl",
+   "columns": "Lactate",
+   "transform": [
+    "mul",
+    9.008
+   ],
+   "what": "lactate in mg/dL read as mmol/L"
+  },
+  {
+   "id": "bilirubin_umol",
+   "columns": "Bilirubin_total",
+   "transform": [
+    "mul",
+    17.104
+   ],
+   "what": "bilirubin in umol/L read as mg/dL"
+  },
+  {
+   "id": "hgb_gl",
+   "columns": "Hgb",
+   "transform": [
+    "mul",
+    10.0
+   ],
+   "what": "haemoglobin in g/L read as g/dL"
+  },
+  {
+   "id": "platelets_per_ul",
+   "columns": "Platelets",
+   "transform": [
+    "mul",
+    1000.0
+   ],
+   "what": "platelets per uL read as 10^3/uL"
+  },
+  {
+   "id": "wbc_per_ul",
+   "columns": "WBC",
+   "transform": [
+    "mul",
+    1000.0
+   ],
+   "what": "white cells per uL read as 10^3/uL"
+  },
+  {
+   "id": "temp_f",
+   "columns": "Temp",
+   "transform": [
+    "affine",
+    1.8,
+    32.0
+   ],
+   "what": "temperature in degF read as degC"
+  },
+  {
+   "id": "fio2_percent",
+   "columns": "FiO2",
+   "transform": [
+    "mul",
+    100.0
+   ],
+   "what": "FiO2 as a percentage read as a fraction (also guarded upstream by the feature builder)"
+  },
+  {
+   "id": "calcium_mmol",
+   "columns": "Calcium",
+   "transform": [
+    "mul",
+    0.249500998003992
+   ],
+   "what": "calcium in mmol/L read as mg/dL"
+  },
+  {
+   "id": "magnesium_mmol",
+   "columns": "Magnesium",
+   "transform": [
+    "mul",
+    0.41135335252982314
+   ],
+   "what": "magnesium in mmol/L read as mg/dL"
+  },
+  {
+   "id": "phosphate_mmol",
+   "columns": "Phosphate",
+   "transform": [
+    "mul",
+    0.32289312237649337
+   ],
+   "what": "phosphate in mmol/L read as mg/dL"
+  },
+  {
+   "id": "troponin_ngl",
+   "columns": "TroponinI",
+   "transform": [
+    "mul",
+    1000.0
+   ],
+   "what": "high-sensitivity troponin in ng/L read as ng/mL"
+  },
+  {
+   "id": "potassium_x10",
+   "columns": "Potassium",
+   "transform": [
+    "mul",
+    10.0
+   ],
+   "what": "potassium with a decimal slip"
+  },
+  {
+   "id": "swap_sbp_map",
+   "columns": "SBP|MAP",
+   "transform": [
+    "swap"
+   ],
+   "what": "systolic and mean pressure fields swapped"
+  },
+  {
+   "id": "swap_hgb_hct",
+   "columns": "Hgb|Hct",
+   "transform": [
+    "swap"
+   ],
+   "what": "haemoglobin and haematocrit fields swapped"
+  },
+  {
+   "id": "swap_paco2_hco3",
+   "columns": "PaCO2|HCO3",
+   "transform": [
+    "swap"
+   ],
+   "what": "PaCO2 and bicarbonate fields swapped"
+  },
+  {
+   "id": "swap_hr_resp",
+   "columns": "HR|Resp",
+   "transform": [
+    "swap"
+   ],
+   "what": "heart rate and respiratory rate fields swapped"
+  }
+ ],
+ "fault_protocol": "the first 2,000 rows of the fault stream are clean (onboarding); the fault starts at row 2,000 and affects every later observation of the column(s).",
+ "hypotheses": {
+  "H1_harm": {
+   "test": "apply each fault to every holdout observation of its column(s); rebuild the 510 features; score the shipped ICU detector",
+   "metrics": "AUROC over all hours (delta vs clean, 1,000-draw paired patient bootstrap 95% CI); at the deployed threshold 0.045: false-alarm rate (never-septic patients alarmed at least once) and detection (septic patients alarmed at least once)",
+   "bar": "holds if >= 3 faults show delta AUROC < -0.01 with the CI excluding 0, or |delta false-alarm rate| > 5 percentage points"
+  },
+  "H2_detection": {
+   "metric": "quarantined or not; faulty observations from fault start to quarantine; faulty observations delivered before quarantine",
+   "bar": ">= 15 of the 19 faults quarantined; median faulty observations to quarantine <= 40 among those detected",
+   "predicted_blind_spots": [
+    "bun_urea_mmol: urea mmol/L read as BUN mg/dL is a x0.36 shift that stays inside BUN's window, its jump tolerance (x3.3) and the BUN/creatinine identity"
+   ]
+  },
+  "H3_recovery": {
+   "arms": "gate->quarantine (values withheld from quarantine on; impossible values always withheld); gate->fix (the gate's suggested conversion applied to withheld values, i.e. a person accepting it); variable missing (reference)",
+   "bar": "for every fault that is detected and harmful under H1: |AUROC(gate->quarantine) - AUROC(variable missing)| <= 0.005, and AUROC(gate->fix) within 0.002 of clean where a fix was suggested"
+  },
+  "H4_false_quarantine": {
+   "streams": [
+    "clean: the whole holdout",
+    "new hospital: each site's holdout onboarded by its own engine",
+    "deterioration: a ward onboarded on ordinary patients, then fed only septic patients' hours from 24 h before labelled onset"
+   ],
+   "metric": "quarantines per 100,000 observations",
+   "bar": "<= 1 per 100,000 on each stream",
+   "excluded_and_reported_separately": "Calcium at hospital B and SaO2 at hospital A: the audit (artifacts/interop/cinc_audit.json) found them contaminated before this run, so quarantining them is a correct detection, not a false one"
+  },
+  "H5_onboarding": {
+   "test": "per concept with a CinC column and per site, the first 60 holdout observations: (a) correct concept, canonical unit written; (b) correct concept, values converted into each alternative unit the analyte is reported in, that unit written; (c) values in the canonical unit with an alternative unit written (a wrong label); (d) the values proposed as every other concept",
+   "unsafe": "the engine's auto-adopt rule would adopt it: decision 'declared', or no unit written and the identity uniquely passes",
+   "bar": "(a)+(b): >= 80% auto-adopted; (c): <= 1% unsafe; (d): <= 1% unsafe over the non-blind pairs",
+   "blind_pairs": [
+    [
+     "spo2",
+     "inr"
+    ],
+    [
+     "spo2",
+     "sao2"
+    ],
+    [
+     "dbp",
+     "map"
+    ],
+    [
+     "map",
+     "dbp"
+    ],
+    [
+     "etco2",
+     "paco2"
+    ],
+    [
+     "wbc",
+     "anc"
+    ],
+    [
+     "hematocrit",
+     "fio2"
+    ],
+    [
+     "lactate",
+     "calcium"
+    ],
+    [
+     "lactate",
+     "base_excess"
+    ],
+    [
+     "potassium",
+     "lactate"
+    ],
+    [
+     "potassium",
+     "bun"
+    ],
+    [
+     "potassium",
+     "base_excess"
+    ],
+    [
+     "bun",
+     "lactate"
+    ],
+    [
+     "creatinine",
+     "bilirubin"
+    ],
+    [
+     "creatinine",
+     "bilirubin_direct"
+    ],
+    [
+     "calcium",
+     "lactate"
+    ],
+    [
+     "ionized_calcium",
+     "lactate"
+    ],
+    [
+     "ionized_calcium",
+     "phosphate"
+    ],
+    [
+     "ionized_calcium",
+     "base_excess"
+    ],
+    [
+     "magnesium",
+     "bilirubin"
+    ],
+    [
+     "bilirubin",
+     "creatinine"
+    ],
+    [
+     "bilirubin",
+     "bilirubin_direct"
+    ],
+    [
+     "bilirubin_direct",
+     "bilirubin"
+    ],
+    [
+     "ast",
+     "alp"
+    ],
+    [
+     "alp",
+     "ast"
+    ],
+    [
+     "paco2",
+     "etco2"
+    ],
+    [
+     "sao2",
+     "spo2"
+    ],
+    [
+     "sao2",
+     "inr"
+    ]
+   ],
+   "blind_pairs_rule": "directed pairs whose reference medians fall within the target's population band after conversion, computed from the reference only before the run; single-variable evidence cannot refuse them, so they are reported, not counted toward the (d) bar. Their defences are the proposer and the cross-field identities."
+  },
+  "descriptive": "proposer accuracy on a fixed catalogue of local code names (three dialects): lexical, and the language model if it answers (model id recorded; no bar)"
+ }
+}
