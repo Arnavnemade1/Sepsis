@@ -894,6 +894,9 @@ class CohortCluster:
         prob = self.effective_probability(nid)
         if prob is not None:
             d["probability"] = round(prob, 5)
+            from backend.aegis.models_registry import code_for
+            d["model"] = code_for(getattr(getattr(self.ward, "model", None), "detector_id", None)
+                                  or getattr(getattr(self.ward, "op", None), "detector", None))
         return d
 
     def _ews_at(self, nid: str, h: int) -> Dict[str, Any]:

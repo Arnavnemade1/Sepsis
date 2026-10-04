@@ -38,6 +38,14 @@ export function RiskHero({ snap }: { snap: Snapshot; recorded?: boolean }) {
               index {r.index.toFixed(2)} <span className="text-faint">/ pages at {INDEX.page.toFixed(2)}</span>
             </span>
           )}
+          {r.model && (
+            <span
+              className="rounded-[4px] border border-line-bright bg-s2 px-1 font-mono text-[10.5px] font-semibold text-muted"
+              title={r.model === "A40" ? "Scored by A40, the all-variable detector (Architecture lists every model)" : "Scored by V7, the vital-sign detector (Architecture lists every model)"}
+            >
+              {r.model}
+            </span>
+          )}
         </div>
         <div className="text-[12px] text-muted">
           {c && !c.unavailable && c.lo != null && c.hi != null ? (

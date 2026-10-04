@@ -122,7 +122,7 @@ export default function LabPage() {
 
       <div className="grid grid-cols-1 gap-3">
         <Plate
-          title="Deployed detector"
+          title="V7 · vital-sign detector"
           eyebrow={d ? `${d.promoted ? "Promoted" : "Candidate"} ${d.created?.slice(0, 10)} · ${d.feature_set} features` : "From the promotion gate's manifest"}
           right={d && <span className="max-w-[460px] truncate font-mono text-[11px] text-dim">{d.id}</span>}
         >
@@ -367,9 +367,9 @@ function WardPlate({ w }: { w: NonNullable<Evidence["ward"]> }) {
   const pos = (a: number) => `${Math.max(0, Math.min(1, (a - 0.5) / 0.5)) * 100}%`;
   const icu = w.icu?.shipped ? w.icu : null;
   const rows = [
-    { k: "Bedside-rules fusion, the ICU rooms' risk until 2026-10-03", a: w.before, tone: "bg-faint" },
-    { k: icu ? "The 7-vital stack, what the live room reads" : "The deployed detector, what every bed reads now", a: w.after, tone: icu ? "bg-dim" : "bg-ink" },
-    ...(icu ? [{ k: "The all-variable detector, what the ICU rooms read", a: icu.score, tone: "bg-ink" }] : []),
+    { k: "QR · bedside rules, the ICU rooms' risk until 2026-10-03", a: w.before, tone: "bg-faint" },
+    { k: icu ? "V7 · vital-sign detector, what the live room reads" : "V7 · vital-sign detector, what every bed reads", a: w.after, tone: icu ? "bg-dim" : "bg-ink" },
+    ...(icu ? [{ k: "A40 · all-variable detector, what the ICU rooms read", a: icu.score, tone: "bg-ink" }] : []),
   ];
   const high = icu ? icu.high : w.index_map.p_high;
   const medium = icu ? icu.medium : w.index_map.p_medium;

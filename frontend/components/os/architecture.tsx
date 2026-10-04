@@ -9,6 +9,8 @@ import { cx, Drawer, Kv, Tag } from "@/components/ui";
 import { useCaps, usePoll } from "@/lib/hooks";
 import { activePages, usePaging } from "@/lib/paging";
 
+import { ModelsPanel } from "./models";
+
 /* ------------------------------------------------------------------ */
 /* Contracts (only the fields this view reads)                         */
 /* ------------------------------------------------------------------ */
@@ -44,7 +46,10 @@ type Fleet = { simulated: boolean; counts: { total: number; streaming: number; d
 type Prover = { healthy: boolean; failures: number; fail_closed: boolean };
 type Consensus = { path: string; z3_status: string; safety_ok: boolean; certificate: { n: number; f: number; quorum: number; n_signatures: number } };
 type Orchestrator = { invariant: string; attestation: { actions: number; integrity_ok: boolean } };
-type Evidence = { detector: { id: string; promoted: boolean; roster: string[]; train_patients: number; judged_patients: number; shipped: { auroc: number; ece: number } } };
+type Evidence = {
+  detector: { id: string; promoted: boolean; roster: string[]; train_patients: number; judged_patients: number; shipped: { auroc: number; ece: number } };
+  ward?: { icu?: { detector: string; shipped: boolean; score: { auroc: number; hour_matched: number; ece: number }; high: number; train_patients: number } } | null;
+};
 
 type Status = "ok" | "warn" | "err" | "idle";
 type Component = {
@@ -90,6 +95,7 @@ export function Architecture() {
     const recs = Object.values(state.recs).filter((r) => !r.acknowledged);
     const staff = Object.values(state.clinicians);
     const det = evidence.data?.detector;
+    const icu = evidence.data?.ward?.icu;
     const g = gate.data;
     const sched = t["/proc/sched"];
     const ks = t["/proc/ksched"];
@@ -287,12 +293,23 @@ export function Architecture() {
         about: "Each bed's window becomes a calibrated risk, a body state and the evidence behind them.",
         components: [
           {
-            id: "detector",
-            name: "Sepsis detector",
-            tag: det?.promoted ? "promoted" : undefined,
+            id: "a40",
+            name: "A40 · all-variable detector",
+            tag: icu?.shipped ? "ICU rooms" : undefined,
+            status: icu?.shipped ? "ok" : evidence.data ? "warn" : "idle",
+            lines: [icu ? `AUROC ${n(icu.score.auroc, 3)} · ECE ${n(icu.score.ece, 4)}` : "loading", "LightGBM over all 40 variables"],
+            about: "Scores the ICU rooms, which replay full records: one LightGBM over all 40 CinC variables, judged on patients it never saw.",
+            facts: icu ? [["Fit", icu.detector], ["Trained on", `${icu.train_patients.toLocaleString()} patients`], ["AUROC", n(icu.score.auroc, 3)], ["Hour-matched", n(icu.score.hour_matched, 3)], ["Pages at", `P ≥ ${n(icu.high * 100, 2)}%`]] : [],
+            href: "/lab/",
+            hrefLabel: "Open evidence",
+          },
+          {
+            id: "v7",
+            name: "V7 · vital-sign detector",
+            tag: "live room",
             status: det ? "ok" : "idle",
             lines: [det ? `AUROC ${n(det.shipped.auroc, 3)} · ECE ${n(det.shipped.ece, 4)}` : "loading", det ? `${det.roster.length}-model stacked ensemble` : ""],
-            about: "A stacked ensemble trained on the patient label and calibrated without a staircase, scored on patients it never saw.",
+            about: "Scores the live room from the seven vitals a wearable or camera streams: a stacked ensemble trained on the patient label, scored on patients it never saw.",
             facts: det ? [["Artifact", det.id], ["Members", det.roster.join(", ")], ["AUROC", n(det.shipped.auroc, 3)], ["ECE", n(det.shipped.ece, 4)]] : [],
             href: "/lab/",
             hrefLabel: "Open evidence",
@@ -483,8 +500,8 @@ export function Architecture() {
         <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
           <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Architecture</h1>
           <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">
-            Every layer of AegisOS, live. Requests travel down through the syscall gate; telemetry travels up from the devices. Select any
-            component to inspect it.
+            Every model it runs, by name, then every layer of AegisOS, live. Requests travel down through the syscall gate; telemetry
+            travels up from the devices. Select any model or component to inspect it.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -504,6 +521,8 @@ export function Architecture() {
           {uptime != null && <Tag>up {fmtUptime(uptime)}</Tag>}
         </div>
       </div>
+
+      <ModelsPanel />
 
       <div className="relative">
         {/* the bus: one spine every layer hangs off */}

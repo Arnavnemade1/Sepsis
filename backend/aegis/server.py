@@ -981,7 +981,7 @@ def _bed_snapshot(bed: str) -> Optional[Dict[str, Any]]:
         "patient": {"id": bed, "name": rp.name, "age": rp.age, "gender": rp.gender,
                     "clinical_history": hist},
         "risk": ({"level": level, "ml_probability": round(prob, 5), "index": personalized,
-                  "ns_risk_level": level, "source": "detector",
+                  "ns_risk_level": level, "source": "detector", "model": _ward_model_code(),
                   "population_risk": round(prob_pop, 5) if prob_pop is not None else None,
                   "personalized_risk": round(prob, 5),
                   "susceptibility": _susc or None,
@@ -1736,6 +1736,14 @@ def _doctor_dossier(bed: Optional[str]) -> Dict[str, Any]:
     except Exception:
         roster = None
     return _doctor.dossier(snap or {}, cohort=roster, tier_bands=_bands_for(bed))
+
+
+def _ward_model_code() -> Optional[str]:
+    """Which named model (models_registry) scores the ward: A40, or V7 as fallback."""
+    from backend.aegis.models_registry import code_for
+    w = getattr(cluster, "ward", None)
+    return code_for(getattr(getattr(w, "model", None), "detector_id", None)
+                    or getattr(getattr(w, "op", None), "detector", None))
 
 
 def _bands_for(bed: Optional[str]) -> Dict[str, float]:

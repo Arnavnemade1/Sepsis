@@ -22,6 +22,19 @@ from backend.aegis.server import (
 router = APIRouter()
 
 
+@router.get("/aegis/models")
+def models() -> Dict[str, Any]:
+    """Every model the system runs, by name: what it reads, where it serves, whether
+    it can page anyone, and its measured result (backend/aegis/models_registry.py)."""
+    from backend.aegis import models_registry
+    from backend.aegis.server import _llm_client, cluster
+    try:
+        llm = _llm_client.status()
+    except Exception:
+        llm = None
+    return models_registry.registry(getattr(cluster, "ward", None), llm)
+
+
 @router.get("/aegis/lab/evidence")
 def lab_evidence() -> Dict[str, Any]:
     """What is deployed, and the evidence behind it, read from the artifacts.

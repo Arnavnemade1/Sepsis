@@ -23,6 +23,8 @@ type Bed = {
   population_risk: number;
   /** the detector's calibrated P(sepsis) behind `fused_risk` (absent without a detector) */
   probability?: number;
+  /** the named model that scored it (A40 / V7) */
+  model?: string;
   primary_system: string | null;
   drivers: string[];
   ews?: { ews: number; trace: number[]; rising: boolean; warming: boolean };
@@ -115,7 +117,7 @@ export function Census() {
                     <span className="block text-[11px] text-dim">Live session</span>
                   </span>
                   <span className="shrink-0">
-                    <RiskCell risk={liveRisk} probability={liveP} compact />
+                    <RiskCell risk={liveRisk} probability={liveP} model="V7" compact />
                   </span>
                 </Link>
               </li>
@@ -133,7 +135,7 @@ export function Census() {
                       </span>
                     </span>
                     <span className="shrink-0">
-                      <RiskCell risk={b.fused_risk} probability={b.probability} compact />
+                      <RiskCell risk={b.fused_risk} probability={b.probability} model={b.model} compact />
                     </span>
                   </Link>
                 </li>
@@ -172,7 +174,7 @@ export function Census() {
                     </td>
                     <td className="px-2 py-2.5 font-mono text-[11.5px] text-dim">live</td>
                     <td className="px-2 py-2.5">
-                      <RiskCell risk={liveRisk} probability={liveP} />
+                      <RiskCell risk={liveRisk} probability={liveP} model="V7" />
                     </td>
                     <td className="px-2 py-2.5 text-[11.5px] text-dim">streaming</td>
                     <td className="px-2 py-2.5 text-muted">—</td>
@@ -215,7 +217,7 @@ export function Census() {
                         <span className="text-faint"> / {b.los_total}</span>
                       </td>
                       <td className="px-2 py-2.5">
-                        <RiskCell risk={b.fused_risk} probability={b.probability} />
+                        <RiskCell risk={b.fused_risk} probability={b.probability} model={b.model} />
                       </td>
                       <td className="px-2 py-2.5">
                         <div className="flex items-center gap-2">
@@ -243,14 +245,19 @@ export function Census() {
   );
 }
 
-function RiskCell({ risk, probability, compact = false }: { risk: number | null; probability?: number | null; compact?: boolean }) {
+function RiskCell({ risk, probability, model, compact = false }: { risk: number | null; probability?: number | null; model?: string; compact?: boolean }) {
   if (risk == null) return <span className="text-dim">—</span>;
   const tier = indexTier(risk);
   if (compact)
     return (
       <div className="text-right">
         <div className={cx("num font-mono text-[13px] font-semibold", TIER_TEXT[tier])}>{risk.toFixed(2)}</div>
-        {probability != null && <div className="num font-mono text-[10.5px] text-faint">P {pct(probability, 1)}</div>}
+        {probability != null && (
+          <div className="num font-mono text-[10.5px] text-faint">
+            P {pct(probability, 1)}
+            {model ? ` · ${model}` : ""}
+          </div>
+        )}
       </div>
     );
   return (
@@ -258,8 +265,9 @@ function RiskCell({ risk, probability, compact = false }: { risk: number | null;
       <div className="flex items-baseline gap-2">
         <span className={cx("num font-mono text-[13px] font-semibold", TIER_TEXT[tier])}>{risk.toFixed(2)}</span>
         {probability != null && (
-          <span className="num font-mono text-[11px] text-faint" title="the detector's calibrated probability of the sepsis label">
+          <span className="num font-mono text-[11px] text-faint" title="the scoring model's calibrated probability of the sepsis label">
             P {pct(probability, 1)}
+            {model ? ` · ${model}` : ""}
           </span>
         )}
       </div>

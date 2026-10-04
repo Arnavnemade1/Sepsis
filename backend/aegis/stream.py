@@ -160,6 +160,8 @@ class AegisSession:
                 # census and the floor plan read this room on the scale every other
                 # room uses; lines 0.35 / 0.70 are the operating point
                 "index": self._index(a.ml_probability) if a else None,
+                # the named model that scored it (backend/aegis/models_registry.py)
+                "model": "V7" if a and a.ml_probability is not None else None,
                 "ns_risk_level": a.ns_risk_level if a else "LOW",
                 "sirs_score": a.sirs_score if a else 0,
                 "qsofa_score": a.qsofa_score if a else 0,

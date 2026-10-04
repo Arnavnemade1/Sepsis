@@ -67,6 +67,8 @@ export type Snapshot = {
     ml_probability: number | null;
     /** the same on the ward risk index (lib/clinical.ts INDEX); the tier is read off it */
     index?: number | null;
+    /** the named model that scored it: A40 (all-variable) or V7 (vital-sign); /aegis/models */
+    model?: string | null;
     /** the probability before an imported chart's prior shift, when one applies */
     population_risk?: number | null;
     sirs_score: number;

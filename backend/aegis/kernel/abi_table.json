@@ -1302,6 +1302,14 @@
    "path": "/aegis/rooms/{room}",
    "cap": "view:public",
    "class": "read"
+  },
+  {
+   "nr": 163,
+   "name": "models",
+   "method": "GET",
+   "path": "/aegis/models",
+   "cap": "view:public",
+   "class": "read"
   }
  ]
 }
