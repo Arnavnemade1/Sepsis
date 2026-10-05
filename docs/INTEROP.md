@@ -310,7 +310,12 @@ What this says, with the caveat above:
    very-long-stay patients at hospital A, where the clean violation rate is close to the
    identity's allowance), two bilirubin jumps, and one BUN and one respiratory-rate jump
    at hospital B.
-6. FiO₂ and troponin are still never adopted, as registered.
+6. FiO₂ and troponin are still never adopted, as registered. Under the committed gate,
+   magnesium on the replay stream is not adopted either (the unique-reading rule holds it
+   for a person), so H2 reads 16 of 19 quarantined, still above the bar of 15. The fault
+   and H4 rows of `interop_bench_posthoc.json` were run before that rule reached the
+   engine; only its H5 block was re-run after it. The cluster-aware re-run below
+   reproduces every other number exactly.
 
 The live console found four more defects, now fixed and each guarded by a check seen
 failing: the same drug pair carded twice by order-sign (moderate from DDInter, major from
