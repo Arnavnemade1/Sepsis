@@ -86,6 +86,16 @@ class Mapping:
         xs = [s.raw for s in self.samples]
         return xs[-last:] if last else xs
 
+    @staticmethod
+    def cluster_of(s: Sample) -> str:
+        """The unit a value is not independent within: its room (a room holds one patient at a
+        time, so a readmission into it is merged with the last patient, the conservative way)."""
+        return s.room if s.room else f"#{s.seq}"
+
+    def clusters(self, last: Optional[int] = None) -> List[str]:
+        ks = [self.cluster_of(s) for s in self.samples]
+        return ks[-last:] if last else ks
+
     def to_dict(self, detail: bool = False) -> Dict[str, Any]:
         d: Dict[str, Any] = {
             "id": self.id, "interface": self.interface, "code": self.code, "system": self.system, "text": self.text,

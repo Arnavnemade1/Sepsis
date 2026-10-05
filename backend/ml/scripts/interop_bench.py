@@ -244,18 +244,20 @@ def identity_partners(cols: List[str]) -> List[str]:
 # --------------------------------------------------------------------------- #
 # H5: onboarding decisions
 # --------------------------------------------------------------------------- #
-def auto_adopts(c: V.Concept, values: List[float], written: str, rule: str = "registered") -> Tuple[bool, str]:
+def auto_adopts(c: V.Concept, values: List[float], written: str, rule: str = "registered",
+                clusters: Optional[List[int]] = None) -> Tuple[bool, str]:
     """The engine's auto-adopt rule for one proposal (engine._propose).
 
     ``registered``: the rule as committed in 082a142 (what the registered run measured).
     ``fixed``: after the post-hoc fix: a written unit that cannot be the concept refuses,
-    and only a written (or unitless-by-convention) unit can be confirmed."""
+    and only a written (or unitless-by-convention) unit can be confirmed.
+    ``clustered``: ``fixed``, with location and tail counting patients (``clusters``)."""
     tok = norm(written)
-    if rule == "fixed":
+    if rule in ("fixed", "clustered"):
         tok, declared = V.resolve_unit(c, written)
         if tok and declared is None:
             return False, "unit mismatch"
-        inf = E.infer(c, values, declared)
+        inf = E.infer(c, values, declared, clusters=clusters if rule == "clustered" else None)
         return (True, "declared") if inf.decision == "declared" else (False, inf.decision)
     declared = c.conversion(tok) if tok else None
     inf = E.infer(c, values, declared)
@@ -296,21 +298,22 @@ def h5(sub, order: np.ndarray, blind: List[List[str]], rule: str = "registered")
             if len(rows) < 30:
                 continue
             vals = [float(v[r]) for r in rows]
+            cl = [int(sub.seg[r]) for r in rows]
             if (col == "Calcium" and s == 1) or (col == "SaO2" and s == 0):
                 continue                                  # audited contaminated: reported in H4
-            ok, why = auto_adopts(c, vals, c.unit, rule)
+            ok, why = auto_adopts(c, vals, c.unit, rule, cl)
             res["a"][0] += ok
             res["a"][1] += 1
             if not ok:
                 res["not_adopted_a"].append(f"{c.key}@{'AB'[s]}: {why}")
             for tok, f, o in alt_units(c):
                 raw = [(x - o) / f for x in vals]           # the same values, in that unit
-                ok_b, _ = auto_adopts(c, raw, tok, rule)
+                ok_b, _ = auto_adopts(c, raw, tok, rule, cl)
                 res["b"][0] += ok_b
                 res["b"][1] += 1
                 if abs(f - 1.0) < 1e-9 and o == 0.0:
                     continue        # an equivalent unit (10^9/L = 10^3/uL, mEq/L = mmol/L) is not a wrong label
-                bad, _ = auto_adopts(c, vals, tok, rule)    # canonical values under that label
+                bad, _ = auto_adopts(c, vals, tok, rule, cl)    # canonical values under that label
                 res["c"][0] += bad
                 res["c"][1] += 1
                 if bad:
@@ -319,7 +322,7 @@ def h5(sub, order: np.ndarray, blind: List[List[str]], rule: str = "registered")
                 if c2.key == c.key or c2.key not in V.references():
                     continue
                 # the feed writes the values' TRUE unit; only the proposal is wrong
-                bad, _ = auto_adopts(c2, vals, c.unit, rule)
+                bad, _ = auto_adopts(c2, vals, c.unit, rule, cl)
                 key = "d_blind" if (c.key, c2.key) in blind_set else "d"
                 res[key][0] += bad
                 res[key][1] += 1
@@ -404,6 +407,8 @@ def main() -> None:
     ap.add_argument("--posthoc", action="store_true",
                     help="EXPLORATORY: the gate after the fixes the registered run motivated, on the same "
                          "patients; silent harm reused from the registered run; writes interop_bench_posthoc.json")
+    ap.add_argument("--tag", default="",
+                    help="with --posthoc: write interop_bench_posthoc_<tag>.json (keeps earlier post-hoc runs)")
     args = ap.parse_args()
     t_all = time.time()
     with open(PREREG) as fh:
@@ -418,7 +423,8 @@ def main() -> None:
         args.boot = 50
     registered = None
     if args.posthoc:
-        out_path = os.path.join(config.ARTIFACTS_DIR, "interop", "interop_bench_posthoc.json")
+        out_path = os.path.join(config.ARTIFACTS_DIR, "interop",
+                                "interop_bench_posthoc" + (f"_{args.tag}" if args.tag else "") + ".json")
         with open(OUT) as fh:
             registered = json.load(fh)
     det = joblib.load(os.path.join(config.ARTIFACTS_DIR, "gbm_icu.joblib"))
@@ -565,7 +571,7 @@ def main() -> None:
 
     # H5: onboarding
     r5 = h5(sub, order, prereg["hypotheses"]["H5_onboarding"]["blind_pairs"],
-            rule="fixed" if args.posthoc else "registered")
+            rule=("clustered" if args.tag == "clusters" else "fixed") if args.posthoc else "registered")
     results["h5"] = {k: v for k, v in r5.items()}
     for k in ("a", "b", "c", "d", "d_blind"):
         kk, nn = r5[k]
@@ -587,6 +593,9 @@ def main() -> None:
                            "mismatch refuses; only a written unit is confirmed; a jump must also leave the population "
                            "band; identities by Page's CUSUM; swap explanation). Same patients as the registered run; "
                            "silent harm reused from it. Not a confirmation.")
+        if args.tag == "clusters":
+            results["note"] += (" Plus the cluster-aware location and tail tests (values counted by patient; "
+                                "motivated by the febrile-neutropenia demo census, not by these patients).")
     if not args.posthoc:
         print(f"  proposers: lexical {results['proposers']['lexical'][None]}, model {results['proposers']['model']} "
               f"{(results['proposers']['model_acc'] or {}).get(None)}")

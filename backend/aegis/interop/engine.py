@@ -50,7 +50,7 @@ from typing import Any, Callable, Deque, Dict, List, Optional, Sequence, Tuple
 
 from backend.aegis.interop import evidence as E
 from backend.aegis.interop import hl7
-from backend.aegis.interop.mapping import Mapping, Sample, key_of
+from backend.aegis.interop.mapping import SAMPLE_N, Mapping, Sample, key_of
 from backend.aegis.interop.proposer import Proposal, ask_model, coded, lexical
 from backend.aegis.interop.units import IDENTITY, Conversion, norm
 from backend.aegis.interop.vocab import BY_KEY, CONCEPTS, Concept, reference_meta, references, resolve_unit, transform
@@ -571,8 +571,10 @@ class Integration:
                 self._refresh_suggestion(m)
         # judge what is ready: new codes with enough data, adopted codes due a live check
         for m in {id(x): x for x in touched}.values():
+            # (a small census can keep a code learning past a full sample window: then count arrivals)
             if m.status == "learning" and len(m.samples) >= N_PROPOSE and (
-                    len(m.samples) == N_PROPOSE or len(m.samples) % 4 == 0):
+                    len(m.samples) == N_PROPOSE or (len(m.samples) if len(m.samples) < SAMPLE_N
+                                                    else m.counts["seen"]) % 4 == 0):
                 self._propose(m, now, effects)
             elif m.status == "adopted" and m.since_check >= DRIFT_EVERY and self.settings["drift_monitor"]:
                 self._drift(m, now, effects)
@@ -819,6 +821,8 @@ class Integration:
             self._emit("mapping", m.to_dict())
             return
         values = m.values()
+        rooms = m.clusters()
+        n_rooms = len(set(rooms))
         results: List[Dict[str, Any]] = []
         for p in props:
             c = BY_KEY[p.concept]
@@ -835,7 +839,7 @@ class Integration:
                                               "alternatives": [], "why": why},
                                 "joint": [], "viable": False})
                 continue
-            inf = E.infer(c, values, declared)
+            inf = E.infer(c, values, declared, clusters=rooms)
             conv = inf.conversion
             rival_why = None
             if inf.decision == "ambiguous" and declared is not None and inf.declared is not None \
@@ -884,8 +888,14 @@ class Integration:
                 BY_KEY[k].label for k in concepts_viable[:3]), now)
             self.counters["review"] += 1
         elif results:
-            if any(r["decision"] == "insufficient" for r in results) and len(m.samples) < 3 * N_PROPOSE:
-                m.transition("learning", "engine", "not enough data to judge the proposals yet", now)
+            # values from one patient are not independent: a small census keeps learning until it
+            # has as many patients as a judgement needs values, however many values it has sent
+            if any(r["decision"] == "insufficient" for r in results) and (
+                    len(m.samples) < 3 * N_PROPOSE or n_rooms < E.N_MIN):
+                m.transition("learning", "engine", "not enough data to judge the proposals yet"
+                             + (f" ({len(m.samples)} values from {n_rooms} patient{'s' if n_rooms != 1 else ''}: "
+                                "too few patients for the evidence to decide)"
+                                if len(m.samples) >= N_PROPOSE and n_rooms < E.N_MIN else ""), now)
             else:
                 m.tentative = None
                 top = results[0]
@@ -1059,7 +1069,7 @@ class Integration:
         raw = [s.raw for s in suspects]
         if len(raw) < 4:
             return None, None
-        inf = E.infer(c, raw, None, n_min=min(8, len(raw)))
+        inf = E.infer(c, raw, None, n_min=min(8, len(raw)), clusters=[Mapping.cluster_of(s) for s in suspects])
         if inf.decision != "inferred" or inf.best is None:
             return None, inf
         applied = self._conversion_for(m, suspects[-1].unit) or m.conversion
@@ -1202,7 +1212,7 @@ class Integration:
             if conv is None:
                 return {"status": "error", "detail": "no conversion for that choice (the written unit has no rule "
                                                      "for this concept; pick 'suggested' or give a factor)"}
-            fit = E.assess(c, m.values(), conv)
+            fit = E.assess(c, m.values(), conv, clusters=m.clusters())
             against = fit.status == "fail"
             was_q = m.status == "quarantined"
             withheld = [s for s in m.samples if s.withheld and not s.delivered] if was_q else []

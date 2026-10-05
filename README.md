@@ -56,7 +56,7 @@ can be believed.
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
-| **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 71 and the integration plane 201, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
+| **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 73 and the integration plane 208, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
 Thirteen findings, strongest first, and the published nulls are in
 **[docs/FINDINGS.md](docs/FINDINGS.md)**.
@@ -416,7 +416,7 @@ record's target, the ICU record reading ten hours ahead, and the monitor paging 
 | `fhir.py` · `cdshooks.py` · `webhooks.py` | The standards surface: FHIR R4 facade and inbound Observations, CDS Hooks 2.0 services and feedback, Standard Webhooks with SSRF refusal |
 | `sender.py` | The demo hospital's systems, simulated: Epic ADT, a Philips gateway (°F, MDC codes, R40 alarms), an SI-unit laboratory and a Nordic-coded reference laboratory, plus six fault drills |
 
-`make verify-interop` runs its 201 checks, every guard as a pair; `make falsify` holds 17
+`make verify-interop` runs its 208 checks, every guard as a pair; `make falsify` holds 18
 registered mutations against them, each one a defect found while building this or in the live
 console.
 

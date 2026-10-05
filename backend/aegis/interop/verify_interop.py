@@ -837,12 +837,77 @@ def check_posthoc() -> None:
        "... and the exchanged feed then passes its live evidence")
 
 
+def check_clusters() -> None:
+    section("[11] values cluster by patient (post hoc: the febrile-neutropenia demo census)")
+    wbc = V.BY_KEY["wbc"]
+    g = random.Random(21)
+    # the demo hospital's four rooms: two febrile-neutropenic patients (WBC near their nadir),
+    # a pyelonephritis (raised) and a heart failure (normal); four results each
+    census = {"512": (0.5, 1.8), "505": (0.5, 1.8), "101": (11.5, 15.0), "409": (5.5, 9.5)}
+    vals, rooms = [], []
+    for _ in range(4):
+        for room, (lo, hi) in census.items():
+            vals.append(round(g.uniform(lo, hi), 1))
+            rooms.append(room)
+    pooled = E.infer(wbc, vals, U.IDENTITY)
+    clustered = E.infer(wbc, vals, U.IDENTITY, clusters=rooms)
+    ok(pooled.decision == "none" and pooled.declared.status == "fail"
+       and clustered.decision == "insufficient" and clustered.declared.status == "unsure"
+       and clustered.declared.n_eff == 4,
+       "pair: two febrile-neutropenic patients among four refuse the white count when 16 values are pooled; "
+       "counted as 4 patients the same values are insufficient, never a refusal")
+    loc, tail = clustered.declared.check("location"), clustered.declared.check("tail")
+    ok(loc.status == "unsure" and "too few patients" in loc.detail and tail.status != "fail",
+       f"... the location test says why ({loc.detail}), and the tail counts patients, not values")
+    singles = list(range(len(vals)))
+    a, b = E.assess(wbc, vals, U.IDENTITY), E.assess(wbc, vals, U.IDENTITY, clusters=singles)
+    sig = lambda f: [(c.name, c.status, c.stat, c.limit, c.n) for c in f.checks]
+    ok(a.status == b.status and sig(a) == sig(b) and b.n_eff == len(vals),
+       "every value its own patient (16 values) reproduces the per-value test (the registered stream's regime)")
+    # unit faults on the same four-patient census: refused at the first judgement, as before
+    cr, k = V.BY_KEY["creatinine"], V.BY_KEY["potassium"]
+    crv = [round(g.uniform(0.6, 1.4) if r != "101" else g.uniform(1.6, 2.4), 2) for r in rooms]
+    kv = [round(g.uniform(3.6, 4.8), 1) for _ in rooms]
+    faults = [(wbc, [v * 1000 for v in vals], "x1000 white cells"), (cr, [v * 88.42 for v in crv], "x88 creatinine"),
+              (k, [v * 10 for v in kv], "x10 potassium"), (cr, [v / 88.42 for v in crv], "/88 creatinine")]
+    same = []
+    for c, xs, what in faults:
+        for n in (12, 16):
+            p_, q_ = E.assess(c, xs[:n], U.IDENTITY), E.assess(c, xs[:n], U.IDENTITY, clusters=rooms[:n])
+            same.append((what, n, p_.status, q_.status))
+    ok(all(p_ == q_ == "fail" for _w, _n, p_, q_ in same),
+       "x1000 white cells, x88 and /88 creatinine and x10 potassium from the same four patients are refused at 12 "
+       "values, clustered exactly as pooled (they leave the physiological window, which stays per value)")
+    # with enough patients the clustered test still refuses a shift no case mix explains
+    many = [x * 0.2 for x in ref_sample("wbc", 48, seed=4)]
+    mrooms = [str(i % 16) for i in range(48)]
+    ok(E.assess(wbc, many, U.IDENTITY, clusters=mrooms).check("location").status == "fail",
+       "sixteen patients whose white counts all sit x0.2 below the population are still refused on location")
+    # the engine: the demo census keeps the white count learning, then adopts it as patients change
+    llm = FakeLLM({"RL101": "creatinine", "RL102": "sodium", "RL103": "wbc", "RL104": "hemoglobin",
+                   "PCT": None, "AGAP": None})
+    eng, sim, _rooms, run, _clock = _sim(llm)
+    seen: Dict[str, set] = {"WBC": set(), "RL103": set()}
+    for _ in range(36):
+        run(100)
+        for m in eng.mapping_list():
+            if m["code"] in seen:
+                seen[m["code"]].add(m["status"])
+    ok(all("review" not in st and "rejected" not in st for st in seen.values())
+       and all("learning" in st for st in seen.values()),
+       f"the demo hospital (two of four patients febrile-neutropenic): WBC and RL103 learn and never go to "
+       f"review over an hour ({ {k: sorted(v) for k, v in seen.items()} })")
+    final = {m["code"]: m for m in eng.mapping_list()}
+    ok(final["WBC"]["status"] == "adopted" and final["RL103"]["status"] == "adopted",
+       "... and both are adopted on the evidence once the census changes (a discharge, a new patient)")
+
+
 def main() -> None:
     t0 = time.time()
     _results.clear()
     print("verify_interop: the integration plane")
     for part in (check_codec, check_vocab, check_evidence, check_identities, check_onboarding, check_protocol,
-                 check_live, check_paging, check_standards, check_posthoc):
+                 check_live, check_paging, check_standards, check_posthoc, check_clusters):
         try:
             part()
         except Exception as exc:                  # a crashed section is a failed check, never a pass

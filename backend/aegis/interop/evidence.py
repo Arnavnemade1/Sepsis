@@ -21,6 +21,17 @@ Per mapping, over a window of converted values:
   a MIXTURE that barely moves the median: a feed sending ionized calcium (mmol/L) and
   total calcium (mg/dL) under one code.
 
+**Values cluster by patient.** A small census is not a large sample: twelve values from
+four patients are four draws from the population, not twelve. Given each value's room,
+location and tail count patients (n_eff = distinct rooms): the location interval is over
+the patients' medians, using the reference's spread until there are ``N_MIN`` patients to
+estimate their own, and the tail is a patient-weighted fraction tested against
+Binomial(n_eff). Two febrile-neutropenic patients among four then make the white count
+UNSURE (not enough patients to refuse), where pooling the values refused it. A unit
+error that leaves the physiological window is refused as fast as before (plausibility
+stays per value); one that stays inside it needs more patients (docs/INTEROP.md measures
+how many). Nothing is adopted meanwhile: an unsure mapping keeps learning.
+
 Across mappings, over co-observed samples (one message, one blood gas):
 
 * **physiological identities** (``INVARIANTS``): SBP > MAP > DBP; Hct/Hgb between 2.3
@@ -97,6 +108,7 @@ class Fit:
     score: float                      # lower is a better fit (for ranking candidates)
     n: int
     median: Optional[float] = None    # converted, raw units
+    n_eff: Optional[int] = None       # independent units behind the location and tail tests (patients)
 
     def check(self, name: str) -> Optional[Check]:
         return next((c for c in self.checks if c.name == name), None)
@@ -104,6 +116,7 @@ class Fit:
     def to_dict(self) -> Dict[str, object]:
         return {"concept": self.concept, "conversion": self.conversion.to_dict(), "status": self.status,
                 "score": None if math.isinf(self.score) else round(self.score, 3), "n": self.n,
+                "n_eff": self.n if self.n_eff is None else self.n_eff,
                 "median": None if self.median is None else round(self.median, 4),
                 "checks": [c.to_dict() for c in self.checks]}
 
@@ -114,17 +127,34 @@ def _robust_sd(xs: Sequence[float]) -> float:
     return 1.4826 * mad
 
 
+def _by_cluster(pairs: Sequence[Tuple[float, object]]) -> Dict[object, List[float]]:
+    out: Dict[object, List[float]] = {}
+    for x, k in pairs:
+        out.setdefault(k, []).append(x)
+    return out
+
+
 def assess(c: Concept, values: Sequence[float], conv: Conversion,
-           ref: Optional[Reference] = None, n_min: int = N_MIN) -> Fit:
-    """The single-variable evidence for ``values`` (as received) read through ``conv``."""
+           ref: Optional[Reference] = None, n_min: int = N_MIN,
+           clusters: Optional[Sequence[object]] = None) -> Fit:
+    """The single-variable evidence for ``values`` (as received) read through ``conv``.
+
+    ``clusters`` gives, per value, the unit it came from (the room): values from one patient
+    are not independent draws from a population, so the location and tail tests count
+    patients, not values (n_eff = distinct clusters). Without it every value is its own unit
+    and the tests are exactly the per-value ones."""
     ref = ref if ref is not None else references().get(c.key)
-    xs = [conv.apply(v) for v in values if v is not None and v == v]
+    keep = [i for i, v in enumerate(values) if v is not None and v == v]
+    xs = [conv.apply(values[i]) for i in keep]
+    cl: List[object] = [clusters[i] for i in keep] if clusters is not None else list(range(len(xs)))
     n = len(xs)
     checks: List[Check] = []
     if n == 0:
-        return Fit(c.key, conv, [Check("data", "unsure", None, None, 0, "no values")], "insufficient", math.inf, 0)
+        return Fit(c.key, conv, [Check("data", "unsure", None, None, 0, "no values")], "insufficient", math.inf, 0,
+                   n_eff=0)
+    n_eff = len(set(cl))
     lo, hi = c.window
-    # plausibility
+    # plausibility: per value (a body cannot produce these, however its values cluster)
     k = sum(1 for x in xs if x < lo or x > hi)
     p = binom_sf(k, n, P_IMPLAUSIBLE)
     st = "fail" if p < ALPHA else ("pass" if n >= n_min else "unsure")
@@ -133,12 +163,24 @@ def assess(c: Concept, values: Sequence[float], conv: Conversion,
     med = statistics.median(xs)
     loc_ratio = math.inf
     tail_frac = None
+    who = f" from {n_eff} patient{'s' if n_eff != 1 else ''}" if clusters is not None else ""
     if c.scale != "none" and ref is not None:
-        ts = [t for t in (transform(c, x) for x in xs) if t is not None]
+        tpairs = [(t, g) for t, g in ((transform(c, x), g) for x, g in zip(xs, cl)) if t is not None]
+        ts = [t for t, _g in tpairs]
         if len(ts) >= 3:
-            m = statistics.median(ts)
-            s = max(_robust_sd(ts), 0.25 * ref.spread, 1e-6)
-            h = Z_CI * 1.2533 * s / math.sqrt(len(ts))
+            if clusters is None:
+                m = statistics.median(ts)
+                s = max(_robust_sd(ts), 0.25 * ref.spread, 1e-6)
+                h = Z_CI * 1.2533 * s / math.sqrt(len(ts))
+            else:
+                # the median of the patients' medians, with an interval over PATIENTS. Below
+                # N_MIN patients their spread cannot be estimated, so the reference's own spread
+                # (which includes within-patient variation, so it is wide enough) stands in for it
+                cm = [statistics.median(v) for v in _by_cluster(tpairs).values()]
+                m = statistics.median(cm)
+                s_obs = _robust_sd(cm) if len(cm) >= 2 else 0.0
+                s = max(s_obs, (0.25 if len(cm) >= N_MIN else 1.0) * ref.spread, 1e-6)
+                h = Z_CI * 1.2533 * s / math.sqrt(len(cm))
             d = m - ref.loc
             loc_ratio = abs(d) / c.band if c.band > 0 else math.inf
             # deliberately asymmetric: REFUSING needs the whole 99.9% interval outside the band
@@ -151,9 +193,13 @@ def assess(c: Concept, values: Sequence[float], conv: Conversion,
             else:
                 lst = "unsure"
             scale = "×%.2f" % math.exp(d) if c.scale == "log" else "%+.2f %s" % (d, c.unit)
-            checks.append(Check("location", lst, d, c.band, len(ts),
-                                f"median {med:.4g} vs reference {_ref_median(c, ref):.4g} ({scale}; band "
-                                + (f"×{math.exp(c.band):.2f}" if c.scale == "log" else f"±{c.band:g}") + ")"))
+            shown = (math.exp(m) if c.scale == "log" else m) if clusters is not None else med
+            checks.append(Check("location", lst, d, c.band, len(ts) if clusters is None else n_eff,
+                                ("median" if clusters is None else "median of patient medians")
+                                + f" {shown:.4g}{who} vs reference {_ref_median(c, ref):.4g} ({scale}; band "
+                                + (f"×{math.exp(c.band):.2f}" if c.scale == "log" else f"±{c.band:g}") + ")"
+                                + ("; too few patients to refuse" if lst == "unsure" and clusters is not None
+                                   and abs(d) > c.band else "")))
         else:
             checks.append(Check("location", "unsure", None, c.band, len(ts), "too few positive values"))
         if c.scale == "linear" and len(ts) >= n_min:
@@ -166,12 +212,22 @@ def assess(c: Concept, values: Sequence[float], conv: Conversion,
                 checks.append(Check("spread", "fail" if (ratio < 0.1 or ratio > 10) else "pass", ratio, None, len(ts),
                                     f"spread {sd_obs:.3g} vs reference {ref.spread:.3g} (×{ratio:.2f}; "
                                     f"allowed ×0.1–×10)"))
-        kt = sum(1 for x in xs if x < ref.tail[0] or x > ref.tail[1])
-        tail_frac = kt / n
-        pt = binom_sf(kt, n, P_TAIL)
+        beyond = [(1.0 if (x < ref.tail[0] or x > ref.tail[1]) else 0.0, g) for x, g in zip(xs, cl)]
+        kt = int(sum(b for b, _g in beyond))
+        if clusters is None:
+            tail_frac, k_eff = kt / n, kt
+        else:
+            # each patient contributes the fraction of their values in the tail; the count of
+            # patients is the binomial's n. A fraction in [0, 1] is a contraction of a coin with
+            # the same mean, so this is the worst case for any within-patient correlation
+            fr = [sum(v) / len(v) for v in _by_cluster(beyond).values()]
+            tail_frac = sum(fr) / len(fr)
+            k_eff = int(math.floor(tail_frac * n_eff + 1e-9))
+        pt = binom_sf(k_eff, n_eff, P_TAIL)
         tst = "fail" if pt < ALPHA else ("pass" if n >= n_min else "unsure")
-        checks.append(Check("tail", tst, tail_frac, P_TAIL, n,
-                            f"{kt} of {n} beyond the reference 0.5–99.5% range {ref.tail[0]:.4g}–{ref.tail[1]:.4g}"))
+        checks.append(Check("tail", tst, tail_frac, P_TAIL, n_eff,
+                            f"{kt} of {n}{who} beyond the reference 0.5–99.5% range {ref.tail[0]:.4g}–{ref.tail[1]:.4g}"
+                            + (f" (a patient-weighted {tail_frac:.0%})" if clusters is not None else "")))
     elif ref is None and c.scale != "none":
         checks.append(Check("location", "skip", None, None, n, "no reference distribution for this concept"))
     statuses = [ch.status for ch in checks]
@@ -185,7 +241,7 @@ def assess(c: Concept, values: Sequence[float], conv: Conversion,
         status = "unsure"
     score = (loc_ratio if not math.isinf(loc_ratio) else 50.0) + 25.0 * max(0.0, k / n - P_IMPLAUSIBLE) \
         + 10.0 * max(0.0, (tail_frac or 0.0) - P_TAIL)
-    return Fit(c.key, conv, checks, status, score, n, med)
+    return Fit(c.key, conv, checks, status, score, n, med, n_eff=n_eff)
 
 
 def _ref_median(c: Concept, ref: Reference) -> float:
@@ -216,17 +272,18 @@ class Inference:
 
 
 def infer(c: Concept, values: Sequence[float], declared: Optional[Conversion],
-          ref: Optional[Reference] = None, n_min: int = N_MIN) -> Inference:
+          ref: Optional[Reference] = None, n_min: int = N_MIN,
+          clusters: Optional[Sequence[object]] = None) -> Inference:
     """Which reading of ``values`` does the data support for concept ``c``?
 
     The declared unit wins whenever it passes. Otherwise exactly one passing candidate
     is an inferred fix; several passing candidates are ambiguous (a person decides)."""
     ref = ref if ref is not None else references().get(c.key)
-    d_fit = assess(c, values, declared, ref, n_min) if declared is not None else None
+    d_fit = assess(c, values, declared, ref, n_min, clusters) if declared is not None else None
     n = d_fit.n if d_fit else sum(1 for v in values if v is not None and v == v)
     if n < n_min:
         return Inference("insufficient", d_fit, d_fit)
-    fits = [assess(c, values, cv, ref, n_min) for cv in c.candidate_conversions()]
+    fits = [assess(c, values, cv, ref, n_min, clusters) for cv in c.candidate_conversions()]
     if d_fit is not None and all(not (f.conversion.factor == d_fit.conversion.factor
                                       and f.conversion.offset == d_fit.conversion.offset) for f in fits):
         fits.append(d_fit)

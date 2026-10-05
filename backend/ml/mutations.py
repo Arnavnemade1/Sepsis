@@ -780,8 +780,8 @@ def proposals_adopt_unchecked(mod):
     import backend.aegis.interop.evidence as Ev
     orig = Ev.infer
 
-    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN):
-        inf = orig(c, values, declared, ref, n_min)
+    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN, clusters=None):
+        inf = orig(c, values, declared, ref, n_min, clusters)
         if inf.decision != "declared" and inf.ranked:
             top = inf.ranked[0]
             return Ev.Inference("declared", top, top, [top], inf.ranked)
@@ -868,8 +868,8 @@ def units_never_ambiguous(mod):
     import backend.aegis.interop.evidence as Ev
     orig = Ev.infer
 
-    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN):
-        inf = orig(c, values, declared, ref, n_min)
+    def infer(c, values, declared, ref=None, n_min=Ev.N_MIN, clusters=None):
+        inf = orig(c, values, declared, ref, n_min, clusters)
         if inf.decision == "ambiguous" and inf.declared is not None and inf.declared.status == "pass":
             return Ev.Inference("declared", inf.declared, inf.declared, inf.passing, inf.ranked)
         return inf
@@ -883,8 +883,8 @@ def spread_unchecked(mod):
     import backend.aegis.interop.evidence as Ev
     orig = Ev.assess
 
-    def assess(c, values, conv, ref=None, n_min=Ev.N_MIN):
-        f = orig(c, values, conv, ref, n_min)
+    def assess(c, values, conv, ref=None, n_min=Ev.N_MIN, clusters=None):
+        f = orig(c, values, conv, ref, n_min, clusters)
         if any(ch.name == "spread" and ch.status == "fail" for ch in f.checks):
             f.checks = [ch for ch in f.checks if ch.name != "spread"]
             if all(ch.status in ("pass", "skip") for ch in f.checks) and f.n >= n_min:
@@ -927,3 +927,16 @@ def model_failure_is_decline(mod):
                     outcomes.setdefault(it["code"], "declined")
         return props, model_id
     En.ask_model = ask
+
+
+@mutation("integration", INTEROP, ["two febrile-neutropenic patients among four"],
+          note="values pooled as if independent: twelve results from four patients judged as twelve draws, so two "
+               "febrile-neutropenic patients in the demo hospital refused the white count (found when their WBC was "
+               "made clinically coherent; post hoc)")
+def clusters_pooled(mod):
+    import backend.aegis.interop.evidence as Ev
+    orig = Ev.assess
+
+    def assess(c, values, conv, ref=None, n_min=Ev.N_MIN, clusters=None):
+        return orig(c, values, conv, ref, n_min, None)
+    Ev.assess = assess

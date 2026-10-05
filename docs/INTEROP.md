@@ -260,7 +260,7 @@ and is not a confirmation.
 
 The registered misses each pointed at a rule. Each rule below was added after the
 registered run, is defended by a named check that has been seen failing (`make
-falsify`, 17 integration mutations), and was then measured by
+falsify`, now 18 integration mutations), and was then measured by
 `interop_bench.py --posthoc` on **the same 8,062 patients**
 (`artifacts/interop/interop_bench_posthoc.json`, 35 minutes). Because these patients
 motivated the rules, the numbers below are exploratory. They show what the rules do;
@@ -320,3 +320,103 @@ language-model call (a quota, a timeout) recorded as the model declining, which 
 every code in the batch "unmapped" and took it out of the review queue. No answer now
 sends a code to a person; only an explicit null from the model marks it as outside the
 vocabulary.
+
+### Post hoc: values cluster by patient (exploratory)
+
+**What motivated it.** It was not these patients. It was the demo hospital. Febrile
+neutropenia used to carry a raised white count (12.5–16 ×10⁹/L beside an ANC of
+250–450/µL), which is clinically incoherent. Once that was corrected to a nadir count
+(0.5–2.2), two of the simulated hospital's four patients were neutropenic. The white count
+(`WBC`) and the reference laboratory's `RL103` then went to **review**: their 16 values had
+a median ×0.24 the reference, with 8 of 16 in the reference's tail. The evidence was pooling
+16 values as 16 independent draws from the population. They were four patients.
+
+**The rule.** `assess` and `infer` take each value's cluster (its room, `Sample.room`), and
+location and tail count patients:
+
+- *location*: the median of the patients' medians, with a 99.9% interval over n_eff =
+  distinct rooms. Below 12 patients their spread cannot be estimated from themselves, so the
+  reference's spread stands in. That spread includes within-patient variation, so it is
+  wide enough for a patient's median. From 12 patients on, the observed spread is used,
+  floored as before;
+- *tail*: each patient contributes the fraction of their values beyond the reference's
+  0.5–99.5% range, tested against Binomial(n_eff, 8%). A fraction is a contraction of a coin
+  with the same mean, so this is the worst case for any within-patient correlation;
+- *plausibility* stays per value: a body cannot produce those values however they cluster;
+- an `insufficient` proposal keeps learning until it has 12 patients (before: until 36
+  values, then review). Nothing is delivered while it learns.
+
+With every value from a different patient the tests are exactly the registered ones
+(checked in `verify_interop` [11]); the registered stream interleaves 8,062 patients, so it
+is nearly that regime. The demo census now reads *"16 values from 4 patients: too few
+patients for the evidence to decide"*. The white count is adopted once a fifth patient is
+admitted. `clusters_pooled` (pooling again) is the 18th integration mutation and is seen
+failing.
+
+**A small-census study** (`backend/ml/scripts/interop_census.py`,
+`artifacts/interop/interop_census.json`, 20 seconds). This is the regime the registered
+stream does not test. A census of K holdout patients is drawn, their values are
+interleaved by hour, and the engine's onboarding rule is applied at 12 values and every 4
+after, up to 48. It covers 34 concepts with 40 censuses each per cell. "Skewed" draws half
+the census from the patients whose own median is in the lowest decile, the way two
+neutropenic patients skew a white count. Faults are every value ×10 or ÷88.42 under the
+canonical label. Pooled → clustered:
+
+| Patients in the census | Correct, random: refused | Correct, skewed: refused | Correct, skewed: sent to a person | ×10: caught at 12 values | ×10: adopted (unsafe) | ÷88: caught at 12 values | ÷88: adopted (unsafe) |
+|:--|--:|--:|--:|--:|--:|--:|--:|
+| 1 | 4.8% → 1.1% | 21.0% → 7.2% | 27.1% → 14.1% | 98.5% → 97.1% | 0.8% → 0.8% | 99.9% → 99.9% | 0.1% → 0.1% |
+| 2 | 7.0% → 1.7% | 10.7% → 3.4% | 17.5% → 11.0% | 98.8% → 97.4% | 0.6% → 0.5% | 99.3% → 99.2% | 0.6% → 0.3% |
+| 4 | 4.9% → 0.7% | 6.8% → 2.9% | 15.8% → 11.9% | 98.6% → 97.3% | 1.1% → 1.5% | 97.9% → 99.1% | 1.3% → 0.3% |
+| 8 | 0.5% → 0.3% | 6.0% → 2.4% | 14.1% → 13.8% | 97.4% → 96.6% | 1.9% → 2.5% | 99.9% → 100.0% | 0.1% → 0.0% |
+| 12 | 0.5% → 0.4% | 7.8% → 3.2% | 15.7% → 16.0% | 95.8% → 95.0% | 3.0% → 3.4% | 99.9% → 99.9% | 0.1% → 0.1% |
+| 48, one value each (the registered regime) | 2.1% → 2.1% | 2.9% → 2.9% | 8.2% → 8.2% | 94.3% → 94.3% | 3.8% → 3.8% | 100.0% → 100.0% | 0.0% → 0.0% |
+
+1. **The fix does what it was built for at small K.** False refusals of a correct mapping
+   fall from 21.0% to 7.2% of skewed one-patient censuses and from 6.8% to 2.9% at four
+   patients. Most of what remains is the two columns audited as contaminated (hospital B
+   calcium, hospital A SaO₂) and FiO₂'s percentages, which are real faults. The price at one
+   patient is waiting: 25.5% of skewed one-patient censuses are still learning at 48 values
+   (12.9% pooled), with nothing delivered until more patients arrive. At 48 patients with one
+   value each the two rules agree exactly, as they must.
+2. **At 8–12 patients it moves decisions rather than removing them.** The share of skewed
+   censuses sent to a person is unchanged (14.1% → 13.8%, 15.7% → 16.0%). Fewer are refused
+   and more are *held*, because a different unit now passes while the declared one is only
+   unsure, and an inferred unit waits for a person.
+3. **It costs some speed on ×10, and the cost is not zero.** Faults caught at the first
+   judgement (12 values) fall by 0.8 to 1.4 points at every K ≤ 12 (for example 98.6% →
+   97.3% at four patients). A fault not yet caught keeps learning and delivers nothing. Unsafe
+   adoption of ×10 rises at 4–12 patients (1.1% → 1.5%, 1.9% → 2.5%, 3.0% → 3.4%), all of
+   it in troponin and base excess. Those two analytes are already blind to ×10 under the
+   per-value test: troponin's band is ×5 and its reference mixes hospitals ×20 apart, and a
+   ×10 base excess keeps its median near zero. They adopt ×10 in 30/40 and 18/40 censuses
+   even at 48 patients, under both rules. The weaker small-sample tail lets a few more
+   through.
+4. **÷88 is caught as before** (≥ 99.1% at the first judgement at every K, unsafe adoption
+   ≤ 0.3%, never higher than pooled). It and every ×10 that leaves the physiological window
+   fall to plausibility, which did not change.
+
+**The registered stream, re-run** (`interop_bench.py --posthoc --tag clusters`,
+`artifacts/interop/interop_bench_posthoc_clusters.json`, 32 minutes, same 8,062 patients).
+Every fault but one (below) has the same latency, delivered wrong values and three arms as the
+earlier post-hoc run; H4 (0.47, 0.99, 0.20, 0.00 per 100k) and H5 (115/129
+adopted, 0/58 wrong-unit, 5/2,359 wrong-concept) are unchanged. **Detection speed on this stream did not
+change:** the median is still 4 faulty values to quarantine, and ×10 potassium, the ×1000
+counts and µmol/L creatinine are each caught at 4 with nothing delivered. That is expected.
+The stream interleaves patients by hour, so a code's first values come from different
+patients, and live monitoring (the feed-relative jump test) was not changed.
+
+One row differs, and not because of this rule. The earlier post-hoc artifact has magnesium
+in mmol/L adopted and then caught after 43 faulty values. Under the gate as committed
+(`deb3497`, whose "unique named reading" rule holds magnesium for a person), magnesium is
+never auto-adopted on this stream, pooled or clustered. A replay with the cluster rule
+switched off reproduces the review. The earlier artifact predates that rule reaching the
+engine. So H2 reads 16 of 19 quarantined, with magnesium joining FiO₂ and troponin as
+"never adopted, nothing delivered".
+
+**What this does not fix.** A room is a proxy for a patient: a readmission into the same
+room is merged with the previous patient, which errs conservative. The live jump test still
+compares a window of values against the feed's baseline without clustering. Its tolerance is
+twice the population band, wide enough to absorb case mix, but it is not a cluster-aware
+test. Adoption still needs only 12 values and a median inside the band, however few patients
+they come from. That asymmetry is deliberate (refusing is what a small sample must not do),
+and the magnesium and unit-label rules stand beside it.

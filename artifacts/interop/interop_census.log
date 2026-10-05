@@ -1,0 +1,86 @@
+holdout 8,062 patients (fingerprint bbc2a255253ae549); 34 concepts; 40 reps per cell
+  hr                8061 pts  [1s]
+  spo2              8057 pts  [0s]
+  temp              8007 pts  [0s]
+  sbp               8003 pts  [1s]
+  dbp               6607 pts  [1s]
+  map               8043 pts  [1s]
+  rr                8050 pts  [1s]
+  etco2              637 pts  [0s]
+  fio2              3564 pts  [0s]
+  wbc               7507 pts  [0s]
+  hemoglobin        7544 pts  [1s]
+  hematocrit        7569 pts  [0s]
+  platelets         7514 pts  [0s]
+  glucose           7716 pts  [1s]
+  lactate           2482 pts  [0s]
+  potassium         7660 pts  [0s]
+  chloride          4256 pts  [0s]
+  hco3              4026 pts  [0s]
+  bun               7629 pts  [1s]
+  creatinine        7619 pts  [1s]
+  calcium           6988 pts  [1s]
+  magnesium         7064 pts  [1s]
+  phosphate         5653 pts  [1s]
+  bilirubin         2872 pts  [0s]
+  bilirubin_direct   406 pts  [1s]
+  ast               2895 pts  [0s]
+  alp               2853 pts  [0s]
+  troponin          1412 pts  [0s]
+  ptt               4029 pts  [0s]
+  fibrinogen         868 pts  [1s]
+  ph                3784 pts  [0s]
+  paco2             3678 pts  [0s]
+  sao2              2607 pts  [0s]
+  base_excess       2650 pts  [0s]
+cell                   rule        runs  adopt refuse  held learn ref@12 caught@12
+K1/correct             pooled       897    785     43    40    29     41        78
+K1/correct             clustered    897    790     10    47    50     10        56
+K1/correct_skewed      pooled       889    533    187    54   115    171       220
+K1/correct_skewed      clustered    889    537     64    61   227     64       124
+K1/x10                 pooled       875      7    860     2     6    860       862
+K1/x10                 clustered    875      7    798    53    17    798       850
+K1/div88               pooled       907      1    900     6     0    900       906
+K1/div88               clustered    907      1    897     9     0    897       906
+K2/correct             pooled      1212   1013     85    67    47     76       140
+K2/correct             clustered   1212   1065     20    75    52     20        95
+K2/correct_skewed      pooled      1160    852    124    79   105    107       182
+K2/correct_skewed      clustered   1160    923     40    88   109     39       127
+K2/x10                 pooled      1213      7   1198     4     4   1195      1199
+K2/x10                 clustered   1213      6   1064   121    22   1063      1181
+K2/div88               pooled      1191      7   1179     4     1   1179      1183
+K2/div88               clustered   1191      3   1169    15     4   1167      1182
+K4/correct             pooled      1360   1179     67    78    36     64       142
+K4/correct             clustered   1360   1239     10    79    32     10        89
+K4/correct_skewed      pooled      1326    988     90   120   128     81       196
+K4/correct_skewed      clustered   1326   1057     39   119   111     35       154
+K4/x10                 pooled      1360     15   1327    17     1   1324      1341
+K4/x10                 clustered   1360     20   1190   140    10   1185      1323
+K4/div88               pooled      1360     18   1321    10    11   1321      1331
+K4/div88               clustered   1360      4   1301    47     8   1301      1348
+K8/correct             pooled      1360   1263      7    77    13      7        82
+K8/correct             clustered   1360   1281      4    66     9      4        70
+K8/correct_skewed      pooled      1360   1093     81   111    75     76       178
+K8/correct_skewed      clustered   1360   1065     32   155   108     32       186
+K8/x10                 pooled      1360     26   1295    36     3   1291      1325
+K8/x10                 clustered   1360     34   1223    96     7   1220      1314
+K8/div88               pooled      1360      1   1351     8     0   1351      1359
+K8/div88               clustered   1360      0   1348    12     0   1348      1360
+K12/correct            pooled      1360   1283      7    63     7      7        70
+K12/correct            clustered   1360   1280      5    66     9      5        71
+K12/correct_skewed     pooled      1360   1080    106   108    66     99       195
+K12/correct_skewed     clustered   1360   1058     43   175    84     37       197
+K12/x10                pooled      1360     41   1269    45     5   1262      1303
+K12/x10                clustered   1360     46   1217    86    11   1209      1292
+K12/div88              pooled      1360      1   1354     5     0   1354      1359
+K12/div88              clustered   1360      1   1354     5     0   1354      1359
+K48/correct            pooled      1360   1256     29    75     0     27        94
+K48/correct            clustered   1360   1256     29    75     0     27        94
+K48/correct_skewed     pooled      1360   1249     39    72     0     39       104
+K48/correct_skewed     clustered   1360   1249     39    72     0     39       104
+K48/x10                pooled      1360     52   1250    58     0   1245      1282
+K48/x10                clustered   1360     52   1250    58     0   1245      1282
+K48/div88              pooled      1360      0   1356     4     0   1356      1360
+K48/div88              clustered   1360      0   1356     4     0   1356      1360
+wrote /Users/arnavnemade/Sepsis/.claude/worktrees/modest-allen-e3de47/artifacts/interop/interop_census.json [20s]
+EXIT 0
