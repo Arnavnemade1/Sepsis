@@ -298,12 +298,16 @@ def _synthetic_labs(rng: random.Random, flags: set, dx: str, now: float) -> Dict
     am, yday = now - rng.uniform(4, 9) * 3600, now - rng.uniform(26, 31) * 3600
     cr0 = rng.uniform(1.5, 1.9) if "ckd" in flags else rng.uniform(0.7, 1.05)
     hb = rng.uniform(11, 14.2)
+    # white count: an infection raises it, unless the marrow cannot (febrile neutropenia sits near its
+    # nadir, below the ANC it carries); one draw per entry either way, so no other record shifts
+    wbc_y = (0.8, 2.2) if "neutropenia" in flags else (12.5, 16) if "infection" in flags else (5.5, 9.5)
+    wbc_am = (0.5, 1.8) if "neutropenia" in flags else (11.5, 15) if "infection" in flags else (5.5, 9.5)
     labs: Dict[str, List[Dict[str, float]]] = {
         "creatinine": [{"t": now - rng.uniform(120, 600) * DAY, "v": round(cr0, 2), "baseline": True},
                        {"t": yday, "v": round(cr0 * rng.uniform(0.98, 1.08), 2)},
                        {"t": am, "v": round(cr0 * rng.uniform(1.0, 1.1), 2)}],
-        "wbc": [{"t": yday, "v": round(rng.uniform(12.5, 16) if "infection" in flags else rng.uniform(5.5, 9.5), 1)},
-                {"t": am, "v": round(rng.uniform(11.5, 15) if "infection" in flags else rng.uniform(5.5, 9.5), 1)}],
+        "wbc": [{"t": yday, "v": round(rng.uniform(*wbc_y), 1)},
+                {"t": am, "v": round(rng.uniform(*wbc_am), 1)}],
         "hemoglobin": [{"t": yday, "v": round(hb, 1)}, {"t": am, "v": round(hb * rng.uniform(0.96, 1.02), 1)}],
         "platelets": [{"t": am, "v": round(rng.uniform(55, 110) if "chemo" in flags else rng.uniform(170, 320))}],
         "potassium": [{"t": yday, "v": round(rng.uniform(4.6, 5.2) if "ckd" in flags else rng.uniform(3.7, 4.6), 1)},

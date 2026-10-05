@@ -33,7 +33,7 @@ import pandas as pd
 from backend.aegis.paging.engine import ACTIVE, PagingOS
 from backend.aegis.rooms import detectors as D
 from backend.aegis.rooms.formulary import FORMULARY, creatinine_clearance
-from backend.aegis.rooms.records import stay_to_date
+from backend.aegis.rooms.records import stay_to_date, synthetic_record
 
 _n = {"pass": 0}
 
@@ -235,6 +235,19 @@ def test_conditional() -> None:
     y = keys(D.detect_neutropenic_fever(ctx(record(flags=["chemo", "neutropenia"], orders=[order("cefepime")]), fn)))["neutropenic_fever"]
     ok(y.severity == "urgent" and y.page == 3, "already on cefepime: an urgent review (P3), not the 60-minute emergency")
     ok(D.detect_neutropenic_fever(ctx(record(), fn)) == [], "the same fever without chemotherapy on the record: none")
+    # the synthetic record itself: an infection raises the white count unless the marrow cannot
+    occ = {"room": "418", "name": "Test, B.", "age": 58, "sex": "F", "admitted_days": 1, "medications": [],
+           "history": ["Lymphoma on chemotherapy"]}
+    fnr = synthetic_record({**occ, "mrn": "S000001", "diagnosis": "Febrile neutropenia"}, now=10_000.0)
+    pnr = synthetic_record({**occ, "mrn": "S000002", "diagnosis": "Community-acquired pneumonia", "history": []},
+                           now=10_000.0)
+    wf, wp = [x["v"] for x in fnr["labs"]["wbc"]], [x["v"] for x in pnr["labs"]["wbc"]]
+    ok(all(0.5 <= w <= 2.2 for w in wf) and fnr["labs"]["wbc"][-1]["v"] * 1000 >= fnr["labs"]["anc"][0]["v"]
+       and all(w > 11 for w in wp),
+       f"febrile neutropenia's synthetic WBC is low ({wf}) and holds its ANC; pneumonia's is raised ({wp})")
+    sf = keys(D.detect_sirs(ctx(fnr, {**NORMAL, "temp_c": 38.5}, now=10_000.0))).get("sirs")
+    ok(sf is not None and sf.score == 2 and sf.evidence[3]["points"] == 1,
+       "SIRS still counts the neutropenic white count (WBC < 4) beside the fever: 2 of 4")
     g = lambda v: keys(D.detect_glucose(ctx(record(), NORMAL, labs={"glucose": [{"t": 9_900.0, "v": v}]})))
     ok(g(48)["glucose"].severity == "critical" and g(65)["glucose"].severity == "urgent" and "glucose" not in g(120),
        "glucose 48 is level-2 hypoglycaemia, 65 level 1, 120 nothing")
