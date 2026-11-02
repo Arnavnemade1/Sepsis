@@ -295,8 +295,8 @@ def _expand_intervals(ev: pd.DataFrame, stays: pd.DataFrame) -> pd.DataFrame:
     ev = ev.merge(stays[["stay_id", "intime"]], on="stay_id")
     s = np.floor(_to_hours(ev.starttime, ev.intime))
     e = np.floor(_to_hours(ev.endtime, ev.intime) - 1e-9)
-    s = np.clip(s, 0, K.MAX_HOURS - 1)
-    e = np.clip(e, -1, K.MAX_HOURS - 1)
+    s = np.maximum(s, 0)      # an interval starting past the grid stays out: clipping it to the
+    e = np.minimum(e, K.MAX_HOURS - 1)   # last hour wrote the future into hour 335 (found by the SQL check)
     keep = np.isfinite(s) & np.isfinite(e) & (e >= s)
     ev, s, e = ev[keep], s[keep].astype(int), e[keep].astype(int)
     reps = (e - s + 1)
