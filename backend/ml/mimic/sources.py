@@ -48,7 +48,10 @@ class CsvSource:
         """Read in chunks (full chartevents is ~3 GB compressed); ``keep`` filters a chunk."""
         path = self._path(module, table)
         parts = []
-        for ch in pd.read_csv(path, usecols=usecols, chunksize=self.chunksize, low_memory=False):
+        # round_trip: pandas' default float parser is off by an ulp on some values, and the lake's
+        # and DuckDB's are not; the grids must match byte for byte (verify_physionet)
+        for ch in pd.read_csv(path, usecols=usecols, chunksize=self.chunksize, low_memory=False,
+                              float_precision="round_trip"):
             if keep is not None:
                 ch = ch[keep(ch)]
             parts.append(ch)
