@@ -20,6 +20,10 @@ subjects) and every demo report says so.
 | `history.py` | what was known on arrival: admission source, admitting service, comorbidities from prior admissions only |
 | `mimicfeat.py` | the label's structure as causal features, each at the tier allowed to see it |
 | `sources.py` | `CsvSource` (demo / full CSVs, the reference semantics) and `BigQuerySource` (the same hourly binning as SQL, run server-side) |
+| `lake.py` | `LakeSource`: the same binning over a local Parquet lake, one bucket at a time ([PHYSIONET.md](PHYSIONET.md)) |
+| `contracts.py` | is this the data the catalog thinks it is: repointed items, unit changes, orphans, a partial cohort |
+| `sqlcheck.py` | the BigQuery SQL, transpiled and run on the demo without BigQuery; must match the reference exactly |
+| `checkpoint.py` | every fit kept as it finishes, keyed by what it read, so a crash costs only the fit it hit |
 | `extract.py` | events → the hourly grid, a `RawStore` the GENESIS feature engine runs on unchanged; subsetting and design sampling |
 | `sepsis3.py` | hourly SOFA with all six organ systems, suspicion of infection, onset under three rules |
 | `ledger.py` | the Ledger harness core: splits, tiers, masks, design weights; the `Candidate` interface and ledger *views* |
@@ -29,11 +33,15 @@ subjects) and every demo report says so.
 | `trust.py` | the hash chain, power-gated pre-registration, confirmation, the Ladder lock |
 | `tune.py` | budgeted hyperparameter search on dev subjects only |
 | `plan.py` | will the full run fit this laptop — rows, disk, memory, hours — before anything is built |
-| `parity.py` | day one: BigQuery must reproduce the CSV binning on the demo's 100 patients |
+| `parity.py` | BigQuery and the lake must each reproduce the CSV binning on the demo's 100 patients |
 | `twin.py` | the temporal model: Sepsis-3 Process Twin v2 (two input streams, a physiology twin trained on counterfactual patients, discrete-time hazards, a definition-composed organ outlook) |
 | `run.py` | the whole pipeline, one command, one JSON report |
 
 ## 1. Data: nothing large ever lands on this laptop
+
+There are two routes now, both orchestrated by `backend/ml/physionet` ([PHYSIONET.md](PHYSIONET.md)):
+the lake streams only the rows the catalog reads into local Parquet, and BigQuery bins on Google's
+side. Both must reproduce the CSV path; on the demo they do, byte for byte.
 
 `BigQuerySource` renders every extraction as SQL that bins events to hours on Google's
 servers — last value / count per stay-hour for vitals, GCS and labs; hourly urine sums;
@@ -414,10 +422,11 @@ read (§8).
   report is identical to the one produced before either change, to the last digit.
 * BigQuery results are placed into the grid page by page, never held whole.
 
-**Day one with credentials: `parity.py`.** The demo is 100 real MIMIC-IV patients. The
-parity check fetches every binned table for exactly those stays through BigQuery and
-compares it cell by cell with the CSV path. The SQL is trusted only where it reproduces the
-reference.
+**Parity first (`parity.py`).** The demo is 100 real MIMIC-IV patients. The parity check fetches
+every binned table for exactly those stays, through BigQuery or the lake, and compares it cell by
+cell with the CSV path. Neither is trusted except where it reproduces the reference. `sqlcheck.py`
+runs the same comparison on the SQL offline, and requires exact agreement: the 0.99 bar had been
+hiding a 0.93% disagreement in how same-timestamp ties were broken.
 
 ## 7. The research map — every lever, with its evidence
 
@@ -450,24 +459,22 @@ information moves a number, and most of the model-side ideas below were measured
 
 ## 8. Running it on full MIMIC-IV
 
-1. PhysioNet: complete CITI "Data or Specimens Only Research", request credentialed access,
-   sign the MIMIC-IV data use agreement.
-2. Link a Google Cloud project on the MIMIC-IV page (BigQuery access); the BigQuery sandbox
-   is free (1 TB of queries / month; this extraction scans well under that).
-3. `pip install google-cloud-bigquery db-dtypes` and `gcloud auth application-default login`.
-4. `python -m backend.ml.mimic.parity --project <project>`: BigQuery must reproduce the CSV
-   binning on the demo's 100 patients before anything else runs.
-5. `python -m backend.ml.mimic.run --source bigquery --project <project> --plan-only`: extract
-   once, and see the plan the machine can afford.
-6. `python -m backend.ml.mimic.run --source bigquery --project <project> --scale full`: every
-   stage on the dev folds only (the lock is never read). Read the verdicts and the headline,
-   and pick the claims.
-7. **Before any locked number exists**, pre-register through `trust.preregister`. The harness
+Credentialing and each dataset's Data Use Agreement come first. After that the path is one
+command, documented in [PHYSIONET.md](PHYSIONET.md):
+
+1. `make physionet-login`, then `make physionet-doctor`, `make physionet-access` and `make physionet-plan`.
+2. `make physionet-up` (or `ROUTE=bigquery ARGS="--project <project>"`). It verifies, ingests, checks
+   the contract and parity, plans, runs every stage on the dev folds only, and scans the report before
+   releasing it. Resumable. The lock is never read.
+3. Read the verdicts and the headline, and pick the claims.
+4. **Before any locked number exists**, pre-register through `trust.preregister`. The harness
    refuses a claim the lock cannot answer. Registration fixes the primary rule (`measured`),
    the cohort (onset ≥ 4 h), the metric and setting, the comparator and the bar, bound to the
    code fingerprint. Commit the chain.
-8. `trust.lock_scores` + `trust.confirm` for each registered claim, spent once. Anything
+5. `trust.lock_scores` + `trust.confirm` for each registered claim, spent once. Anything
    exploratory goes through `trust.Ladder` (8 submissions).
+
+Steps 3 to 5 are a person's, and the pipeline has no shortcut to them.
 
 ## 9. Reproduce the demo
 
