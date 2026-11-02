@@ -317,8 +317,9 @@ class BigQuerySource:
     exactly (same itemids, conversions, plausibility windows, hour arithmetic); run
     ``verify_mimic.py --bigquery`` once to compare both paths on the demo stays."""
     project: str
-    hosp: str = "physionet-data.mimiciv_3_1_hosp"
-    icu: str = "physionet-data.mimiciv_3_1_icu"
+    hosp: str = "physionet-data.mimiciv_v3_1_hosp"     # the names on the MIMIC-IV project page
+    icu: str = "physionet-data.mimiciv_v3_1_icu"
+    max_gb: float = 400.0                               # one query may not bill past this
 
     def _client(self):
         try:
@@ -329,11 +330,15 @@ class BigQuerySource:
         return bigquery.Client(project=self.project)
 
     def query(self, sql: str) -> pd.DataFrame:  # pragma: no cover - needs credentials
-        return self._client().query(sql).to_dataframe()
+        return self._client().query(sql, job_config=self._job_config()).to_dataframe()
 
     #: at most this many stays are named in a query (the parity check's demo cohort); a full
     #: cohort is filtered by the joins instead
     FILTER_MAX = 2000
+
+    def _job_config(self):  # pragma: no cover - needs credentials
+        from google.cloud import bigquery
+        return bigquery.QueryJobConfig(maximum_bytes_billed=int(self.max_gb * 1e9))
 
     @classmethod
     def stay_filter(cls, stays) -> str:
@@ -345,7 +350,8 @@ class BigQuerySource:
     def _pages(self, sql: str, page_rows: int = 2_000_000):  # pragma: no cover - needs credentials
         """The result a page at a time: full MIMIC's hourly chart table is ~10^8 rows, too many
         to hold as one frame on a 16 GB laptop; ``extract.build_store`` places each page."""
-        for df in self._client().query(sql).result(page_size=page_rows).to_dataframe_iterable():
+        job = self._client().query(sql, job_config=self._job_config())
+        for df in job.result(page_size=page_rows).to_dataframe_iterable():
             for c in set(df.columns) & TIME_COLS:
                 df[c] = pd.to_datetime(df[c])
             yield df
