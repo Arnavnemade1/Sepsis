@@ -100,7 +100,7 @@ These were all live in the code that was waiting for the data:
 | The run wrote its report only at the very end | a crash at hour 8 of 9 cost all 8 hours. Now every fit is checkpointed |
 | A cached store was keyed by tag alone | a new lake could silently reuse an old grid. The tag now derives from the lake's fingerprint |
 
-The grid's contents changed, so `STORE_VERSION` is 5. These findings came from the new offline SQL check: `sqlcheck.py` transpiles our BigQuery SQL to DuckDB and runs it on the open demo. It can't prove BigQuery's own behaviour, table names or permissions; `parity` still has to run against the real service.
+The grid's contents changed, so `STORE_VERSION` is 5. Refreshed demo numbers moved noticeably (primary 0.755 to 0.790), and that is not an improvement: flipping the tie rule to its arbitrary opposite gives 0.733. See [MIMIC.md §1](MIMIC.md). A kill-and-resume test matched the uninterrupted report with no non-timing differences. These findings came from the new offline SQL check: `sqlcheck.py` transpiles our BigQuery SQL to DuckDB and runs it on the open demo. It can't prove BigQuery's own behaviour, table names or permissions; `parity` still has to run against the real service.
 
 ## The Data Use Agreement, as code
 
