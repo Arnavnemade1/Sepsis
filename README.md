@@ -588,6 +588,7 @@ make verify                                       # end to end (needs CinC)
 make verify-genesis
 make verify-mimic   # needs the open MIMIC-IV demo in data/mimic_demo/
 make mimic-demo     # the whole MIMIC-IV pipeline on the demo, ~3.5 min
+make verify-physionet  # the credentialed-data platform: planted failures and mutations, ~15 min
 ```
 
 ## Deployment
