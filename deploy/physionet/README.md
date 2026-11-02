@@ -2,7 +2,7 @@
 
 Use this when the laptop can't hold the run (`make physionet-plan` says so) or shouldn't be tied up for it.
 
-This stack is one private machine: encrypted disk, no inbound ports, an idle stop and a budget alarm. There's no S3 bucket and no cluster, because the pipeline is one sequential job. Data arrives over HTTPS from physionet.org: I found no MIMIC-IV bucket on AWS, and the MIT-LCP cloud docs list BigQuery and Google Cloud Storage for it.
+This stack is one private machine: encrypted disk, no inbound ports, an idle stop and a budget alarm. There's no S3 bucket and no cluster, because the pipeline is one sequential job. Data arrives over HTTPS from physionet.org. The MIMIC-IV page also offers a download with the AWS command-line tools, which may be faster from inside AWS, but the pipeline doesn't use that route yet.
 
 **Check first:** the data and its Data Use Agreement stay yours. Don't share this machine's access with anyone, and the PhysioNet rule on model APIs applies here too (see [docs/PHYSIONET.md](../../docs/PHYSIONET.md)).
 
