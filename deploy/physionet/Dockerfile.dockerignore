@@ -1,0 +1,13 @@
+# An allowlist: nothing reaches the build context unless it is named here, so the image cannot
+# pick up a lake, a cache, an .env or a model by accident.
+*
+!backend
+!requirements.txt
+!verify_physionet.py
+**/__pycache__
+**/*.pyc
+**/.env
+**/*.parquet
+**/*.joblib
+**/*.npz
+**/*.pkl
