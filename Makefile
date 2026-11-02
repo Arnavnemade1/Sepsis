@@ -504,3 +504,42 @@ verify-disposition:
 audit:
 	$(PY) -m backend.ml.scripts.run_audit --spec dev --folds 3
 	$(PY) -m backend.ml.scripts.build_report
+
+# The PhysioNet data platform (backend/ml/physionet, docs/PHYSIONET.md). DS / ROUTE / ARGS choose:
+#   make physionet-up DS=mimic-iv-demo          the whole path on the open demo
+#   make physionet-up ROUTE=bigquery ARGS="--project my-gcp-project"
+.PHONY: verify-physionet physionet-doctor physionet-access physionet-plan physionet-up physionet-status physionet-login physionet-sqlcheck physionet-smoke physionet-scan
+DS ?= mimiciv
+ROUTE ?= lake
+PHYSIONET = PYTHONPATH=. $(PY) -W ignore -m backend.ml.physionet --dataset $(DS) --route $(ROUTE) $(ARGS)
+
+verify-physionet:
+	PYTHONPATH=. $(PY) -W ignore verify_physionet.py
+
+physionet-login:
+	@$(PHYSIONET) login $(USER_NAME)
+
+physionet-doctor:
+	@$(PHYSIONET) doctor
+
+physionet-access:
+	@$(PHYSIONET) access
+
+physionet-plan:
+	@$(PHYSIONET) plan
+
+physionet-up:
+	$(PHYSIONET) up
+
+physionet-status:
+	@$(PHYSIONET) status
+
+physionet-sqlcheck:
+	$(PHYSIONET) sqlcheck
+
+# real physionet.org, open data, a throwaway lake: proves the live path with no credentials
+physionet-smoke:
+	@T=$$(mktemp -d); PYTHONPATH=. $(PY) -W ignore -m backend.ml.physionet --lake $$T/lake --dataset mimic-iv-demo up --until parity; S=$$?; rm -rf $$T; exit $$S
+
+physionet-scan:
+	@$(PHYSIONET) scan $(FILES)
