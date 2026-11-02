@@ -52,8 +52,9 @@ class Budget:
     hours: float
 
     @staticmethod
-    def detect(hours: float = 12.0, disk_reserve_gb: float = 6.0, ram_fraction: float = 0.65) -> "Budget":
-        free = shutil.disk_usage(config.ARTIFACTS_DIR).free / 1e9
+    def detect(hours: float = 12.0, disk_reserve_gb: float = 6.0, ram_fraction: float = 0.65,
+               path: str = config.ARTIFACTS_DIR) -> "Budget":
+        free = shutil.disk_usage(path).free / 1e9
         ram = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
         return Budget(disk_gb=free - disk_reserve_gb, ram_gb=ram * ram_fraction, hours=hours)
 

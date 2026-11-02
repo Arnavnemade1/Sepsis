@@ -27,7 +27,8 @@ from backend.ml.mimic import history as H
 from backend.ml.mimic import sepsis3 as S3
 from backend.ml.mimic.sources import CsvSource
 
-CACHE_DIR = os.path.join(config.ARTIFACTS_DIR, "mimic_cache")
+#: credentialed runs keep their grid beside the lake, outside the repository (backend.ml.physionet)
+CACHE_DIR = os.environ.get("MIMIC_CACHE_DIR") or os.path.join(config.ARTIFACTS_DIR, "mimic_cache")
 
 VITAL_CH = ["HR", "SBP", "DBP", "MAP", "Resp", "O2Sat", "Temp", "EtCO2"]
 HEMO_CH = [c.name for c in K.HEMO]                # central venous pressure
@@ -387,7 +388,8 @@ def load(tag: str) -> MimicStore:
                       sofa={k[6:]: d[k] for k in d.files if k.startswith("sofa__")})
 
 
-DEMO_ROOT = os.path.join(config.REPO_ROOT, "data", "mimic_demo", "mimic-iv-clinical-database-demo-2.2")
+DEMO_ROOT = os.environ.get("MIMIC_DEMO_ROOT") or \
+    os.path.join(config.REPO_ROOT, "data", "mimic_demo", "mimic-iv-clinical-database-demo-2.2")
 
 
 if __name__ == "__main__":  # pragma: no cover

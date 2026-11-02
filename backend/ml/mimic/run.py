@@ -2,6 +2,7 @@
 
     python -m backend.ml.mimic.run --source demo            # the open 100-patient demo
     python -m backend.ml.mimic.run --source bigquery --project <gcp-project> --scale full
+    python -m backend.ml.mimic.run --source lake --lake <dir> --scale full   # see backend.ml.physionet
 
 Stages: store -> (design subsample) -> Ledger -> INFORMATION-FLOW AUDIT (covert channels;
 the strict tier) -> tripwires -> candidates (tier-P / T / S boosters and their GENESIS
@@ -31,6 +32,7 @@ import numpy as np
 
 from backend.ml.genesis import learners as L
 from backend.ml.genesis.harness import auroc
+from backend.ml.mimic import checkpoint as CK
 from backend.ml.mimic import counterfactual as CF
 from backend.ml.mimic import crossexam as CX
 from backend.ml.mimic import extract as E
@@ -87,6 +89,8 @@ SCALES = {
                   chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300,
                   tune_trials=16, tune_val_folds=(0, 1), info_ledger=False, trim_septic=True),
 }
+#: a credentialed run reports beside the lake; only the egress scan copies a report into the repo
+REPORT_DIR = os.environ.get("MIMIC_REPORT_DIR") or LG.OUT_DIR
 PHYSIO_FAMILIES = ["vitals", "gcs", "exam", "labs", "inflammation", "urine", "sofa", "history"]
 HEADLINE = ["direct_P", "stack_P", "genesis_P", "twin_s3_P", "twin_phys_P", "twin_hazard6_P", "genesis_twin_P",
             "direct_Pstrict", "stack_S", "genesis_S"]
@@ -300,8 +304,17 @@ def twin_diagnostics(led: LG.Ledger, fms: Dict[str, FoldModels], T, extra) -> Di
     return out
 
 
+def _source(source: str, project: str, lake: str):
+    if source == "demo":
+        return CsvSource(E.DEMO_ROOT)
+    if source == "lake":
+        from backend.ml.mimic.lake import LakeSource
+        return LakeSource(lake)
+    return BigQuerySource(project)
+
+
 def run(source: str, tag: str, scale_name: str, project: str = "", hours: float = 12.0,
-        plan_only: bool = False) -> Dict:
+        plan_only: bool = False, lake: str = "") -> Dict:
     t0 = time.time()
     scale = SCALES[scale_name]
     rep: Dict = {"source": source, "scale": scale_name,
@@ -310,19 +323,22 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
     try:
         store = E.load(tag)
     except FileNotFoundError:
-        src = CsvSource(E.DEMO_ROOT) if source == "demo" else BigQuerySource(project)
-        store = E.build_store(src)
+        store = E.build_store(_source(source, project, lake))
         E.save(store, tag)
     if scale_name != "demo" or plan_only:
         # will it fit this machine? the richest plan that does, before any feature is built
         n_feat = len(LG.build_features(E.subset(store, np.arange(min(8, store.n_patients))))[1])
-        scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours))
+        os.makedirs(E.CACHE_DIR, exist_ok=True)
+        scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours, path=E.CACHE_DIR))
         est = rep["plan"]["estimate"]
         print(f"plan: {rep['plan']['chosen']} | keep_rate {scale.keep_rate} | {est['rows_kept']:,} rows x "
               f"{est['features']} features | ~{est['feature_disk_gb']:.1f} GB disk, ~{est['ram_peak_gb']:.1f} GB RAM "
               f"peak | ~{est['hours']:.1f} h ({est['booster_fits']} booster fits, twin {est['twin_hours']:.1f} h)",
               flush=True)
         if plan_only:
+            os.makedirs(REPORT_DIR, exist_ok=True)
+            with open(os.path.join(REPORT_DIR, f"{tag}_plan.json"), "w") as fh:
+                json.dump(rep["plan"], fh, indent=1, default=_plain)
             return rep
     design_w = None
     if scale.keep_rate < 1.0:
@@ -488,8 +504,8 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
         "absolute_auroc_gt_0.80": TR.power_plan(led, fms["stack_P"].oof, bar=0.80),
         "stack_over_direct_by_0.01": TR.power_plan(led, fms["stack_P"].oof, fms["direct_P"].oof, bar=0.01)}}
     rep["seconds"] = time.time() - t0
-    os.makedirs(LG.OUT_DIR, exist_ok=True)
-    path = os.path.join(LG.OUT_DIR, f"{tag}_report.json")
+    os.makedirs(REPORT_DIR, exist_ok=True)
+    path = os.path.join(REPORT_DIR, f"{tag}_report.json")
     with open(path, "w") as fh:
         json.dump(rep, fh, indent=1, default=_plain)
     print(f"report: {path}  [{rep['seconds']:.0f}s]")
@@ -592,8 +608,10 @@ def _plain(o):
 
 if __name__ == "__main__":  # pragma: no cover
     ap = argparse.ArgumentParser()
-    ap.add_argument("--source", choices=["demo", "bigquery"], default="demo")
+    ap.add_argument("--source", choices=["demo", "bigquery", "lake"], default="demo")
     ap.add_argument("--project", default="")
+    ap.add_argument("--lake", default="", help="the Parquet lake (backend.ml.physionet)")
+    ap.add_argument("--checkpoint", default="", help="keep every fit here, so a re-run resumes where this one stopped")
     ap.add_argument("--scale", choices=list(SCALES), default=None)
     ap.add_argument("--tag", default=None)
     ap.add_argument("--hours", type=float, default=12.0, help="time budget the planner fits the run into")
@@ -601,5 +619,6 @@ if __name__ == "__main__":  # pragma: no cover
     a = ap.parse_args()
     import torch
     torch.set_num_threads(6)
-    run(a.source, a.tag or a.source, a.scale or ("demo" if a.source == "demo" else "full"), a.project,
-        a.hours, a.plan_only)
+    with CK.active(a.checkpoint or None, TR.code_fingerprint()["sha256"] + "|" + (a.tag or a.source)):
+        run(a.source, a.tag or a.source, a.scale or ("demo" if a.source == "demo" else "full"), a.project,
+            a.hours, a.plan_only, a.lake)
