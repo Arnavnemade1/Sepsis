@@ -54,7 +54,7 @@ can be believed.
 | **At the bedside** | On those patients, at the deployed threshold, it flags **46%** of septic patients and **8.5%** of non-septic patients at least once. Inside a 15% alarm budget it catches **55%** (predecessor 41%). Catching more without raising the burden is the open problem |
 | **Across hospitals** | **AUROC 0.68–0.70**, trained at one hospital and scored at the other. This is the honest deployment number |
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
-| **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The full run starts when credentialed access arrives |
+| **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The acquisition platform ([PHYSIONET](docs/PHYSIONET.md)) is ready for credentialed data; no credentialed data has been run and no full-MIMIC result exists |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
 | **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 73 and the integration plane 208, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
@@ -661,7 +661,7 @@ machinery built to refuse a false claim actually refuses it.
 |:--|:--|:--|
 | [PhysioNet/CinC 2019](https://physionet.org/content/challenge-2019/1.0.0/) | Open | The detection line and GENESIS: 40,335 ICU patients from two hospitals |
 | [MIMIC-IV demo 2.2](https://physionet.org/content/mimic-iv-demo/2.2/) | Open (ODbL) | Verifying the MIMIC-IV pipeline on 100 real patients |
-| [MIMIC-IV](https://physionet.org/content/mimiciv/) | Credentialed, via BigQuery | The full MIMIC-IV run |
+| [MIMIC-IV](https://physionet.org/content/mimiciv/) | Credentialed, streamed to a local lake or via BigQuery | The full MIMIC-IV run |
 | [MIMIC-III Waveform](https://physionet.org/content/mimic3wdb/) | Open | The autonomic-recovery study (ECG predictor, arterial-line outcome) |
 | [VitalDB](https://vitaldb.net/) | Open | The confound-controlled recovery retest |
 | [BIDMC PPG and Respiration](https://physionet.org/content/bidmc/1.0.0/) | Open | Camera-path HRV validation against ECG |
@@ -678,6 +678,7 @@ Datasets are never committed. Each one is redistributed only by its own source.
 | [FINDINGS](docs/FINDINGS.md) | The thirteen findings, the published nulls, the three research lines and the MIMIC-IV chapter |
 | [GENESIS](docs/GENESIS.md) | How far hourly early warning goes with all 40 CinC variables, and why 0.90 is out of reach there |
 | [MIMIC](docs/MIMIC.md) | The MIMIC-IV pipeline: data, label, harness, temporal model, levers and runbook |
+| [PHYSIONET](docs/PHYSIONET.md) | The credentialed-data platform: verified acquisition, the Parquet lake, data contracts, the Data Use Agreement as code |
 | [DATA_LEVER](docs/DATA_LEVER.md) | More patients: a registered win, two refusals, and the four defects shipping it exposed |
 | [CALIBRATION_RESOLUTION](docs/CALIBRATION_RESOLUTION.md) | Calibrating without a staircase: the ranking isotonic threw away |
 | [SUPERVISION_DENSITY](docs/SUPERVISION_DENSITY.md) | Why sepsis detection is patient classification, and the lever that follows |
