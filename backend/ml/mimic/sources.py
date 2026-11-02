@@ -1,4 +1,4 @@
-"""Where MIMIC-IV comes from: local CSVs (the open demo, or full CSVs) or BigQuery.
+"""Where MIMIC-IV comes from: local CSVs (the open demo, or full CSVs) or BigQuery; ``lake`` adds a third.
 
 Both sources expose the same BINNED interface — every event is reduced to
 ``(stay_id, hr, name, value)`` rows, ``hr = floor((time - intime) / 1 h)`` — so the grid
@@ -245,7 +245,11 @@ def _plausible(ev: pd.DataFrame, cons: Dict[str, K.Concept]) -> pd.DataFrame:
 
 def _bin_last(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str, lo: int,
               fold_pre_to_zero: bool = False) -> pd.DataFrame:
-    """Last value per (stay, hour, name) by event time, plus the count in that hour."""
+    """Last value per (stay, hour, name) by event time, plus the count in that hour. Readings
+    can share a timestamp (an arterial and a cuff pressure, two specimens), and which came "last"
+    was then an accident of file order: ~0.9% of chart cells differed between this path and the
+    SQL. The tie is now part of the definition: lowest itemid (the catalog lists the invasive
+    source first), then highest value. ``render_chart_sql`` / ``render_labs_sql`` mirror it."""
     if "intime" not in ev.columns:
         ev = ev.merge(stays[["stay_id", "intime"]], on="stay_id")
     h = _to_hours(ev[tcol], ev["intime"])
@@ -317,8 +321,8 @@ class BigQuerySource:
 
     Requires credentialed PhysioNet access linked to a Google Cloud project, and
     ``pip install google-cloud-bigquery db-dtypes``. The SQL mirrors ``CsvSource``
-    exactly (same itemids, conversions, plausibility windows, hour arithmetic); run
-    ``verify_mimic.py --bigquery`` once to compare both paths on the demo stays."""
+    exactly (same itemids, conversions, plausibility windows, hour arithmetic). ``sqlcheck``
+    verifies the SQL offline; ``parity`` then compares both paths on the demo stays, for real."""
     project: str
     hosp: str = "physionet-data.mimiciv_v3_1_hosp"     # the names on the MIMIC-IV project page
     icu: str = "physionet-data.mimiciv_v3_1_icu"
@@ -332,16 +336,16 @@ class BigQuerySource:
                               "and `gcloud auth application-default login`") from exc
         return bigquery.Client(project=self.project)
 
+    def _job_config(self):  # pragma: no cover - needs credentials
+        from google.cloud import bigquery
+        return bigquery.QueryJobConfig(maximum_bytes_billed=int(self.max_gb * 1e9))
+
     def query(self, sql: str) -> pd.DataFrame:  # pragma: no cover - needs credentials
         return self._client().query(sql, job_config=self._job_config()).to_dataframe()
 
     #: at most this many stays are named in a query (the parity check's demo cohort); a full
     #: cohort is filtered by the joins instead
     FILTER_MAX = 2000
-
-    def _job_config(self):  # pragma: no cover - needs credentials
-        from google.cloud import bigquery
-        return bigquery.QueryJobConfig(maximum_bytes_billed=int(self.max_gb * 1e9))
 
     @classmethod
     def stay_filter(cls, stays) -> str:
