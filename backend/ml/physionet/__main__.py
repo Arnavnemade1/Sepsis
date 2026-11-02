@@ -49,7 +49,7 @@ def cmd_access(a) -> int:
         except fetch.AuthRejected:
             print(f"  REJECTED     {d.key:<24} username or password")
         except fetch.NoAccess:
-            print(f"  NO ACCESS    {d.key:<24} sign its Data Use Agreement on physionet.org")
+            print(f"  NO ACCESS    {d.key:<24} check the username and password, then this dataset's agreement on physionet.org")
         except Exception as err:
             print(f"  ERROR        {d.key:<24} {type(err).__name__}")
     return 0

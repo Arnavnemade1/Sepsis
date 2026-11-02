@@ -162,8 +162,9 @@ class Client:
                 raise AuthRejected(f"401 from {urllib.parse.urlsplit(cur).hostname}: username or password rejected")
             if status == 403:
                 resp.close()
-                raise NoAccess(f"403 for {cur}: this account has no access. Check the credentialing "
-                               f"status and sign this project's Data Use Agreement on physionet.org")
+                # PhysioNet answers 403, not 401, to a wrong username: it can't tell us which this is
+                raise NoAccess(f"403 for {cur}: no access. Check the stored username and password, then the "
+                               f"credentialing status and this project's Data Use Agreement on physionet.org")
             ctype = (resp.headers.get("Content-Type") or "").lower()
             if status in (200, 206) and "text/html" in ctype and not cur.lower().endswith((".html", ".htm")):
                 resp.close()
