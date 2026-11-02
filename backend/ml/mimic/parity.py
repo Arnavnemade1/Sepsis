@@ -61,23 +61,35 @@ def compare_binned(ref: pd.DataFrame, cand: pd.DataFrame, tol: float = 1e-3) -> 
 
 
 def compare_events(ref: pd.DataFrame, cand: pd.DataFrame, tol: float = 1e-3) -> Dict:
-    a = ref.assign(t=ref.t.round(3)).groupby("stay_id").t.apply(lambda v: sorted(v)).to_dict()
-    b = cand.assign(t=cand.t.round(3)).groupby("stay_id").t.apply(lambda v: sorted(v)).to_dict()
+    def by_stay(df: pd.DataFrame) -> Dict:
+        typed = [c for c in ("group", "mrsa", "broad") if c in df.columns]    # what the event WAS, too
+        out: Dict = {}
+        for row in df.assign(t=df.t.astype(float).round(3))[["stay_id", "t"] + typed].itertuples(index=False):
+            out.setdefault(int(row[0]), []).append((float(row[1]),) + tuple(str(x) for x in row[2:]))
+        return {k: sorted(v) for k, v in out.items()}
+    a, b = by_stay(ref), by_stay(cand)
     stays = set(a) | set(b)
     same = sum(1 for k in stays if len(a.get(k, [])) == len(b.get(k, []))
-               and np.allclose(a.get(k, []), b.get(k, []), atol=tol))
+               and all(x[1:] == y[1:] and abs(x[0] - y[0]) <= tol for x, y in zip(a[k], b[k])))
     return {"reference_events": int(len(ref)), "candidate_events": int(len(cand)), "stays": len(stays),
             "stays_identical": same, "agreement": float(same / max(len(stays), 1))}
 
 
-def parity(reference, candidate, stays: pd.DataFrame, tol: float = 1e-3) -> Dict:
+def parity(reference, candidate, stays: pd.DataFrame, tol: float = 1e-3, agreement: float = AGREEMENT) -> Dict:
     out: Dict = {}
     for name, fn in TABLES.items():
         out[name] = compare_binned(_frame(fn(reference, stays)), _frame(fn(candidate, stays)), tol)
     for kind in EVENTS:
         out[kind] = compare_events(reference.event_times(stays, kind), candidate.event_times(stays, kind), tol)
-    out["verdict"] = {"agreement_required": AGREEMENT,
-                      "failing": sorted(k for k, v in out.items() if v["agreement"] < AGREEMENT)}
+    wr, wc = reference.first_weight(stays), candidate.first_weight(stays)
+    wc = wc.reindex(stays.stay_id).dropna()
+    wr = wr.reindex(stays.stay_id).dropna()
+    both = wr.index.intersection(wc.index)
+    same_w = int(np.isclose(wr[both].to_numpy(float), wc[both].to_numpy(float), atol=tol).sum())
+    out["weight"] = {"reference": int(len(wr)), "candidate": int(len(wc)), "values_equal": same_w,
+                     "agreement": float(same_w / max(len(wr.index.union(wc.index)), 1))}
+    out["verdict"] = {"agreement_required": agreement,
+                      "failing": sorted(k for k, v in out.items() if v["agreement"] < agreement)}
     out["verdict"]["passed"] = not out["verdict"]["failing"]
     return out
 
