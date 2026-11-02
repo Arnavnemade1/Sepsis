@@ -59,6 +59,14 @@ Traps found on the demo and handled before they could touch a label:
   total GCS set to 15 (unassessable), the MIT-LCP convention.
 * **Units.** FiO2 is charted in percent (with invalid zeros); one "°C" temperature reads 99.0.
 * **Antibiotics.** Eye drops, ointments, irrigants and enemas are filtered out by route and name.
+* **Same-timestamp ties.** Readings can share a timestamp, and about 0.9% of chart cells have more
+  than one candidate for "the hour's last reading". The rule is now fixed in both paths: lowest
+  itemid (the catalog lists the invasive source first), then highest value. It was chosen before
+  any AUROC was looked at, and it is a real definitional choice: on the demo, the opposite rule
+  moves the primary from 0.790 to 0.733, and the old file-order accident gave 0.755. All three lie
+  inside each other's intervals at 75 stays, and the movement says nothing about which is better.
+  **Pre-register this rule**, and on the full run compare it with the opposite rule on the dev
+  folds before the lock is read.
 
 ## 2. The label: Sepsis-3 from scratch, and a rule that does not fire on data arrival
 
