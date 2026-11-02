@@ -138,9 +138,9 @@ by the ledger. The three attacks are complementary, and the verifier shows each 
 catching a failure the others miss. For example, a stay-length feature survives the
 future rewrite, because the length is unchanged, but not the truncation. The third attack
 catches the class of bug GENESIS actually shipped: a cohort-wide cumulative sum whose
-floating-point rounding coupled patients. On the demo all 11 models are admitted:
+floating-point rounding coupled patients. On the demo all 17 models are admitted:
 booster scores are bit-identical under every attack, and the Process Twin moves by at
-most 2e-7 (float noise from a different sequence length, within tolerance).
+most 1e-7 (float noise from a different sequence length, within tolerance).
 
 ### 4.2 The information-flow audit (`infoflow`)
 
@@ -164,7 +164,7 @@ What it found in our own pipeline, on the demo:
   "3–4 respiratory points only while ventilated", so the "physiology" score carried the
   ventilator. It now scores respiration from P/F alone, and the audit no longer flags it.
 
-Dropping the two covert channels moves demo tier-P AUROC 0.690 → 0.627 (noise at this n; the
+Dropping the two covert channels moves demo tier-P AUROC 0.716 → 0.664 (noise at this n; the
 full run answers it).
 
 ### 4.3 The Care-Process Transplant (`counterfactual.process_physiology`, `.learnable`)
@@ -213,10 +213,10 @@ Three design decisions, each forced by a failure:
   audit (§5).
 
 On the demo (noise, 75 stays), the pattern the full run must test: the best tier-P model
-(`genesis_twin_P`, AUROC 0.768) keeps **0.738 on its own schedule with every value
-neutralised**, and falls to **0.599 on its own values under a random schedule**. That is
-process reliance 0.169 (95% CI 0.027–0.309), the only interval clear of zero. The strict-P
-booster's reliance is 0.010.
+among those transplanted (`genesis_twin_P`, AUROC 0.729) keeps **0.751 on its own schedule with
+every value neutralised**, and falls to **0.594 on its own values under a random schedule**:
+process reliance 0.136 (95% CI −0.060–0.340). The intervals clear of zero belong to the direct
+booster (0.120, 0.030–0.217) and the strict-P booster (0.089, 0.025–0.179).
 
 ### 4.4 The cross-examination (`crossexam`)
 
@@ -224,14 +224,14 @@ booster's reliance is 0.010.
    is split into *prediction* (label-1 hours before the onset hour) and *detection* (onset
    hour to onset + 3 h), and set against the label's own formula computed from what that
    tier can see. At tier P that is the measured SOFA rise from physiology components; at
-   tier S, plus suspicion. On the demo the tier-S model's detection margin is **−0.026**:
+   tier S, plus suspicion. On the demo the tier-S model's detection margin is **−0.055**:
    at detection hours it knows nothing the definition doesn't.
 2. **Contrast cohorts.** Septic hours are set against event-aligned negatives:
    infection-only stays around their suspicion time, organ-dysfunction-only stays around
    their measured SOFA rise, and stays with neither. The *specificity index* is the weaker
    of the two halves. On the demo the Process Twin, whose gate factors are trained on
-   exactly these two halves, has the highest specificity index (0.704 vs 0.414 for the
-   direct booster). That is a hypothesis for the full run, not a result.
+   exactly these two halves, has the highest specificity index (0.673 and 0.739 for its full
+   and physiology scores, vs 0.369 for the direct booster). That is a hypothesis for the full run, not a result.
 3. **Clinician-conditional AUROC.** A clinician model is fitted on everything clinicians'
    actions reveal: orders, treatments, and when and how often each variable was measured,
    never a value. Every model is then scored only against hours that model found equally
@@ -314,11 +314,11 @@ was removed. The twin is now fitted twice per fold:
 hour of the dev folds). For example: Sepsis-3 probability; its physiology-only counterpart
 and the process attribution between them; suspicion within 6 h; each organ's chance of a
 measured SOFA rise within 6 h; the composed organ half; onset within 6 h. On the demo the
-example is an ICU-hour-4 alert 8 h before onset: 0.998 overall but 0.295 from physiology
-alone, with respiration and cardiovascular the organs expected to move. At 99 subjects that
+example is an ICU-hour-3 alert 9 h before onset: 0.997 overall and 0.868 from physiology
+alone, with cardiovascular and respiration the organs expected to move. At 99 subjects that
 is an illustration of the readout, not a finding.
 
-**Accuracy is not measurable on the demo.** Every twin configuration scores 0.55–0.60 on
+**Accuracy is not measurable on the demo.** Every twin configuration scores 0.55–0.63 on
 the 99-subject demo, and early stopping on ~8 validation patients mostly keeps the first
 checkpoint. The same code learns every planted world built on those same demo schedules
 and labels, so this is sample size, not a broken real-data path; boosters also win on tiny
@@ -393,8 +393,8 @@ primary dev AUROC and reported under every setting:
 * patient level, every stay.
 
 The single highest number is printed as `IDEAL CIRCUMSTANCES`, always with its tier and
-setting spelled out and with the primary beside it. On the demo that line reads 0.819:
-the distilled physiology-only student, hourly, over every stay, beside a primary of 0.755.
+setting spelled out and with the primary beside it. On the demo that line reads 0.869:
+the distilled physiology-only student, hourly, over every stay, beside a primary of 0.790.
 That is noise at 99 subjects, but it shows exactly which knobs carry a number toward 0.9.
 
 **What to expect on full MIMIC-IV** (expectations, not results):
