@@ -227,7 +227,7 @@ class CsvSource:
         sid = set(stays.stay_id)
         ev = self._read("icu", "inputevents", ["stay_id", "starttime", "patientweight"],
                         keep=lambda d: d.stay_id.isin(sid))
-        ev = ev.dropna(subset=["patientweight"]).sort_values("starttime")
+        ev = ev.dropna(subset=["patientweight"]).sort_values(["starttime", "patientweight"])
         w = ev.groupby("stay_id").patientweight.first().astype(float)
         return w.where((w > 20) & (w < 400))
 
@@ -250,7 +250,7 @@ def _bin_last(ev: pd.DataFrame, stays: pd.DataFrame, tcol: str, lo: int,
     ev = ev[(ev.hr >= lo) & (ev.hr < K.MAX_HOURS)]
     if fold_pre_to_zero:
         ev.loc[ev.hr < 0, "hr"] = 0          # known at admission; keeps its earlier time order
-    ev = ev.sort_values(["stay_id", "name", "hr", "_t"])
+    ev = ev.assign(_tie=-ev["itemid"]).sort_values(["stay_id", "name", "hr", "_t", "_tie", "value"])
     g = ev.groupby(["stay_id", "hr", "name"], sort=False)
     out = g.agg(value=("value", "last"), n=("value", "size")).reset_index()
     return out
@@ -411,7 +411,7 @@ class BigQuerySource:
         return df[["stay_id", "t"]].sort_values(["stay_id", "t"]).reset_index(drop=True)
 
     def first_weight(self, stays):  # pragma: no cover
-        df = self._q(f"""SELECT stay_id, ARRAY_AGG(patientweight ORDER BY starttime LIMIT 1)[OFFSET(0)] AS w
+        df = self._q(f"""SELECT stay_id, ARRAY_AGG(patientweight ORDER BY starttime, patientweight LIMIT 1)[OFFSET(0)] AS w
                          FROM `{self.icu}.inputevents` WHERE patientweight IS NOT NULL GROUP BY stay_id""")
         w = df.set_index("stay_id").w.astype(float)
         return w.where((w > 20) & (w < 400))
@@ -451,7 +451,7 @@ FROM ok WHERE name = '{base}' AND h >= 0 AND h < {K.MAX_HOURS}
 GROUP BY stay_id, hr""" for base, how in K.EXTREMES.items())
     return f"""
 WITH ev AS (
-  SELECT ce.stay_id, ce.charttime, {_case_name(K.CHART_ALL, 'ce.itemid')} AS name,
+  SELECT ce.stay_id, ce.charttime, ce.itemid, {_case_name(K.CHART_ALL, 'ce.itemid')} AS name,
          CASE WHEN ce.itemid = 223900 AND ce.value = 'No Response-ETT' THEN 0.0
               {_exam_value()}
               ELSE ce.valuenum END AS v,
@@ -459,7 +459,7 @@ WITH ev AS (
   FROM `{icu}.chartevents` ce JOIN `{icu}.icustays` s USING (stay_id)
   WHERE ce.itemid IN ({ids}) AND ({stay_filter})
 ), ok AS (
-  SELECT stay_id, charttime, h,
+  SELECT stay_id, charttime, itemid, h,
          CASE WHEN name IN ('TempF', 'TempC') THEN 'Temp' ELSE name END AS name,
          CASE WHEN name = 'TempF' THEN (v - 32) * 5 / 9
               WHEN name = 'FiO2' AND v > 1 THEN v / 100 ELSE v END AS value
@@ -467,7 +467,7 @@ WITH ev AS (
 )
 SELECT stay_id, CAST(FLOOR(h) AS INT64) AS hr, name,
        IF(name IN ({worst}), MAX(value),
-          ARRAY_AGG(value ORDER BY charttime DESC LIMIT 1)[OFFSET(0)]) AS value, COUNT(*) AS n
+          ARRAY_AGG(value ORDER BY charttime DESC, itemid ASC, value DESC LIMIT 1)[OFFSET(0)]) AS value, COUNT(*) AS n
 FROM ok
 WHERE h >= 0 AND h < {K.MAX_HOURS} AND (name != 'FiO2' OR value BETWEEN 0.21 AND 1.0)
 GROUP BY stay_id, hr, name
@@ -491,14 +491,14 @@ def render_labs_sql(hosp: str, icu: str, stay_filter: str = "TRUE") -> str:
     bounds = " OR ".join(f"(name = '{c.name}' AND v BETWEEN {c.lo} AND {c.hi})" for c in cons)
     return f"""
 WITH ev AS (
-  SELECT s.stay_id, le.charttime, {_case_name(cons, 'le.itemid')} AS name, {_text_value(K.LAB_TEXT)} AS v,
+  SELECT s.stay_id, le.charttime, le.itemid, {_case_name(cons, 'le.itemid')} AS name, {_text_value(K.LAB_TEXT)} AS v,
          DATETIME_DIFF(le.charttime, s.intime, SECOND) / 3600.0 AS h
   FROM `{hosp}.labevents` le JOIN `{icu}.icustays` s ON le.hadm_id = s.hadm_id
   WHERE le.itemid IN ({ids}) AND ({stay_filter})
 ), ok AS (SELECT * FROM ev WHERE v IS NOT NULL AND ({bounds})
           AND h >= -{PRE_ICU_LAB_HOURS} AND h < {K.MAX_HOURS})
 SELECT stay_id, GREATEST(CAST(FLOOR(h) AS INT64), 0) AS hr, name,
-       ARRAY_AGG(v ORDER BY charttime DESC LIMIT 1)[OFFSET(0)] AS value, COUNT(*) AS n
+       ARRAY_AGG(v ORDER BY charttime DESC, itemid ASC, v DESC LIMIT 1)[OFFSET(0)] AS value, COUNT(*) AS n
 FROM ok GROUP BY stay_id, hr, name
 """
 

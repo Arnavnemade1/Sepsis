@@ -67,10 +67,12 @@ YEAR_GROUPS = ["2008 - 2010", "2011 - 2013", "2014 - 2016", "2017 - 2019", "2020
 MIN_HOURS = 4
 #: Bumped whenever the grid's contents change (v2: SOFA_P without the ventilator; audit-only
 #: attributes in ``meta``), so a stale cache is rebuilt instead of silently reused.
-STORE_VERSION = 4                 # v3: inflammation labs, urinalysis, CVP, ventilator settings,
+STORE_VERSION = 5                 # v3: inflammation labs, urinalysis, CVP, ventilator settings,
                                   # treatments, IV antibiotic administrations, arrival context;
                                   # v4: the bedside exam, within-hour extremes (SOFA reads the
-                                  # hour's lowest MAP), culture specimen groups, antibiotic spectrum
+                                  # hour's lowest MAP), culture specimen groups, antibiotic spectrum;
+                                  # v5: same-timestamp ties have one definition; no interval from
+                                  # past the grid written into its last hour
 #: Per-stay attributes kept for the subgroup audit ONLY. They live in ``meta``, never in the
 #: grid ``X``, so no feature — and therefore no model — can read them.
 AUDIT_ATTRS = ["sex", "age_band", "race_group", "insurance", "admission_type", "careunit",
