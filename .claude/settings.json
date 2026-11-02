@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(~/physionet-lake/**)",
+      "Edit(~/physionet-lake/**)",
+      "Write(~/physionet-lake/**)"
+    ]
+  }
+}
