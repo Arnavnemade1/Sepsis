@@ -1,6 +1,8 @@
 # The data platform only (make verify-physionet, make physionet-*). Deliberately NOT in the
 # server's requirements: the deployed backend never reads credentialed data.
 pyarrow==21.0.0
+# PhysioNet's own client: its session is the only one PhysioNet will read a login from (fetch.py).
+physionet==0.2.1
 # The offline BigQuery check: our SQL, transpiled, run against the open demo.
 duckdb==1.4.5
 sqlglot==30.27.0

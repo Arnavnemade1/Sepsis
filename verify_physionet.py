@@ -234,6 +234,8 @@ def c2_credentials() -> None:
             r.read()
         check("credentials do not follow a redirect to another host",
               w.seen[0].get("authorization") and not w.seen[-1].get("authorization"))
+        check("requests go through PhysioNet's own client, the only one it reads a login from",
+              all(s.get("user-agent", "").startswith("PhysioNet-Python-Client/") for s in w.seen))
 
 
 def c3_access() -> None:
@@ -810,6 +812,8 @@ MUTATIONS = [
     ("credentials shown in repr", auth, 'password=<hidden>, source=', 'password={self.password}, source=', "2"),
     ("credentials sent over clear text", fetch, 'if parts.scheme != "https" and parts.hostname not in LOOPBACK:', 'if False:', "2"),
     ("credentials follow any redirect", fetch, 'urllib.parse.urlsplit(cur).hostname == origin)', 'True)', "2"),
+    ("a client PhysioNet serves as anonymous", fetch, 'return PhysioNetClient(origin, *who).session',
+     'return __import__("requests").Session()', "2"),
     ("a login page accepted as a file", fetch, 'and "text/html" in ctype', 'and False', "3"),
     ("a short body taken as complete", fetch, 'if self.length is not None and self.offset < self.length:', 'if False:', "4"),
     ("an ignored Range appended", fetch, 'while skipped < self.offset:', 'while False:', "4"),

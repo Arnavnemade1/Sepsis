@@ -24,13 +24,13 @@ import os
 import random
 import re
 import shutil
-import ssl
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Dict, Optional, Tuple
+
+import urllib3
 
 from backend.ml.physionet.auth import Credentials
 
@@ -103,17 +103,40 @@ def require_free(path: str, needed: int, reserve: int = 2 << 30) -> None:
                        f"{free / 1e9:.1f} GB free on the volume of {probe}")
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *a, **k):      # redirects are followed by Client, which decides on auth
-        return None
+def _session(origin: str, creds: Optional[Credentials]):
+    """A session from PhysioNet's own client (the ``physionet`` package). PhysioNet reads a login
+    only from clients it recognises (wget, the WFDB tools, this one: ``http_auth_allowed`` in
+    physionet-build) and serves anyone else as anonymous, which for a credentialed file is a 403
+    however right the password. So requests go through its client rather than claiming to be one."""
+    from physionet.api.client import PhysioNetClient
+    who = (creds.username, creds.password) if creds else (None, None)
+    return PhysioNetClient(origin, *who).session
 
 
-def _ssl_context() -> ssl.SSLContext:
-    try:
-        import certifi
-        return ssl.create_default_context(cafile=certifi.where())
-    except ImportError:
-        return ssl.create_default_context()
+class _Response:
+    """The urllib response surface this module reads, over a streamed ``requests`` response."""
+
+    def __init__(self, resp):
+        self._resp, self.headers = resp, resp.headers
+        resp.raw.enforce_content_length = False    # a short body is RemoteStream's to notice and resume
+
+    def getcode(self) -> int:
+        return self._resp.status_code
+
+    def read(self, n: int = -1) -> bytes:
+        try:
+            return self._resp.raw.read(None if n is None or n < 0 else n, decode_content=True)
+        except urllib3.exceptions.HTTPError as err:     # a dropped connection: the callers reconnect on OSError
+            raise OSError(str(err)) from err
+
+    def close(self) -> None:
+        self._resp.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
 
 
 @dataclass
@@ -124,22 +147,21 @@ class Client:
     backoff: float = 2.0
     sleep: Callable[[float], None] = time.sleep
     max_redirects: int = 5
-    _opener: object = field(default=None, repr=False)
+    _sessions: Dict[Tuple[str, bool], object] = field(default_factory=dict, repr=False)
 
     def _open_one(self, url: str, headers: Dict[str, str], auth: bool):
         parts = urllib.parse.urlsplit(url)
-        if auth and self.creds is not None:
+        creds = self.creds if auth else None
+        if creds is not None:
             if parts.scheme != "https" and parts.hostname not in LOOPBACK:
                 raise FetchError(f"refusing to send credentials in clear text to {parts.hostname}")
-            headers = dict(headers, Authorization=self.creds.header())
-        if self._opener is None:
-            self._opener = urllib.request.build_opener(
-                _NoRedirect(), urllib.request.HTTPSHandler(context=_ssl_context()))
-        req = urllib.request.Request(url, headers=dict(headers, **{"User-Agent": "aegis-physionet/1"}))
-        try:
-            return self._opener.open(req, timeout=self.timeout)
-        except urllib.error.HTTPError as err:
-            return err
+        origin = f"{parts.scheme}://{parts.netloc}"
+        key = (origin, creds is not None)
+        if key not in self._sessions:             # the login is scoped to this origin by the session itself
+            self._sessions[key] = _session(origin, creds)
+        resp = self._sessions[key].get(url, headers=headers, allow_redirects=False, stream=True,
+                                       timeout=self.timeout)     # redirects are followed by open(), which decides on auth
+        return _Response(resp)
 
     def open(self, url: str, headers: Optional[Dict[str, str]] = None):
         """A response object, after redirects. Credentials stay on the host they were given
@@ -162,7 +184,7 @@ class Client:
                 raise AuthRejected(f"401 from {urllib.parse.urlsplit(cur).hostname}: username or password rejected")
             if status == 403:
                 resp.close()
-                # PhysioNet answers 403, not 401, to a wrong username: it can't tell us which this is
+                # PhysioNet answers 403, not 401, to a request it treats as anonymous: it can't tell us why
                 raise NoAccess(f"403 for {cur}: no access. Check the stored username and password, then the "
                                f"credentialing status and this project's Data Use Agreement on physionet.org")
             ctype = (resp.headers.get("Content-Type") or "").lower()
