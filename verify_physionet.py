@@ -517,6 +517,22 @@ def c8_contract(lake_root: str) -> None:
             shutil.rmtree(os.path.dirname(path))
     attacked("d_items", lambda d: d.assign(label=d.label.where(d.itemid != 220045, "Something Else")), "a repointed itemid")
     attacked("chartevents", lambda d: d.assign(valuenum=d.valuenum.where(d.itemid != 220045, d.valuenum * 9)), "a unit change in heart rate")
+    # Base excess sits near zero: the first full run's median moved -1 -> 0, which a ratio calls a
+    # unit change. The demo has too few base-excess rows in the usual 8-bucket sample (70 < 100) to
+    # compare at all, so these two read every bucket: they test the rule, not the demo's sample size.
+    sample = CT.SAMPLE_BUCKETS
+    CT.SAMPLE_BUCKETS = 64
+    attacked("labevents", lambda d: d.assign(valuenum=d.valuenum.where(d.itemid != 50802, d.valuenum + 20)),
+             "a 20 mEq/L shift in base excess (a signed lab)")
+    path = _edit(lake_root, "labevents", lambda d: d.assign(valuenum=d.valuenum.where(
+        d.itemid != 50802, d.valuenum - d.valuenum[d.itemid == 50802].median())))
+    try:
+        r = CT.check(ML.LakeSource(path), base, min_stays=100)
+        drift = next(c for c in r["checks"] if c["check"] == "no item moved like a unit change")
+        check("a signed lab re-centred near zero is sampling noise, not a unit change", drift["ok"], drift["detail"][:80])
+    finally:
+        shutil.rmtree(os.path.dirname(path))
+        CT.SAMPLE_BUCKETS = sample
     attacked("icustays", lambda d: d.assign(subject_id=d.subject_id.where(d.index != 0, 1)), "a stay with no patient")
     attacked("icustays", lambda d: d.assign(hadm_id=d.hadm_id.where(d.index != 0, 1)), "a stay with no admission")
     attacked("icustays", lambda d: pd.concat([d, d.iloc[[0]]], ignore_index=True), "a duplicated stay")
@@ -832,6 +848,7 @@ MUTATIONS = [
     ("the old BigQuery names", SRC, 'hosp: str = "physionet-data.mimiciv_v3_1_hosp"', 'hosp: str = "physionet-data.mimiciv_3_1_hosp"', "7"),
     ("no label check", CT, 'or not re.search(c.label_pattern, str(labels[i]))', '', "8"),
     ("no drift check", CT, 'if not (1 / DRIFT_RATIO <= ratio <= DRIFT_RATIO):', 'if False:', "8"),
+    ("no drift check for signed labs", CT, 'if abs(cur["median"] - ref["median"]) > DRIFT_SIGNED_SHARE * signed[item]:', 'if False:', "8"),
     ("no orphan check", CT, 'r.add("every stay has its patient", not orphan_p.any()', 'r.add("every stay has its patient", True', "8"),
     ("no cohort floor", CT, 'r.add("cohort size", len(st) >= min_stays', 'r.add("cohort size", True', "8"),
     ("a canary that ignores identifiers", guard, 'if canary.hit(tok))', 'if False)', "9"),

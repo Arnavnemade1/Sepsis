@@ -22,6 +22,9 @@ from backend.ml.mimic.lake import LakeSource
 SMALL_CELL = 10
 SAMPLE_BUCKETS = 8
 DRIFT_RATIO = 2.0          # a median this far from the demo's is a unit or a meaning change
+#: a signed concept (base excess) sits near zero, where a ratio is noise: there the median may
+#: move by at most this share of the concept's plausible range (8 mEq/L for base excess)
+DRIFT_SIGNED_SHARE = 0.1
 DRIFT_MIN_N = 100
 
 
@@ -107,9 +110,17 @@ def check(src: LakeSource, baseline: Optional[LakeSource] = None, min_stays: int
             _item_medians(baseline, "labevents", "valuenum", baseline.specs["labevents"].buckets)
         drifted = []
         compared = 0
+        signed = {i: c.hi - c.lo for c in K.CHART + K.LAB if c.lo < 0 < c.hi for i in c.itemids}
         for item, cur in data.items():
             ref = base.get(item)
-            if ref is None or min(ref["n"], cur["n"]) < DRIFT_MIN_N or abs(ref["median"]) < 1e-6:
+            if ref is None or min(ref["n"], cur["n"]) < DRIFT_MIN_N:
+                continue
+            if item in signed:
+                compared += 1
+                if abs(cur["median"] - ref["median"]) > DRIFT_SIGNED_SHARE * signed[item]:
+                    drifted.append(f"{item}: {ref['median']:g} -> {cur['median']:g}")
+                continue
+            if abs(ref["median"]) < 1e-6:
                 continue
             compared += 1
             ratio = cur["median"] / ref["median"]
