@@ -9,6 +9,7 @@ This stack is one private machine: encrypted disk, no inbound ports, an idle sto
 **Before applying, check two account limits.** Both stopped the first apply:
 
 * **The account's plan.** An account on AWS's Free plan can only launch free-tier instance types, and the largest of those (`m7i-flex.large`, 2 vCPU and 8 GB) is too small for this run. The apply then fails with `InvalidParameterCombination: ... not eligible for Free Tier`. Upgrading the plan is a billing decision, made in the console (Billing → Free Tier → Upgrade plan). Remaining credits carry over and are spent first. `aws freetier get-account-plan-state --region us-east-1` shows the plan.
+  To stay on the Free plan, apply with `-var instance_type=m7i-flex.large` (the largest free-tier type) and expect a lean plan: the planner scales its time estimates by thread count, so on 2 threads it gives up never-septic stays and stages to fit `HOURS`. The boot script adds a 24 GB swap file on the encrypted disk so building the grid can't run out of memory. The planner never counts swap: modelling is fitted into real RAM.
 * **The region.** This account's organization policy allows only `us-east-2`, so that's the default here. Elsewhere, EC2 and SSM calls fail with an explicit deny.
 
 ```bash

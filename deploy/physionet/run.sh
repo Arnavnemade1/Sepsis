@@ -13,9 +13,12 @@ chmod 600 "$ENVFILE"
   printf 'PHYSIONET_USERNAME=%s\n' "$(aws ssm get-parameter --region "$REGION" --name /physionet/username --query Parameter.Value --output text)"
   printf 'PHYSIONET_PASSWORD=%s\n' "$(aws ssm get-parameter --region "$REGION" --name /physionet/password --with-decryption --query Parameter.Value --output text)"
 } > "$ENVFILE"
-# This machine does nothing else: one booster thread per physical core (m7i cores are
-# hyperthreaded), the cloud scale (every negative it can afford, more tuning), and a time budget
-# the planner fits into. HOURS=30 at ~$0.81/h caps the compute near $25.
-THREADS="${GENESIS_THREADS:-$(( $(nproc) / 2 ))}"
-exec docker run --rm --env-file "$ENVFILE" -e GENESIS_THREADS="$THREADS" -v /srv/lake:/lake aegis-physionet \
+# This machine does nothing else: one booster thread per physical core on a big machine (m7i
+# cores are hyperthreaded), every vCPU on a small one; 80% of RAM for the planner; the cloud
+# scale (every negative it can afford, more tuning); and a time budget the planner fits into.
+# HOURS=30 caps an m7i.4xlarge (~$0.81/h) near $25; a free-tier m7i-flex.large is ~$0.10/h.
+N="$(nproc)"
+THREADS="${GENESIS_THREADS:-$(( N > 4 ? N / 2 : N ))}"
+exec docker run --rm --env-file "$ENVFILE" -e GENESIS_THREADS="$THREADS" \
+  -e MIMIC_RAM_FRACTION="${MIMIC_RAM_FRACTION:-0.8}" -v /srv/lake:/lake aegis-physionet \
   --scale "${SCALE:-cloud}" --hours "${HOURS:-30}" "$@"
