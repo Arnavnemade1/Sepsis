@@ -12,7 +12,7 @@ COPY requirements.txt /app/requirements.txt
 COPY backend/ml/physionet/requirements.txt /app/physionet-requirements.txt
 RUN pip install --no-cache-dir --disable-pip-version-check numpy==2.0.2 scipy==1.13.1 pandas==2.3.3 scikit-learn==1.6.1 joblib==1.5.3 lightgbm==4.6.0 certifi \
       -r /app/physionet-requirements.txt \
- && if [ "$TORCH" = "1" ]; then pip install --no-cache-dir --disable-pip-version-check torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu; fi
+ && if [ "$TORCH" = "1" ]; then pip install --no-cache-dir --disable-pip-version-check torch==2.8.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu; fi
 
 COPY backend /app/backend
 COPY verify_physionet.py /app/verify_physionet.py
