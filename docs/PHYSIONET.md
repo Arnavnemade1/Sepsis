@@ -2,7 +2,7 @@
 
 How credentialed data gets onto a machine, how we know it's the right data, and how anything identifiable is kept from leaving.
 
-**Status:** built and verified on the open MIMIC-IV demo, including a live end-to-end run against physionet.org. No credentialed byte has passed through it yet, so three things remain unproven until your login is in place: that physionet.org accepts HTTP Basic for your account, the real speed of a full download, and whether the size projection holds.
+**Status:** built and verified on the open MIMIC-IV demo, including a live end-to-end run against physionet.org. The login works: on 2026-11-02 `access` read MIMIC-IV 3.1's 33-file hash list with a real credentialed account. No data file has been downloaded yet, so two things remain unproven: the real speed of a full download, and whether the size projection holds.
 
 ## Start here
 
@@ -10,7 +10,7 @@ How credentialed data gets onto a machine, how we know it's the right data, and 
 make physionet-login USER_NAME=<your-physionet-username>
 ```
 
-That prints a Keychain command. Run it yourself; it prompts on your terminal, so the password never reaches a shell history or an AI transcript. Then:
+That prints a Keychain command. Run it yourself; it prompts on your terminal, so the password never reaches a shell history or an AI transcript. Your username or the email you log in with both work. Type the password rather than pasting it: a paste can carry a stray space. Then:
 
 ```bash
 make physionet-doctor
@@ -89,7 +89,7 @@ Size figures are projections from the demo with a 3× margin. The real sizes rep
 
 ## What building this found
 
-These were all live in the code that was waiting for the data:
+These were all live in the code that was waiting for the data (the last was found with the first real login):
 
 | Finding | Consequence if the data had simply arrived |
 |---|---|
@@ -99,6 +99,7 @@ These were all live in the code that was waiting for the data:
 | pandas' default float parser is off by an ulp on some values | the paths could never match byte for byte. The reference now uses `round_trip` |
 | The run wrote its report only at the very end | a crash at hour 8 of 9 cost all 8 hours. Now every fit is checkpointed |
 | A cached store was keyed by tag alone | a new lake could silently reuse an old grid. The tag now derives from the lake's fingerprint |
+| PhysioNet reads a login only from wget, the WFDB tools and its own Python client, and serves every other client as anonymous (`http_auth_allowed` in physionet-build) | a correct password got 403 on every credentialed file, from our client and from curl alike. Requests now go through the official `physionet` package's session |
 
 The grid's contents changed, so `STORE_VERSION` is 5. Refreshed demo numbers moved noticeably (primary 0.755 to 0.790), and that is not an improvement: flipping the tie rule to its arbitrary opposite gives 0.733. See [MIMIC.md §1](MIMIC.md). A kill-and-resume test matched the uninterrupted report with no non-timing differences. These findings came from the new offline SQL check: `sqlcheck.py` transpiles our BigQuery SQL to DuckDB and runs it on the open demo. It can't prove BigQuery's own behaviour, table names or permissions; `parity` still has to run against the real service.
 
