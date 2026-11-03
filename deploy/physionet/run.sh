@@ -13,4 +13,9 @@ chmod 600 "$ENVFILE"
   printf 'PHYSIONET_USERNAME=%s\n' "$(aws ssm get-parameter --region "$REGION" --name /physionet/username --query Parameter.Value --output text)"
   printf 'PHYSIONET_PASSWORD=%s\n' "$(aws ssm get-parameter --region "$REGION" --name /physionet/password --with-decryption --query Parameter.Value --output text)"
 } > "$ENVFILE"
-exec docker run --rm --env-file "$ENVFILE" -v /srv/lake:/lake aegis-physionet "$@"
+# This machine does nothing else: one booster thread per physical core (m7i cores are
+# hyperthreaded), the cloud scale (every negative it can afford, more tuning), and a time budget
+# the planner fits into. HOURS=30 at ~$0.81/h caps the compute near $25.
+THREADS="${GENESIS_THREADS:-$(( $(nproc) / 2 ))}"
+exec docker run --rm --env-file "$ENVFILE" -e GENESIS_THREADS="$THREADS" -v /srv/lake:/lake aegis-physionet \
+  --scale "${SCALE:-cloud}" --hours "${HOURS:-30}" "$@"

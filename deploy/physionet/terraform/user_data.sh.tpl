@@ -1,7 +1,7 @@
 #!/bin/bash
 # First boot: Docker, the repository, the image. It starts no job and fetches no data.
 set -euo pipefail
-dnf install -y docker git
+dnf install -y docker git tmux
 systemctl enable --now docker
 usermod -aG docker ssm-user 2>/dev/null || true
 mkdir -p /srv/aegis /srv/lake

@@ -6,20 +6,28 @@ This stack is one private machine: encrypted disk, no inbound ports, an idle sto
 
 **Check first:** the data and its Data Use Agreement stay yours. Don't share this machine's access with anyone, and the PhysioNet rule on model APIs applies here too (see [docs/PHYSIONET.md](../../docs/PHYSIONET.md)).
 
+**Before applying, check two account limits.** Both stopped the first apply:
+
+* **The account's plan.** An account on AWS's Free plan can only launch free-tier instance types, and the largest of those (`m7i-flex.large`, 2 vCPU and 8 GB) is too small for this run. The apply then fails with `InvalidParameterCombination: ... not eligible for Free Tier`. Upgrading the plan is a billing decision, made in the console (Billing → Free Tier → Upgrade plan). Remaining credits carry over and are spent first. `aws freetier get-account-plan-state --region us-east-1` shows the plan.
+* **The region.** This account's organization policy allows only `us-east-2`, so that's the default here. Elsewhere, EC2 and SSM calls fail with an explicit deny.
+
 ```bash
 cd deploy/physionet/terraform
 terraform init
+eval "$(aws configure export-credentials --format env)"   # Terraform can't read an `aws login` session itself
 terraform apply -var alert_email=you@example.com
 ```
+
+The Terraform state stays on your machine, git-ignored. It holds no password.
 
 Store the login yourself. The `read -s` keeps the password off your screen and out of your shell history:
 
 ```bash
-aws ssm put-parameter --name /physionet/username --type String --value <your-username>
+aws ssm put-parameter --region us-east-2 --name /physionet/username --type String --value <your-username>
 ```
 
 ```bash
-read -rs PW && aws ssm put-parameter --name /physionet/password --type SecureString --value "$PW"; unset PW
+read -rs PW && aws ssm put-parameter --region us-east-2 --name /physionet/password --type SecureString --value "$PW"; unset PW
 ```
 
 Then connect (the `connect` output prints this) and run:
@@ -31,6 +39,14 @@ sudo /srv/aegis/Sepsis/deploy/physionet/run.sh doctor
 ```bash
 sudo /srv/aegis/Sepsis/deploy/physionet/run.sh up
 ```
+
+On this machine `run.sh` uses the `cloud` scale. It has three differences from the laptop's `full` scale, all on dev folds only:
+
+* every never-septic stay if the planner can afford it, instead of 25%;
+* 32 tuning trials instead of 16;
+* when time runs short, it gives up negatives (keep rate 1.0 → 0.5 → 0.25) before it drops any stage.
+
+It runs one booster thread per physical core. The planner fits the run into `HOURS` (default 30, so at most about $25 of compute at ~$0.81 an hour). `SCALE=full` or `HOURS=…` before the command overrides either.
 
 The job survives a disconnect only if you start it inside `tmux` or `nohup`. If the machine stops, start it again and rerun `up`: finished stages and fits are kept.
 
