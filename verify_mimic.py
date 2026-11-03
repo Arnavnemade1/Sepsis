@@ -1153,6 +1153,25 @@ def c23_auroc(store, led) -> None:
           and full_order == [("full", 0.25)] and SCALES["full"].keep_rate == 0.25,
           f"budget {tight.hours:.3f} h between {h5:.3f} and {h1:.3f}; chose {pl_c['chosen']} at {sc_c.keep_rate}")
 
+    # The planner runs on an extracted store, so a grid that took more memory to build than the
+    # machine budgets must not refuse the modelling that fits; and fewer threads take longer.
+    class Built:                                  # the demo, as if its extraction had been huge
+        def __init__(self, s):
+            self._s = s
+        n_rows = property(lambda self: self._s.n_rows * 10_000)
+        def __getattr__(self, k):
+            return getattr(self._s, k)
+    big = PL.estimate(Built(store), n_feat, SCALES["demo"])
+    sc_b, pl_b = PL.choose(Built(store), n_feat, SCALES["demo"],
+                           PL.Budget(disk_gb=1e9, ram_gb=big["model_ram_gb"], hours=1e9))
+    e6, e2 = (PL.estimate(store, n_feat, SCALES["cloud"], n_threads=t) for t in (6, 2))
+    check("the planner judges only the modelling still ahead of it, and a 2-thread machine is planned 3x slower",
+          big["extract_ram_gb"] > 10 * big["model_ram_gb"] and pl_b["chosen"] == "full"
+          and abs(e2["booster_hours"] - 3 * e6["booster_hours"]) < 1e-9
+          and abs(e2["twin_hours"] - 3 * e6["twin_hours"]) < 1e-9,
+          f"extraction {big['extract_ram_gb']:.0f} GB vs modelling {big['model_ram_gb']:.1f} GB; "
+          f"boosters {e6['booster_hours']:.3f} h at 6 threads, {e2['booster_hours']:.3f} h at 2")
+
     class Shifted(SRC.CsvSource):
         def binned_uo(self, stays):
             d = super().binned_uo(stays)
