@@ -10,6 +10,18 @@ if [ ! -f /swapfile ]; then
   chmod 600 /swapfile && mkswap /swapfile && echo '/swapfile none swap defaults 0 0' >> /etc/fstab
 fi
 swapon -a
+# Idle = no job container for two hours, then stop (a stop keeps the disk and the lake).
+cat > /usr/local/sbin/aegis-idle-stop <<'IDLE'
+#!/bin/bash
+mark=/run/aegis-idle-since
+if [ -n "$(docker ps -q)" ]; then rm -f "$mark"; exit 0; fi
+[ -f "$mark" ] || { date +%s > "$mark"; exit 0; }
+[ $(( $(date +%s) - $(cat "$mark") )) -ge 7200 ] && shutdown -h now "aegis: no job for two hours" || true
+IDLE
+chmod 755 /usr/local/sbin/aegis-idle-stop
+printf '[Service]\nType=oneshot\nExecStart=/usr/local/sbin/aegis-idle-stop\n' > /etc/systemd/system/aegis-idle-stop.service
+printf '[Timer]\nOnBootSec=10min\nOnUnitActiveSec=10min\n[Install]\nWantedBy=timers.target\n' > /etc/systemd/system/aegis-idle-stop.timer
+systemctl daemon-reload && systemctl enable --now aegis-idle-stop.timer
 usermod -aG docker ssm-user 2>/dev/null || true
 mkdir -p /srv/aegis /srv/lake
 chown 1000:1000 /srv/lake

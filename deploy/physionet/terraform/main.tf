@@ -158,7 +158,10 @@ resource "aws_instance" "run" {
   }
 }
 
-# Stops (never terminates) the machine after two idle hours. A stop keeps the lake.
+# The machine stops itself two hours after its last job container exits (user_data). This alarm is
+# the backstop: twelve hours under 3% CPU. CPU alone is the wrong idle signal, because a download
+# throttled to ~0.4 MB/s by physionet.org sits at 2-3% on two vCPUs. Stops, never terminates: a stop
+# keeps the lake.
 resource "aws_cloudwatch_metric_alarm" "idle" {
   alarm_name          = "aegis-physionet-idle"
   namespace           = "AWS/EC2"
@@ -167,8 +170,8 @@ resource "aws_cloudwatch_metric_alarm" "idle" {
   statistic           = "Average"
   comparison_operator = "LessThanThreshold"
   threshold           = 3
-  period              = 300
-  evaluation_periods  = 24
+  period              = 3600
+  evaluation_periods  = 12
   alarm_actions       = ["arn:aws:automate:${var.region}:ec2:stop"]
 }
 
