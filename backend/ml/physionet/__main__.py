@@ -13,7 +13,8 @@ from backend.ml.physionet import auth, catalog, fetch, guard, pipeline
 
 def _ctx(a) -> pipeline.Ctx:
     return pipeline.Ctx(dataset=catalog.get(a.dataset), root=a.lake, route=a.route, project=a.project,
-                        base_url=a.mirror, from_dir=a.from_dir, hours=a.hours)
+                        base_url=a.mirror, from_dir=a.from_dir, hours=a.hours,
+                        scale_name=a.scale)
 
 
 def cmd_datasets(a) -> int:
@@ -147,6 +148,8 @@ def main(argv=None) -> int:
     ap.add_argument("--mirror", default=None, help="another base URL for the dataset")
     ap.add_argument("--from-dir", default=None, help="tables already on disk (a local copy of the csv.gz tree)")
     ap.add_argument("--hours", type=float, default=12.0)
+    ap.add_argument("--scale", choices=["demo", "full", "cloud"], default=None,
+                    help="default: demo for open data, full for credentialed; cloud on a dedicated machine")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name, fn in [("datasets", cmd_datasets), ("doctor", cmd_doctor), ("access", cmd_access), ("plan", cmd_plan),
                      ("status", cmd_status), ("hook", cmd_hook), ("sqlcheck", cmd_sqlcheck)]:

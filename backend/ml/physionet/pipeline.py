@@ -67,6 +67,7 @@ class Ctx:
     from_dir: Optional[str] = None             # tables already on disk
     client: Optional[fetch.Client] = None
     hours: float = 12.0
+    scale_name: Optional[str] = None           # "cloud" on a dedicated machine; else by access
     runner: Optional[Callable] = None          # runs a modelling step; the verifier plants one
     repo: str = config.REPO_ROOT
     demo_root: Optional[str] = None
@@ -110,6 +111,8 @@ class Ctx:
 
     @property
     def scale(self) -> str:
+        if self.scale_name:
+            return self.scale_name
         return "demo" if self.dataset.access == "open" else "full"
 
     @property
