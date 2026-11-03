@@ -235,8 +235,10 @@ def _stage_capacity(ctx: Ctx) -> Dict:
 
 
 def _stage_ingest(ctx: Ctx) -> Dict:
-    if ctx.dataset.access != "open":
-        guard.install_hook(ctx.repo)             # before the first credentialed byte can exist here
+    # before the first credentialed byte can exist here. A copy with no repository (the cloud image)
+    # can't commit anything, so there is nothing to hook; a checkout always gets it.
+    if ctx.dataset.access != "open" and os.path.exists(os.path.join(ctx.repo, ".git")):
+        guard.install_hook(ctx.repo)
     with open(ctx.sums_path) as fh:
         sums = fetch.parse_sums(fh.read())
     done = {}
