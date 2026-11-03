@@ -70,7 +70,7 @@ STAGE_SETS: List[Tuple[str, Dict]] = [
     ("core: direct boosters + twin", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False, "distill": False,
                                       "products": False, "tune_trials": 6, "phys_seeds": (0,)}),
 ]
-KEEP_RATES = (0.25, 0.15, 0.10, 0.05)
+KEEP_RATES = (0.5, 0.25, 0.15, 0.10, 0.05)
 
 
 def estimate(store, n_features: int, scale) -> Dict:
@@ -132,16 +132,18 @@ def estimate(store, n_features: int, scale) -> Dict:
 def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]:
     """The richest plan that fits ``budget``; raises (naming what does not fit) otherwise."""
     tried = []
-    for keep in [scale.keep_rate] + [k for k in KEEP_RATES if k < scale.keep_rate]:
-        for label, over in STAGE_SETS:
-            sc = replace(scale, keep_rate=keep, **over)
-            est = estimate(store, n_features, sc)
-            fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": est["ram_peak_gb"] <= budget.ram_gb,
-                    "time": est["hours"] <= budget.hours}
-            tried.append({"plan": label, "keep_rate": keep, **{k: round(v, 2) if isinstance(v, float) else v
-                                                                 for k, v in est.items()}, "fits": fits})
-            if all(fits.values()):
-                return sc, {"chosen": label, "estimate": est, "budget": asdict(budget), "tried": tried}
+    keeps = [scale.keep_rate] + [k for k in KEEP_RATES if k < scale.keep_rate]
+    order = [(k, STAGE_SETS[0]) for k in keeps] if getattr(scale, "prefer_full_stages", False) else []
+    order += [(k, st) for k in keeps for st in STAGE_SETS if (k, st) not in order]
+    for keep, (label, over) in order:
+        sc = replace(scale, keep_rate=keep, **over)
+        est = estimate(store, n_features, sc)
+        fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": est["ram_peak_gb"] <= budget.ram_gb,
+                "time": est["hours"] <= budget.hours}
+        tried.append({"plan": label, "keep_rate": keep, **{k: round(v, 2) if isinstance(v, float) else v
+                                                             for k, v in est.items()}, "fits": fits})
+        if all(fits.values()):
+            return sc, {"chosen": label, "estimate": est, "budget": asdict(budget), "tried": tried}
     worst = tried[-1]
     raise RuntimeError(f"no plan fits this machine: leanest plan needs {worst['feature_disk_gb']:.1f} GB disk "
                        f"(have {budget.disk_gb:.1f}), {worst['ram_peak_gb']:.1f} GB RAM (budget {budget.ram_gb:.1f}), "

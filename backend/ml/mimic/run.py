@@ -74,6 +74,8 @@ class Scale:
     tune_trials: int = 0                # hyperparameter search (0 = use ``lgbm`` as given)
     tune_rows: int = 600_000
     tune_val_folds: tuple = (0,)
+    #: when the machine is short, give up negatives (keep_rate) before stages: ``plan.choose``
+    prefer_full_stages: bool = False
 
 
 SCALES = {
@@ -89,6 +91,10 @@ SCALES = {
                   chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300,
                   tune_trials=16, tune_val_folds=(0, 1), info_ledger=False, trim_septic=True),
 }
+# A dedicated cloud machine (deploy/physionet): every never-septic stay if the planner can afford
+# it, twice the tuning trials, and the full stage set kept before any negatives are given up.
+# Everything stays on dev folds; the lock is untouched.
+SCALES["cloud"] = replace(SCALES["full"], keep_rate=1.0, tune_trials=32, prefer_full_stages=True)
 #: a credentialed run reports beside the lake; only the egress scan copies a report into the repo
 REPORT_DIR = os.environ.get("MIMIC_REPORT_DIR") or LG.OUT_DIR
 PHYSIO_FAMILIES = ["vitals", "gcs", "exam", "labs", "inflammation", "urine", "sofa", "history"]
@@ -618,7 +624,7 @@ if __name__ == "__main__":  # pragma: no cover
     ap.add_argument("--plan-only", action="store_true", help="extract, print the plan, stop")
     a = ap.parse_args()
     import torch
-    torch.set_num_threads(6)
+    torch.set_num_threads(L.THREADS)              # GENESIS_THREADS; 6 on the laptop
     with CK.active(a.checkpoint or None, TR.code_fingerprint()["sha256"] + "|" + (a.tag or a.source)):
         run(a.source, a.tag or a.source, a.scale or ("demo" if a.source == "demo" else "full"), a.project,
             a.hours, a.plan_only, a.lake)

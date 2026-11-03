@@ -1136,6 +1136,23 @@ def c23_auroc(store, led) -> None:
           est["rows_kept"] == store.n_rows and est["features"] == n_feat and refused,
           f"{est['rows_kept']:,} rows x {est['features']} features")
 
+    # A budget the full stage set misses at keep 1.0 but makes at 0.5, while a leaner stage set
+    # would still fit at 1.0: the cloud scale gives up negatives first, the laptop scale is unchanged.
+    from dataclasses import replace
+    cl = SCALES["cloud"]
+    h1 = PL.estimate(store, n_feat, replace(cl, keep_rate=1.0))["hours"]
+    h5 = PL.estimate(store, n_feat, replace(cl, keep_rate=0.5))["hours"]
+    lean1 = PL.estimate(store, n_feat, replace(cl, keep_rate=1.0, **PL.STAGE_SETS[1][1]))["hours"]
+    tight = PL.Budget(disk_gb=1e9, ram_gb=1e9, hours=(h1 + h5) / 2)
+    sc_c, pl_c = PL.choose(store, n_feat, cl, tight)
+    full_order = [(t["plan"], t["keep_rate"]) for t in
+                  PL.choose(store, n_feat, SCALES["full"], PL.Budget(disk_gb=1e9, ram_gb=1e9, hours=1e9))[1]["tried"]]
+    check("the cloud planner keeps every stage and gives up negatives first; the laptop plan starts where it did",
+          h5 < tight.hours < h1 and lean1 <= tight.hours and pl_c["chosen"] == "full" and sc_c.keep_rate == 0.5
+          and [(t["plan"], t["keep_rate"]) for t in pl_c["tried"]] == [("full", 1.0), ("full", 0.5)]
+          and full_order == [("full", 0.25)] and SCALES["full"].keep_rate == 0.25,
+          f"budget {tight.hours:.3f} h between {h5:.3f} and {h1:.3f}; chose {pl_c['chosen']} at {sc_c.keep_rate}")
+
     class Shifted(SRC.CsvSource):
         def binned_uo(self, stays):
             d = super().binned_uo(stays)

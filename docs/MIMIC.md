@@ -430,6 +430,13 @@ read (§8).
   report is identical to the one produced before either change, to the last digit.
 * BigQuery results are placed into the grid page by page, never held whole.
 
+**Not fitting a laptop (the `cloud` scale).** A dedicated machine ([deploy/physionet](../deploy/physionet/README.md))
+starts the planner from every never-septic stay (keep rate 1.0) and 32 tuning trials, instead of 0.25 and 16.
+When time runs short, it gives up negatives (1.0 → 0.5 → 0.25) before it drops a stage. The laptop scale walks
+the other way, and `verify_mimic` checks both orders. Booster and twin threads follow `GENESIS_THREADS`, which
+is one per physical core there and 6 on the laptop. These are dev-fold choices made before the lock, like the
+rest of this section.
+
 **Parity first (`parity.py`).** The demo is 100 real MIMIC-IV patients. The parity check fetches
 every binned table for exactly those stays, through BigQuery or the lake, and compares it cell by
 cell with the CSV path. Neither is trusted except where it reproduces the reference. `sqlcheck.py`
