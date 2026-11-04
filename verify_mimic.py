@@ -313,6 +313,19 @@ def c12_chunking(store) -> None:
     F1, n1 = LG.build_features(store)
     F2, n2 = LG.build_features(store, chunk_stays=9)
     check("chunked == whole, bit for bit", n1 == n2 and _same(F1, F2), f"{F1.shape}")
+    # full MIMIC-IV builds float16, whose top is 65,504: CK, ferritin and NT-proBNP pass it.
+    # Plant a CK a million times too large; neither path may write an inf.
+    import copy
+    big = copy.copy(store)
+    big.X = np.array(store.X, copy=True)
+    j = store.columns.index("CK")
+    big.X[:, j] = big.X[:, j] * 1e6
+    H1, m1 = LG.build_features(big, dtype=np.float16)
+    H2, _ = LG.build_features(big, chunk_stays=9, dtype=np.float16)
+    ck = H1[:, m1.index("CK")].astype(np.float64)
+    check("a float16 build saturates at 65,504 instead of writing inf, whole or chunked",
+          not np.isinf(H1).any() and not np.isinf(H2).any() and np.nanmax(ck) == 65504.0
+          and np.array_equal(H1, H2, equal_nan=True), f"CK max {np.nanmax(ck):g}")
 
 
 def c13_sql() -> None:
