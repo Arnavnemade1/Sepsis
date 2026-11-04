@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
+import { OpenLink, ShieldCheck } from "@/components/icons";
 import { Button, CloseIcon, cx, Drawer, IconButton, Tag } from "@/components/ui";
 import {
   CATEGORY_LABEL,
@@ -39,9 +40,9 @@ const VITAL_LABEL: Record<string, string> = {
 
 function Section({ title, right, children }: { title: string; right?: ReactNode; children: ReactNode }) {
   return (
-    <section className="border-t border-line px-4 py-3.5">
-      <div className="mb-2.5 flex items-center gap-2">
-        <h3 className="text-[11.5px] font-semibold text-muted">{title}</h3>
+    <section className="border-t border-line px-5 py-4">
+      <div className="mb-3 flex items-center gap-2">
+        <h3 className="text-sm font-semibold tracking-tight text-ink">{title}</h3>
         {right && <div className="ml-auto">{right}</div>}
       </div>
       {children}
@@ -124,46 +125,46 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
 
   return (
     <>
-      <header className="shrink-0 px-4 pb-3.5 pt-3.5">
+      <header className="shrink-0 px-5 pb-4 pt-4">
         <div className="flex items-center gap-2">
           <PriorityChip p={page.priority} label />
-          <span className="font-mono text-[11.5px] text-dim">{page.id}</span>
+          <span className="font-mono text-xs text-dim">{page.id}</span>
           <span className="text-faint">·</span>
           <SourceTag source={page.source} synthetic={page.synthetic} />
           <span className="text-faint">·</span>
-          <span className="num font-mono text-[11.5px] text-dim">{age(page.created_at, now)} ago</span>
+          <span className="num text-xs text-dim">{age(page.created_at, now)} ago</span>
           <IconButton label="Close" onClick={onClose} className="ml-auto -mr-1">
             <CloseIcon />
           </IconButton>
         </div>
-        <h2 className="mt-2.5 text-[17px] font-semibold tracking-[-0.01em] text-ink">
+        <h2 className="mt-3 text-lg font-semibold tracking-tighter text-ink">
           {page.room ? `Room ${page.room}` : "Unknown room"}
           <span className="font-normal text-dim"> · {page.zone_name ?? "—"}</span>
         </h2>
         {page.patient?.name && (
-          <div className="mt-0.5 text-[12.5px] text-muted">
+          <div className="mt-0.5 text-sm text-muted">
             {page.patient.name}
             {page.patient.age ? `, ${page.patient.age}${page.patient.sex ?? ""}` : ""}
             <span className="text-dim">{page.patient.synthetic ? " · synthetic record" : page.patient.monitored ? " · monitored · replayed real record" : ""}</span>
           </div>
         )}
-        <div className={cx("mt-1.5 text-[12px]", st.tone)}>{st.text}</div>
+        <div className={cx("mt-2 text-xs", st.tone)}>{st.text}</div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="px-4 pb-3.5">
-          <div className="rounded-md border border-line bg-s2 px-3 py-2.5">
-            <p className="text-[13px] leading-relaxed text-ink">{page.text}</p>
-            <div className="mt-1.5 font-mono text-[11px] text-dim">
+        <div className="px-5 pb-4">
+          <div className="well px-4 py-3">
+            <p className="text-sm leading-relaxed text-ink">{page.text}</p>
+            <div className="num mt-2 text-xs text-dim">
               {page.reporter ?? page.source} · {clock(page.created_at)}
             </div>
           </div>
         </div>
 
-        <Section title="Dispatch" right={page.timings.total_ms != null && <span className="num font-mono text-[11px] text-dim">{page.timings.total_ms.toFixed(1)} ms end to end</span>}>
-          <div className="divide-y divide-line-soft rounded-md border border-line">
+        <Section title="Dispatch" right={page.timings.total_ms != null && <span className="num text-xs text-dim">{page.timings.total_ms.toFixed(1)} ms end to end</span>}>
+          <div className="divide-y divide-line-soft">
             {steps.map((s) => (
-              <div key={s.label} className="grid grid-cols-[16px_88px_minmax(0,1fr)_auto] items-center gap-2.5 px-2.5 py-2">
+              <div key={s.label} className="grid grid-cols-[16px_88px_minmax(0,1fr)_auto] items-center gap-3 py-2 first:pt-0 last:pb-0">
                 {s.state === "done" ? (
                   <Check ok />
                 ) : s.state === "fail" ? (
@@ -172,11 +173,11 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
                   <span className={cx("mx-auto h-2 w-2 rounded-full", s.state === "active" ? "blink bg-st-paging" : "border border-line-bright")} />
                 )}
                 <div className="leading-tight">
-                  <div className="text-[12.5px] font-medium text-ink">{s.label}</div>
-                  <div className="text-[10.5px] text-dim">{s.agent}</div>
+                  <div className="text-sm font-medium text-ink">{s.label}</div>
+                  <div className="text-2xs text-dim">{s.agent}</div>
                 </div>
-                <div className="truncate text-[12px] text-muted">{s.value}</div>
-                <div className="num w-12 text-right font-mono text-[11px] text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</div>
+                <div className="truncate text-xs text-muted">{s.value}</div>
+                <div className="num w-12 text-right text-xs text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</div>
               </div>
             ))}
           </div>
@@ -185,7 +186,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
         <Section
           title="Triage"
           right={
-            <span className="text-[11px] text-dim">
+            <span className="text-xs text-dim">
               {page.triage.source === "detector"
                 ? "Sepsis detector"
                 : page.triage.source === "monitor"
@@ -205,36 +206,33 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
               ))}
             </div>
           )}
-          <p className="text-[12.5px] leading-relaxed text-muted">{page.triage.rationale}</p>
+          <p className="text-sm leading-relaxed text-muted">{page.triage.rationale}</p>
           {page.monitor && page.monitor.findings.length > 0 && (
-            <ul className="mt-2.5 divide-y divide-line-soft overflow-hidden rounded-md border border-line">
+            <ul className="mt-3 divide-y divide-line-soft">
               {page.monitor.findings.map((f) => (
-                <li key={f.key} className="flex items-start gap-2.5 px-2.5 py-1.5">
+                <li key={f.key} className="flex items-start gap-2.5 py-2 first:pt-0 last:pb-0">
                   <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: `rgb(${SEV_RGB[f.severity]})` }} />
                   <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] text-ink">{f.title}</div>
-                    <div className="truncate text-[11px] text-dim">{f.source}</div>
+                    <div className="text-sm text-ink">{f.title}</div>
+                    <div className="truncate text-xs text-dim">{f.source}</div>
                   </div>
                 </li>
               ))}
             </ul>
           )}
           {Object.keys(page.triage.vitals).length > 0 && (
-            <div className="mt-2.5 grid grid-cols-3 gap-px overflow-hidden rounded-md border border-line bg-line">
+            <div className="mt-3 grid grid-cols-3 gap-x-4 gap-y-3 well px-4 py-3">
               {Object.entries(page.triage.vitals).map(([k, v]) => (
-                <div key={k} className="bg-s1 px-2.5 py-1.5">
-                  <div className="text-[10.5px] text-dim">{VITAL_LABEL[k] ?? k.replace(/_/g, " ")}</div>
-                  <div className="num font-mono text-[12.5px] text-ink">{typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(1)) : v}</div>
+                <div key={k} className="min-w-0">
+                  <div className="truncate text-xs text-dim">{VITAL_LABEL[k] ?? k.replace(/_/g, " ")}</div>
+                  <div className="num mt-0.5 text-base font-medium text-ink">{typeof v === "number" ? (Number.isInteger(v) ? v : v.toFixed(1)) : v}</div>
                 </div>
-              ))}
-              {Array.from({ length: (3 - (Object.keys(page.triage.vitals).length % 3)) % 3 }, (_, i) => (
-                <div key={`pad${i}`} className="bg-s1" />
               ))}
             </div>
           )}
-          {page.refining && <div className="working mt-2.5 rounded-md px-2.5 py-2 text-[12px] text-accent-ink">The model is reviewing this page. It may raise the priority; it cannot lower it.</div>}
+          {page.refining && <div className="working mt-2.5 rounded-md px-2.5 py-2 text-xs text-accent-ink">The model is reviewing this page. It may raise the priority; it cannot lower it.</div>}
           {page.refinement && (
-            <div className={cx("mt-2.5 rounded-md border px-2.5 py-2 text-[12px] leading-snug", page.refinement.outcome === "raised" ? "border-dys/40 bg-dys/10 text-dys-ink" : "border-line bg-s2 text-muted")}>
+            <div className={cx("mt-3 rounded-md px-3 py-2.5 text-xs leading-snug", page.refinement.outcome === "raised" ? "bg-dys/[0.1] text-dys-ink" : "well text-muted")}>
               <span className="font-medium">
                 {page.refinement.outcome === "raised"
                   ? `Model raised P${page.refinement.from} → P${page.refinement.to}`
@@ -249,22 +247,22 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
           )}
         </Section>
 
-        <Section title="Routing" right={<span className="text-[11px] text-dim">Case Handler</span>}>
+        <Section title="Routing" right={<span className="text-xs text-dim">Case Handler</span>}>
           {c ? (
-            <div className="relative overflow-hidden rounded-md border border-line">
-              <div className="flex items-center gap-3 px-3 py-2.5">
+            <div className="relative overflow-hidden well">
+              <div className="flex items-center gap-3 px-4 py-3">
                 <Avatar name={c.name} status={c.status} size={30} present={c.present} />
                 <div className="min-w-0 flex-1">
-                  <div className="text-[13px] font-medium text-ink">{c.name}</div>
-                  <div className="truncate text-[11.5px] text-dim">
+                  <div className="text-sm font-medium text-ink">{c.name}</div>
+                  <div className="truncate text-xs text-dim">
                     {c.specialty_label} · {c.title}
                   </div>
                 </div>
                 <div className="text-right">
                   <StatusText status={c.status} />
                   {page.status === "paging" && att && (
-                    <div className="mt-0.5 text-[11px] text-dim">
-                      escalates in <Countdown remaining={att.deadline - now} className="text-[11.5px]" />
+                    <div className="mt-0.5 text-xs text-dim">
+                      escalates in <Countdown remaining={att.deadline - now} className="text-xs" />
                     </div>
                   )}
                 </div>
@@ -272,21 +270,21 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
               {page.status === "paging" && att && <TimerBar remaining={att.deadline - now} total={att.deadline - att.sent_at} priority={page.priority} />}
             </div>
           ) : (
-            <div className="rounded-md border border-dashed border-line-bright px-3 py-2.5 text-[12.5px] text-dys-ink">{page.review_reason ?? "No clinician assigned."}</div>
+            <div className="rounded-md border border-dashed border-line-bright px-4 py-3 text-sm text-dys-ink">{page.review_reason ?? "No clinician assigned."}</div>
           )}
-          <p className="mt-2 text-[12.5px] leading-relaxed text-muted">{page.decision.reasoning}</p>
+          <p className="mt-3 text-sm leading-relaxed text-muted">{page.decision.reasoning}</p>
           {page.decision.guardrails.length > 0 && (
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-2.5 space-y-1.5">
               {page.decision.guardrails.map((g) => (
-                <li key={g} className="flex gap-2 text-[12px] text-accent-ink">
-                  <span className="mt-[6px] h-1 w-1 shrink-0 rounded-full bg-accent" />
+                <li key={g} className="flex gap-2 text-xs text-muted">
+                  <ShieldCheck size={14} className="mt-px shrink-0 text-dim" />
                   {g}
                 </li>
               ))}
             </ul>
           )}
-          <div className="mt-3 overflow-hidden rounded-md border border-line">
-            <div className="grid grid-cols-[minmax(0,1fr)_64px] gap-2 border-b border-line bg-s2 px-2.5 py-1.5 text-[10.5px] font-medium text-dim">
+          <div className="mt-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_64px] gap-2 border-b border-line pb-2 text-xs font-medium text-dim">
               <span>Candidate</span>
               <span className="text-right">Score</span>
             </div>
@@ -294,25 +292,25 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
               const max = Math.max(1, ...page.decision.candidates.map((x) => x.score));
               const top = i === 0 && !cand.excluded;
               return (
-                <div key={cand.id} className={cx("border-b border-line-soft px-2.5 py-2 last:border-b-0", top && "bg-accent-soft/60")}>
+                <div key={cand.id} className={cx("-mx-2 rounded-md border-b border-line-soft px-2 py-2.5 last:border-b-0", top && "bg-accent/[0.08]")}>
                   <div className="grid grid-cols-[minmax(0,1fr)_64px] items-baseline gap-2">
                     <span className="truncate">
-                      <span className={cx("text-[12.5px] font-medium", cand.excluded ? "text-dim line-through decoration-faint" : "text-ink")}>{cand.name}</span>
-                      <span className="ml-1.5 text-[11px] text-dim">{cand.specialty_label}</span>
+                      <span className={cx("text-sm font-medium", cand.excluded ? "text-dim line-through decoration-faint" : "text-ink")}>{cand.name}</span>
+                      <span className="ml-1.5 text-xs text-dim">{cand.specialty_label}</span>
                     </span>
-                    <span className="num text-right font-mono text-[12px] text-muted">{cand.excluded ? "—" : cand.score.toFixed(0)}</span>
+                    <span className="num text-right text-xs text-muted">{cand.excluded ? "—" : cand.score.toFixed(0)}</span>
                   </div>
                   {cand.excluded ? (
-                    <div className="mt-0.5 text-[11.5px] text-dys-ink">Excluded: {cand.excluded}</div>
+                    <div className="mt-0.5 text-xs text-dys-ink">Excluded: {cand.excluded}</div>
                   ) : (
                     <>
-                      <div className="mt-1 h-[3px] overflow-hidden rounded-[2px] bg-s3">
-                        <div className="h-full rounded-[2px] bg-accent/80" style={{ width: `${Math.max(3, (cand.score / max) * 100)}%` }} />
+                      <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-white/[0.06]">
+                        <div className="h-full rounded-full bg-accent/80" style={{ width: `${Math.max(3, (cand.score / max) * 100)}%` }} />
                       </div>
-                      <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-[11px]">
+                      <div className="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5 text-xs">
                         {cand.factors.map((f) => (
                           <span key={f.label} className={f.points >= 0 ? "text-dim" : "text-dys-ink"}>
-                            <span className="num font-mono">{f.points >= 0 ? "+" : ""}{f.points}</span> {f.label}
+                            <span className="num">{f.points >= 0 ? "+" : ""}{f.points}</span> {f.label}
                           </span>
                         ))}
                       </div>
@@ -330,7 +328,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
             cert ? (
               <Tag tone={cert.certified ? "low" : "high"}>{cert.certified ? "Proven · Z3 unsat" : `Refused · Z3 ${cert.z3_status}`}</Tag>
             ) : (
-              <span className="text-[11px] text-dim">Issued when the page is sent</span>
+              <span className="text-xs text-dim">Issued when the page is sent</span>
             )
           }
         >
@@ -338,15 +336,15 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
             {invariants.map((inv, i) => {
               const bad = cert?.violations.includes(inv.id) || page.blocked.includes(inv.id);
               return (
-                <li key={inv.id} className="flex gap-2 text-[12px] leading-snug">
-                  {cert ? <span className="mt-px"><Check ok={!bad} /></span> : <span className="num mt-px w-3.5 shrink-0 text-center font-mono text-[11px] text-faint">{i + 1}</span>}
+                <li key={inv.id} className="flex gap-2 text-xs leading-snug">
+                  {cert ? <span className="mt-px"><Check ok={!bad} /></span> : <span className="num mt-px w-3.5 shrink-0 text-center text-xs text-faint">{i + 1}</span>}
                   <span className={bad ? "text-high-ink" : "text-muted"}>{inv.text}</span>
                 </li>
               );
             })}
           </ul>
           {cert && (
-            <p className="mt-2.5 break-words rounded-md bg-s2 px-2.5 py-2 font-mono text-[10.5px] leading-relaxed text-dim">
+            <p className="mt-3 break-words well px-3 py-2.5 font-mono text-2xs leading-relaxed text-dim">
               {cert.proof} · {cert.ms} ms
             </p>
           )}
@@ -354,14 +352,14 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
 
         {(page.attempts.length > 0 || page.escalation_log.length > 0) && (
           <Section title="Timeline">
-            <ol className="space-y-1.5">
-              <li className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[12px]">
-                <span className="num font-mono text-[11px] text-dim">{clock(page.created_at)}</span>
+            <ol className="space-y-2">
+              <li className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-xs">
+                <span className="num text-xs text-dim">{clock(page.created_at)}</span>
                 <span className="text-muted">Alert raised by {page.reporter ?? page.source}</span>
               </li>
               {page.attempts.map((a, i) => (
-                <li key={i} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-[12px]">
-                  <span className="num font-mono text-[11px] text-dim">{clock(a.sent_at)}</span>
+                <li key={i} className="grid grid-cols-[64px_minmax(0,1fr)] gap-2 text-xs">
+                  <span className="num text-xs text-dim">{clock(a.sent_at)}</span>
                   <span className="text-muted">
                     Paged <span className="text-ink">{a.name}</span>
                     {a.outcome ? (
@@ -384,7 +382,7 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
         {page.co_notified.length > 0 && (
           <Section title="Also notified">
             {page.co_notified.map((n) => (
-              <div key={n.clinician} className="flex items-center gap-2.5 text-[12.5px]">
+              <div key={n.clinician} className="flex items-center gap-2.5 text-sm">
                 <Avatar name={n.name} size={20} />
                 <span className="text-ink">{n.name}</span>
                 <span className="truncate text-dim">{n.why}</span>
@@ -396,13 +394,13 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
         {page.sbar && (
           <Section
             title="Brief (SBAR)"
-            right={<span className="text-[11px] text-dim">{page.sbar_refining ? "model writing…" : page.sbar.source === "llm" ? page.sbar.model ?? "model" : "template"} · {page.sbar.words} words</span>}
+            right={<span className="text-xs text-dim">{page.sbar_refining ? "model writing…" : page.sbar.source === "llm" ? page.sbar.model ?? "model" : "template"} · {page.sbar.words} words</span>}
           >
-            <dl className="divide-y divide-line-soft rounded-md border border-line">
+            <dl className="space-y-3">
               {(["situation", "background", "assessment", "request"] as const).map((k) => (
-                <div key={k} className="grid grid-cols-[22px_minmax(0,1fr)] gap-2.5 px-2.5 py-2">
-                  <dt className="grid h-5 w-5 place-items-center rounded-[3px] bg-s3 font-mono text-[10.5px] font-semibold text-muted">{k[0].toUpperCase()}</dt>
-                  <dd className={cx("text-[12.5px] leading-relaxed", k === "request" ? "text-ink" : "text-ink/85")}>{page.sbar![k]}</dd>
+                <div key={k} className="grid grid-cols-[88px_minmax(0,1fr)] gap-3">
+                  <dt className="pt-px text-xs font-medium capitalize text-dim">{k}</dt>
+                  <dd className={cx("text-sm leading-relaxed", k === "request" ? "text-ink" : "text-ink/85")}>{page.sbar![k]}</dd>
                 </div>
               ))}
             </dl>
@@ -413,28 +411,24 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
           <Section title={page.bed ? "Room and patient" : "Room"}>
             <Link
               href={`/room/?id=${encodeURIComponent(page.room)}`}
-              className="mb-2 flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
+              className="well mb-2 flex items-center justify-between px-4 py-2.5 text-sm text-ink transition-colors hover:bg-white/[0.04]"
             >
               <span>
                 Open room {page.room}
-                <span className="ml-2 text-[11.5px] text-dim">record, vitals, detections, timeline</span>
+                <span className="ml-2 text-xs text-dim">record, vitals, detections, timeline</span>
               </span>
-              <span className="text-dim" aria-hidden>
-                ↗
-              </span>
+              <OpenLink size={14} className="text-dim" aria-hidden />
             </Link>
             {page.bed && (
               <Link
                 href={`/patient/?id=${encodeURIComponent(page.bed)}`}
-                className="flex items-center justify-between rounded-md border border-line px-3 py-2 text-[12.5px] text-ink transition-colors hover:border-line-bright hover:bg-s2"
+                className="well flex items-center justify-between px-4 py-2.5 text-sm text-ink transition-colors hover:bg-white/[0.04]"
               >
                 <span>
                   Open {page.patient?.name ?? "the patient"}&apos;s ICU record
-                  {page.patient?.risk != null && <span className="ml-2 font-mono text-[11.5px] text-dim">risk {page.patient.risk.toFixed(2)}</span>}
+                  {page.patient?.risk != null && <span className="num ml-2 text-xs text-dim">risk {page.patient.risk.toFixed(2)}</span>}
                 </span>
-                <span className="text-dim" aria-hidden>
-                  ↗
-                </span>
+                <OpenLink size={14} className="text-dim" aria-hidden />
               </Link>
             )}
           </Section>
@@ -443,15 +437,15 @@ function Body({ page, clinicians, invariants, now, canDispatch, onClose }: {
       </div>
 
       {canDispatch && !["resolved", "cancelled"].includes(page.status) && (
-        <footer className="shrink-0 border-t border-line bg-s1 px-4 py-3">
-          {err && <div className="mb-2 text-[12px] text-high-ink">{err}</div>}
+        <footer className="shrink-0 border-t border-line bg-s1 px-5 py-3.5">
+          {err && <div className="mb-2 text-xs text-high-ink">{err}</div>}
           <div className="flex flex-wrap items-center gap-2">
             {["review", "held", "unassigned"].includes(page.status) && (
               <>
                 <select
                   value={reassign}
                   onChange={(e) => setReassign(e.target.value)}
-                  className="h-8 min-w-0 flex-1 rounded-md border border-line-bright bg-s2 px-2 text-[12.5px] text-ink"
+                  className="h-8 min-w-0 flex-1 field px-2.5 text-sm text-ink"
                   aria-label="Page someone else"
                 >
                   <option value="">{page.planned ? `Planned: ${clinicians[page.planned]?.name ?? page.planned}` : "Best available"}</option>

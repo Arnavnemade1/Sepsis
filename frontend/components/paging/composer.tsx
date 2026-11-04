@@ -3,6 +3,7 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Alert, Microphone } from "@/components/icons";
 import { Button, cx, Kbd, Modal } from "@/components/ui";
 import { api } from "@/lib/api";
 import { CATEGORY_LABEL, PAGE_STATUS_LABEL, type Clinician, type Layout, type Occupant, type Page } from "@/lib/paging";
@@ -119,10 +120,8 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
     <Modal open={open} onClose={onClose} width={640}>
       {!result ? (
         <div>
-          <div className="flex items-start gap-3 px-4 pb-2 pt-4">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="mt-[3px] shrink-0 text-dim" aria-hidden>
-              <path d="M8 1.5v13M1.5 8h13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+          <div className="flex items-start gap-3 px-5 pb-3 pt-5">
+            <Alert size={18} className="mt-[3px] shrink-0 text-dim" aria-hidden />
             <textarea
               ref={field}
               value={text}
@@ -132,18 +131,18 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
               }}
               placeholder="Describe the situation: room, what you see, any readings"
               rows={3}
-              className="min-w-0 flex-1 resize-none bg-transparent text-[15px] leading-relaxed text-ink outline-none placeholder:text-faint"
+              className="min-w-0 flex-1 resize-none bg-transparent text-md leading-relaxed text-ink outline-none placeholder:text-faint"
               aria-label="Alert"
             />
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line px-4 py-2.5 text-[12px]">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-white/[0.06] px-5 py-3 text-xs">
             <span className="text-dim">Room</span>
             {room && zone ? (
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="font-mono font-semibold text-ink">{room}</span>
+                <span className="num font-semibold text-ink">{room}</span>
                 <span className="text-muted">{zone.name}</span>
                 {occ && <span className="truncate text-dim">· {occ.name}</span>}
-                {occ?.monitored && <span className="text-accent-ink">· monitored</span>}
+                {occ?.monitored && <span className="text-dim">· monitored</span>}
               </span>
             ) : (
               <span className="text-faint">{text.trim() ? "not detected: the operator will be asked" : "mention a room, e.g. 512 or A4"}</span>
@@ -156,31 +155,29 @@ export function Composer({ open, onClose, layout, occupancy, clinicians, presetR
             )}
           </div>
           {!text.trim() && (
-            <div className="border-t border-line px-2 py-1.5">
+            <div className="border-t border-white/[0.06] p-1.5">
+              <div className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-faint">Examples</div>
               {EXAMPLES.slice(0, 3).map((x) => (
-                <button key={x} onClick={() => setText(x)} className="block w-full truncate rounded-md px-2 py-1.5 text-left text-[12.5px] text-dim transition-colors hover:bg-s2 hover:text-ink">
+                <button key={x} onClick={() => setText(x)} className="block w-full truncate rounded-md px-2.5 py-2 text-left text-sm text-dim transition-colors hover:bg-white/[0.05] hover:text-ink">
                   {x}
                 </button>
               ))}
             </div>
           )}
-          {err && <div className="border-t border-line bg-high/10 px-4 py-2 text-[12.5px] text-high-ink">{err}</div>}
-          <div className="flex items-center gap-2 border-t border-line bg-s2/60 px-3 py-2">
+          {err && <div className="border-t border-white/[0.06] bg-high/[0.08] px-5 py-2.5 text-sm text-high-ink">{err}</div>}
+          <div className="flex items-center gap-2 border-t border-white/[0.06] bg-black/[0.12] px-4 py-2.5">
             {speechOK && (
               <Button size="sm" variant={listening ? "danger" : "quiet"} onClick={toggleVoice} title="Dictate the alert">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
-                  <rect x="5.5" y="1.5" width="5" height="8.5" rx="2.5" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M3 8a5 5 0 0 0 10 0M8 13v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                </svg>
+                <Microphone size={15} aria-hidden />
                 {listening ? "Stop" : "Dictate"}
               </Button>
             )}
-            {!canRaise && <span className="text-[12px] text-dys-ink">View only. Switch to a staff user to raise alerts.</span>}
+            {!canRaise && <span className="text-xs text-dys-ink">View only. Switch to a staff user to raise alerts.</span>}
             <div className="ml-auto flex items-center gap-3">
-              <span className="hidden items-center gap-1 text-[11.5px] text-dim sm:flex">
+              <span className="hidden items-center gap-1 text-xs text-dim sm:flex">
                 <Kbd>esc</Kbd> close
               </span>
-              <span className="hidden items-center gap-1 text-[11.5px] text-dim sm:flex">
+              <span className="hidden items-center gap-1 text-xs text-dim sm:flex">
                 <Kbd>⌘</Kbd>
                 <Kbd>↵</Kbd> send
               </span>
@@ -222,10 +219,10 @@ function Result({ page, clinicians, onClose, onOpenPage, onAnother }: {
   ];
   return (
     <div>
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-white/[0.06] px-5 py-3.5">
         <PriorityChip p={page.priority} label />
-        <span className="font-mono text-[11.5px] text-dim">{page.id}</span>
-        {page.timings.total_ms != null && <span className="num ml-auto font-mono text-[11.5px] text-dim">dispatched in {page.timings.total_ms.toFixed(1)} ms</span>}
+        <span className="font-mono text-xs text-dim">{page.id}</span>
+        {page.timings.total_ms != null && <span className="num ml-auto text-xs text-dim">dispatched in {page.timings.total_ms.toFixed(1)} ms</span>}
       </div>
       <ol className="divide-y divide-line-soft">
         {steps.map((s, i) => (
@@ -234,24 +231,24 @@ function Result({ page, clinicians, onClose, onOpenPage, onAnother }: {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.06 * i, duration: 0.15 }}
-            className="grid grid-cols-[14px_64px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-2"
+            className="grid grid-cols-[14px_64px_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2.5"
           >
             <span className={cx("h-1.5 w-1.5 justify-self-center rounded-full", s.ok ? "bg-low" : "bg-high")} />
-            <span className="text-[12.5px] font-medium text-ink">{s.k}</span>
-            <span className="truncate text-[12.5px] text-muted">{s.v}</span>
-            <span className="num font-mono text-[11px] text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</span>
+            <span className="text-sm font-medium text-ink">{s.k}</span>
+            <span className="truncate text-sm text-muted">{s.v}</span>
+            <span className="num text-xs text-dim">{s.ms != null ? (s.ms < 1 ? "<1 ms" : `${s.ms.toFixed(1)} ms`) : ""}</span>
           </motion.li>
         ))}
       </ol>
       {c && (
-        <div className="flex items-center gap-3 border-t border-line px-4 py-3">
+        <div className="flex items-center gap-3 border-t border-white/[0.06] px-5 py-3.5">
           <Avatar name={c.name} status={c.status} size={28} />
           <div className="min-w-0 flex-1">
-            <div className="text-[13px] text-ink">
+            <div className="text-sm text-ink">
               {status === "paging" ? "Paging " : status === "review" ? "Ready to page " : status === "held" ? "Queued for " : ""}
               <span className="font-medium">{c.name}</span>
             </div>
-            <div className="truncate text-[11.5px] text-dim">{page.decision.reasoning}</div>
+            <div className="truncate text-xs text-dim">{page.decision.reasoning}</div>
           </div>
           {status === "review" && (
             <Button
@@ -270,9 +267,9 @@ function Result({ page, clinicians, onClose, onOpenPage, onAnother }: {
           )}
         </div>
       )}
-      {page.review_reason && status === "review" && <p className="border-t border-line px-4 py-2 text-[12px] text-dys-ink">{page.review_reason}</p>}
-      {page.refining && <p className="working border-t border-line px-4 py-2 text-[12px] text-accent-ink">Sent on the rules. A model is reviewing it and may raise the priority.</p>}
-      <div className="flex items-center justify-end gap-2 border-t border-line bg-s2/60 px-3 py-2">
+      {page.review_reason && status === "review" && <p className="border-t border-white/[0.06] px-5 py-2.5 text-xs text-dys-ink">{page.review_reason}</p>}
+      {page.refining && <p className="working border-t border-white/[0.06] px-5 py-2.5 text-xs text-accent-ink">Sent on the rules. A model is reviewing it and may raise the priority.</p>}
+      <div className="flex items-center justify-end gap-2 border-t border-white/[0.06] bg-black/[0.12] px-4 py-2.5">
         <Button size="sm" variant="quiet" onClick={onAnother}>
           New alert
         </Button>

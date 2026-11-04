@@ -1,10 +1,10 @@
 "use client";
 
-import { Plus } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { Plus } from "@/components/icons";
 import { LEGEND, P_RGB, PriorityChip, StatusDot } from "@/components/paging/bits";
 import { Composer } from "@/components/paging/composer";
 import { FloorChips, FloorView } from "@/components/paging/floor-view";
@@ -118,23 +118,23 @@ function Operator() {
       alerts={alerts}
       actions={
         <Button size="sm" variant="primary" onClick={() => setComposer({ open: true })} title="Raise an alert (N)">
-          <Plus size={13} strokeWidth={2.25} />
+          <Plus size={14} weight="bold" />
           <span className="hidden sm:inline">New alert</span>
-          <span className="ml-0.5 hidden font-mono text-[10.5px] opacity-50 md:inline">N</span>
+          <span className="ml-1 hidden h-4 min-w-4 place-items-center rounded-[4px] bg-black/[0.08] px-1 text-[10px] font-semibold text-black/50 md:grid">N</span>
         </Button>
       }
     >
       {status !== "live" && (
-        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-med/10 px-4 py-1.5 text-[12px] text-med-ink">
+        <div className="flex shrink-0 items-center gap-2 border-b border-line bg-med/10 px-4 py-1.5 text-xs text-med-ink">
           <span className="blink h-1.5 w-1.5 rounded-full bg-med" />
           {status === "connecting" ? "Connecting to the hospital" : "Reconnecting to the hospital"}. A sleeping free-tier backend takes 30–60 s to wake.
         </div>
       )}
 
       {view === "overview" ? (
-        <main className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 sm:p-4 lg:overflow-hidden">
+        <main className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 sm:p-5 lg:overflow-hidden">
           <KpiStrip stats={state.stats} pages={open} monitor={state.monitor} all={state.pages} now={now} />
-          <div className="grid grid-cols-1 gap-3 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_400px]">
+          <div className="grid grid-cols-1 gap-4 lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_400px]">
             <Panel
               title="Floor plan"
               meta={layout ? `${layout.name} · ${layout.floors.length} floors · ${Object.keys(layout.rooms).length} rooms` : undefined}
@@ -146,9 +146,8 @@ function Operator() {
               <div
                 className="relative py-3 lg:min-h-0 lg:flex-1 lg:py-0"
                 style={{
-                  // a technical canvas: a faint dot grid over a soft vignette
-                  backgroundImage: "radial-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1.3px), radial-gradient(75% 70% at 50% 45%, #2d3137 0%, #24272c 100%)",
-                  backgroundSize: "18px 18px, 100% 100%",
+                  // the building sits in a soft pool of light; no texture, nothing that competes with a page
+                  backgroundImage: "radial-gradient(70% 65% at 50% 45%, #2b2e34 0%, #24272c 100%)",
                 }}
               >
                 {layout && state.ready ? (
@@ -166,17 +165,17 @@ function Operator() {
                     selectedPage={pageId}
                   />
                 ) : (
-                  <div className="grid h-full min-h-[240px] place-items-center text-[12.5px] text-dim">Loading the building…</div>
+                  <div className="grid h-full min-h-[240px] place-items-center text-sm text-dim">Loading the building</div>
                 )}
               </div>
-              <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-line px-3.5 py-2 text-[11px] text-dim">
+              <div className="flex shrink-0 items-center gap-x-4 overflow-x-auto whitespace-nowrap border-t border-line px-4 py-2.5 text-xs text-dim [scrollbar-width:none]">
                 {LEGEND.map((l) => (
                   <span key={l.status} className="inline-flex items-center gap-1.5">
                     <StatusDot status={l.status} size={7} still />
                     {l.label}
                   </span>
                 ))}
-                <span className="hidden h-3 w-px bg-line-bright sm:block" />
+                <span className="h-3 w-px shrink-0 bg-line-bright" />
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-[2px] border" style={{ borderColor: `rgb(${P_RGB[1]})`, background: `rgb(${P_RGB[1]} / .3)` }} /> Active page
                 </span>
@@ -199,8 +198,8 @@ function Operator() {
               <Panel
                 title="Active pages"
                 right={
-                  <span className="num font-mono text-[11.5px] text-dim">
-                    {open.length} · {open.filter((p) => p.priority === 1).length} P1
+                  <span className="num text-xs text-dim">
+                    {open.length} open{open.some((p) => p.priority === 1) ? <span className="text-high-ink"> · {open.filter((p) => p.priority === 1).length} P1</span> : null}
                   </span>
                 }
                 flush
@@ -237,8 +236,8 @@ function Operator() {
           </div>
         </main>
       ) : (
-        <main className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-          <div className="mx-auto flex max-w-[1600px] flex-col gap-3">
+        <main className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <div className="mx-auto flex max-w-[1600px] flex-col gap-4">
             {view === "pages" && <CasesTable pages={state.pages} clinicians={state.clinicians} now={now} onOpen={setPageId} />}
             {view === "staff" && <StaffBoard clinicians={state.clinicians} pages={Object.values(state.pages)} layout={layout} canDispatch={canDispatch} now={now} />}
             {view === "sentinel" && <Insights recs={recs} stats={state.stats} canDispatch={canDispatch} now={now} />}
@@ -323,14 +322,13 @@ function Toasts({ toasts, onOpen, onDismiss }: { toasts: Toast[]; onOpen: (id: s
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 12, transition: { duration: 0.15 } }}
             transition={{ duration: 0.18 }}
-            className="pop pointer-events-auto relative cursor-pointer overflow-hidden py-2.5 pl-4 pr-2.5"
+            className="pop pointer-events-auto relative cursor-pointer overflow-hidden py-3 pl-3.5 pr-2.5"
             onClick={() => onOpen(t.id)}
           >
-            <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: `rgb(${P_RGB[t.page.priority]})` }} />
             <div className="flex items-start gap-2.5">
               <PriorityChip p={t.page.priority} size="sm" />
               <div className="min-w-0 flex-1">
-                <div className="text-[12.5px] font-medium text-ink">
+                <div className="text-sm font-medium text-ink">
                   {t.kind === "unassigned"
                     ? "No one accepted this page"
                     : t.page.source === "detector"
@@ -340,7 +338,7 @@ function Toasts({ toasts, onOpen, onDismiss }: { toasts: Toast[]; onOpen: (id: s
                         : `New P${t.page.priority} alert`}
                   <span className="font-normal text-dim"> · Room {t.page.room ?? "?"}</span>
                 </div>
-                <div className="mt-0.5 line-clamp-2 text-[12px] text-muted">{t.page.text}</div>
+                <div className="mt-0.5 line-clamp-2 text-xs text-muted">{t.page.text}</div>
               </div>
               <button
                 onClick={(e) => {

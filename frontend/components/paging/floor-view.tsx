@@ -88,9 +88,9 @@ export function FloorView(props: Props) {
       </AnimatePresence>
       {tip && (
         <div className="pop pointer-events-none absolute z-20 max-w-[280px] px-3 py-2" style={{ left: tip.x + 14, top: tip.y + 14 }}>
-          <div className="text-[12.5px] font-semibold text-ink">{tip.title}</div>
+          <div className="text-sm font-semibold text-ink">{tip.title}</div>
           {tip.lines.map((l) => (
-            <div key={l} className="text-[11.5px] leading-snug text-muted">
+            <div key={l} className="text-xs leading-snug text-muted">
               {l}
             </div>
           ))}
@@ -245,12 +245,12 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom
                     <polygon points={pts(corner(room.rect, s, pos))} fill={`rgb(${SEV_RGB[flagged]})`} className="pointer-events-none" />
                   )}
                   {detail && (
-                    <text x={c[0]} y={c[1] + 3.2} textAnchor="middle" fontSize={9} fontFamily="var(--font-geist-mono)" fill={pg ? P_INK[pg.priority] : "rgb(255 255 255 / .55)"} fontWeight={pg ? 700 : 500} className="pointer-events-none">
+                    <text x={c[0]} y={c[1] + 3.2} textAnchor="middle" fontSize={9.5} fill={pg ? P_INK[pg.priority] : "rgb(255 255 255 / .6)"} fontWeight={pg ? 700 : 500} className="num pointer-events-none">
                       {rid}
                     </text>
                   )}
                   {detail && mon?.risk != null && (
-                    <text x={c[0]} y={c[1] + 13} textAnchor="middle" fontSize={7.5} fontFamily="var(--font-geist-mono)" fill={mon.watch || pg ? "#f4c55a" : "rgb(255 255 255 / .38)"} className="pointer-events-none">
+                    <text x={c[0]} y={c[1] + 13} textAnchor="middle" fontSize={8} fill={mon.watch || pg ? "#f4c55a" : "rgb(255 255 255 / .4)"} className="num pointer-events-none">
                       {mon.risk.toFixed(2)}
                     </text>
                   )}
@@ -259,10 +259,9 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom
                       x={c[0]}
                       y={c[1] + 13}
                       textAnchor="middle"
-                      fontSize={7.5}
-                      fontFamily="var(--font-geist-mono)"
-                      fill={st.band && st.band !== "low" ? SEV_INK[BAND_SEV[st.band]] : "rgb(255 255 255 / .38)"}
-                      className="pointer-events-none"
+                      fontSize={8}
+                      fill={st.band && st.band !== "low" ? SEV_INK[BAND_SEV[st.band]] : "rgb(255 255 255 / .4)"}
+                      className="num pointer-events-none"
                     >
                       {`N2 ${st.news2}`}
                     </text>
@@ -275,7 +274,7 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom
                 const [x, y, w] = zn.rect;
                 const p = proj(x + w / 2, y + 0.4, s, pos);
                 return (
-                  <text x={p[0]} y={p[1] - 6} textAnchor="middle" fontSize={9.5} letterSpacing="0.08em" fontFamily="var(--font-geist-mono)" fill="rgb(255 255 255 / .5)" className="pointer-events-none uppercase">
+                  <text x={p[0]} y={p[1] - 6} textAnchor="middle" fontSize={10.5} fontWeight={500} fill="rgb(255 255 255 / .5)" className="pointer-events-none">
                     {zn.name}
                   </text>
                 );
@@ -322,15 +321,15 @@ function Slab({ layout, clinicians, roomPages, monitor, occupancy, rooms, onRoom
           const p = proj(0, D, s, pos);
           return (
             <g className="pointer-events-none">
-              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={12.5} fontFamily="var(--font-geist-mono)" fontWeight={600} letterSpacing="0.05em" fill="rgb(255 255 255 / .85)">
-                {`FLOOR ${fid}`}
+              <text x={p[0] - 18} y={p[1] - 4} textAnchor="end" fontSize={13} fontWeight={600} fill="rgb(255 255 255 / .88)">
+                {fid === "A" ? "Floor A" : `Floor ${fid}`}
               </text>
-              <text x={p[0] - 18} y={p[1] + 12} textAnchor="end" fontSize={11.5} fill="rgb(255 255 255 / .48)">
+              <text x={p[0] - 18} y={p[1] + 12} textAnchor="end" fontSize={11.5} fill="rgb(255 255 255 / .46)">
                 {floor.label}
               </text>
               {summary && summary.n > 0 && summary.top != null && (
-                <text x={p[0] - 18} y={p[1] + 28} textAnchor="end" fontSize={11} fontFamily="var(--font-geist-mono)" fontWeight={600} fill={P_INK[summary.top]}>
-                  {`${summary.n} ACTIVE`}
+                <text x={p[0] - 18} y={p[1] + 28} textAnchor="end" fontSize={11.5} fontWeight={500} fill={P_INK[summary.top]} className="num">
+                  {`${summary.n} active`}
                 </text>
               )}
             </g>
@@ -484,7 +483,7 @@ export function FloorChips({ layout, floor, onFloor, counts }: {
 }) {
   const ids: (string | "all")[] = ["all", ...layout.floors.map((f) => f.id)];
   return (
-    <div className="inline-flex items-center rounded-md border border-line bg-bg p-0.5" role="tablist" aria-label="Floor">
+    <div className="inline-flex items-center gap-px rounded-md bg-black/[0.18] p-[3px] shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]" role="tablist" aria-label="Floor">
       {ids.map((id) => {
         const active = floor === id;
         const n = id === "all" ? 0 : counts[id] ?? 0;
@@ -495,8 +494,8 @@ export function FloorChips({ layout, floor, onFloor, counts }: {
             role="tab"
             aria-selected={active}
             className={cx(
-              "relative grid h-6 min-w-7 place-items-center rounded-[4px] px-1.5 font-mono text-[11.5px] font-medium transition-colors",
-              active ? "bg-s3 text-ink" : "text-dim hover:text-ink",
+              "num relative grid h-6 min-w-7 place-items-center rounded-[5px] px-1.5 text-xs font-medium transition-colors",
+              active ? "bg-s4 text-ink shadow-[0_1px_2px_rgb(0_0_0/.3)]" : "text-dim hover:text-ink",
             )}
             title={id === "all" ? "All floors" : layout.floors.find((f) => f.id === id)?.label}
           >

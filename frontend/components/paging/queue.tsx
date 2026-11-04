@@ -15,7 +15,7 @@ import {
   type Page,
 } from "@/lib/paging";
 
-import { Countdown, P_RGB, PriorityChip, SourceTag, StatusDot, TimerBar } from "./bits";
+import { Countdown, PriorityChip, SourceTag, StatusDot, TimerBar } from "./bits";
 
 export async function pageAction(id: string, action: "approve" | "escalate" | "cancel" | "resolve", body: Record<string, unknown> = {}) {
   return api<{ status: string; detail?: string }>(`/aegis/paging/pages/${id}/${action}`, { body });
@@ -79,21 +79,20 @@ export function PageRow({ page, clinicians, now, onOpen, canDispatch, selected }
       exit={{ opacity: 0, transition: { duration: 0.12 } }}
       transition={{ duration: 0.18 }}
       onClick={() => onOpen(page.id)}
-      className={cx("group relative cursor-pointer border-b border-line px-3.5 py-2.5 transition-colors last:border-b-0", selected ? "bg-s3" : "hover:bg-s2")}
+      className={cx("group relative cursor-pointer border-b border-line-soft px-4 py-3 transition-colors last:border-b-0", selected ? "bg-white/[0.06]" : "hover:bg-white/[0.03]")}
     >
-      <span className="absolute inset-y-0 left-0 w-[2px]" style={{ background: `rgb(${P_RGB[page.priority]})` }} />
       <div className="flex items-center gap-2">
         <PriorityChip p={page.priority} size="sm" />
-        <span className="font-mono text-[12px] font-semibold text-ink">{page.room ?? "—"}</span>
-        <span className="min-w-0 flex-1 truncate text-[11.5px] text-dim">
+        <span className="num text-sm font-semibold text-ink">{page.room ?? "—"}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-dim">
           {page.zone_name ?? "Unknown unit"} · {CATEGORY_LABEL[page.category] ?? page.category}
         </span>
-        {ringing ? <Countdown remaining={att.deadline - now} className="text-[12px]" /> : <span className="num font-mono text-[11.5px] text-dim">{age(page.created_at, now)}</span>}
+        {ringing ? <Countdown remaining={att.deadline - now} className="text-xs" /> : <span className="num text-xs text-dim">{age(page.created_at, now)}</span>}
       </div>
-      <p className="mt-1 line-clamp-2 text-[12.5px] leading-snug text-ink/90">{page.text}</p>
-      <div className="mt-1.5 flex items-center gap-2">
+      <p className="mt-1.5 line-clamp-2 text-sm leading-snug text-ink/90">{page.text}</p>
+      <div className="mt-2 flex items-center gap-2">
         {c ? <StatusDot status={c.status} size={7} /> : <span className="h-[7px] w-[7px] rounded-full border border-dashed border-faint" />}
-        <span className="min-w-0 flex-1 truncate text-[11.5px]">
+        <span className="min-w-0 flex-1 truncate text-xs">
           <span className="text-muted">{c ? c.name : "Unassigned"}</span>
           {c?.present && <span className="text-accent-ink" title="Pager open on a device"> · pager</span>}
           <span className="text-faint"> · </span>
@@ -102,7 +101,7 @@ export function PageRow({ page, clinicians, now, onOpen, canDispatch, selected }
         <SourceTag source={page.source} />
       </div>
       {actionable && (
-        <div className="mt-2 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <div className="mt-2.5 flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           {(page.status === "review" || page.status === "held") && (
             <Button size="sm" variant="primary" disabled={!!busy} onClick={() => act("approve")}>
               {busy === "approve" ? "Paging…" : page.status === "held" ? "Send now" : "Approve & page"}
@@ -116,10 +115,10 @@ export function PageRow({ page, clinicians, now, onOpen, canDispatch, selected }
           <Button size="sm" variant="quiet" disabled={!!busy} onClick={() => act("cancel")}>
             Cancel
           </Button>
-          {page.refining && <span className="working ml-auto rounded-[3px] px-1.5 text-[11px] text-accent-ink">model reviewing</span>}
+          {page.refining && <span className="working ml-auto rounded-sm px-1.5 text-xs text-accent-ink">Model reviewing</span>}
         </div>
       )}
-      {err && <div className="mt-1.5 text-[11.5px] text-high-ink">{err}</div>}
+      {err && <div className="mt-1.5 text-xs text-high-ink">{err}</div>}
       {ringing && <TimerBar remaining={att.deadline - now} total={att.deadline - att.sent_at} priority={page.priority} className="absolute inset-x-0 bottom-0" />}
     </motion.div>
   );
@@ -168,17 +167,17 @@ export function Feed({ items, now, onOpen }: { items: FeedItem[]; now: number; o
             animate={{ opacity: 1, backgroundColor: "rgba(61,142,245,0)" }}
             transition={{ duration: 1.2 }}
             onClick={() => a.page_id && onOpen(a.page_id)}
-            className={cx("grid grid-cols-[52px_minmax(0,1fr)] gap-2 border-b border-line-soft px-3.5 py-2 last:border-b-0", a.page_id && "cursor-pointer hover:bg-s2")}
+            className={cx("grid grid-cols-[48px_minmax(0,1fr)] gap-2.5 border-b border-line-soft px-4 py-2.5 last:border-b-0", a.page_id && "cursor-pointer hover:bg-white/[0.03]")}
           >
-            <span className="num pt-px font-mono text-[11px] text-dim" title={`${Math.round(now - a.created_at)} s ago`}>
+            <span className="num pt-px text-xs text-dim" title={`${Math.round(now - a.created_at)} s ago`}>
               {clock(a.created_at, false)}
             </span>
             <div className="min-w-0">
               <div className="flex items-start gap-2">
                 {a.priority ? <PriorityChip p={a.priority} size="sm" /> : <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full bg-faint" />}
-                <p className={cx("min-w-0 flex-1 text-[12px] leading-snug", a.kind === "note" ? "text-muted" : "text-ink/90")}>{a.text}</p>
+                <p className={cx("min-w-0 flex-1 text-xs leading-snug", a.kind === "note" ? "text-muted" : "text-ink/90")}>{a.text}</p>
               </div>
-              <div className="mt-0.5 flex items-center gap-1.5 text-[11px]">
+              <div className="mt-0.5 flex items-center gap-1.5 text-xs">
                 <span className={FEED_TONE[a.status] ?? "text-dim"}>{a.kind === "note" ? "Note" : PAGE_STATUS_LABEL[a.status as Page["status"]] ?? a.status}</span>
                 <span className="text-faint">·</span>
                 <SourceTag source={a.source} synthetic={a.synthetic} />
