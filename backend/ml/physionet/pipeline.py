@@ -301,10 +301,17 @@ def _stage_parity(ctx: Ctx) -> Dict:
     ref = CsvSource(ctx.demo_csv)
     stays = E.cohort(ref)[["stay_id", "hadm_id", "intime", "outtime"]]
     exact = ctx.dataset.access == "open"
-    rep = PA.parity(ref, LakeSource(ctx.lake), stays, agreement=1.0 if exact else PA.AGREEMENT)
+    rep = PA.parity(ref, LakeSource(ctx.lake), stays, agreement=1.0 if exact else PA.AGREEMENT,
+                    across_releases=not exact)       # a credentialed release against the 2.2 demo
     if not rep["verdict"]["passed"]:
-        raise Refused(f"the lake does not reproduce the reference on the demo's patients: {rep['verdict']['failing']}")
-    return {k: v["agreement"] for k, v in rep.items() if k != "verdict"}
+        worst = {k: round(v["agreement"], 4) for k, v in rep.items() if k in rep["verdict"]["failing"]}
+        raise Refused(f"the lake does not reproduce the reference on the demo's patients: {worst}"
+                      + (f"; {rep['revised']['stays']} of {rep['revised']['of']} stays revised by the release"
+                         if "revised" in rep else ""))
+    out = {k: v["agreement"] for k, v in rep.items() if k != "verdict"}
+    if "revised" in rep:
+        out["revised_stays"] = f"{rep['revised']['stays']} of {rep['revised']['of']}"
+    return out
 
 
 def _stage_sqlcheck(ctx: Ctx) -> Dict:

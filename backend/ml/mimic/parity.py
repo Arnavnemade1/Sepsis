@@ -10,8 +10,13 @@ compared with the CSV binning cell by cell — (stay, hour, variable) keys prese
 side only, and values that differ. The SQL is trusted only where it reproduces the
 reference; ``--project`` runs it, and the verdict fails below ``AGREEMENT``.
 
-Expect small, explainable differences if the cloud copy is a later MIMIC-IV release than the
-demo (3.1 vs 2.2 — some rows were corrected between them); the report lists them per table.
+Across releases (the full 3.1 against the 2.2 demo) PhysioNet has revised some patients' rows,
+and no reader can reproduce rows that are no longer published. ``across_releases`` therefore
+finds the REVISED stays first: those whose raw row count in an unfiltered source table differs
+between the two releases, read before any of our binning. It leaves them out, reports how many,
+and refuses if more than ``MAX_REVISED`` are. Every other stay is held to the bar as before. A
+revision that kept the row count but changed a value is not excluded, so it still fails. The
+first full run found 2 of the demo's 137 stays revised in inputevents (20,398 -> 20,245 rows).
 """
 from __future__ import annotations
 
@@ -27,6 +32,23 @@ from backend.ml.mimic import extract as E
 from backend.ml.mimic import ledger as LG
 
 AGREEMENT = 0.99
+MAX_REVISED = 0.05
+#: read unfiltered in the lake, so their raw rows can be counted on both sides
+RAW_TABLES = (("icu", "inputevents", "stay_id"), ("hosp", "prescriptions", "hadm_id"),
+              ("hosp", "microbiologyevents", "hadm_id"))
+
+
+def revised_stays(reference, candidate, stays: pd.DataFrame) -> set:
+    """Stays whose raw rows differ in number between the releases, in any unfiltered table."""
+    out = set()
+    for module, table, key in RAW_TABLES:
+        ids = set(stays[key].dropna().astype(np.int64))
+        counts = [src._read(module, table, [key], keep=lambda d: d[key].isin(ids))[key].astype(np.int64).value_counts()
+                  for src in (reference, candidate)]
+        diff = counts[0].sub(counts[1], fill_value=0)
+        changed = set(diff[diff != 0].index)
+        out |= set(stays.stay_id[stays[key].isin(changed)].astype(np.int64))
+    return out
 TABLES: Dict[str, Callable] = {
     "chart": lambda src, st: src.binned_chart(st),
     "labs": lambda src, st: src.binned_labs(st),
@@ -75,8 +97,15 @@ def compare_events(ref: pd.DataFrame, cand: pd.DataFrame, tol: float = 1e-3) -> 
             "stays_identical": same, "agreement": float(same / max(len(stays), 1))}
 
 
-def parity(reference, candidate, stays: pd.DataFrame, tol: float = 1e-3, agreement: float = AGREEMENT) -> Dict:
+def parity(reference, candidate, stays: pd.DataFrame, tol: float = 1e-3, agreement: float = AGREEMENT,
+           across_releases: bool = False) -> Dict:
     out: Dict = {}
+    if across_releases:
+        rev = revised_stays(reference, candidate, stays)
+        share = len(rev) / max(len(stays), 1)
+        out["revised"] = {"stays": len(rev), "of": int(len(stays)), "share": share, "max_share": MAX_REVISED,
+                          "agreement": 1.0 if share <= MAX_REVISED else 0.0}
+        stays = stays[~stays.stay_id.isin(rev)]
     for name, fn in TABLES.items():
         out[name] = compare_binned(_frame(fn(reference, stays)), _frame(fn(candidate, stays)), tol)
     for kind in EVENTS:

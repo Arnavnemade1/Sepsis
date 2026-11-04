@@ -49,6 +49,7 @@ from backend.ml.mimic import concepts as K
 from backend.ml.mimic import contracts as CT
 from backend.ml.mimic import extract as E
 from backend.ml.mimic import lake as ML
+from backend.ml.mimic import parity as PA
 from backend.ml.mimic import sources as SRC
 from backend.ml.mimic import sqlcheck as SC
 from backend.ml.physionet import auth, catalog, fetch, guard, pipeline
@@ -541,6 +542,32 @@ def c8_contract(lake_root: str) -> None:
              "real calendar dates where shifted ones belong")
     attacked("chartevents", lambda d: d.assign(stay_id=d.stay_id + 100000000), "chart rows of unknown stays")
     attacked("chartevents", lambda d: d.iloc[:0], "an empty chart table")
+    # Across releases: PhysioNet revised 2 of the demo's stays between 2.2 and 3.1. A revised stay
+    # is excluded and reported; a changed value under an unchanged row count is not; too many fail.
+    stays = E.cohort(SRC.CsvSource(E.DEMO_ROOT))[["stay_id", "hadm_id", "intime", "outtime"]]
+    inp = base._read("icu", "inputevents", ["stay_id", "itemid", "rate"])
+    vaso = inp[inp.itemid.isin([i for c in K.VASO for i in c.itemids]) & inp.rate.notna()]
+    one = int(vaso.stay_id.value_counts().index[0])
+    many = list(stays.stay_id.astype(np.int64)[:int(0.08 * len(stays)) + 1])
+
+    def across(fn):
+        path = _edit(lake_root, "inputevents", fn)
+        try:
+            return PA.parity(base, ML.LakeSource(path), stays, agreement=1.0, across_releases=True), \
+                PA.parity(base, ML.LakeSource(path), stays, agreement=1.0)
+        finally:
+            shutil.rmtree(os.path.dirname(path))
+    rel, same = across(lambda d: d[d.stay_id != one])
+    check("a stay the release revised is left out and reported, and only across releases",
+          rel["verdict"]["passed"] and rel["revised"]["stays"] == 1 and not same["verdict"]["passed"],
+          f"revised {rel['revised']['stays']} of {rel['revised']['of']}; same-release failing {same['verdict']['failing']}")
+    rel, _ = across(lambda d: d.assign(rate=d.rate.where(d.stay_id != one, d.rate * 2)))
+    check("...but a changed value under the same row count still fails", not rel["verdict"]["passed"]
+          and rel["revised"]["stays"] == 0 and "vasopressors" in rel["verdict"]["failing"], f"failing {rel['verdict']['failing']}")
+    rel, _ = across(lambda d: d[~d.stay_id.isin(many)])
+    check(f"...and more than {PA.MAX_REVISED:.0%} of stays revised is refused", not rel["verdict"]["passed"]
+          and "revised" in rel["verdict"]["failing"], f"revised {rel['revised']['stays']} of {rel['revised']['of']}")
+
     r = CT.check(base, base, min_stays=90_000)
     check("catches a demo passed off as the full database", "cohort size" in r["failed"])
     r = CT.check(base, None, min_stays=0)
@@ -848,6 +875,8 @@ MUTATIONS = [
     ("the old BigQuery names", SRC, 'hosp: str = "physionet-data.mimiciv_v3_1_hosp"', 'hosp: str = "physionet-data.mimiciv_3_1_hosp"', "7"),
     ("no label check", CT, 'or not re.search(c.label_pattern, str(labels[i]))', '', "8"),
     ("no drift check", CT, 'if not (1 / DRIFT_RATIO <= ratio <= DRIFT_RATIO):', 'if False:', "8"),
+    ("revised stays never excluded", PA, 'stays = stays[~stays.stay_id.isin(rev)]', 'pass', "8"),
+    ("no cap on revised stays", PA, '"agreement": 1.0 if share <= MAX_REVISED else 0.0}', '"agreement": 1.0}', "8"),
     ("no drift check for signed labs", CT, 'if abs(cur["median"] - ref["median"]) > DRIFT_SIGNED_SHARE * signed[item]:', 'if False:', "8"),
     ("no orphan check", CT, 'r.add("every stay has its patient", not orphan_p.any()', 'r.add("every stay has its patient", True', "8"),
     ("no cohort floor", CT, 'r.add("cohort size", len(st) >= min_stays', 'r.add("cohort size", True', "8"),
