@@ -36,7 +36,7 @@ one table in `lib/ecosystem.ts`. The backend gate stays the authority on what a 
 app/                one directory per route; globals.css holds the design tokens
 components/paging/  floor-view.tsx (the isometric building) · queue.tsx (queue, feed, actions)
                     page-drawer.tsx (dispatch, triage, routing, certificate, timeline, SBAR)
-                    composer.tsx (N, text or voice) · panels.tsx (KPIs with hour sparklines, pages, staff,
+                    composer.tsx (N, text or voice) · panels.tsx (KPI strip, pages, staff,
                     insights, policy) · bits.tsx (priority chips, countdowns, avatars)
 components/integrations/  overview.tsx (interfaces, message stream, quarantines, review, drills, validation) ·
                     mappings.tsx (every local code and its status) · drawers.tsx (one HL7 message as received; one
@@ -46,9 +46,10 @@ components/rooms/   unit.tsx (one room as a unit: header, scores, detections, vi
                     linked objects, timeline) · body.tsx (the anatomical twin lit by the room, pins,
                     systems) · board.tsx (every room as a tile) · drawer.tsx (the overview's watchlist and
                     room drawer) · bits.tsx (severity, NEWS2, allergy and code chips)
-components/         shell.tsx (sidebar, top bar, status, user) · nav.ts (the section model) · command.tsx (⌘K palette)
-                    os/ (architecture, kernel, journal, gate, shell views) · bed/census.tsx · ui.tsx (panels, tags,
-                    buttons, inspector sheet, modal, mini charts, Restricted)
+components/         shell.tsx (sidebar, inset sheet, top bar, status, user) · nav.ts (the section model) ·
+                    command.tsx (⌘K palette) · icons.tsx (the one icon set: Phosphor, named by meaning)
+                    os/ (architecture, kernel, journal, gate, shell views) · bed/census.tsx · ui.tsx (panels,
+                    StatStrip, tags, buttons, inspector sheet, modal, mini charts, Restricted)
                     feed.tsx · twin.tsx · terminal.tsx · bed/ (patient panels, chart, orders)
 engine/             twin3d.js, the anatomical twin, ported from webui/twin3d.js (plus pinned system
                     labels, hover/highlight, camera focus, an idle sway and MSAA through the composer)
@@ -71,18 +72,34 @@ clock offset), so countdowns are the backend's deadlines, not the browser's gues
 ## Rules this code keeps
 
 - **An operations console, not a website.** There is no landing page, no hero, no serif display
-  type, no gradients or glass, and no decorative icons. One system bar (connection latency,
-  prover health, clock), a grouped sidebar and a ⌘K command palette frame every screen. The palette is stealth
-  grey (`#212429` canvas, `#282c32` panels): dark enough for a wall display, not black.
+  type, no gradients or glass, and no decorative icons. The sidebar sits on a darker frame
+  (`#1b1d21`); the working area is an inset sheet (`#212429`, panels `#272a2f`) with one system
+  bar (connection latency, prover health, clock) and a ⌘K command palette. Stealth grey: dark
+  enough for a wall display, not black.
+- **None of the generated-UI tells.** No coloured side-tab stripe on a card (a card's state is
+  its label or chip), no decorative sparklines in KPI tiles, no box inside a box (inner groups
+  are a `.well` tint, not another border), no uppercase tracked eyebrows, no mono "tech" text.
+  Copy is plain statements: "No open pages", not "You're all caught up".
 - **Colour is signal.** The stock Tailwind palette is deleted in `globals.css`
   (`--color-*: initial`), so `bg-blue-500` does not compile. Red, orange, amber and grey are
   page priority (P1–P4), and the same four hues are a room monitor finding's severity
-  (critical, urgent, watch, information), so a room and its page always speak one colour. Green, blue, violet, amber and grey are staff status. Indigo is the
-  one accent, for selection, focus and the primary action. A healthy reading is neutral, not
+  (critical, urgent, watch, information), so a room and its page always speak one colour. Green, blue, violet, amber and grey are staff status. Blue (`#3d8ef5`) is the
+  one accent, for selection, focus and links; the primary action is the light button. A healthy reading is neutral, not
   green.
-- **Flat and exact.** Panels are a hairline border on a slightly lighter grey with 6–8 px radii.
-  Depth is kept for overlays (menus, the inspector, the composer). The terminal and the
-  anatomical twin have darker stages of their own.
+- **One edge per surface.** Panels are a hairline on a slightly lighter grey, 10 px radii;
+  controls 7 px, chips 5 px. Inputs and selects are `.field` (a recessed fill with an inner
+  hairline and an accent focus ring). Only overlays (menus, the inspector, the composer) cast
+  shadows. The terminal and the anatomical twin have darker stages of their own.
+- **A type scale, not a range.** `--text-*` is reset in `globals.css` to nine sizes (`2xs` 11 px,
+  `xs` 12, `sm` 13, `base` 14, `md` 16, `lg` 20, `xl` 24, `2xl` 28, `3xl` 40, `4xl` 64) with no
+  built-in line heights, so an element keeps its parent's leading. Hierarchy comes from weight
+  and ink before size. Geist for words and numbers; Geist Mono only for identifiers (page and
+  record ids, syscalls, capabilities, paths, hashes, HL7, code).
+- **One icon set.** Phosphor, imported only through `components/icons.tsx` under product names
+  (`Alert`, `Sentinel`, `Pager`), regular weight; the active sidebar section is the only filled
+  icon. Deep imports keep the bundle to the ~60 icons used.
+- **One stat strip.** Headline readings use `StatStrip` from `ui.tsx` on every screen, so a
+  number reads the same everywhere; P1 is the only solid priority chip, P2–P4 are tints.
 - **Numbers are tabular** (`.num`), so timers and counts never jitter. Wall-clock time is
   24-hour (`clock()` in `lib/paging.ts`).
 - **Say what a number is.** A cohort bed's score is the fused, personalized cohort risk, not
