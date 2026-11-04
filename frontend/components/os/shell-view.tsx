@@ -1,7 +1,6 @@
 "use client";
 
-import { CornerDownLeft } from "lucide-react";
-
+import { Enter } from "@/components/icons";
 import { PageHead } from "@/components/shell";
 import { Terminal } from "@/components/terminal";
 import { Panel } from "@/components/ui";
@@ -28,7 +27,7 @@ export function ShellView() {
         A shell on the kernel. Every command is a syscall through the gate, so what you can read here is exactly what your role may read: a refusal
         comes from the kernel, not from the interface.
       </PageHead>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Terminal greet className="h-[calc(100dvh-230px)] min-h-[420px]" />
         <Panel title="Commands" meta="Select one to run it" flush>
           <ul>
@@ -36,13 +35,13 @@ export function ShellView() {
               <li key={c.cmd}>
                 <button
                   onClick={() => window.dispatchEvent(new CustomEvent("aegis:shell", { detail: c.cmd }))}
-                  className="group flex w-full items-center gap-3 border-b border-line-soft px-3.5 py-2 text-left transition-colors last:border-b-0 hover:bg-s2"
+                  className="group flex w-full items-center gap-3 border-b border-line-soft px-4 py-2 text-left transition-colors last:border-b-0 hover:bg-s2"
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-[12px] text-ink">{c.cmd}</span>
-                    <span className="block text-[11.5px] text-dim">{c.about}</span>
+                    <span className="block font-mono text-xs text-ink">{c.cmd}</span>
+                    <span className="block text-xs text-dim">{c.about}</span>
                   </span>
-                  <CornerDownLeft size={13} className="shrink-0 text-faint group-hover:text-muted" />
+                  <Enter size={13} className="shrink-0 text-faint group-hover:text-muted" />
                 </button>
               </li>
             ))}

@@ -236,11 +236,11 @@ export function Terminal({ className = "h-[440px]", greet = false }: { className
   // ink tokens are for paper)
   return (
     <div
-      className={`flex flex-col overflow-hidden rounded-lg border border-line-bright bg-night font-mono text-[12px] leading-[1.55] ${className}`}
+      className={`flex flex-col overflow-hidden rounded-lg border border-line-bright bg-night font-mono text-xs leading-[1.55] ${className}`}
       onClick={() => field.current?.focus()}
     >
       <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
-        <span className="text-[11px] text-[#868d97]">aegis-sh · {user}@aegis · every command is a syscall through the gate</span>
+        <span className="text-xs text-[#868d97]">aegis-sh · {user}@aegis · every command is a syscall through the gate</span>
       </div>
       <div ref={box} className="min-h-0 flex-1 overflow-auto whitespace-pre p-3">
         {lines.map((l, i) => (

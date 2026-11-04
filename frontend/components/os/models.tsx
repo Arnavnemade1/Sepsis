@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowUpRight, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { Close, OpenLink } from "@/components/icons";
 import { cx, Drawer, Panel, Skeleton } from "@/components/ui";
 import { usePoll } from "@/lib/hooks";
 
@@ -46,8 +46,8 @@ export function ModelCode({ code, strong = false }: { code: string; strong?: boo
   return (
     <span
       className={cx(
-        "inline-grid h-5 min-w-9 place-items-center rounded-[4px] border px-1 font-mono text-[11px] font-semibold",
-        strong ? "border-ink/40 bg-ink/[0.08] text-ink" : "border-line-bright bg-s2 text-muted",
+        "inline-grid h-5 min-w-9 place-items-center rounded-[5px] px-1.5 font-mono text-2xs font-semibold",
+        strong ? "bg-ink/[0.14] text-ink" : "bg-white/[0.06] text-muted",
       )}
     >
       {code}
@@ -82,7 +82,7 @@ export function ModelsPanel() {
         ) : (
           groups.map((g) => (
             <div key={g.label}>
-              <div className="flex items-baseline gap-2 border-b border-line bg-s2/60 px-3.5 py-1.5 text-[11.5px]">
+              <div className="flex items-baseline gap-2 border-b border-line bg-white/[0.025] px-4 py-2 text-xs">
                 <span className="font-medium text-muted">{g.label}</span>
                 <span className="text-dim">{g.about}</span>
               </div>
@@ -91,20 +91,20 @@ export function ModelsPanel() {
                   <li key={m.code}>
                     <button
                       onClick={() => setSel(m.code)}
-                      className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-3.5 py-2.5 text-left transition-colors hover:bg-s2 md:grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_auto] md:items-center"
+                      className="grid w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3 gap-y-1 px-4 py-2.5 text-left transition-colors hover:bg-s2 md:grid-cols-[auto_minmax(0,1.1fr)_minmax(0,1.3fr)_minmax(0,1fr)_auto] md:items-center"
                     >
                       <ModelCode code={m.code} strong={m.decides} />
                       <div className="min-w-0">
-                        <div className="truncate text-[12.5px] font-medium text-ink">{m.name}</div>
-                        <div className="truncate text-[11.5px] text-dim md:hidden">{m.serves}</div>
+                        <div className="truncate text-sm font-medium text-ink">{m.name}</div>
+                        <div className="truncate text-xs text-dim md:hidden">{m.serves}</div>
                       </div>
-                      <div className="hidden min-w-0 truncate text-[12px] text-muted md:block" title={m.serves}>
+                      <div className="hidden min-w-0 truncate text-xs text-muted md:block" title={m.serves}>
                         {m.serves}
                       </div>
-                      <div className="col-span-2 min-w-0 truncate font-mono text-[11.5px] text-muted md:col-span-1" title={headline(m)}>
+                      <div className="num col-span-2 min-w-0 truncate text-xs text-muted md:col-span-1" title={headline(m)}>
                         {headline(m)}
                       </div>
-                      <span className="hidden items-center gap-1.5 justify-self-end text-[11.5px] text-dim md:inline-flex">
+                      <span className="hidden items-center gap-1.5 justify-self-end text-xs text-dim md:inline-flex">
                         <span className="h-1.5 w-1.5 rounded-full" style={{ background: STATUS[m.status].color }} />
                         {STATUS[m.status].label}
                       </span>
@@ -143,40 +143,40 @@ function ModelInspector({ m, onClose }: { m: Model; onClose: () => void }) {
   ];
   return (
     <>
-      <header className="flex shrink-0 items-start gap-3 border-b border-line px-4 py-3.5">
+      <header className="flex shrink-0 items-start gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0 flex-1">
-          <div className="text-[11.5px] text-dim">{m.kind === "detector" ? "Detector" : m.kind === "language" ? "Language model" : "Supporting model"}</div>
+          <div className="text-xs text-dim">{m.kind === "detector" ? "Detector" : m.kind === "language" ? "Language model" : "Supporting model"}</div>
           <div className="mt-1 flex items-center gap-2">
             <ModelCode code={m.code} strong={m.decides} />
-            <h2 className="min-w-0 truncate text-[16px] font-semibold text-ink">{m.name}</h2>
+            <h2 className="min-w-0 truncate text-md font-semibold text-ink">{m.name}</h2>
           </div>
         </div>
-        <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-s3 hover:text-ink" aria-label="Close">
-          <X size={14} />
+        <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.07] hover:text-ink" aria-label="Close">
+          <Close size={14} />
         </button>
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <dl className="divide-y divide-line-soft rounded-md border border-line px-3">
+        <dl className="well divide-y divide-white/[0.05] px-3.5">
           {facts.map(([k, v]) => (
-            <div key={k} className="grid grid-cols-[112px_minmax(0,1fr)] gap-3 py-1.5 text-[12.5px]">
+            <div key={k} className="grid grid-cols-[112px_minmax(0,1fr)] gap-3 py-1.5 text-sm">
               <dt className="text-dim">{k}</dt>
-              <dd className={cx("min-w-0 break-words text-ink", (k === "Fit" || k === "Artifact") && "font-mono text-[11.5px]")}>{v}</dd>
+              <dd className={cx("min-w-0 break-words text-ink", (k === "Fit" || k === "Artifact") && "font-mono text-xs")}>{v}</dd>
             </div>
           ))}
         </dl>
         {(r?.vs || r?.note) && (
-          <p className="mt-3 text-[12.5px] leading-relaxed text-muted">
+          <p className="mt-3 text-sm leading-relaxed text-muted">
             {r?.vs && <>Compared with {r.vs}. </>}
             {r?.note && <>{r.note.charAt(0).toUpperCase() + r.note.slice(1)}.</>}
           </p>
         )}
-        {r?.source && <div className="mt-2 font-mono text-[11px] text-dim">source · {r.source}</div>}
+        {r?.source && <div className="mt-3 text-xs text-dim">Source <span className="font-mono">{r.source}</span></div>}
       </div>
       {m.decides && (
-        <footer className="shrink-0 border-t border-line px-4 py-3">
-          <Link href="/lab/" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white">
+        <footer className="shrink-0 border-t border-line px-5 py-3.5">
+          <Link href="/lab/" className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-sm font-medium text-[#17191c] transition-colors hover:bg-white">
             Open evidence
-            <ArrowUpRight size={13} />
+            <OpenLink size={13} />
           </Link>
         </footer>
       )}

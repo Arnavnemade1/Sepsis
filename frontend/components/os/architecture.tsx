@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowUpRight, X } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { Close, OpenLink } from "@/components/icons";
 import { useHealth } from "@/components/shell";
 import { cx, Drawer, Kv, Tag } from "@/components/ui";
 import { useCaps, usePoll } from "@/lib/hooks";
@@ -558,10 +558,10 @@ export function Architecture() {
 
   return (
     <div>
-      <div className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2.5">
+      <div className="mb-6 flex flex-wrap items-end gap-x-4 gap-y-3">
         <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
-          <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">Architecture</h1>
-          <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">
+          <h1 className="text-xl font-semibold leading-tight tracking-tighter text-ink">Architecture</h1>
+          <p className="mt-2 max-w-[68ch] text-sm leading-relaxed text-muted">
             Every model it runs, by name, then every layer of AegisOS, live. Requests travel down through the syscall gate; telemetry
             travels up from the devices. Select any model or component to inspect it.
           </p>
@@ -588,11 +588,11 @@ export function Architecture() {
 
       <div className="relative">
         {/* the bus: one spine every layer hangs off */}
-        <span className="absolute bottom-6 left-[19px] top-6 hidden w-px overflow-hidden bg-line-bright md:block" aria-hidden>
+        <span className="absolute bottom-6 left-[11px] top-6 hidden w-px overflow-hidden bg-line md:block" aria-hidden>
           <span className="flow-down" />
           <span className="flow-up" />
         </span>
-        <div className="space-y-2.5">
+        <div className="space-y-5">
           {layers.map((l, i) => (
             <LayerBand key={l.id} layer={l} index={layers.length - i} selected={sel} onSelect={setSel} />
           ))}
@@ -616,36 +616,36 @@ function fmtUptime(s: number): string {
 function LayerBand({ layer, index, selected, onSelect }: { layer: Layer; index: number; selected: string | null; onSelect: (id: string) => void }) {
   const worst: Status = layer.components.some((c) => c.status === "err") ? "err" : layer.components.some((c) => c.status === "warn") ? "warn" : layer.components.every((c) => c.status === "idle") ? "idle" : "ok";
   return (
-    <section className="relative grid grid-cols-1 gap-3 md:grid-cols-[220px_minmax(0,1fr)]">
-      <div className="relative flex items-start gap-3 md:pr-2 md:pt-3">
-        <span className="relative z-[1] mt-0.5 grid h-[22px] w-[40px] shrink-0 place-items-center rounded-[4px] border border-line-bright bg-bg font-mono text-[10.5px] text-dim">
-          {String(index).padStart(2, "0")}
+    <section className="relative grid grid-cols-1 gap-4 md:grid-cols-[232px_minmax(0,1fr)]">
+      <div className="relative flex items-start gap-3 md:pr-2 md:pt-2.5">
+        <span className="num relative z-[1] grid h-6 w-6 shrink-0 place-items-center rounded-full bg-s2 text-2xs font-medium text-dim shadow-[0_0_0_4px_var(--color-bg),inset_0_0_0_1px_rgb(255_255_255/.08)]" title={`Layer ${index}`}>
+          {index}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 pt-0.5">
           <div className="flex items-center gap-2">
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: DOT[worst] }} />
-            <h2 className="text-[13px] font-semibold text-ink">{layer.name}</h2>
+            <h2 className="text-sm font-semibold tracking-tight text-ink">{layer.name}</h2>
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: DOT[worst] }} title={worst} />
           </div>
-          <p className="mt-0.5 text-[11.5px] leading-snug text-dim">{layer.about}</p>
+          <p className="mt-1 text-xs leading-snug text-dim">{layer.about}</p>
         </div>
       </div>
-      <div className="grid gap-2 rounded-lg border border-line bg-s1 p-2 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+      <div className="grid gap-2.5 [grid-template-columns:repeat(auto-fill,minmax(220px,1fr))]">
         {layer.components.map((c) => (
           <button
             key={c.id}
             onClick={() => onSelect(c.id)}
             className={cx(
-              "group min-w-0 rounded-md border px-3 py-2.5 text-left transition-colors",
-              selected === c.id ? "border-accent/70 bg-accent-soft/40" : "border-line bg-s2/40 hover:border-line-bright hover:bg-s2",
+              "group min-w-0 rounded-lg border px-3.5 py-3 text-left transition-colors duration-100",
+              selected === c.id ? "border-accent/60 bg-accent/[0.07]" : "border-line bg-s1 hover:border-line-bright hover:bg-s2",
             )}
           >
             <div className="flex items-center gap-2">
               <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: DOT[c.status] }} />
-              <span className="min-w-0 truncate text-[12.5px] font-medium text-ink">{c.name}</span>
-              {c.tag && <span className="ml-auto shrink-0 rounded-[3px] border border-line-bright px-1 font-mono text-[10px] text-dim">{c.tag}</span>}
+              <span className="min-w-0 truncate text-sm font-medium text-ink">{c.name}</span>
+              {c.tag && <span className="ml-auto shrink-0 rounded-[4px] bg-white/[0.06] px-1.5 py-px text-2xs font-medium text-dim">{c.tag}</span>}
             </div>
-            <div className="mt-1.5 truncate font-mono text-[11.5px] text-muted">{c.lines[0]}</div>
-            {c.lines[1] && <div className="truncate font-mono text-[11px] text-dim">{c.lines[1]}</div>}
+            <div className="num mt-2 truncate text-xs text-muted">{c.lines[0]}</div>
+            {c.lines[1] && <div className="num mt-0.5 truncate text-xs text-dim">{c.lines[1]}</div>}
           </button>
         ))}
       </div>
@@ -656,35 +656,35 @@ function LayerBand({ layer, index, selected, onSelect }: { layer: Layer; index: 
 function Inspector({ c, onClose }: { c: Component & { layer: string }; onClose: () => void }) {
   return (
     <>
-      <header className="flex shrink-0 items-start gap-3 border-b border-line px-4 py-3.5">
+      <header className="flex shrink-0 items-start gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0 flex-1">
-          <div className="text-[11.5px] text-dim">{c.layer}</div>
+          <div className="text-xs text-dim">{c.layer}</div>
           <div className="mt-0.5 flex items-center gap-2">
             <span className="h-2 w-2 rounded-full" style={{ background: DOT[c.status] }} />
-            <h2 className="text-[16px] font-semibold text-ink">{c.name}</h2>
-            {c.tag && <span className="rounded-[3px] border border-line-bright px-1 font-mono text-[10.5px] text-dim">{c.tag}</span>}
+            <h2 className="text-md font-semibold text-ink">{c.name}</h2>
+            {c.tag && <span className="rounded-[4px] bg-white/[0.06] px-1.5 py-px text-2xs font-medium text-dim">{c.tag}</span>}
           </div>
         </div>
-        <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-s3 hover:text-ink" aria-label="Close">
-          <X size={14} />
+        <button onClick={onClose} className="grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.07] hover:text-ink" aria-label="Close">
+          <Close size={14} />
         </button>
       </header>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-[13px] leading-relaxed text-muted">{c.about}</p>
-        <div className="mt-4 rounded-md border border-line px-3 py-1.5">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <p className="text-sm leading-relaxed text-muted">{c.about}</p>
+        <div className="well mt-4 px-3.5 py-1.5">
           {c.facts.length === 0 ? (
-            <div className="py-2 text-[12px] text-dim">Waiting for data…</div>
+            <div className="py-2 text-xs text-dim">Waiting for data</div>
           ) : (
-            c.facts.map(([k, v]) => <Kv key={k} k={k} v={<span className="font-mono text-[12px]">{String(v)}</span>} />)
+            c.facts.map(([k, v]) => <Kv key={k} k={k} v={<span className="font-mono text-xs">{String(v)}</span>} />)
           )}
         </div>
-        <div className="mt-3 font-mono text-[11.5px] text-dim">{c.lines.filter(Boolean).join(" · ")}</div>
+        <div className="num mt-3 text-xs text-dim">{c.lines.filter(Boolean).join(" · ")}</div>
       </div>
       {c.href && (
-        <footer className="shrink-0 border-t border-line px-4 py-3">
-          <Link href={c.href} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-[12.5px] font-medium text-bg transition-colors hover:bg-white">
+        <footer className="shrink-0 border-t border-line px-5 py-3.5">
+          <Link href={c.href} className="inline-flex h-8 items-center gap-1.5 rounded-md bg-ink px-3 text-sm font-medium text-[#17191c] transition-colors hover:bg-white">
             {c.hrefLabel ?? "Open"}
-            <ArrowUpRight size={13} />
+            <OpenLink size={13} />
           </Link>
         </footer>
       )}
