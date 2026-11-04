@@ -19,10 +19,10 @@ export function RiskHero({ snap }: { snap: Snapshot; recorded?: boolean }) {
   return (
     <div className="flex flex-wrap items-end gap-x-8 gap-y-4">
       <div>
-        <div className="text-[12px] text-dim">Calibrated sepsis risk</div>
-        <div className={cx("num text-[64px] font-light leading-none tracking-tight", TONE_TEXT[tone === "low" ? "neutral" : tone])}>
+        <div className="text-xs text-dim">Calibrated sepsis risk</div>
+        <div className={cx("num text-4xl font-light leading-none tracking-tight", TONE_TEXT[tone === "low" ? "neutral" : tone])}>
           {p == null ? "—" : (p * 100).toFixed(1).split(".")[0]}
-          <span className="text-[26px] text-dim">{p == null ? "" : `.${(p * 100).toFixed(1).split(".")[1]}%`}</span>
+          <span className="text-2xl text-dim">{p == null ? "" : `.${(p * 100).toFixed(1).split(".")[1]}%`}</span>
         </div>
       </div>
       <div className="space-y-2 pb-1.5">
@@ -32,7 +32,7 @@ export function RiskHero({ snap }: { snap: Snapshot; recorded?: boolean }) {
           </Pill>
           {r.index != null && (
             <span
-              className="num font-mono text-[12px] text-muted"
+              className="num text-xs text-muted"
               title={`The ward risk index: this probability on the scale every room is read on. It pages at ${INDEX.page.toFixed(2)}, the detector's validated alarm point.`}
             >
               index {r.index.toFixed(2)} <span className="text-faint">/ pages at {INDEX.page.toFixed(2)}</span>
@@ -40,14 +40,14 @@ export function RiskHero({ snap }: { snap: Snapshot; recorded?: boolean }) {
           )}
           {r.model && (
             <span
-              className="rounded-[4px] border border-line-bright bg-s2 px-1 font-mono text-[10.5px] font-semibold text-muted"
+              className="rounded-[4px] bg-white/[0.07] px-1.5 py-px font-mono text-2xs font-semibold text-muted"
               title={r.model === "A40" ? "Scored by A40, the all-variable detector (Architecture lists every model)" : "Scored by V7, the vital-sign detector (Architecture lists every model)"}
             >
               {r.model}
             </span>
           )}
         </div>
-        <div className="text-[12px] text-muted">
+        <div className="text-xs text-muted">
           {c && !c.unavailable && c.lo != null && c.hi != null ? (
             <>
               Conformal band {pct(c.lo)}–{pct(c.hi)} at α={c.alpha} ·{" "}
@@ -101,18 +101,18 @@ export function Vitals({ channels, trends, source }: { channels: Channel[]; tren
         return (
           <div key={c.key} className="min-w-0">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="truncate text-[11.5px] text-dim">{c.label ?? title(c.key)}</span>
-              {(source ?? c.source) && <span className="text-[10px] text-faint">{source ?? c.source}</span>}
+              <span className="truncate text-xs text-dim">{c.label ?? title(c.key)}</span>
+              {(source ?? c.source) && <span className="text-2xs text-faint">{source ?? c.source}</span>}
             </div>
             <div className="flex items-end justify-between gap-2">
-              <span className={cx("num text-[22px] font-light leading-tight", TONE_TEXT[tone])}>
+              <span className={cx("num text-xl font-light leading-tight", TONE_TEXT[tone])}>
                 {c.value!.toFixed(digits)}
-                <span className="ml-1 text-[11px] text-dim">{c.unit}</span>
+                <span className="ml-1 text-xs text-dim">{c.unit}</span>
               </span>
               {trends[c.key] && <Sparkline data={trends[c.key]} tone={tone} w={64} h={20} />}
             </div>
             {c.normal_low != null && c.normal_high != null && (
-              <div className="num text-[10.5px] text-faint">
+              <div className="num text-2xs text-faint">
                 normal {c.normal_low}–{c.normal_high}
               </div>
             )}
@@ -137,19 +137,19 @@ export function Organs({ snap }: { snap: Snapshot }) {
         return (
           <li key={o.name} className="py-2">
             <div className="flex items-center gap-2">
-              <span className={cx("text-[13px]", o.monitored ? "text-ink" : "text-dim")}>{o.name}</span>
-              {!o.monitored && <span className="text-[10.5px] text-faint">not measured</span>}
+              <span className={cx("text-sm", o.monitored ? "text-ink" : "text-dim")}>{o.name}</span>
+              {!o.monitored && <span className="text-2xs text-faint">not measured</span>}
               {o.monitored && o.trend && o.trend !== "STABLE" && (
-                <span className="text-[10.5px] text-muted">{title(o.trend)}</span>
+                <span className="text-2xs text-muted">{title(o.trend)}</span>
               )}
-              <span className="num ml-auto text-[12px] text-muted">
+              <span className="num ml-auto text-xs text-muted">
                 {o.monitored ? (o.sofa_points != null ? `SOFA ${o.sofa_points}` : pct(o.severity, 0)) : "—"}
               </span>
             </div>
             {o.monitored && (
               <>
                 <Meter value={o.severity} tone={tone} className="mt-1.5" />
-                {o.drivers.length > 0 && <div className="mt-1 truncate text-[11.5px] text-muted">{o.drivers.join(" · ")}</div>}
+                {o.drivers.length > 0 && <div className="mt-1 truncate text-xs text-muted">{o.drivers.join(" · ")}</div>}
               </>
             )}
           </li>
@@ -168,12 +168,12 @@ export function DecisionCard({ d }: { d: Decision | null }) {
   return (
     <div>
       <div className="flex items-center gap-3">
-        <div className="text-[20px] font-medium tracking-tight">{title(d.action)}</div>
+        <div className="text-lg font-medium tracking-tight">{title(d.action)}</div>
         <Pill tone={urgent ? "high" : d.urgency === "soon" ? "med" : "neutral"}>{title(d.urgency)}</Pill>
         {d.abstained && <Pill tone="med">Abstained</Pill>}
       </div>
-      <div className="mt-1 text-[12px] text-dim">Route · {title(d.route)}</div>
-      <ul className="mt-3 space-y-1.5 text-[12.5px] leading-snug text-muted">
+      <div className="mt-1 text-xs text-dim">Route · {title(d.route)}</div>
+      <ul className="mt-3 space-y-1.5 text-sm leading-snug text-muted">
         {d.because.map((b) => (
           <li key={b} className="flex gap-2">
             <span className="mt-[7px] h-1 w-1 shrink-0 rounded-full bg-faint" />
@@ -182,7 +182,7 @@ export function DecisionCard({ d }: { d: Decision | null }) {
         ))}
       </ul>
       {d.limits?.length > 0 && (
-        <details className="mt-3 text-[12px]">
+        <details className="mt-3 text-xs">
           <summary className="cursor-pointer text-dim hover:text-ink">Limits of this recommendation</summary>
           <ul className="mt-2 space-y-1 text-muted">
             {d.limits.map((l) => (
@@ -207,19 +207,19 @@ export function Reasoning({ snap }: { snap: Snapshot }) {
   const ops = [...r.opinions].sort((a, b) => b.concern - a.concern);
   return (
     <div>
-      {r.summary && <p className="mb-3 text-[12.5px] leading-snug text-muted">{r.summary}</p>}
+      {r.summary && <p className="mb-3 text-sm leading-snug text-muted">{r.summary}</p>}
       <ul className="space-y-2.5">
         {ops.map((o) => {
           const tone = severityTone(o.concern);
           return (
             <li key={o.agent}>
               <div className="flex items-baseline gap-2">
-                <span className="text-[13px] text-ink">{o.agent}</span>
-                <span className="truncate text-[11.5px] text-dim">{o.rationale}</span>
-                <span className="num ml-auto text-[11.5px] text-muted">{pct(o.concern, 0)}</span>
+                <span className="text-sm text-ink">{o.agent}</span>
+                <span className="truncate text-xs text-dim">{o.rationale}</span>
+                <span className="num ml-auto text-xs text-muted">{pct(o.concern, 0)}</span>
               </div>
               <Meter value={o.concern} tone={tone} className="mt-1" />
-              {o.recommendation && <div className="mt-1 text-[11.5px] text-muted">→ {o.recommendation}</div>}
+              {o.recommendation && <div className="mt-1 text-xs text-muted">→ {o.recommendation}</div>}
             </li>
           );
         })}
@@ -283,14 +283,14 @@ export function Consult({ bed, name }: { bed: string | null; name: string }) {
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
         {turns.length === 0 && (
           <div className="space-y-3">
-            <p className="text-[12.5px] leading-relaxed text-muted">
+            <p className="text-sm leading-relaxed text-muted">
               Dr. Aegis answers from {name}&rsquo;s live dossier only: the risk, the vitals, the organ systems and what the
               system is not measuring. It cannot order anything.
             </p>
             {brief?.unmeasured && brief.unmeasured.length > 0 && (
-              <div className="rounded-md border border-line-soft bg-s2/50 p-3">
-                <div className="mb-1.5 text-[11.5px] text-dim">Not measured, so not known</div>
-                <ul className="space-y-0.5 text-[12px] text-muted">
+              <div className="well p-3.5">
+                <div className="mb-1.5 text-xs text-dim">Not measured, so not known</div>
+                <ul className="space-y-0.5 text-xs text-muted">
                   {brief.unmeasured.slice(0, 5).map((u) => (
                     <li key={u}>· {u}</li>
                   ))}
@@ -299,7 +299,7 @@ export function Consult({ bed, name }: { bed: string | null; name: string }) {
             )}
             <div className="flex flex-wrap gap-2">
               {starters.map((s) => (
-                <button key={s} onClick={() => ask(s)} className="rounded-full border border-line bg-s2 px-3 py-1 text-[12px] text-muted hover:border-line-bright hover:text-ink">
+                <button key={s} onClick={() => ask(s)} className="rounded-full bg-white/[0.05] px-3 py-1.5 text-xs text-muted shadow-[inset_0_0_0_1px_rgb(255_255_255/.06)] transition-colors hover:bg-white/[0.08] hover:text-ink">
                   {s}
                 </button>
               ))}
@@ -307,12 +307,12 @@ export function Consult({ bed, name }: { bed: string | null; name: string }) {
           </div>
         )}
         {turns.map((t, i) => (
-          <div key={i} className={cx("max-w-[92%] rounded-lg px-3 py-2 text-[13px] leading-relaxed", t.role === "user" ? "ml-auto bg-s3 text-ink" : "bg-s2/70 text-ink")}>
+          <div key={i} className={cx("max-w-[92%] rounded-xl px-3.5 py-2.5 text-sm leading-relaxed", t.role === "user" ? "ml-auto bg-accent/[0.16] text-ink" : "bg-white/[0.04] text-ink")}>
             <div className="whitespace-pre-wrap">{t.text}</div>
-            {t.meta && <div className="mt-1 text-[10.5px] text-dim">{t.meta}</div>}
+            {t.meta && <div className="mt-1 text-2xs text-dim">{t.meta}</div>}
           </div>
         ))}
-        {busy && <div className="text-[12px] text-dim">Dr. Aegis is reading the chart…</div>}
+        {busy && <div className="text-xs text-dim">Dr. Aegis is reading the chart…</div>}
         <div ref={end} />
       </div>
       <form
@@ -326,7 +326,7 @@ export function Consult({ bed, name }: { bed: string | null; name: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={`Ask about ${name}…`}
-          className="min-w-0 flex-1 rounded-md border border-line bg-s2 px-3 py-2 text-[13px] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+          className="min-w-0 flex-1 field px-3 py-2 text-sm text-ink placeholder:text-faint"
         />
         <Button type="submit" variant="primary" disabled={busy || !q.trim()}>
           Ask

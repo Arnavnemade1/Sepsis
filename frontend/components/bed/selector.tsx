@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { CaretDown } from "@/components/icons";
 import { cx } from "@/components/ui";
 import type { RosterPatient } from "@/lib/types";
 
@@ -35,7 +36,7 @@ export function BedSelector({
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex h-8 min-w-0 max-w-full items-center gap-2.5 rounded-md border border-line-bright bg-s2 pl-2.5 pr-2 text-[12.5px] transition-colors hover:bg-s3"
+        className="field flex h-8 min-w-0 max-w-full items-center gap-2.5 pl-2.5 pr-2 text-sm"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
@@ -43,16 +44,14 @@ export function BedSelector({
           <>
             <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", dot(current))} />
             <span className="min-w-0 max-w-[220px] truncate text-ink">{current.name}</span>
-            <span className="hidden shrink-0 whitespace-nowrap text-[11.5px] text-dim sm:inline">
+            <span className="hidden shrink-0 whitespace-nowrap text-xs text-dim sm:inline">
               {current.kind === "live" ? "live session" : current.id.replace("bed_", "bed ")}
             </span>
           </>
         ) : (
           <span className="text-muted">Choose a patient</span>
         )}
-        <svg width="10" height="10" viewBox="0 0 10 10" className="text-dim" aria-hidden>
-          <path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" fill="none" strokeWidth="1.4" strokeLinecap="round" />
-        </svg>
+        <CaretDown size={13} className="shrink-0 text-dim" aria-hidden />
       </button>
       {open && (
         <div role="listbox" className="pop absolute left-0 top-10 z-50 max-h-[70vh] w-80 max-w-[calc(100vw-24px)] overflow-y-auto p-1">
@@ -66,13 +65,13 @@ export function BedSelector({
                 router.push(hrefFor(p.id));
               }}
               className={cx(
-                "flex w-full items-center gap-2.5 rounded-[4px] px-2.5 py-1.5 text-left",
-                p.id === current?.id ? "bg-s3" : "hover:bg-s2",
+                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left transition-colors",
+                p.id === current?.id ? "bg-white/[0.08]" : "hover:bg-white/[0.05]",
               )}
             >
               <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", dot(p))} />
-              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{p.name}</span>
-              <span className="shrink-0 whitespace-nowrap text-[11px] text-dim">{p.kind === "live" ? "live session" : p.id.replace("bed_", "bed ")}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-ink">{p.name}</span>
+              <span className="shrink-0 whitespace-nowrap text-xs text-dim">{p.kind === "live" ? "live session" : p.id.replace("bed_", "bed ")}</span>
             </button>
           ))}
         </div>

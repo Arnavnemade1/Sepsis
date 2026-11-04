@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useMemo } from "react";
 
+import { Back } from "@/components/icons";
 import { Census } from "@/components/bed/census";
 import { RiskChart, type RiskSeries } from "@/components/bed/chart";
 import { Consult, DecisionCard, Organs, Reasoning, RiskHero, Vitals } from "@/components/bed/panels";
@@ -136,8 +136,8 @@ function Bedside({ id }: { id: string }) {
     <Page
       context={
         <div className="flex items-center gap-3">
-          <Link href="/patient/" className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[12.5px] text-dim transition-colors hover:bg-s2 hover:text-ink">
-            <ArrowLeft size={14} />
+          <Link href="/patient/" className="flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-dim transition-colors hover:bg-s2 hover:text-ink">
+            <Back size={14} />
             Census
           </Link>
           {roster.data && <BedSelector roster={roster.data.patients} current={patient} />}
@@ -159,25 +159,25 @@ function Bedside({ id }: { id: string }) {
           </Empty>
         </div>
       ) : !snap ? (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-4">
           <Skeleton className="h-36 rounded-lg" />
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
             <Skeleton className="h-[420px] rounded-lg" />
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-4">
           {/* identity + the one number */}
           <section className="panel flex flex-wrap items-start gap-x-10 gap-y-5 p-4 xl:items-end">
             <div className="min-w-0 basis-[min(100%,15rem)]">
-              <div className="text-[12px] text-dim">
+              <div className="text-xs text-dim">
                 {live ? "Live monitored patient" : `${title(bed ?? "")} · ICU wing`}
                 {snap.source && <span className="ml-2 text-faint">source · {snap.source}</span>}
               </div>
-              <h1 className="mt-1 text-[24px] font-semibold tracking-[-0.01em]">{snap.patient.name}</h1>
-              <div className="num mt-1 text-[13px] text-muted">
+              <h1 className="mt-1 text-xl font-semibold tracking-tight">{snap.patient.name}</h1>
+              <div className="num mt-1 text-sm text-muted">
                 {snap.patient.age != null && `${Math.round(snap.patient.age)} y`}
                 {snap.patient.gender && ` · ${snap.patient.gender}`}
                 {chart.data?.icu_hour != null && ` · ICU hour ${chart.data.icu_hour}`}
@@ -198,7 +198,7 @@ function Bedside({ id }: { id: string }) {
             </div>
           </section>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,1fr)]">
             <Plate title="Vitals" eyebrow={recorded ? "Hourly record, last 24 h" : "Streaming"}>
               <Vitals channels={(snap.body_state.channels ?? []) as never} trends={trends} source={recorded ? "record" : undefined} />
             </Plate>
@@ -217,7 +217,7 @@ function Bedside({ id }: { id: string }) {
             </Plate>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <Plate
               title="Risk over time"
               eyebrow={
@@ -229,11 +229,11 @@ function Bedside({ id }: { id: string }) {
               }
               right={
                 recorded && chart.data?.forecast ? (
-                  <span className="text-[11.5px] text-dim">
+                  <span className="text-xs text-dim">
                     trend · {chart.data.forecast.trajectory}
                   </span>
                 ) : timeline.data ? (
-                  <span className="text-[11.5px] text-dim">{timeline.data.trajectory}</span>
+                  <span className="text-xs text-dim">{timeline.data.trajectory}</span>
                 ) : null
               }
             >
@@ -255,7 +255,7 @@ function Bedside({ id }: { id: string }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Plate
               title="Specialist panel"
               eyebrow={`${snap.reasoning?.opinions?.length ?? 0} reasoning agents deliberate on every tick`}

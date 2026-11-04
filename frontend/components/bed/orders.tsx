@@ -71,7 +71,7 @@ export function Orders({ bed }: { bed: string }) {
 
   return (
     <div>
-      {!session && <div className="mb-3 text-[12px] text-dim">Sign in as a clinician to issue orders.</div>}
+      {!session && <div className="mb-3 text-xs text-dim">Sign in as a clinician to issue orders.</div>}
       <div className="grid grid-cols-1 gap-2">
         {ACTIONS.map((a) => {
           const can = caps.has(a.cap);
@@ -85,7 +85,7 @@ export function Orders({ bed }: { bed: string }) {
               >
                 {busy === a.syscall ? "Proving…" : a.label}
               </Button>
-              <span className="min-w-0 text-[11.5px] leading-snug text-dim">
+              <span className="min-w-0 text-xs leading-snug text-dim">
                 {can ? a.hint : `Requires ${a.cap} (${a.who})`}
               </span>
             </div>
@@ -96,7 +96,7 @@ export function Orders({ bed }: { bed: string }) {
       {last && (
         <div
           className={cx(
-            "mt-4 rounded-md border p-3 text-[12.5px]",
+            "mt-4 rounded-md border p-3 text-sm",
             last.allowed ? "border-line bg-s2/60" : "border-high/30 bg-high/10",
           )}
         >
@@ -104,7 +104,7 @@ export function Orders({ bed }: { bed: string }) {
             <Pill tone={last.allowed ? "neutral" : "high"} dot>
               {last.allowed ? "Certified and applied" : last.errno_name === "EPERM" && !last.sid ? "Not permitted" : "Refused by the prover"}
             </Pill>
-            <span className="font-mono text-[11px] text-dim">
+            <span className="font-mono text-xs text-dim">
               {last.syscall} · z3 {last.z3_status}
               {last.sid != null && ` · sid ${last.sid}`}
             </span>
@@ -113,12 +113,12 @@ export function Orders({ bed }: { bed: string }) {
           {last.violations && last.violations.length > 0 && <div className="mt-1 text-muted">{last.violations.join(" · ")}</div>}
           {last.result?.proof && (
             <details className="mt-2">
-              <summary className="cursor-pointer text-[12px] text-dim hover:text-ink">Proof</summary>
-              <p className="mt-1 break-words font-mono text-[11px] leading-relaxed text-muted">{last.result.proof}</p>
+              <summary className="cursor-pointer text-xs text-dim hover:text-ink">Proof</summary>
+              <p className="mt-1 break-words font-mono text-xs leading-relaxed text-muted">{last.result.proof}</p>
             </details>
           )}
           {last.allowed && last.syscall === "treat" && (
-            <Link href={`/pharmacy/?id=${encodeURIComponent(bed)}`} className="mt-2 inline-block text-[12px] text-accent-ink hover:underline">
+            <Link href={`/pharmacy/?id=${encodeURIComponent(bed)}`} className="mt-2 inline-block text-xs text-accent-ink hover:underline">
               See where this order goes in the body →
             </Link>
           )}
@@ -126,17 +126,17 @@ export function Orders({ bed }: { bed: string }) {
       )}
 
       <div className="mt-4 border-t border-line-soft pt-3">
-        <div className="mb-1.5 text-[11.5px] text-dim">Audit log for this bed</div>
+        <div className="mb-1.5 text-xs text-dim">Audit log for this bed</div>
         {log.length === 0 ? (
           <Empty>No orders on this bed yet.</Empty>
         ) : (
           <ul className="space-y-1">
             {log.map((r) => (
-              <li key={r.sid} className="flex items-baseline gap-2 text-[12px]">
+              <li key={r.sid} className="flex items-baseline gap-2 text-xs">
                 <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", r.allowed ? "bg-faint" : "bg-high")} />
-                <span className="font-mono text-[11.5px] text-ink">{r.syscall}</span>
+                <span className="font-mono text-xs text-ink">{r.syscall}</span>
                 <span className="min-w-0 truncate text-muted">{r.message}</span>
-                <span className="ml-auto shrink-0 text-[11px] text-dim">
+                <span className="ml-auto shrink-0 text-xs text-dim">
                   z3 {r.z3_status} · {ago(r.ts)}
                 </span>
               </li>

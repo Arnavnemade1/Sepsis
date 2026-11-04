@@ -118,7 +118,7 @@ export function RiskChart({ s, height = 220 }: { s: RiskSeries; height?: number 
           {Math.round(x1)}
         </text>
       </svg>
-      <div className="num pointer-events-none absolute left-10 top-1 text-[11.5px] text-muted">
+      <div className="num pointer-events-none absolute left-10 top-1 text-xs text-muted">
         {s.xLabel} {Math.round(s.x[hi] ?? 0)} ·{" "}
         <span className="text-ink">{fmt(s.risk[hi], s.unit)}</span>
         {s.population?.[hi] != null && <span className="text-dim"> · population {fmt(s.population[hi], s.unit)}</span>}
