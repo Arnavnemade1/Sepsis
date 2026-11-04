@@ -5,6 +5,8 @@ import { useEffect, type ReactNode } from "react";
 
 import { TONE_BG, TONE_RGB, TONE_TEXT, type Tone } from "@/lib/clinical";
 
+import { Close, Lock } from "./icons";
+
 export function cx(...c: (string | false | null | undefined)[]): string {
   return c.filter(Boolean).join(" ");
 }
@@ -25,17 +27,17 @@ export function Panel({ title, meta, right, children, className, bodyClass, flus
   return (
     <section className={cx("panel flex min-w-0 flex-col", className)}>
       {(title || right) && (
-        <header className="flex min-h-10 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-3.5 py-2">
+        <header className="flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2.5">
           {/* the title keeps at least 11rem; below that the controls wrap under it instead of
               squeezing it to one word per line, and scroll sideways if still too wide */}
           <div className="min-w-0 flex-1 basis-44">
-            {title && <h2 className="truncate text-[12.5px] font-semibold text-ink">{title}</h2>}
-            {meta && <div className="text-[11.5px] leading-snug text-dim">{meta}</div>}
+            {title && <h2 className="truncate text-sm font-semibold tracking-tight text-ink">{title}</h2>}
+            {meta && <div className="mt-0.5 text-xs leading-snug text-dim">{meta}</div>}
           </div>
           {right && <div className="flex max-w-full shrink-0 items-center gap-2 overflow-x-auto [scrollbar-width:none]">{right}</div>}
         </header>
       )}
-      <div className={cx("min-w-0 flex-1", !flush && "p-3.5", bodyClass)}>{children}</div>
+      <div className={cx("min-w-0 flex-1", !flush && "p-4", bodyClass)}>{children}</div>
     </section>
   );
 }
@@ -59,8 +61,8 @@ export function Plate({ title, eyebrow, right, children, className, bodyClass }:
 export function SectionLabel({ children, right, className }: { children: ReactNode; right?: ReactNode; className?: string }) {
   return (
     <div className={cx("flex items-center gap-2 pb-2", className)}>
-      <span className="text-[11.5px] font-medium text-dim">{children}</span>
-      {right && <span className="ml-auto text-[11.5px] text-dim">{right}</span>}
+      <span className="text-xs font-medium text-muted">{children}</span>
+      {right && <span className="ml-auto text-xs text-dim">{right}</span>}
     </div>
   );
 }
@@ -76,15 +78,41 @@ export function Stat({ label, value, unit, tone = "neutral", sub, size = "md" }:
   sub?: ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
 }) {
-  const sz = { sm: "text-[16px]", md: "text-[20px]", lg: "text-[26px]", xl: "text-[40px]" }[size];
+  const sz = { sm: "text-md", md: "text-xl", lg: "text-2xl", xl: "text-3xl" }[size];
   return (
     <div className="min-w-0">
-      <div className="truncate text-[11.5px] text-dim">{label}</div>
-      <div className={cx("num mt-0.5 font-medium leading-tight tracking-[-0.01em]", sz, TONE_TEXT[tone])}>
+      <div className="truncate text-xs text-dim">{label}</div>
+      <div className={cx("num mt-1 font-medium leading-none tracking-tighter", sz, TONE_TEXT[tone])}>
         {value}
-        {unit && <span className="ml-1 text-[12px] font-normal text-dim">{unit}</span>}
+        {unit && <span className="ml-1 text-xs font-normal tracking-normal text-dim">{unit}</span>}
       </div>
-      {sub && <div className="mt-0.5 truncate text-[11.5px] text-dim">{sub}</div>}
+      {sub && <div className="mt-1.5 truncate text-xs text-dim">{sub}</div>}
+    </div>
+  );
+}
+
+/** A row of headline readings sharing hairline dividers: the top of most screens.
+ *  One shape everywhere, so a number reads the same on every screen. */
+export function StatStrip({ items, className, cols = 6 }: {
+  items: { k: ReactNode; v: ReactNode; sub?: ReactNode; tone?: string; mark?: ReactNode; title?: string }[];
+  className?: string;
+  cols?: 4 | 5 | 6;
+}) {
+  const grid = { 4: "sm:grid-cols-4", 5: "sm:grid-cols-3 xl:grid-cols-5", 6: "sm:grid-cols-3 xl:grid-cols-6" }[cols];
+  return (
+    // dividers are drawn by each tile (right + bottom) and clipped at the frame, so a short last
+    // row ends in panel, not in a grey block
+    <div className={cx("grid shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-line bg-s1", grid, className)}>
+      {items.map((it, i) => (
+        <div key={i} className="min-w-0 px-4 py-3.5 shadow-[1px_0_0_0_var(--color-line),0_1px_0_0_var(--color-line)]" title={it.title}>
+          <div className="truncate text-xs text-dim">{it.k}</div>
+          <div className={cx("num mt-1.5 flex items-center gap-2 text-xl font-medium leading-none tracking-tighter", it.tone ?? "text-ink")}>
+            {it.mark}
+            <span className="min-w-0 truncate">{it.v}</span>
+          </div>
+          {it.sub != null && <div className="mt-2 truncate text-xs text-dim">{it.sub}</div>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -103,11 +131,11 @@ export function Tag({ tone = "neutral", children, dot = false, className, title 
     <span
       title={title}
       className={cx(
-        "inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-1.5 text-[11px] font-medium",
-        neutral ? "border-line-bright bg-s2 text-muted" : TONE_TEXT[tone],
+        "inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-sm px-1.5 text-2xs font-medium leading-none",
+        neutral ? "bg-white/[0.06] text-muted" : TONE_TEXT[tone],
         className,
       )}
-      style={neutral ? undefined : { borderColor: `rgb(${TONE_RGB[tone]} / 0.35)`, background: `rgb(${TONE_RGB[tone]} / 0.1)` }}
+      style={neutral ? undefined : { background: `rgb(${TONE_RGB[tone]} / 0.13)` }}
     >
       {dot && <span className={cx("h-1.5 w-1.5 rounded-full", TONE_BG[tone])} />}
       {children}
@@ -124,8 +152,8 @@ export function Meter({ value, tone = "neutral", marks = [], className }: {
 }) {
   const v = value == null ? 0 : Math.max(0, Math.min(1, value));
   return (
-    <div className={cx("relative h-1 overflow-hidden rounded-[2px] bg-s3", className)}>
-      <div className={cx("h-full transition-[width] duration-500", TONE_BG[tone])} style={{ width: `${v * 100}%` }} />
+    <div className={cx("relative h-1 overflow-hidden rounded-full bg-white/[0.07]", className)}>
+      <div className={cx("h-full rounded-full transition-[width] duration-500", TONE_BG[tone])} style={{ width: `${v * 100}%` }} />
       {marks.map((m) => (
         <span key={m} className="absolute top-0 h-full w-px bg-ink/50" style={{ left: `${m * 100}%` }} />
       ))}
@@ -202,22 +230,22 @@ export function MiniLine({ data, color = "#6eaaff", w = 76, h = 22 }: { data: (n
 
 export function Empty({ children, icon }: { children: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex min-h-20 flex-col items-center justify-center gap-2 px-4 py-6 text-center text-[12.5px] text-dim">
-      {icon}
-      {children}
+    <div className="flex min-h-24 flex-col items-center justify-center gap-2.5 px-4 py-8 text-center text-sm text-dim">
+      {icon && <span className="text-faint">{icon}</span>}
+      <span className="max-w-xs">{children}</span>
     </div>
   );
 }
 
 export function Skeleton({ className }: { className?: string }) {
-  return <div className={cx("animate-pulse rounded-[4px] bg-s2", className)} />;
+  return <div className={cx("animate-pulse rounded-md bg-white/[0.04]", className)} />;
 }
 
 export function Kv({ k, v, mono = false }: { k: ReactNode; v: ReactNode; mono?: boolean }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 py-1 text-[12.5px]">
+    <div className="flex items-baseline justify-between gap-4 py-1.5 text-sm">
       <span className="shrink-0 text-dim">{k}</span>
-      <span className={cx("num min-w-0 truncate text-right text-ink", mono && "font-mono text-[11.5px]")}>{v}</span>
+      <span className={cx("num min-w-0 truncate text-right text-ink", mono && "font-mono text-xs")}>{v}</span>
     </div>
   );
 }
@@ -226,13 +254,10 @@ export function Kv({ k, v, mono = false }: { k: ReactNode; v: ReactNode; mono?: 
  *  would-deny; in enforce mode it refuses it. Either way the interface says so. */
 export function Restricted({ cap, role, children }: { cap: string; role: string | null; children?: ReactNode }) {
   return (
-    <div className="flex items-start gap-2.5 rounded-md border border-med/30 bg-med/[0.08] px-3 py-2 text-[12px] leading-relaxed text-muted">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="mt-[3px] shrink-0 text-med-ink" aria-hidden>
-        <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" stroke="currentColor" strokeWidth="1.4" />
-      </svg>
+    <div className="flex items-start gap-2.5 rounded-md bg-med/[0.08] px-3 py-2.5 text-xs leading-relaxed text-muted">
+      <Lock size={14} className="mt-[2px] shrink-0 text-med-ink" aria-hidden />
       <span>
-        Requires <span className="font-mono text-[11.5px] text-med-ink">{cap}</span>
+        Requires <span className="font-mono text-xs text-med-ink">{cap}</span>
         {role ? <>, which the {role} role does not hold</> : null}. {children ?? "In audit mode the gate serves this read and records it as a would-deny; in enforce mode it is refused."}
       </span>
     </div>
@@ -263,16 +288,16 @@ export function Button({ children, onClick, variant = "ghost", size = "md", disa
       disabled={disabled}
       title={title}
       className={cx(
-        "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors duration-100 disabled:cursor-not-allowed disabled:opacity-40",
-        size === "sm" && "h-7 px-2.5 text-[12px]",
-        size === "md" && "h-8 px-3 text-[12.5px]",
-        size === "lg" && "h-10 px-4 text-[13.5px]",
-        variant === "primary" && "bg-ink text-bg hover:bg-white",
-        variant === "accent" && "bg-accent text-white hover:bg-[#5a9ff7]",
+        "inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-[background-color,color,box-shadow] duration-100 active:translate-y-px disabled:pointer-events-none disabled:opacity-40",
+        size === "sm" && "h-7 px-2.5 text-xs",
+        size === "md" && "h-8 px-3 text-sm",
+        size === "lg" && "h-10 px-4 text-base",
+        variant === "primary" && "bg-ink text-[#17191c] shadow-[0_1px_2px_rgb(0_0_0/.3)] hover:bg-white",
+        variant === "accent" && "bg-accent text-white shadow-[0_1px_2px_rgb(0_0_0/.3)] hover:bg-[#5598f6]",
         variant === "success" && "bg-low text-[#0b1d14] hover:bg-[#3cc98b]",
-        variant === "ghost" && "border border-line-bright bg-s2 text-ink hover:border-[#525962] hover:bg-s3",
-        variant === "quiet" && "text-muted hover:bg-s2 hover:text-ink",
-        variant === "danger" && "border border-high/35 bg-high/10 text-high-ink hover:bg-high/15",
+        variant === "ghost" && "bg-white/[0.06] text-ink shadow-[inset_0_0_0_1px_rgb(255_255_255/.07)] hover:bg-white/[0.1]",
+        variant === "quiet" && "text-muted hover:bg-white/[0.06] hover:text-ink",
+        variant === "danger" && "bg-high/[0.12] text-high-ink hover:bg-high/[0.18]",
         className,
       )}
     >
@@ -294,10 +319,10 @@ export function Switch({ checked, onChange, disabled, label }: {
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cx("relative h-4 w-7 shrink-0 rounded-full transition-colors disabled:opacity-40", checked ? "bg-accent" : "bg-s4")}
+      className={cx("relative h-[18px] w-8 shrink-0 rounded-full transition-colors duration-150 disabled:opacity-40", checked ? "bg-accent" : "bg-white/[0.12]")}
     >
       {/* anchored left: an absolute child of a <button> otherwise starts at its centred static position */}
-      <span className={cx("absolute left-0 top-0.5 h-3 w-3 rounded-full bg-white transition-transform duration-150", checked ? "translate-x-[14px]" : "translate-x-0.5")} />
+      <span className={cx("absolute left-0 top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/.35)] transition-transform duration-200 ease-out", checked ? "translate-x-[16px]" : "translate-x-[2px]")} />
     </button>
   );
 }
@@ -309,15 +334,15 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
   size?: "sm" | "md";
 }) {
   return (
-    <div className="inline-flex shrink-0 rounded-md border border-line bg-bg p-0.5">
+    <div className="inline-flex shrink-0 gap-px rounded-md bg-black/[0.18] p-[3px] shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cx(
-            "whitespace-nowrap rounded-[4px] font-medium transition-colors",
-            size === "sm" ? "h-6 px-2 text-[11.5px]" : "h-6 px-2.5 text-[12px]",
-            value === o.value ? "bg-s3 text-ink" : "text-dim hover:text-ink",
+            "whitespace-nowrap rounded-[5px] font-medium transition-colors duration-100",
+            size === "sm" ? "h-6 px-2 text-xs" : "h-[26px] px-2.5 text-xs",
+            value === o.value ? "bg-s4 text-ink shadow-[0_1px_2px_rgb(0_0_0/.3)]" : "text-dim hover:text-ink",
           )}
         >
           {o.label}
@@ -329,17 +354,13 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
 
 export function IconButton({ children, onClick, label, className }: { children: ReactNode; onClick?: () => void; label: string; className?: string }) {
   return (
-    <button onClick={onClick} aria-label={label} title={label} className={cx("grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-s3 hover:text-ink", className)}>
+    <button onClick={onClick} aria-label={label} title={label} className={cx("grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.07] hover:text-ink", className)}>
       {children}
     </button>
   );
 }
 
-export const CloseIcon = () => (
-  <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden>
-    <path d="M2.5 2.5l7 7M9.5 2.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-  </svg>
-);
+export const CloseIcon = () => <Close size={15} aria-hidden />;
 
 /* ------------------------------------------------------------------ */
 /* Overlays                                                            */
@@ -362,7 +383,7 @@ export function Drawer({ open, onClose, children, width = 520 }: {
       {open && (
         <>
           <motion.div
-            className="fixed inset-0 z-50 bg-black/35"
+            className="fixed inset-0 z-50 bg-black/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -370,12 +391,12 @@ export function Drawer({ open, onClose, children, width = 520 }: {
             onClick={onClose}
           />
           <motion.aside
-            className="fixed inset-y-0 right-0 z-50 flex max-w-full flex-col border-l border-line-bright bg-s1 shadow-[-28px_0_56px_-28px_rgb(0_0_0/.55)]"
+            className="fixed inset-y-0 right-0 z-50 flex max-w-full flex-col border-l border-line bg-s1 shadow-[-32px_0_64px_-24px_rgb(0_0_0/.6)] lg:inset-y-2 lg:right-2 lg:rounded-xl lg:border"
             style={{ width }}
             initial={{ x: 32, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 32, opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+            transition={{ duration: 0.24, ease: [0.16, 1, 0.3, 1] }}
           >
             {children}
           </motion.aside>
@@ -401,7 +422,7 @@ export function Modal({ open, onClose, children, width = 640 }: {
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/45 px-3 pt-[12vh]"
+          className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 px-3 pt-[12vh]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -414,7 +435,7 @@ export function Modal({ open, onClose, children, width = 640 }: {
             initial={{ y: 8, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 4, opacity: 0 }}
-            transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
+            transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
           >
             {children}
           </motion.div>
