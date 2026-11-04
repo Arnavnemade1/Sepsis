@@ -1,8 +1,8 @@
 "use client";
 
-import { Heart, RotateCcw, Wind } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Heart, Reset, Wind } from "@/components/icons";
 import { engine } from "@/components/twin";
 import { cx, Panel } from "@/components/ui";
 import type { Body, RoomKind, SystemStatus } from "@/lib/rooms";
@@ -118,8 +118,8 @@ export function RoomBody({ body, kind, system, onSystem }: {
         {!load.ready && (
           <div className="pointer-events-none absolute inset-0 z-[7] grid place-items-center">
             <div className="rounded-md border border-line bg-s1/90 px-3 py-2 text-center">
-              <div className="text-[12px] text-ink">Loading anatomy</div>
-              <div className="num mt-0.5 font-mono text-[11px] text-dim">
+              <div className="text-xs text-ink">Loading anatomy</div>
+              <div className="num mt-0.5 text-xs text-dim">
                 {load.organs} of {load.total} organs · HuBMAP CCF, CC BY 4.0
               </div>
             </div>
@@ -128,13 +128,13 @@ export function RoomBody({ body, kind, system, onSystem }: {
 
         {body?.infection && (
           <div className="pointer-events-none absolute left-2.5 top-2.5 z-[6] max-w-[40%] rounded-md border border-dys/40 bg-[rgb(29_32_36/.88)] px-2.5 py-1.5 backdrop-blur-sm sm:max-w-[60%]">
-            <div className="text-[10.5px] font-medium text-dys-ink">Suspected source</div>
-            <div className="truncate text-[12px] font-medium text-ink">{body.infection.site}</div>
-            <div className="hidden text-[10.5px] text-dim sm:block">from {body.infection.source}</div>
+            <div className="text-2xs font-medium text-dys-ink">Suspected source</div>
+            <div className="truncate text-xs font-medium text-ink">{body.infection.site}</div>
+            <div className="hidden text-2xs text-dim sm:block">from {body.infection.source}</div>
           </div>
         )}
 
-        <div className="pointer-events-none absolute right-2.5 top-2.5 z-[6] flex flex-col items-end gap-1 text-[10.5px] text-dim">
+        <div className="pointer-events-none absolute right-2.5 top-2.5 z-[6] flex flex-col items-end gap-1 text-2xs text-dim">
           {(["CRITICAL", "DYSFUNCTION", "STRESS", "NO_DATA"] as const).map((s) => (
             <span key={s} className="inline-flex items-center gap-1.5">
               {STATUS_LABEL[s]}
@@ -146,29 +146,29 @@ export function RoomBody({ body, kind, system, onSystem }: {
         <div className="pointer-events-none absolute bottom-2.5 left-2.5 z-[6] flex items-center gap-3 rounded-md border border-line bg-[rgb(29_32_36/.86)] px-2.5 py-1.5 backdrop-blur-sm">
           <span className="inline-flex items-center gap-1.5" title="The heart beats at the room's pulse">
             <Heart size={13} className={cx("text-high", hr != null && "tw-beat")} style={hr ? ({ "--beat": `${(60 / Math.max(30, hr)).toFixed(2)}s` } as React.CSSProperties) : undefined} fill="currentColor" />
-            <span className="num font-mono text-[12px] text-ink">{hr != null ? Math.round(hr) : "—"}</span>
-            <span className="text-[10.5px] text-dim">/min</span>
+            <span className="num text-xs text-ink">{hr != null ? Math.round(hr) : "—"}</span>
+            <span className="text-2xs text-dim">/min</span>
           </span>
           <span className="h-3 w-px bg-line-bright" />
           <span className="inline-flex items-center gap-1.5" title="The lungs breathe at the room's respiratory rate">
             <Wind size={13} className="text-muted" />
-            <span className="num font-mono text-[12px] text-ink">{rr != null ? Math.round(rr) : "—"}</span>
-            <span className="text-[10.5px] text-dim">/min</span>
+            <span className="num text-xs text-ink">{rr != null ? Math.round(rr) : "—"}</span>
+            <span className="text-2xs text-dim">/min</span>
           </span>
         </div>
 
         <div className="absolute bottom-2.5 right-2.5 z-[6] flex items-center gap-2">
-          <span className="pointer-events-none hidden text-[10.5px] text-faint sm:inline">Drag to rotate · scroll to zoom</span>
+          <span className="pointer-events-none hidden text-2xs text-faint sm:inline">Drag to rotate · scroll to zoom</span>
           <button
             onClick={() => {
               mod.current?.resetView();
               onSystem(null);
             }}
-            className="grid h-7 w-7 place-items-center rounded-md border border-line bg-[rgb(29_32_36/.86)] text-muted transition-colors hover:text-ink"
+            className="grid h-8 w-8 place-items-center rounded-md bg-[rgb(29_32_36/.86)] text-muted shadow-[inset_0_0_0_1px_rgb(255_255_255/.08)] transition-colors hover:text-ink"
             aria-label="Reset the view"
             title="Reset the view"
           >
-            <RotateCcw size={13} />
+            <Reset size={15} />
           </button>
         </div>
       </div>
@@ -182,21 +182,20 @@ export function RoomBody({ body, kind, system, onSystem }: {
               onMouseEnter={() => setHover(region)}
               onMouseLeave={() => setHover(null)}
               onClick={() => onSystem(system === region ? null : region)}
-              className={cx("relative flex min-w-0 items-center gap-2.5 bg-s1 py-2 pl-3.5 pr-3 text-left transition-colors hover:bg-s2", on && "bg-s2")}
+              className={cx("relative flex min-w-0 items-center gap-2.5 bg-s1 px-4 py-2.5 text-left transition-colors hover:bg-s2", on && "bg-s2")}
               aria-pressed={system === region}
             >
-              <span className="absolute inset-y-0 left-0 w-[3px]" style={{ background: RANK[r.status] >= 2 ? STATUS_HEX[r.status] : "transparent" }} />
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_HEX[r.status], opacity: r.monitored ? 1 : 0.7 }} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline gap-2">
-                  <span className={cx("text-[12.5px]", r.monitored ? "text-ink" : "text-dim")}>{r.label}</span>
-                  <span className="text-[11px]" style={{ color: STATUS_INK[r.status] }}>
+                  <span className={cx("text-sm", r.monitored ? "text-ink" : "text-dim")}>{r.label}</span>
+                  <span className="text-xs" style={{ color: STATUS_INK[r.status] }}>
                     {STATUS_LABEL[r.status]}
                   </span>
                 </span>
-                <span className="block truncate font-mono text-[11px] text-dim">{r.reading ?? (kind === "replay" ? "not in this dataset" : "nothing in this room measures it")}</span>
+                <span className="num block truncate text-xs text-dim">{r.reading ?? (kind === "replay" ? "not in this dataset" : "nothing in this room measures it")}</span>
               </span>
-              {r.findings.length > 0 && <span className="num shrink-0 font-mono text-[11px] text-dim">{r.findings.length}</span>}
+              {r.findings.length > 0 && <span className="num shrink-0 text-xs text-dim">{r.findings.length}</span>}
             </button>
           );
         })}

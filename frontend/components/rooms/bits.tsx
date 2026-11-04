@@ -23,18 +23,15 @@ export function useWidth<T extends HTMLElement>(fallback = 320) {
 }
 
 export function SevDot({ sev, size = 7, className }: { sev: Severity | null | undefined; size?: number; className?: string }) {
-  if (!sev) return <span className={cx("inline-block shrink-0 rounded-full border border-line-bright", className)} style={{ width: size, height: size }} />;
+  if (!sev) return <span className={cx("inline-block shrink-0 rounded-full bg-white/[0.12]", className)} style={{ width: size, height: size }} />;
   return <span className={cx("inline-block shrink-0 rounded-full", className)} style={{ width: size, height: size, background: `rgb(${SEV_RGB[sev]})` }} />;
 }
 
 export function SevTag({ sev, children }: { sev: Severity; children?: React.ReactNode }) {
   if (sev === "info")
-    return <span className="inline-flex h-5 items-center rounded-[4px] border border-line-bright bg-s2 px-1.5 text-[11px] font-medium text-muted">{children ?? SEV_LABEL[sev]}</span>;
+    return <span className="inline-flex h-5 items-center rounded-sm bg-white/[0.06] px-1.5 text-2xs font-medium text-muted">{children ?? SEV_LABEL[sev]}</span>;
   return (
-    <span
-      className="inline-flex h-5 items-center rounded-[4px] border px-1.5 text-[11px] font-medium"
-      style={{ color: SEV_INK[sev], borderColor: `rgb(${SEV_RGB[sev]} / .4)`, background: `rgb(${SEV_RGB[sev]} / .12)` }}
-    >
+    <span className="inline-flex h-5 items-center rounded-sm px-1.5 text-2xs font-semibold" style={{ color: SEV_INK[sev], background: `rgb(${SEV_RGB[sev]} / .14)` }}>
       {children ?? SEV_LABEL[sev]}
     </span>
   );
@@ -42,15 +39,15 @@ export function SevTag({ sev, children }: { sev: Severity; children?: React.Reac
 
 /** A NEWS2 aggregate, coloured by its clinical-response band. */
 export function News2Badge({ score, band, size = "md", title }: { score: number | null | undefined; band: string | null | undefined; size?: "sm" | "md" | "lg"; title?: string }) {
-  const dims = size === "lg" ? "h-9 min-w-9 text-[20px] px-2" : size === "sm" ? "h-5 min-w-5 text-[11px] px-1" : "h-6 min-w-6 text-[12.5px] px-1.5";
-  if (score == null) return <span className={cx("grid place-items-center rounded-[5px] border border-line font-mono text-faint", dims)}>—</span>;
+  const dims = size === "lg" ? "h-9 min-w-9 text-lg px-2 rounded-md" : size === "sm" ? "h-5 min-w-5 text-2xs px-1 rounded-[5px]" : "h-6 min-w-6 text-xs px-1.5 rounded-[5px]";
+  if (score == null) return <span className={cx("grid place-items-center bg-white/[0.04] text-faint", dims)}>—</span>;
   const sev = BAND_SEV[band ?? "low"] ?? "info";
   const neutral = sev === "info";
   return (
     <span
       title={title ?? `NEWS2 ${score}: ${BAND_LABEL[band ?? "low"] ?? band} band`}
-      className={cx("num grid place-items-center rounded-[5px] border font-mono font-semibold", dims, neutral && "border-line-bright bg-s2 text-ink")}
-      style={neutral ? undefined : { color: SEV_INK[sev], borderColor: `rgb(${SEV_RGB[sev]} / .5)`, background: `rgb(${SEV_RGB[sev]} / .14)` }}
+      className={cx("num grid place-items-center font-semibold", dims, neutral && "bg-white/[0.07] text-ink")}
+      style={neutral ? undefined : { color: SEV_INK[sev], background: `rgb(${SEV_RGB[sev]} / .16)` }}
     >
       {score}
     </span>
@@ -62,8 +59,8 @@ export function KindTag({ kind }: { kind: RoomKind | null | undefined }) {
   return (
     <span
       className={cx(
-        "inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-[4px] border px-1.5 text-[11px] font-medium",
-        kind === "synthetic" ? "border-line-bright bg-s2 text-muted" : "border-accent/40 bg-accent-soft text-accent-ink",
+        "inline-flex h-5 items-center gap-1.5 whitespace-nowrap rounded-sm px-1.5 text-2xs font-medium",
+        kind === "synthetic" ? "bg-white/[0.06] text-muted" : "bg-accent/[0.14] text-accent-ink",
       )}
       title={kind === "synthetic" ? "Generated for the demo hospital: not a real person" : kind === "replay" ? "PhysioNet/CinC 2019, de-identified" : kind === "interface" ? "Admitted and fed over HL7 by the hospital's interfaces (simulated systems in the demo)" : "Camera, wearable or simulator"}
     >
@@ -76,7 +73,7 @@ export function KindTag({ kind }: { kind: RoomKind | null | undefined }) {
 /** Allergies as the record states them. Shown wherever an order could be written. */
 export function AllergyChips({ allergies, compact = false }: { allergies: { substance: string; reaction?: string; severity?: string; kind?: string }[] | string[] | undefined; compact?: boolean }) {
   const list = (allergies ?? []).map((a) => (typeof a === "string" ? { substance: a } : a)) as { substance: string; reaction?: string; severity?: string; kind?: string }[];
-  if (!list.length) return <span className="inline-flex h-5 items-center rounded-[4px] border border-line-bright bg-s2 px-1.5 text-[11px] text-muted">No known allergies</span>;
+  if (!list.length) return <span className="inline-flex h-5 items-center rounded-sm bg-white/[0.06] px-1.5 text-2xs font-medium text-muted">No known allergies</span>;
   return (
     <>
       {list.map((a) => {
@@ -85,8 +82,8 @@ export function AllergyChips({ allergies, compact = false }: { allergies: { subs
         return (
           <span
             key={a.substance}
-            className={cx("inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-[4px] border px-1.5 text-[11px] font-medium", intolerance && "border-line-bright bg-s2 text-muted")}
-            style={intolerance ? undefined : { color: SEV_INK[severe ? "critical" : "urgent"], borderColor: `rgb(${SEV_RGB[severe ? "critical" : "urgent"]} / .45)`, background: `rgb(${SEV_RGB[severe ? "critical" : "urgent"]} / .1)` }}
+            className={cx("inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 text-2xs font-semibold", intolerance && "bg-white/[0.06] font-medium text-muted")}
+            style={intolerance ? undefined : { color: SEV_INK[severe ? "critical" : "urgent"], background: `rgb(${SEV_RGB[severe ? "critical" : "urgent"]} / .14)` }}
             title={intolerance ? "Intolerance, not an allergy" : "Allergy on the record"}
           >
             {intolerance ? "Intolerance" : "Allergy"}: {a.substance}
@@ -99,12 +96,12 @@ export function AllergyChips({ allergies, compact = false }: { allergies: { subs
 }
 
 export function CodeChip({ code }: { code: string | null | undefined }) {
-  if (!code) return <span className="inline-flex h-5 items-center rounded-[4px] border border-dashed border-line-bright px-1.5 text-[11px] text-dim">Code status not recorded</span>;
+  if (!code) return <span className="inline-flex h-5 items-center rounded-sm bg-white/[0.04] px-1.5 text-2xs font-medium text-dim">Code status not recorded</span>;
   const limited = code !== "Full code";
   return (
     <span
-      className={cx("inline-flex h-5 items-center whitespace-nowrap rounded-[4px] border px-1.5 text-[11px] font-semibold", !limited && "border-line-bright bg-s2 font-medium text-muted")}
-      style={limited ? { color: SEV_INK.watch, borderColor: `rgb(${SEV_RGB.watch} / .5)`, background: `rgb(${SEV_RGB.watch} / .12)` } : undefined}
+      className={cx("inline-flex h-5 items-center whitespace-nowrap rounded-sm px-1.5 text-2xs font-semibold", !limited && "bg-white/[0.06] font-medium text-muted")}
+      style={limited ? { color: SEV_INK.watch, background: `rgb(${SEV_RGB.watch} / .14)` } : undefined}
     >
       {code}
     </span>
