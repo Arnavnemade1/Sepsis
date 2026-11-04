@@ -274,15 +274,11 @@
   padding: 26px 8px 48px;
 }
 .pager-empty-icon {
-  width: 76px;
-  height: 76px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #b9c0c7;
-  background: #24272b;
-  border-radius: 50%;
-  margin-bottom: 22px;
+  color: #6f757e;
+  margin-bottom: 14px;
 }
 .pager-empty h2 {
   font-size: 17px;
@@ -291,9 +287,10 @@
 }
 .pager-empty p {
   color: #9298a2;
-  font-size: 12px;
-  line-height: 1.75;
-  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin-top: 6px;
+  max-width: 220px;
 }
 .pager-connection {
   display: flex;

@@ -1,20 +1,5 @@
 "use client";
 
-import {
-  Bell,
-  Check,
-  CheckCheck,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Clock3,
-  Inbox,
-  LoaderCircle,
-  Search,
-  Signal,
-  WifiOff,
-  X,
-} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -36,6 +21,7 @@ import {
   StatusText,
   TimerBar,
 } from "@/components/paging/bits";
+import { Bell, CaretDown, CaretLeft, CaretRight, Check, Checks, Clock, Close, Inbox, Offline, Search, Signal, Spinner } from "@/components/icons";
 import { Logo, Page as ShellPage } from "@/components/shell";
 import { cx, Tag } from "@/components/ui";
 import {
@@ -174,7 +160,7 @@ function Device() {
         <nav aria-label="Pager navigation">
           <Link href="/clinician/">All pagers</Link>
           <Link href="/operator/">
-            Operator console <ChevronRight size={14} />
+            Operator console <CaretRight size={14} />
           </Link>
         </nav>
       </header>
@@ -196,7 +182,7 @@ function Device() {
                 {status === "live" ? (
                   <Signal size={17} aria-hidden />
                 ) : (
-                  <WifiOff size={17} aria-hidden />
+                  <Offline size={17} aria-hidden />
                 )}
                 <span className="sr-only">
                   {status === "live" ? "Connected" : "Reconnecting"}
@@ -206,17 +192,17 @@ function Device() {
             {!state.ready || !me ? (
               <div className="pager-loading" role="status">
                 <div className="pager-app-icon">
-                  <Bell size={26} strokeWidth={1.5} />
+                  <Bell size={26} />
                 </div>
-                <h1>Your pager, connected.</h1>
+                <h1>Opening the pager</h1>
                 <p>
                   {err
                     ? `Signing in: ${err}`
                     : status === "live"
-                      ? "Loading your pages…"
-                      : "Connecting to the hospital…"}
+                      ? "Loading your pages"
+                      : "Connecting to the hospital"}
                 </p>
-                <LoaderCircle size={18} className="animate-spin" aria-hidden />
+                <Spinner size={18} className="animate-spin" aria-hidden />
                 <Link href="/clinician/">Back to all pagers</Link>
               </div>
             ) : (
@@ -236,7 +222,7 @@ function Device() {
           </div>
         </div>
         <p className="pager-device-caption">
-          <span /> Live pages, directly to you.
+          <span /> {me ? `${me.name}'s pager, live from the hospital` : "Connecting the pager"}
         </p>
       </div>
     </div>
@@ -340,7 +326,7 @@ function Screen({
             className="pager-back"
             aria-label="All pagers"
           >
-            <ChevronLeft size={21} />
+            <CaretLeft size={21} />
           </Link>
           <div className="pager-profile-name">
             <strong>{me.name}</strong>
@@ -352,7 +338,6 @@ function Screen({
           <Avatar name={me.name} size={38} />
         </header>
         <div className="pager-heading">
-          <p className="pager-eyebrow">AEGIS / CLINICAL PAGER</p>
           <h1>
             {selected
               ? "Page details"
@@ -377,10 +362,10 @@ function Screen({
                 <option value="in_procedure">In a procedure</option>
                 <option value="off_shift">Off shift</option>
               </select>
-              <ChevronDown size={13} aria-hidden />
+              <CaretDown size={13} aria-hidden />
             </div>
             {statusBusy && (
-              <LoaderCircle
+              <Spinner
                 size={13}
                 className="animate-spin"
                 aria-label="Updating availability"
@@ -401,7 +386,7 @@ function Screen({
                 onClick={() => setOpen(null)}
                 className="pager-text-button"
               >
-                <ChevronLeft size={16} /> Back to{" "}
+                <CaretLeft size={16} /> Back to{" "}
                 {tab === "recent" ? "recent pages" : "your pages"}
               </button>
               <CaseCard
@@ -425,14 +410,10 @@ function Screen({
               {accepted.length === 0 && !ringing && (
                 <div className="pager-empty">
                   <div className="pager-empty-icon">
-                    <CheckCheck size={31} strokeWidth={1.35} />
+                    <Checks size={28} />
                   </div>
-                  <h2>You’re all caught up</h2>
-                  <p>
-                    New pages will appear here.
-                    <br />
-                    We’ll alert you when you’re needed.
-                  </p>
+                  <h2>No open pages</h2>
+                  <p>A new page rings this device and appears here.</p>
                 </div>
               )}
               {fyi.length > 0 && (
@@ -493,7 +474,7 @@ function Screen({
                             : PAGE_STATUS_LABEL[p.status]}
                         </small>
                       </span>
-                      <ChevronRight size={15} aria-hidden />
+                      <CaretRight size={15} aria-hidden />
                     </button>
                   );
                 })}
@@ -502,20 +483,16 @@ function Screen({
           ) : (
             <div className="pager-empty">
               <div className="pager-empty-icon">
-                <Clock3 size={29} strokeWidth={1.35} />
+                <Clock size={28} />
               </div>
-              <h2>A fresh start</h2>
-              <p>
-                Your recent pages will appear here
-                <br />
-                after your first alert.
-              </p>
+              <h2>No recent pages</h2>
+              <p>Pages you accept or decline are kept here for the shift.</p>
             </div>
           )}
         </main>
         <div className="pager-connection" role="status">
           <span className={cx("pager-status-dot", !live && "reconnecting")} />
-          {live ? "Connected to hospital" : "Reconnecting to hospital…"}
+          {live ? "Connected to Aegis Memorial" : "Reconnecting to Aegis Memorial"}
         </div>
         <nav className="pager-tab-bar" aria-label="Pager views">
           <button
@@ -526,7 +503,7 @@ function Screen({
             }}
           >
             <span>
-              <Inbox size={21} strokeWidth={1.7} />
+              <Inbox size={21} />
               {accepted.length > 0 && <i>{accepted.length}</i>}
             </span>
             Pages
@@ -538,7 +515,7 @@ function Screen({
               setOpen(null);
             }}
           >
-            <Clock3 size={21} strokeWidth={1.7} />
+            <Clock size={21} />
             Recent
           </button>
         </nav>
@@ -659,7 +636,7 @@ function Incoming({
             borderColor: `rgb(${P_RGB[page.priority]} / .3)`,
           }}
         >
-          <Bell size={30} strokeWidth={1.4} />
+          <Bell size={30} />
         </div>
         <p className="pager-incoming-category">
           {CATEGORY_LABEL[page.category]}
@@ -717,7 +694,7 @@ function Incoming({
               disabled={!!busy}
               onClick={() => setDeclining(true)}
             >
-              <X size={18} />
+              <Close size={18} />
               Decline
             </button>
             <button
@@ -845,7 +822,7 @@ function CaseCard({
               href={`/patient/?id=${encodeURIComponent(page.bed)}`}
               className="pager-action pager-action-secondary"
             >
-              Open patient <ChevronRight size={16} />
+              Open patient <CaretRight size={16} />
             </Link>
           )}
           <button
@@ -936,9 +913,8 @@ function Directory() {
       <main className="pager-directory">
         <header className="pager-directory-header">
           <div>
-            <p className="pager-eyebrow">CARE TEAM</p>
             <h1>Pagers</h1>
-            <p>A direct line to your clinical team.</p>
+            <p>Every clinician&apos;s pager, as it appears on their phone.</p>
           </div>
           <span className="pager-directory-count">
             {staff.length} clinicians
@@ -959,7 +935,7 @@ function Directory() {
         </div>
         {!state.ready ? (
           <div className="pager-directory-loading" role="status">
-            <LoaderCircle size={18} className="animate-spin" />
+            <Spinner size={18} className="animate-spin" />
             Connecting to the care team…
           </div>
         ) : filtered.length === 0 ? (
@@ -1000,7 +976,7 @@ function Directory() {
                           <StatusText status={c.status} />
                         </span>
                         <span className="pager-contact-open">
-                          Open pager <ChevronRight size={16} />
+                          Open pager <CaretRight size={16} />
                         </span>
                       </Link>
                     ))}
