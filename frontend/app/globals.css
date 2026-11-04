@@ -8,37 +8,46 @@
 
    1. COLOUR IS SIGNAL. Red / orange / amber / grey are page priority;
       green / blue / violet / teal / grey are staff status. Chrome is
-      graphite. Nothing decorative is coloured.
-   2. FLAT AND EXACT. Hairline borders, small radii, no gradients, no
-      glass. Depth is reserved for overlays (menus, the inspector).
-   3. NUMBERS ARE TABULAR, identifiers are mono, time is 24-hour.
-   4. MOTION CONFIRMS, IT DOES NOT DECORATE. Short fades and slides,
-      no springs.
+      stealth grey. Nothing decorative is coloured.
+   2. ONE EDGE PER SURFACE. A panel has a hairline OR an elevation,
+      never both; only overlays (menus, the inspector) cast shadows.
+      No glass, no glow, no gradient fills, no coloured side-tabs: a
+      card's state is said by its label, not by a stripe.
+   3. A TYPE SCALE, NOT A RANGE. Nine sizes (2xs … 4xl), hierarchy by
+      weight and ink before size. Geist for words and numbers (tabular
+      where they line up); Geist Mono only for identifiers: page and
+      record ids, syscalls, paths, hashes, code.
+   4. ONE ICON SET. Phosphor through components/icons.tsx, regular
+      weight, filled only for the active section.
+   5. MOTION CONFIRMS, IT DOES NOT DECORATE. Short expo-out fades and
+      slides, no springs, nothing loops unless something is live.
 
-   The stock Tailwind palette is deleted (--color-*: initial), so an
-   off-system colour does not compile.
+   The stock Tailwind palette and type scale are deleted (initial), so
+   an off-system colour or size has to be written out on purpose.
    ============================================================ */
 
 @theme {
   --color-*: initial;
+  --text-*: initial;
   /* a wide desktop (a 14–16" laptop with the sidebar open): three working columns */
   --breakpoint-wide: 87.5rem;
 
-  /* canvas + surfaces: stealth grey, not black */
+  /* the frame the sheet sits in (sidebar), then the sheet and its surfaces */
+  --color-canvas: #1b1d21;
   --color-bg: #212429;
-  --color-s1: #282c32;
-  --color-s2: #2e3238;
-  --color-s3: #353a41;
-  --color-s4: #3e444c;
-  --color-line: #363b42;
-  --color-line-soft: #30343b;
-  --color-line-bright: #444a52;
+  --color-s1: #272a2f;
+  --color-s2: #2d3036;
+  --color-s3: #34373e;
+  --color-s4: #3d4148;
+  --color-line: #33363c;
+  --color-line-soft: #2b2e33;
+  --color-line-bright: #43474e;
 
   /* ink */
-  --color-ink: #e8eaed;
-  --color-muted: #b1b7bf;
-  --color-dim: #868d97;
-  --color-faint: #5f666f;
+  --color-ink: #ebecee;
+  --color-muted: #b0b5bc;
+  --color-dim: #878c95;
+  --color-faint: #60656d;
 
   /* clinical state (names kept so every view follows) */
   --color-low: #2fb67c;
@@ -66,26 +75,42 @@
 
   /* the one accent: selection, focus, links */
   --color-accent: #3d8ef5;
-  --color-accent-ink: #6eaaff;
-  --color-accent-soft: #2a3447;
+  --color-accent-ink: #7ab0ff;
+  --color-accent-soft: #29344a;
 
   --color-transparent: transparent;
   --color-black: #000;
   --color-white: #fff;
   --color-night: #17191c;
 
+  /* type: sizes only; an element inherits its line height unless it sets one */
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+  --text-2xl: 28px;
+  --text-3xl: 40px;
+  --text-4xl: 64px;
+
+  --tracking-tight: -0.011em;
+  --tracking-tighter: -0.022em;
+
   --font-sans: var(--font-geist), "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
-  --radius-xl: 10px;
-  --radius-lg: 8px;
-  --radius-md: 6px;
-  --radius-sm: 4px;
-  --radius-xs: 3px;
+  --radius-xl: 12px;
+  --radius-lg: 10px;
+  --radius-md: 7px;
+  --radius-sm: 5px;
+  --radius-xs: 4px;
 
-  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  --shadow-pop: 0 0 0 1px #444a52, 0 18px 44px -14px rgb(0 0 0 / 0.55);
+  --shadow-pop: 0 0 0 1px rgb(255 255 255 / 0.08), 0 20px 48px -16px rgb(0 0 0 / 0.6), 0 6px 16px -6px rgb(0 0 0 / 0.35);
+  --shadow-raise: 0 1px 2px rgb(0 0 0 / 0.28), inset 0 0 0 1px rgb(255 255 255 / 0.06);
 }
 
 :root {
@@ -99,18 +124,22 @@ body {
 
 body {
   margin: 0;
-  background: var(--color-bg);
+  background: var(--color-canvas);
   color: var(--color-ink);
   font-family: var(--font-sans);
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: "cv11" 1, "ss01" 1;
+  text-rendering: optimizeLegibility;
 }
 
 ::selection {
   background: rgb(61 142 245 / 0.35);
+}
+
+h1, h2, h3 {
+  text-wrap: balance;
 }
 
 .num {
@@ -125,7 +154,7 @@ body {
   border-radius: var(--radius-lg);
 }
 .pop {
-  background: var(--color-s1);
+  background: #2a2d33;
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-pop);
 }
@@ -135,19 +164,40 @@ body {
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  border: 1px solid var(--color-line-bright);
   border-radius: 4px;
   padding: 0 4px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--color-muted);
-  background: var(--color-s2);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--color-dim);
+  background: rgb(255 255 255 / 0.05);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+}
+
+/* an input, select or search box: a recessed fill and a hairline drawn inside */
+.field {
+  border-radius: var(--radius-md);
+  background: rgb(255 255 255 / 0.04);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07);
+  transition: box-shadow 0.12s, background-color 0.12s;
+}
+.field:hover { background: rgb(255 255 255 / 0.055); }
+.field:focus-within,
+.field:focus { outline: none; box-shadow: inset 0 0 0 1px rgb(122 176 255 / 0.55), 0 0 0 3px rgb(61 142 245 / 0.14); }
+select.field { cursor: pointer; }
+
+/* a recessed area inside a panel: grouped content, raw messages, code. A tint, not a box */
+.well {
+  border-radius: var(--radius-md);
+  background: rgb(0 0 0 / 0.16);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.04);
 }
 
 /* quiet scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #4a5058 transparent;
+  scrollbar-color: #41454c transparent;
 }
 
 :focus-visible {
@@ -221,14 +271,17 @@ textarea {
 }
 .twin-hud {
   position: absolute; left: 12px; top: 12px; z-index: 4; display: none; align-items: center; gap: 10px;
-  padding: 8px 12px 8px 10px; border-radius: 6px; pointer-events: none;
-  background: rgb(23 25 28 / 0.86);
-  border: 1px solid color-mix(in srgb, var(--tc, #f0a76a) 45%, transparent);
+  padding: 8px 12px 8px 10px; border-radius: 8px; pointer-events: none;
+  background: rgb(23 25 28 / 0.88);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08), 0 6px 16px -6px rgb(0 0 0 / 0.5);
   color: #e6e9ed;
 }
 .twin-hud-pip { width: 8px; height: 8px; border-radius: 2px; background: var(--tc, #f0a76a); flex: 0 0 auto; }
 .twin-hud-body { display: flex; flex-direction: column; gap: 2px; line-height: 1.15; }
-.twin-hud-k { font-size: 10.5px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
+/* the engine passes status words in capitals (STRESS, IMMUNE); the HUD sets them in sentence case */
+.twin-hud-k, .twin-hud-nm { text-transform: lowercase; }
+.twin-hud-k::first-letter, .twin-hud-nm::first-letter { text-transform: uppercase; }
+.twin-hud-k { font-size: 11px; font-weight: 500;
   color: color-mix(in srgb, var(--tc, #f0a76a) 78%, #fff 22%); }
 .twin-hud-nm { font-size: 14px; font-weight: 600; color: #e6e9ed; }
 /* pinned system labels: a gutter label per stressed system, a leader line to its organ */
@@ -242,16 +295,16 @@ g[data-status="CRITICAL"] .tw-ring { animation: tw-ping 1.8s ease-out infinite; 
 .tw-pin {
   position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer;
   display: flex; flex-direction: column; align-items: flex-start; gap: 1px; max-width: 170px;
-  padding: 5px 9px 5px 10px; border-radius: 6px; text-align: left;
-  border: 1px solid rgb(255 255 255 / 0.09); background: rgb(29 32 36 / 0.86);
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  box-shadow: inset 2px 0 0 var(--pc); transition: border-color 0.15s, background-color 0.15s;
+  padding: 5px 9px; border-radius: 6px; text-align: left;
+  background: rgb(29 32 36 / 0.88);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.07), 0 4px 12px -4px rgb(0 0 0 / 0.45);
+  transition: box-shadow 0.15s, background-color 0.15s;
 }
-.tw-pin[data-side="right"] { align-items: flex-end; text-align: right; box-shadow: inset -2px 0 0 var(--pc); padding: 5px 10px 5px 9px; }
-.tw-pin:hover, .tw-pin.on { border-color: color-mix(in srgb, var(--pc) 55%, transparent); background: rgb(36 40 45 / 0.95); }
-.tw-pin-k { font-size: 10.5px; font-weight: 600; color: var(--pc); white-space: nowrap; }
+.tw-pin[data-side="right"] { align-items: flex-end; text-align: right; }
+.tw-pin:hover, .tw-pin.on { background: rgb(36 40 45 / 0.96); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pc) 45%, transparent), 0 4px 12px -4px rgb(0 0 0 / 0.45); }
+.tw-pin-k { font-size: 11px; font-weight: 600; color: var(--pc); white-space: nowrap; }
 .tw-pin-v { max-width: 152px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font: 500 11px/1.3 var(--font-geist-mono), ui-monospace, monospace; color: #e8eaed; }
+  font: 500 11px/1.3 var(--font-geist), system-ui, sans-serif; font-variant-numeric: tabular-nums; color: #e8eaed; }
 .tw-pins.compact .tw-pin { padding: 3px 7px; max-width: 112px; }
 .tw-pins.compact .tw-pin-v { display: none; }
 @keyframes tw-beat { 0%, 100% { transform: scale(1); } 12% { transform: scale(1.22); } 26% { transform: scale(0.96); } }
