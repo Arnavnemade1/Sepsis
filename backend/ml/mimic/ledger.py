@@ -637,12 +637,22 @@ def _features(store: E.MimicStore, spec: feat.FeatureSpec):
     return np.hstack([F, B]), list(names) + bnames
 
 
+def _saturate(F: np.ndarray, dtype) -> np.ndarray:
+    """Cast to ``dtype`` without overflow: a value past its finite range saturates at the edge
+    instead of becoming inf. float16 tops out at 65,504, and on full MIMIC-IV ferritin, CK,
+    NT-proBNP, a few urine outputs and the 24 h quadratic variation of MAP go past it (7,559 of
+    2.9 billion cells in the first run, 17 columns). A tree reads the edge as it read inf; nothing
+    downstream ever sees an inf. NaN stays NaN."""
+    edge = np.finfo(dtype).max
+    return np.clip(F, -edge, edge).astype(dtype, copy=False)
+
+
 def build_features(store: E.MimicStore, chunk_stays: Optional[int] = None,
                    memmap_path: Optional[str] = None, dtype=np.float32):
     spec = feature_spec(E.DYNAMIC)
     if not chunk_stays:
         F, names = _features(store, spec)
-        return np.ascontiguousarray(F, dtype=dtype), names
+        return np.ascontiguousarray(_saturate(F, dtype)), names
     first = E.subset(store, np.arange(min(chunk_stays, store.n_patients)))
     F0, names = _features(first, spec)
     shape = (store.n_rows, len(names))
@@ -655,7 +665,7 @@ def build_features(store: E.MimicStore, chunk_stays: Optional[int] = None,
         if nc != names:
             raise RuntimeError("feature names changed between chunks")
         r0 = store.starts[idx[0]]
-        F[r0:r0 + part.n_rows] = Fc
+        F[r0:r0 + part.n_rows] = _saturate(Fc, dtype)
     if memmap_path:
         F.flush()
     return F, names
