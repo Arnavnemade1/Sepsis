@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, RotateCcw, X } from "lucide-react";
 import { useState } from "react";
 
+import { Check, Close, Reset } from "@/components/icons";
 import { Button, CloseIcon, cx, Drawer, Empty, IconButton, Kv, Restricted, SectionLabel, Skeleton, Tag } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useCaps, usePoll } from "@/lib/hooks";
@@ -16,7 +16,7 @@ import { EvidenceChart } from "./evidence-chart";
 function Er7({ raw }: { raw: string }) {
   const segs = raw.split(/\r\n|\r|\n/).filter(Boolean);
   return (
-    <div className="max-h-72 overflow-auto rounded-md border border-line bg-bg p-2.5 font-mono text-[11.5px] leading-[1.55]">
+    <div className="max-h-72 overflow-auto field p-2.5 font-mono text-xs leading-[1.55]">
       {segs.map((s, i) => {
         const name = s.slice(0, 3);
         const rest = s.slice(3);
@@ -42,9 +42,9 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
     <Drawer open={!!id} onClose={onClose} width={640}>
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="text-[11.5px] text-dim">{m?.interface_name ?? "Message"}</div>
-          <div className="truncate text-[14px] font-semibold text-ink">
-            {m?.type ?? "…"} <span className="font-mono text-[12px] font-normal text-dim">{m?.control_id}</span>
+          <div className="text-xs text-dim">{m?.interface_name ?? "Message"}</div>
+          <div className="truncate text-base font-semibold text-ink">
+            {m?.type ?? "…"} <span className="font-mono text-xs font-normal text-dim">{m?.control_id}</span>
           </div>
         </div>
         {m && (
@@ -61,7 +61,7 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
           <Skeleton className="h-64" />
         ) : (
           <>
-            <p className="text-[12.5px] leading-relaxed text-muted">{m.summary}</p>
+            <p className="text-sm leading-relaxed text-muted">{m.summary}</p>
             <div className="grid grid-cols-2 gap-x-6 sm:grid-cols-3">
               <Kv k="Received" v={ago(m.at)} />
               <Kv k="Transport" v={m.transport.toUpperCase()} />
@@ -71,7 +71,7 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
               <Kv k="Resent" v={m.duplicate ? "yes, not reprocessed" : "no"} />
             </div>
             {m.error && (
-              <div className="rounded-md border border-high/30 bg-high/[0.07] px-3 py-2 text-[12px] leading-relaxed text-muted">
+              <div className="rounded-md bg-high/[0.08] px-3 py-2 text-xs leading-relaxed text-muted">
                 <span className="font-mono text-high-ink">ERR {m.error.code}</span> {m.error.text}
                 {m.error.where && <span className="font-mono text-dim"> at {m.error.where}</span>}: {m.error.message}
               </div>
@@ -84,8 +84,8 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
               <div>
                 <SectionLabel>Each result, through its mapping</SectionLabel>
                 <div className="overflow-x-auto rounded-md border border-line">
-                  <table className="w-full min-w-[520px] text-[12px]">
-                    <thead className="bg-s1 text-left text-[11px] text-dim">
+                  <table className="w-full min-w-[520px] text-xs">
+                    <thead className="bg-s1 text-left text-xs text-dim">
                       <tr>
                         <th className="px-2.5 py-1.5 font-medium">Code</th>
                         <th className="px-2.5 py-1.5 font-medium">Sent</th>
@@ -98,14 +98,14 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
                         <tr key={i} className="border-t border-line">
                           <td className="px-2.5 py-1.5">
                             <button className="text-left hover:underline" onClick={() => o.mapping && onMapping(o.mapping)} disabled={!o.mapping}>
-                              <div className="font-mono text-[11.5px] text-ink">{o.code}</div>
-                              <div className="max-w-[180px] truncate text-[11px] text-dim">{o.text}</div>
+                              <div className="font-mono text-xs text-ink">{o.code}</div>
+                              <div className="max-w-[180px] truncate text-xs text-dim">{o.text}</div>
                             </button>
                           </td>
-                          <td className="num px-2.5 py-1.5 font-mono text-[11.5px] text-muted">
+                          <td className="num px-2.5 py-1.5 text-xs text-muted">
                             {o.value} {o.unit}
                           </td>
-                          <td className="num px-2.5 py-1.5 font-mono text-[11.5px] text-ink">{o.concept ? `${o.concept} ${o.canonical != null ? fmtNum(o.canonical) : ""}` : "—"}</td>
+                          <td className="num px-2.5 py-1.5 text-xs text-ink">{o.concept ? `${o.concept} ${o.canonical != null ? fmtNum(o.canonical) : ""}` : "—"}</td>
                           <td className="px-2.5 py-1.5">
                             <Tag tone={o.status === "delivered" ? "low" : o.status.startsWith("withheld") ? "high" : "neutral"}>{o.status}</Tag>
                           </td>
@@ -127,16 +127,16 @@ export function MessageDrawer({ id, onClose, onMapping }: { id: string | null; o
 /* One mapping: the claim, the evidence, the decision                   */
 /* ------------------------------------------------------------------ */
 function Checks({ items, empty }: { items: CheckT[]; empty?: string }) {
-  if (!items.length) return <div className="text-[12px] text-dim">{empty ?? "None run."}</div>;
+  if (!items.length) return <div className="text-xs text-dim">{empty ?? "None run."}</div>;
   return (
     <ul className="space-y-1.5">
       {items.map((c, i) => (
-        <li key={i} className="flex items-start gap-2 text-[12px] leading-snug">
+        <li key={i} className="flex items-start gap-2 text-xs leading-snug">
           <Tag tone={CHECK_TONE[c.status]} className="mt-px shrink-0">
             {c.status}
           </Tag>
           <span className="min-w-0 text-muted">
-            <span className="font-mono text-[11px] text-dim">{c.name}</span> {c.detail}
+            <span className="font-mono text-xs text-dim">{c.name}</span> {c.detail}
           </span>
         </li>
       ))}
@@ -169,10 +169,10 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
     <Drawer open={!!id} onClose={onClose} width={680}>
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[11.5px] text-dim">
+          <div className="truncate text-xs text-dim">
             {m?.interface} · <span className="font-mono">{m?.code}</span>
           </div>
-          <div className="truncate text-[14px] font-semibold text-ink">
+          <div className="truncate text-base font-semibold text-ink">
             {m?.text || m?.code} {m?.concept_info && <span className="font-normal text-muted">→ {m.concept_info.label}</span>}
           </div>
         </div>
@@ -190,7 +190,7 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
           <Skeleton className="h-80" />
         ) : (
           <>
-            <p className="text-[12.5px] leading-relaxed text-muted first-letter:uppercase">{m.reason}</p>
+            <p className="text-sm leading-relaxed text-muted first-letter:uppercase">{m.reason}</p>
             <div className="grid grid-cols-2 gap-x-6">
               <Kv k="Unit written" v={m.unit_written || "none"} mono />
               <Kv k="Read as" v={m.conversion?.label ?? "—"} mono />
@@ -203,7 +203,7 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
             </div>
 
             {m.fault && (
-              <div className="rounded-md border border-high/30 bg-high/[0.07] px-3 py-2.5 text-[12.5px] leading-relaxed">
+              <div className="rounded-md bg-high/[0.08] px-3 py-2.5 text-sm leading-relaxed">
                 <div className="font-medium text-high-ink">Quarantined {ago(m.fault.at)}</div>
                 <div className="mt-0.5 text-muted">{m.fault.cause}</div>
                 <div className="mt-1 text-dim">
@@ -222,10 +222,10 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
             {m.concept_info && (
               <div>
                 <SectionLabel right={conv ? `read as ${conv.label}` : undefined}>The values against the {m.concept_info.label.toLowerCase()} reference</SectionLabel>
-                <div className="rounded-md border border-line bg-bg px-2 py-1.5">
+                <div className="well px-2.5 py-2">
                   <EvidenceChart m={m} factor={conv?.factor ?? 1} offset={conv?.offset ?? 0} />
                 </div>
-                <div className="mt-1 text-[11px] text-dim">
+                <div className="mt-1 text-xs text-dim">
                   Blue: delivered. Red: not delivered (learning, withheld or quarantined). Reference: {m.reference?.source}.
                 </div>
               </div>
@@ -236,7 +236,7 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
                 <SectionLabel right={ago(m.evidence.live.at)}>Live evidence (last {m.evidence.live.n} values)</SectionLabel>
                 <Checks items={[...m.evidence.live.checks, ...m.evidence.live.invariants]} />
                 {m.evidence.live.liveness && (
-                  <div className="mt-1.5 text-[11.5px] text-dim">
+                  <div className="mt-1.5 text-xs text-dim">
                     Longest identical run {m.evidence.live.liveness.longest_identical_run} (limit {m.evidence.live.liveness.limit}).
                   </div>
                 )}
@@ -254,13 +254,13 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
                     return (
                       <div key={i} className={cx("rounded-md border px-3 py-2.5", c.viable ? "border-low/30 bg-low/[0.05]" : "border-line bg-s1")}>
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="text-[13px] font-medium text-ink">{c.label}</span>
+                          <span className="text-sm font-medium text-ink">{c.label}</span>
                           <Tag tone={c.viable ? "low" : c.decision === "insufficient" ? "neutral" : "high"}>{c.viable ? `fits (${c.decision})` : c.decision}</Tag>
-                          <span className="ml-auto text-[11.5px] text-dim">
+                          <span className="ml-auto text-xs text-dim">
                             {proposerLabel(c.proposal.proposer)} · {Math.round(c.proposal.score * 100)}%
                           </span>
                         </div>
-                        <div className="mt-1 text-[11.5px] text-dim">{c.proposal.rationale}</div>
+                        <div className="mt-1 text-xs text-dim">{c.proposal.rationale}</div>
                         {fit && (
                           <div className="mt-2">
                             <Checks items={[...fit.checks, ...c.joint]} />
@@ -302,13 +302,13 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
                   )}
                   {m.status === "quarantined" && (
                     <Button disabled={busy} onClick={() => act(`/aegis/interop/mappings/${m.id}/restore`)}>
-                      <RotateCcw size={13} /> Restore (the sender fixed it)
+                      <Reset size={13} /> Restore (the sender fixed it)
                     </Button>
                   )}
-                  {(m.status === "review" || m.status === "unmapped") && !viable.length && <span className="text-[12px] text-dim">No proposal the data supports. Map it by hand through the API, or reject it.</span>}
+                  {(m.status === "review" || m.status === "unmapped") && !viable.length && <span className="text-xs text-dim">No proposal the data supports. Map it by hand through the API, or reject it.</span>}
                   {m.status !== "rejected" && m.status !== "adopted" && (
                     <Button variant="danger" disabled={busy} onClick={() => act(`/aegis/interop/mappings/${m.id}/reject`, { reason: "rejected from the console" })}>
-                      <X size={13} /> Reject
+                      <Close size={13} /> Reject
                     </Button>
                   )}
                   <Button variant="quiet" disabled={busy} onClick={() => act(`/aegis/interop/mappings/${m.id}/reevaluate`)}>
@@ -316,14 +316,14 @@ export function MappingDrawer({ id, onClose }: { id: string | null; onClose: () 
                   </Button>
                 </div>
               )}
-              {msg && <div className="mt-2 text-[12px] text-muted">{msg}</div>}
+              {msg && <div className="mt-2 text-xs text-muted">{msg}</div>}
             </div>
 
             <div>
               <SectionLabel>History</SectionLabel>
               <ol className="space-y-1.5 border-l border-line pl-3">
                 {[...m.history].reverse().map((h, i) => (
-                  <li key={i} className="text-[12px] leading-snug">
+                  <li key={i} className="text-xs leading-snug">
                     <span className="text-dim">{ago(h.at)}</span> <span className="text-ink">{STATUS_LABEL[h.to] ?? h.to}</span> <span className="text-dim">· {h.by}</span>
                     <div className="text-muted first-letter:uppercase">{h.why}</div>
                   </li>

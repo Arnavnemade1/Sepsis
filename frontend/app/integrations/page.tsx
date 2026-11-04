@@ -50,7 +50,7 @@ function Integrations() {
       >
         Every system that feeds the hospital&apos;s rooms (admissions, monitors, laboratories) speaks HL7 v2 or FHIR in its own dialect. Each local code is mapped onto an AegisOS concept only when its own data agrees, and keeps being checked: a feed that drifts is quarantined before a wrong value reaches a detector.
       </PageHead>
-      <div className="mb-3">
+      <div className="mb-5">
         <Segmented
           value={view}
           onChange={(v) => router.replace(v === "overview" ? "/integrations/" : `/integrations/?view=${v}`)}

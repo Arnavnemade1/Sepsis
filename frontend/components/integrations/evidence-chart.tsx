@@ -31,7 +31,7 @@ export function EvidenceChart({ m, factor, offset, height = 92 }: { m: MappingDe
     const x = (v: number) => pad.l + ((pos(v) - lo) / span) * (W - pad.l - pad.r);
     return { q, vals, log, x, lo, hi, refLo, refHi, win: info.window };
   }, [m.samples, ref, info, factor, offset, W, pad.l, pad.r]);
-  if (!data || !ref || !info) return <div className="text-[12px] text-dim">No reference distribution for this concept.</div>;
+  if (!data || !ref || !info) return <div className="text-xs text-dim">No reference distribution for this concept.</div>;
   const { q, vals, x } = data;
   const y0 = pad.t;
   const y1 = H - pad.b;
@@ -54,11 +54,11 @@ export function EvidenceChart({ m, factor, offset, height = 92 }: { m: MappingDe
         return <circle key={i} cx={x(d.v)} cy={mid + jitter * 1.6} r={2.1} fill={d.delivered ? "#6eaaff" : "#e5484d"} opacity={0.75} />;
       })}
       {ticks.map((t, i) => (
-        <text key={i} x={x(t)} y={H - 6} textAnchor="middle" className="fill-[#868d97] text-[10px]" style={{ fontFamily: "var(--font-mono, monospace)" }}>
+        <text key={i} x={x(t)} y={H - 6} textAnchor="middle" className="fill-[#868d97] text-2xs" style={{ fontFamily: "var(--font-mono, monospace)" }}>
           {t >= 100 ? t.toFixed(0) : t >= 1 ? t.toFixed(1) : t.toPrecision(2)}
         </text>
       ))}
-      <text x={pad.l} y={10} className="fill-[#868d97] text-[10px]">
+      <text x={pad.l} y={10} className="fill-[#868d97] text-2xs">
         reference 95% / 50% band · median · window shaded{data.log ? " · log axis" : ""}
       </text>
     </svg>

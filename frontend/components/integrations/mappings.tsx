@@ -1,8 +1,8 @@
 "use client";
 
-import { Search } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { Search } from "@/components/icons";
 import { cx, Empty, Panel, Segmented, Skeleton, Tag } from "@/components/ui";
 import { usePoll } from "@/lib/hooks";
 import { ago, proposerLabel, STATUS_LABEL, STATUS_TONE, type MappingRow } from "@/lib/interop";
@@ -37,18 +37,18 @@ export function MappingsView({ onMapping }: { onMapping: (id: string) => void })
       title="Mappings"
       meta={data ? `${rows.length} of ${all.length} local codes · each adopted only on evidence from its own data` : undefined}
       right={
-        <label className="flex h-7 items-center gap-1.5 rounded-md border border-line bg-bg px-2 text-dim focus-within:border-line-bright">
+        <label className="flex h-7 items-center gap-1.5 field px-2 text-dim">
           <Search size={13} />
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Code, analyte, unit" className="w-28 bg-transparent text-[12px] text-ink outline-none placeholder:text-faint sm:w-44" aria-label="Search mappings" />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Code, analyte, unit" className="w-28 bg-transparent text-xs text-ink outline-none placeholder:text-faint sm:w-44" aria-label="Search mappings" />
         </label>
       }
       flush
     >
-      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3.5 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-2">
         <div className="max-w-full overflow-x-auto [scrollbar-width:none]">
           <Segmented size="sm" value={f} onChange={setF} options={FILTERS.map((k) => ({ value: k, label: `${k === "all" ? "All" : STATUS_LABEL[k]} ${counts[k] ?? 0}` }))} />
         </div>
-        <select value={iface} onChange={(e) => setIface(e.target.value)} className="h-7 rounded-md border border-line bg-bg px-2 text-[12px] text-ink" aria-label="Interface">
+        <select value={iface} onChange={(e) => setIface(e.target.value)} className="h-7 field px-2 text-xs text-ink" aria-label="Interface">
           <option value="all">Every interface</option>
           {ifaces.map((i) => (
             <option key={i} value={i}>
@@ -66,24 +66,24 @@ export function MappingsView({ onMapping }: { onMapping: (id: string) => void })
       ) : (
         <>
           <div className="hidden max-h-[680px] overflow-auto md:block">
-            <table className="w-full min-w-[740px] text-[12px]">
-              <thead className="sticky top-0 z-[1] bg-s1 text-left text-[11px] text-dim">
+            <table className="w-full min-w-[740px] text-xs">
+              <thead className="sticky top-0 z-[1] bg-s1 text-left text-xs text-dim">
                 <tr className="border-b border-line">
-                  <th className="px-3.5 py-2 font-medium">Local code</th>
+                  <th className="px-4 py-2 font-medium">Local code</th>
                   <th className="px-2 py-2 font-medium">Status</th>
                   <th className="px-2 py-2 font-medium">AegisOS concept</th>
                   <th className="px-2 py-2 font-medium">Written → read as</th>
                   <th className="px-2 py-2 font-medium">Proposed by</th>
                   <th className="whitespace-nowrap px-2 py-2 text-right font-medium">Delivered / withheld</th>
-                  <th className="hidden px-3.5 py-2 text-right font-medium xl:table-cell">Updated</th>
+                  <th className="hidden px-4 py-2 text-right font-medium xl:table-cell">Updated</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((m) => (
                   <tr key={m.id} onClick={() => onMapping(m.id)} className="cursor-pointer border-b border-line last:border-0 hover:bg-s2">
-                    <td className="px-3.5 py-2">
-                      <div className="font-mono text-[11.5px] text-ink">{m.code}</div>
-                      <div className="max-w-[200px] truncate text-[11px] text-dim">
+                    <td className="px-4 py-2">
+                      <div className="font-mono text-xs text-ink">{m.code}</div>
+                      <div className="max-w-[200px] truncate text-xs text-dim">
                         {m.text} · {m.interface}
                       </div>
                     </td>
@@ -102,12 +102,12 @@ export function MappingsView({ onMapping }: { onMapping: (id: string) => void })
                           <span className="text-dim">—</span>
                         ))}
                     </td>
-                    <td className="px-2 py-2 font-mono text-[11.5px] text-muted">{readAs(m)}</td>
+                    <td className="px-2 py-2 font-mono text-xs text-muted">{readAs(m)}</td>
                     <td className="px-2 py-2 text-muted">{proposerLabel(m.proposer ?? m.lead?.proposer)}</td>
-                    <td className="num whitespace-nowrap px-2 py-2 text-right font-mono text-muted">
+                    <td className="num whitespace-nowrap px-2 py-2 text-right text-muted">
                       {(m.counts.delivered + m.counts.backfilled).toLocaleString()} / <span className={cx(m.counts.withheld > 0 && "text-high-ink")}>{m.counts.withheld.toLocaleString()}</span>
                     </td>
-                    <td className="hidden px-3.5 py-2 text-right text-[11px] text-dim xl:table-cell">{ago(m.updated_at)}</td>
+                    <td className="hidden px-4 py-2 text-right text-xs text-dim xl:table-cell">{ago(m.updated_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -115,15 +115,15 @@ export function MappingsView({ onMapping }: { onMapping: (id: string) => void })
           </div>
           <div className="divide-y divide-line md:hidden">
             {rows.map((m) => (
-              <button key={m.id} onClick={() => onMapping(m.id)} className="block w-full px-3.5 py-2.5 text-left">
+              <button key={m.id} onClick={() => onMapping(m.id)} className="block w-full px-4 py-2.5 text-left">
                 <div className="flex items-center gap-2">
-                  <span className="font-mono text-[12px] text-ink">{m.code}</span>
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-muted">{m.text}</span>
+                  <span className="font-mono text-xs text-ink">{m.code}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted">{m.text}</span>
                   <Tag tone={STATUS_TONE[m.status]} dot>
                     {STATUS_LABEL[m.status]}
                   </Tag>
                 </div>
-                <div className="mt-1 text-[11.5px] text-dim">
+                <div className="mt-1 text-xs text-dim">
                   {m.concept ? `${m.concept} · ` : m.lead ? `${m.lead.concept}? · ` : ""}
                   {readAs(m)} · {m.interface}
                 </div>

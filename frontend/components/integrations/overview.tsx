@@ -1,9 +1,9 @@
 "use client";
 
-import { Cable, Check, FlaskConical, RotateCcw } from "lucide-react";
 import { useState } from "react";
 
-import { Button, cx, Empty, MiniBars, Panel, Restricted, Skeleton, Tag } from "@/components/ui";
+import { Check, Flask, Plugs, Reset } from "@/components/icons";
+import { Button, cx, Empty, MiniBars, Panel, Restricted, Skeleton, StatStrip, Tag } from "@/components/ui";
 import { api } from "@/lib/api";
 import { useCaps, usePoll } from "@/lib/hooks";
 import { ACK_TONE, ago, STATUS_LABEL, STATUS_TONE, type MappingRow, type Overview, type SimStatus } from "@/lib/interop";
@@ -39,25 +39,20 @@ export function IntegrationsOverview({ onMessage, onMapping }: { onMessage: (id:
 
   return (
     <div>
-      <div className="mb-3 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-line bg-line sm:grid-cols-3 xl:grid-cols-6">
-        {[
-          ["Interfaces", ov ? `${live} of ${ov.interfaces.length} live` : "—", "inbound HL7 feeds"],
-          ["Messages", ov ? `${perMin.toFixed(1)}/min` : "—", ov ? `${(c.messages ?? 0).toLocaleString()} since boot` : ""],
-          ["Mappings adopted", ov ? `${ov.mappings.by_status.adopted ?? 0} of ${ov.mappings.total}` : "—", "each earned on evidence"],
-          ["Waiting for review", ov ? String(ov.mappings.by_status.review ?? 0) : "—", "inferred unit, ambiguous or refused"],
-          ["Quarantined", ov ? String(ov.mappings.by_status.quarantined ?? 0) : "—", ov ? `${c.retracted ?? 0} values withdrawn` : ""],
-          ["Delivered / withheld", ov ? `${((c.delivered ?? 0) + (c.backfilled ?? 0)).toLocaleString()} / ${(c.withheld ?? 0).toLocaleString()}` : "—", `${errs5} messages in the last 5 min`],
-        ].map(([k, v, sub]) => (
-          <div key={k} className="min-w-0 bg-s1 px-3.5 py-2.5">
-            <div className="truncate text-[11px] text-dim">{k}</div>
-            <div className="num mt-0.5 truncate font-mono text-[16px] font-medium text-ink">{v}</div>
-            <div className="truncate text-[11px] text-dim">{sub}</div>
-          </div>
-        ))}
-      </div>
+      <StatStrip
+        className="mb-5"
+        items={[
+          { k: "Interfaces", v: ov ? `${live} of ${ov.interfaces.length} live` : "—", sub: "inbound HL7 feeds" },
+          { k: "Messages", v: ov ? `${perMin.toFixed(1)}/min` : "—", sub: ov ? `${(c.messages ?? 0).toLocaleString()} since boot` : "" },
+          { k: "Mappings adopted", v: ov ? `${ov.mappings.by_status.adopted ?? 0} of ${ov.mappings.total}` : "—", sub: "each earned on evidence" },
+          { k: "Waiting for review", v: ov ? String(ov.mappings.by_status.review ?? 0) : "—", sub: "inferred unit, ambiguous or refused" },
+          { k: "Quarantined", v: ov ? String(ov.mappings.by_status.quarantined ?? 0) : "—", tone: ov?.mappings.by_status.quarantined ? "text-high-ink" : undefined, sub: ov ? `${c.retracted ?? 0} values withdrawn` : "" },
+          { k: "Delivered / withheld", v: ov ? `${((c.delivered ?? 0) + (c.backfilled ?? 0)).toLocaleString()} / ${(c.withheld ?? 0).toLocaleString()}` : "—", sub: `${errs5} messages in the last 5 min` },
+        ]}
+      />
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
-        <div className="min-w-0 space-y-3">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-4">
           <Panel title="Interfaces" meta="Every system that sends AegisOS data, and how its feed is doing" flush>
             {!ov ? (
               <div className="p-3.5">
@@ -66,16 +61,16 @@ export function IntegrationsOverview({ onMessage, onMapping }: { onMessage: (id:
             ) : (
               <>
                 <div className="hidden overflow-x-auto md:block">
-                  <table className="w-full min-w-[720px] text-[12px]">
-                    <thead className="text-left text-[11px] text-dim">
+                  <table className="w-full min-w-[720px] text-sm">
+                    <thead className="text-left text-xs text-dim">
                       <tr className="border-b border-line">
-                        <th className="px-3.5 py-2 font-medium">Interface</th>
-                        <th className="px-2 py-2 font-medium">Standard</th>
-                        <th className="px-2 py-2 font-medium">Status</th>
-                        <th className="px-2 py-2 font-medium">Traffic (30 min)</th>
-                        <th className="px-2 py-2 text-right font-medium">Codes adopted</th>
-                        <th className="whitespace-nowrap px-2 py-2 text-right font-medium">ACK AA / AE / AR</th>
-                        <th className="px-3.5 py-2 text-right font-medium">p50</th>
+                        <th className="px-4 py-2.5 font-medium">Interface</th>
+                        <th className="px-2 py-2.5 font-medium">Standard</th>
+                        <th className="px-2 py-2.5 font-medium">Status</th>
+                        <th className="px-2 py-2.5 font-medium">Traffic (30 min)</th>
+                        <th className="px-2 py-2.5 text-right font-medium">Codes adopted</th>
+                        <th className="whitespace-nowrap px-2 py-2.5 text-right font-medium">ACK AA / AE / AR</th>
+                        <th className="px-4 py-2.5 text-right font-medium">p50</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -83,56 +78,56 @@ export function IntegrationsOverview({ onMessage, onMapping }: { onMessage: (id:
                         const bi = ov.mappings.by_interface?.[i.id] ?? { total: 0 };
                         const attention = (bi.review ?? 0) + (bi.quarantined ?? 0);
                         return (
-                          <tr key={i.id} className="border-b border-line last:border-0">
-                            <td className="px-3.5 py-2">
+                          <tr key={i.id} className="border-b border-line-soft last:border-0">
+                            <td className="px-4 py-3">
                               <div className="font-medium text-ink">{i.name}</div>
-                              <div className="font-mono text-[11px] text-dim">
+                              <div className="mt-0.5 font-mono text-2xs text-dim">
                                 {i.sending_app}/{i.facility} · {i.kind}
                                 {i.simulated ? " · simulated" : ""}
                               </div>
                             </td>
-                            <td className="px-2 py-2 text-muted">
+                            <td className="px-2 py-3 text-muted">
                               {i.standard}
-                              <div className="text-[11px] text-dim">{i.transport}</div>
+                              <div className="text-xs text-dim">{i.transport}</div>
                             </td>
-                            <td className="px-2 py-2">
+                            <td className="px-2 py-3">
                               <Tag tone={STATUS_TONE[i.status]} dot>
                                 {STATUS_LABEL[i.status]}
                               </Tag>
-                              <div className="mt-0.5 text-[11px] text-dim">{ago(i.last_message_at, now)}</div>
+                              <div className="mt-0.5 text-xs text-dim">{ago(i.last_message_at, now)}</div>
                             </td>
-                            <td className="px-2 py-2">
+                            <td className="px-2 py-3">
                               <MiniBars data={i.series} w={96} h={20} title={`${i.per_min.toFixed(1)} messages per minute`} />
-                              <div className="text-[11px] text-dim">{i.per_min.toFixed(1)}/min</div>
+                              <div className="text-xs text-dim">{i.per_min.toFixed(1)}/min</div>
                             </td>
-                            <td className="num whitespace-nowrap px-2 py-2 text-right font-mono text-ink">
+                            <td className="num whitespace-nowrap px-2 py-3 text-right text-ink">
                               {bi.total ? `${bi.adopted ?? 0} / ${bi.total}` : <span className="text-dim">—</span>}
-                              {!bi.total && <div className="font-sans text-[11px] text-dim">no coded results</div>}
-                              {attention > 0 && <div className="text-[11px] text-med-ink">{attention} need a person</div>}
+                              {!bi.total && <div className="font-sans text-xs text-dim">no coded results</div>}
+                              {attention > 0 && <div className="text-xs text-med-ink">{attention} need a person</div>}
                             </td>
-                            <td className="num whitespace-nowrap px-2 py-2 text-right font-mono text-muted">
+                            <td className="num whitespace-nowrap px-2 py-3 text-right text-muted">
                               {i.stats.AA ?? 0} / <span className={i.stats.AE ? "text-med-ink" : ""}>{i.stats.AE ?? 0}</span> / <span className={i.stats.AR ? "text-high-ink" : ""}>{i.stats.AR ?? 0}</span>
                             </td>
-                            <td className="num whitespace-nowrap px-3.5 py-2 text-right font-mono text-muted">{i.latency_us.p50 != null ? `${(i.latency_us.p50 / 1000).toFixed(2)} ms` : "—"}</td>
+                            <td className="num whitespace-nowrap px-4 py-3 text-right text-muted">{i.latency_us.p50 != null ? `${(i.latency_us.p50 / 1000).toFixed(2)} ms` : "—"}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-                <div className="divide-y divide-line md:hidden">
+                <div className="divide-y divide-line-soft md:hidden">
                   {ov.interfaces.map((i) => (
-                    <div key={i.id} className="px-3.5 py-2.5">
+                    <div key={i.id} className="px-4 py-2.5">
                       <div className="flex items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{i.name}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{i.name}</span>
                         <Tag tone={STATUS_TONE[i.status]} dot>
                           {STATUS_LABEL[i.status]}
                         </Tag>
                       </div>
-                      <div className="mt-1 flex items-center gap-3 text-[11.5px] text-dim">
+                      <div className="mt-1 flex items-center gap-3 text-xs text-dim">
                         <span>{i.standard}</span>
                         <span>{i.per_min.toFixed(1)}/min</span>
-                        <span className="ml-auto font-mono">
+                        <span className="num ml-auto">
                           {i.stats.AA ?? 0}/{i.stats.AE ?? 0}/{i.stats.AR ?? 0}
                         </span>
                       </div>
@@ -149,22 +144,22 @@ export function IntegrationsOverview({ onMessage, onMapping }: { onMessage: (id:
                 <Skeleton className="h-56" />
               </div>
             ) : !ov.recent.length ? (
-              <Empty icon={<Cable size={16} />}>No messages yet.</Empty>
+              <Empty icon={<Plugs size={16} />}>No messages yet.</Empty>
             ) : (
               <ul className="divide-y divide-line">
                 {[...ov.recent].reverse().map((r) => (
                   <li key={r.id}>
-                    <button onClick={() => onMessage(r.id)} className="flex w-full items-start gap-2.5 px-3.5 py-2 text-left hover:bg-s2">
+                    <button onClick={() => onMessage(r.id)} className="flex w-full items-start gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-white/[0.025]">
                       <Tag tone={ACK_TONE[r.ack]} className="mt-px shrink-0 font-mono">
                         {r.ack}
                       </Tag>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2">
-                          <span className="font-mono text-[11.5px] text-ink">{r.type ?? "?"}</span>
-                          <span className="truncate text-[11.5px] text-dim">{r.interface}</span>
-                          <span className="ml-auto shrink-0 text-[11px] text-dim">{ago(r.at, now)}</span>
+                          <span className="font-mono text-xs text-ink">{r.type ?? "?"}</span>
+                          <span className="truncate text-xs text-dim">{r.interface}</span>
+                          <span className="ml-auto shrink-0 text-xs text-dim">{ago(r.at, now)}</span>
                         </div>
-                        <div className="truncate text-[12px] text-muted">{r.summary}</div>
+                        <div className="truncate text-xs text-muted">{r.summary}</div>
                       </div>
                     </button>
                   </li>
@@ -174,7 +169,7 @@ export function IntegrationsOverview({ onMessage, onMapping }: { onMessage: (id:
           </Panel>
         </div>
 
-        <div className="min-w-0 space-y-3">
+        <div className="min-w-0 space-y-4">
           <Queue title="Quarantined feeds" tone="high" rows={ov?.quarantined ?? null} empty="Every adopted feed passes its live evidence." onMapping={onMapping} />
           <Queue title="Waiting for review" tone="med" rows={ov?.review ?? null} empty="Nothing waits for a person." onMapping={onMapping} />
           <Drills sim={sim} may={caps.has("interop:configure") || caps.has("drill:device")} role={role} onDone={reloadSim} />
@@ -198,16 +193,16 @@ function Queue({ title, tone, rows, empty, onMapping }: { title: string; tone: "
         <ul className="divide-y divide-line">
           {rows.map((m) => (
             <li key={m.id}>
-              <button onClick={() => onMapping(m.id)} className="w-full px-3.5 py-2.5 text-left hover:bg-s2">
+              <button onClick={() => onMapping(m.id)} className="w-full px-4 py-3 text-left transition-colors hover:bg-white/[0.025]">
                 <div className="flex items-center gap-2">
                   <span className={cx("h-1.5 w-1.5 shrink-0 rounded-full", tone === "high" ? "bg-high" : "bg-med")} />
-                  <span className="font-mono text-[12px] text-ink">{m.code}</span>
-                  <span className="min-w-0 truncate text-[12px] text-muted">{m.text}</span>
-                  <span className="ml-auto shrink-0 text-[11px] text-dim">{m.interface}</span>
+                  <span className="font-mono text-xs text-ink">{m.code}</span>
+                  <span className="min-w-0 truncate text-xs text-muted">{m.text}</span>
+                  <span className="ml-auto shrink-0 text-xs text-dim">{m.interface}</span>
                 </div>
-                <div className="mt-1 line-clamp-2 text-[11.5px] leading-snug text-dim first-letter:uppercase">{m.fault?.cause ?? m.reason}</div>
-                {m.fault?.suggested && <div className="mt-1 text-[11.5px] text-low-ink">Fix found: read as {m.fault.suggested.label}</div>}
-                {m.fault?.swap && <div className="mt-1 text-[11.5px] text-low-ink">Fix found: {m.fault.swap.label}</div>}
+                <div className="mt-1 line-clamp-2 text-xs leading-snug text-dim first-letter:uppercase">{m.fault?.cause ?? m.reason}</div>
+                {m.fault?.suggested && <div className="mt-1 text-xs text-low-ink">Fix found: read as {m.fault.suggested.label}</div>}
+                {m.fault?.swap && <div className="mt-1 text-xs text-low-ink">Fix found: {m.fault.swap.label}</div>}
               </button>
             </li>
           ))}
@@ -246,12 +241,12 @@ function Drills({ sim, may, role, onDone }: { sim: SimStatus | null; may: boolea
               const on = !!sim.faults[d.kind];
               return (
                 <li key={d.kind} className="flex items-center gap-2">
-                  <FlaskConical size={13} className={on ? "text-med-ink" : "text-dim"} />
-                  <span className={cx("min-w-0 flex-1 text-[12px] leading-snug", on ? "text-ink" : "text-muted")}>{d.label}</span>
+                  <Flask size={13} className={on ? "text-med-ink" : "text-dim"} />
+                  <span className={cx("min-w-0 flex-1 text-xs leading-snug", on ? "text-ink" : "text-muted")}>{d.label}</span>
                   <Button size="sm" variant={on ? "danger" : "ghost"} disabled={!may || busy === d.kind} onClick={() => run(d.kind, !on)}>
                     {on ? (
                       <>
-                        <RotateCcw size={12} /> Stop
+                        <Reset size={12} /> Stop
                       </>
                     ) : (
                       "Run"
@@ -261,7 +256,7 @@ function Drills({ sim, may, role, onDone }: { sim: SimStatus | null; may: boolea
               );
             })}
           </ul>
-          <div className="mt-2.5 text-[11.5px] text-dim">
+          <div className="mt-2.5 text-xs text-dim">
             {sim.patients.length} patients fed over HL7 · {sim.sent.toLocaleString()} messages sent · {sim.refused} refused
           </div>
         </>
@@ -276,11 +271,11 @@ function Validation({ bench, audit }: { bench: Bench | null; audit: Audit | null
     <Panel title="Validation" meta="Measured on PhysioNet/CinC 2019; protocol registered before the run (docs/INTEROP.md)">
       <div className="space-y-3">
         <div>
-          <div className="mb-1 text-[11.5px] font-medium text-dim">What the checks found in the benchmark data itself</div>
+          <div className="mb-1 text-xs font-medium text-dim">What the checks found in the benchmark data itself</div>
           {!f.length ? (
-            <div className="text-[12px] text-dim">Audit not loaded.</div>
+            <div className="text-xs text-dim">Audit not loaded.</div>
           ) : (
-            <ul className="space-y-1.5 text-[12px] leading-snug text-muted">
+            <ul className="space-y-1.5 text-xs leading-snug text-muted">
               {f.map((x, i) => (
                 <li key={i} className="flex gap-2">
                   <Check size={13} className="mt-0.5 shrink-0 text-low-ink" />
@@ -301,9 +296,9 @@ function Validation({ bench, audit }: { bench: Bench | null; audit: Audit | null
           )}
         </div>
         <div>
-          <div className="mb-1 text-[11.5px] font-medium text-dim">Silent faults vs the gate (8,062 held-out patients)</div>
+          <div className="mb-1 text-xs font-medium text-dim">Silent faults vs the gate (8,062 held-out patients)</div>
           {!bench?.available ? (
-            <div className="text-[12px] text-dim">The registered benchmark has not been published yet.</div>
+            <div className="text-xs text-dim">The registered benchmark has not been published yet.</div>
           ) : (
             <div className="space-y-1.5">
               <div className="flex flex-wrap gap-1.5">
@@ -317,7 +312,7 @@ function Validation({ bench, audit }: { bench: Bench | null; audit: Audit | null
                 })}
               </div>
               {bench.posthoc && (
-                <div className="rounded-md border border-line bg-s1 px-2.5 py-2 text-[11.5px] leading-snug text-muted">
+                <div className="well px-3 py-2.5 text-xs leading-snug text-muted">
                   <span className="font-medium text-ink">After the fixes the misses motivated</span> (exploratory, same patients): false quarantines per 100k{" "}
                   {Object.entries(bench.posthoc.h4_per_100k)
                     .map(([k, v]) => `${k.replace("_", " ")} ${v.toFixed(2)}`)
@@ -325,9 +320,9 @@ function Validation({ bench, audit }: { bench: Bench | null; audit: Audit | null
                   ; wrong-concept adoptions {(100 * (bench.posthoc.h5.unsafe_wrong_concept?.rate ?? 0)).toFixed(1)}%, wrong-unit {(100 * (bench.posthoc.h5.unsafe_wrong_unit?.rate ?? 0)).toFixed(1)}%.
                 </div>
               )}
-              <div className="max-h-56 overflow-auto rounded-md border border-line">
-                <table className="w-full min-w-[420px] text-[11.5px]">
-                  <thead className="sticky top-0 bg-s1 text-left text-[10.5px] text-dim">
+              <div className="well max-h-56 overflow-auto">
+                <table className="w-full min-w-[420px] text-xs">
+                  <thead className="sticky top-0 bg-s1 text-left text-2xs text-dim">
                     <tr>
                       <th className="px-2 py-1 font-medium">Fault</th>
                       <th className="px-2 py-1 text-right font-medium">Silent ΔFAR</th>
@@ -341,9 +336,9 @@ function Validation({ bench, audit }: { bench: Bench | null; audit: Audit | null
                         <td className="px-2 py-1 text-muted" title={r.what}>
                           {r.id}
                         </td>
-                        <td className={cx("num px-2 py-1 text-right font-mono", Math.abs(r.silent_dfar) > 0.05 ? "text-high-ink" : "text-muted")}>{(100 * r.silent_dfar).toFixed(1)} pt</td>
-                        <td className="num px-2 py-1 text-right font-mono text-muted">{r.detected ? `${r.faulty_to_quarantine} values` : "missed"}</td>
-                        <td className="num px-2 py-1 text-right font-mono text-muted">{r.fix_dauroc != null ? r.fix_dauroc.toFixed(4) : "—"}</td>
+                        <td className={cx("num px-2 py-1 text-right", Math.abs(r.silent_dfar) > 0.05 ? "text-high-ink" : "text-muted")}>{(100 * r.silent_dfar).toFixed(1)} pt</td>
+                        <td className="num px-2 py-1 text-right text-muted">{r.detected ? `${r.faulty_to_quarantine} values` : "missed"}</td>
+                        <td className="num px-2 py-1 text-right text-muted">{r.fix_dauroc != null ? r.fix_dauroc.toFixed(4) : "—"}</td>
                       </tr>
                     ))}
                   </tbody>
