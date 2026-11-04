@@ -97,7 +97,7 @@ early-warning cohort excludes.
 | the score was sufficient for its inputs | **information ledger**: each variable family's AUROC when removed |
 | the onset definition was a choice | **label sensitivity**: every model scored under 3 rules × 3 anchors |
 | one dataset, one era | **temporal validation**: train on earlier `anchor_year_group`s, test on later |
-| a 16 GB laptop | **design weights**: never-septic stays subsampled, every metric re-weighted to the full cohort; features built in chunks into a float16 map on disk (bit-identical to a whole build) |
+| a 16 GB laptop | **design weights**: never-septic stays subsampled, every metric re-weighted to the full cohort; features built in chunks into a float16 map on disk (bit-identical to a whole build). A value past float16's 65,504 saturates there instead of becoming inf: on full MIMIC-IV that's ferritin, CK, NT-proBNP and MAP's 24 h variation, 7,559 of 2.9 billion cells |
 | lucky dev folds and tuned-to-the-test numbers | **subject-grouped** folds and a **locked 20% of subjects**, every access chained |
 
 A model enters the harness as a `Candidate`: a fit function the harness calls fold by fold,
