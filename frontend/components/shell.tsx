@@ -1,6 +1,5 @@
 "use client";
 
-import { Building2, ChevronsUpDown, LogOut, Menu, PanelLeftClose, PanelLeftOpen, Search, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
@@ -12,6 +11,7 @@ import { clock } from "@/lib/paging";
 import { signInAs, signOut, useEnsureSession } from "@/lib/session";
 
 import { CommandPalette } from "./command";
+import { CaretUpDown, Close, Hospital, Menu, Search, SignOut, Sidebar } from "./icons";
 import { GROUP_OF, initialsOf, NAV_GROUPS, NAV_ITEMS, SWITCH_USERS, type NavItem, type NavKey } from "./nav";
 import { cx } from "./ui";
 
@@ -32,11 +32,11 @@ export function Mark({ size = 16 }: { size?: number }) {
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <Link href="/operator/" className="flex min-w-0 items-center gap-2.5" aria-label="AegisOS">
-      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-line-bright bg-s2">
-        <Mark size={14} />
+    <Link href="/operator/" className="flex min-w-0 items-center gap-2.5 rounded-md" aria-label="AegisOS">
+      <span className="grid h-7 w-7 shrink-0 place-items-center">
+        <Mark size={17} />
       </span>
-      {!compact && <span className="truncate text-[14px] font-semibold tracking-[-0.01em] text-ink">AegisOS</span>}
+      {!compact && <span className="truncate text-base font-semibold tracking-tight text-ink">AegisOS</span>}
     </Link>
   );
 }
@@ -83,10 +83,10 @@ export function useHealth() {
 
 function Indicator({ color, label, value, title }: { color: string; label: string; value?: ReactNode; title?: string }) {
   return (
-    <span className="flex items-center gap-1.5 whitespace-nowrap text-[12px]" title={title}>
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+    <span className="flex items-center gap-1.5 whitespace-nowrap text-xs" title={title}>
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color, boxShadow: `0 0 0 3px ${color}22` }} />
       <span className="text-muted">{label}</span>
-      {value != null && <span className="num font-mono text-[11px] text-dim">{value}</span>}
+      {value != null && <span className="num text-dim">{value}</span>}
     </span>
   );
 }
@@ -105,8 +105,7 @@ export function StatusCluster({ h }: { h: ReturnType<typeof useHealth> }) {
         <span className="hidden md:block">
           <Indicator
             color={h.prover ? "#2fb67c" : "#e5484d"}
-            label={h.prover ? "Prover" : "Prover fail-closed"}
-            value={h.prover ? "OK" : undefined}
+            label={h.prover ? "Prover healthy" : "Prover fail-closed"}
             title={h.prover ? "Z3 is healthy: every page and order is certified before it leaves" : "Z3 is unhealthy: nothing is sent until it recovers"}
           />
         </span>
@@ -123,7 +122,7 @@ export function Clock() {
     const i = setInterval(f, 1000);
     return () => clearInterval(i);
   }, []);
-  return <span className="num hidden font-mono text-[12px] text-muted sm:inline">{t}</span>;
+  return <span className="num hidden text-xs font-medium text-muted sm:inline">{t}</span>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -150,33 +149,33 @@ function UserBlock({ collapsed }: { collapsed: boolean }) {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((o) => !o)}
-        className={cx("flex w-full items-center gap-2.5 rounded-md p-1.5 text-left transition-colors hover:bg-white/[0.05]", collapsed && "justify-center")}
+        className={cx("flex w-full items-center gap-2.5 rounded-lg p-1.5 text-left transition-colors hover:bg-white/[0.05]", collapsed && "justify-center")}
         aria-haspopup="menu"
         aria-expanded={open}
         title={collapsed ? (c ? c.display : "View only") : undefined}
       >
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-s4 text-[10.5px] font-semibold text-ink">{c ? initialsOf(c.display) : "–"}</span>
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-s4 text-2xs font-semibold text-ink shadow-[inset_0_0_0_1px_rgb(255_255_255/.06)]">{c ? initialsOf(c.display) : "–"}</span>
         {!collapsed && (
           <>
             <span className="min-w-0 flex-1 leading-tight">
-              <span className="block truncate text-[12.5px] font-medium text-ink">{c ? c.display : "View only"}</span>
-              <span className="block truncate text-[11px] text-dim">{c ? `${ROLE_LABEL[c.role]} · ring ${c.ring}` : "Not signed in"}</span>
+              <span className="block truncate text-sm font-medium text-ink">{c ? c.display : "View only"}</span>
+              <span className="block truncate text-xs text-dim">{c ? ROLE_LABEL[c.role] : "Not signed in"}</span>
             </span>
-            <ChevronsUpDown size={14} className="shrink-0 text-dim" />
+            <CaretUpDown size={14} className="shrink-0 text-dim" />
           </>
         )}
       </button>
       {open && (
-        <div role="menu" className={cx("pop absolute bottom-full z-[70] mb-1.5 w-64 py-1", collapsed ? "left-0" : "left-0 right-0 w-auto")}>
-          <div className="px-3 py-2">
-            <div className="text-[12.5px] font-medium text-ink">{c ? c.display : "Not signed in"}</div>
-            <div className="text-[11px] text-dim">
+        <div role="menu" className={cx("pop absolute bottom-full z-[70] mb-2 w-64 p-1", collapsed ? "left-0" : "left-0 right-0 w-auto")}>
+          <div className="px-2.5 py-2">
+            <div className="text-sm font-medium text-ink">{c ? c.display : "Not signed in"}</div>
+            <div className="text-xs text-dim">
               {c ? `${ROLE_LABEL[c.role]} · privilege ring ${c.ring}` : "View only. Choose a user to act."}
             </div>
-            {c && <div className="mt-0.5 font-mono text-[10.5px] text-faint">{c.username}</div>}
+            {c && <div className="mt-0.5 font-mono text-2xs text-faint">{c.username}</div>}
           </div>
-          <div className="my-1 h-px bg-line" />
-          <div className="px-3 pb-1 pt-1 text-[11px] font-medium text-dim">Switch user</div>
+          <div className="my-1 h-px bg-white/[0.06]" />
+          <div className="px-2.5 pb-1 pt-1.5 text-xs font-medium text-dim">Switch user</div>
           {SWITCH_USERS.map((x) => (
             <button
               key={x.u}
@@ -191,19 +190,19 @@ function UserBlock({ collapsed }: { collapsed: boolean }) {
                   setBusy(null);
                 }
               }}
-              className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left transition-colors hover:bg-s2 disabled:opacity-50"
+              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left transition-colors hover:bg-white/[0.06] disabled:opacity-50"
             >
-              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-s3 text-[9px] font-semibold text-muted">{initialsOf(x.n)}</span>
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-s4 text-[10px] font-semibold text-muted">{initialsOf(x.n)}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] text-ink">{x.n}</span>
-                <span className="block text-[11px] text-dim">{x.r}</span>
+                <span className="block truncate text-sm text-ink">{x.n}</span>
+                <span className="block text-xs text-dim">{x.r}</span>
               </span>
-              {c?.username === x.u ? <span className="text-[11px] text-dim">current</span> : busy === x.u ? <span className="text-[11px] text-dim">…</span> : null}
+              {c?.username === x.u ? <span className="text-xs text-dim">Current</span> : busy === x.u ? <span className="text-xs text-dim">…</span> : null}
             </button>
           ))}
           {c && (
             <>
-              <div className="my-1 h-px bg-line" />
+              <div className="my-1 h-px bg-white/[0.06]" />
               <button
                 role="menuitem"
                 onClick={async () => {
@@ -211,9 +210,9 @@ function UserBlock({ collapsed }: { collapsed: boolean }) {
                   setOpen(false);
                   router.refresh();
                 }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] text-muted transition-colors hover:bg-s2 hover:text-ink"
+                className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-muted transition-colors hover:bg-white/[0.06] hover:text-ink"
               >
-                <LogOut size={13} />
+                <SignOut size={15} />
                 Sign out
               </button>
             </>
@@ -243,15 +242,15 @@ function NavLink({ item, active, count, alert, collapsed, onNavigate }: {
       title={collapsed ? `${item.label}${count ? ` (${count})` : ""}` : undefined}
       aria-current={active ? "page" : undefined}
       className={cx(
-        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-[13px] transition-colors",
-        active ? "bg-white/[0.07] text-ink" : "text-muted hover:bg-white/[0.04] hover:text-ink",
+        "group relative flex h-8 items-center gap-2.5 rounded-md px-2 text-sm transition-colors duration-100",
+        active ? "bg-white/[0.07] font-medium text-ink shadow-[inset_0_0_0_1px_rgb(255_255_255/.04)]" : "text-muted hover:bg-white/[0.04] hover:text-ink",
         collapsed && "justify-center px-0",
       )}
     >
-      <Icon size={16} strokeWidth={1.75} className={cx("shrink-0", active ? "text-ink" : "text-dim group-hover:text-muted")} />
+      <Icon size={18} weight={active ? "fill" : "regular"} className={cx("shrink-0", active ? "text-ink" : "text-dim group-hover:text-muted")} />
       {!collapsed && <span className="min-w-0 flex-1 truncate">{item.label}</span>}
       {!collapsed && count ? (
-        <span className={cx("num rounded-[4px] px-1.5 font-mono text-[10.5px] leading-[18px]", alert ? "bg-high/15 text-high-ink" : "text-dim")}>{count}</span>
+        <span className={cx("num min-w-5 rounded-full px-1.5 text-center text-2xs font-medium leading-[18px]", alert ? "bg-high/[0.16] text-high-ink" : "text-dim")}>{count}</span>
       ) : null}
       {collapsed && count ? <span className={cx("absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full", alert ? "bg-high" : "bg-muted")} /> : null}
     </Link>
@@ -269,36 +268,35 @@ function SidebarBody({ active, counts, alerts, collapsed, onToggle, onSearch, on
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className={cx("flex h-12 shrink-0 items-center gap-2 px-3", collapsed && "justify-center px-0")}>
+      <div className={cx("flex h-14 shrink-0 items-center gap-2 px-3.5", collapsed && "justify-center px-0")}>
         <Logo compact={collapsed} />
         {onToggle && !collapsed && (
-          <button onClick={onToggle} className="ml-auto grid h-7 w-7 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.05] hover:text-ink" aria-label="Collapse sidebar" title="Collapse sidebar">
-            <PanelLeftClose size={15} />
+          <button onClick={onToggle} className="ml-auto grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-white/[0.05] hover:text-ink" aria-label="Collapse sidebar" title="Collapse sidebar">
+            <Sidebar size={17} />
           </button>
         )}
       </div>
-      <div className={cx("px-2.5", collapsed && "px-2")}>
+      <div className={cx("px-3", collapsed && "px-2")}>
         {!collapsed ? (
-          <div className="mb-2 flex items-center gap-2.5 rounded-md border border-line bg-white/[0.02] px-2.5 py-2">
-            <Building2 size={15} className="shrink-0 text-dim" />
-            <div className="min-w-0 flex-1 leading-tight">
-              <div className="truncate text-[12.5px] font-medium text-ink">Aegis Memorial</div>
-              <div className="truncate text-[11px] text-dim">Demonstration hospital</div>
-            </div>
-            <span className="rounded-[3px] border border-line-bright px-1 font-mono text-[9.5px] tracking-wide text-dim" title="ICU rooms 301–312 replay real de-identified PhysioNet/CinC 2019 stays; other patients and the nurse traffic are synthetic and labelled so.">
-              DEMO
+          <div className="mb-2 flex items-center gap-2.5 rounded-lg px-2 py-1.5" title="ICU rooms 301–312 replay real de-identified PhysioNet/CinC 2019 stays; other patients and the nurse traffic are synthetic and labelled so.">
+            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-white/[0.06] text-muted shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]">
+              <Hospital size={15} />
             </span>
+            <div className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-sm font-medium text-ink">Aegis Memorial</div>
+              <div className="truncate text-xs text-dim">Demonstration hospital</div>
+            </div>
           </div>
         ) : null}
         <button
           onClick={onSearch}
           className={cx(
-            "flex h-8 w-full items-center gap-2 rounded-md border border-line bg-white/[0.02] px-2.5 text-[12.5px] text-dim transition-colors hover:border-line-bright hover:text-muted",
+            "flex h-8 w-full items-center gap-2 rounded-md bg-white/[0.04] px-2.5 text-sm text-dim shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)] transition-colors hover:bg-white/[0.06] hover:text-muted",
             collapsed && "justify-center px-0",
           )}
           title="Search and commands (⌘K)"
         >
-          <Search size={14} className="shrink-0" />
+          <Search size={15} className="shrink-0" />
           {!collapsed && (
             <>
               <span className="flex-1 text-left">Search</span>
@@ -307,10 +305,10 @@ function SidebarBody({ active, counts, alerts, collapsed, onToggle, onSearch, on
           )}
         </button>
       </div>
-      <nav className="mt-3 min-h-0 flex-1 overflow-y-auto px-2.5 pb-3 [scrollbar-width:none]" aria-label="Sections">
+      <nav className="mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-3 [scrollbar-width:none]" aria-label="Sections">
         {NAV_GROUPS.map((g) => (
-          <div key={g.label} className="mb-3">
-            {!collapsed ? <div className="px-2 pb-1 text-[11px] font-medium text-faint">{g.label}</div> : <div className="mx-2 mb-1.5 h-px bg-line" />}
+          <div key={g.label} className="mb-4">
+            {!collapsed ? <div className="px-2 pb-1.5 text-xs font-medium text-faint">{g.label}</div> : <div className="mx-2 mb-2 h-px bg-line" />}
             <div className="space-y-px">
               {g.items.map((it) => (
                 <NavLink key={it.key} item={it} active={active === it.key} count={counts[it.key]} alert={alerts[it.key]} collapsed={collapsed} onNavigate={onNavigate} />
@@ -319,10 +317,10 @@ function SidebarBody({ active, counts, alerts, collapsed, onToggle, onSearch, on
           </div>
         ))}
       </nav>
-      <div className={cx("shrink-0 border-t border-line p-2", collapsed && "flex flex-col items-center gap-1")}>
+      <div className={cx("shrink-0 p-2.5", collapsed && "flex flex-col items-center gap-1")}>
         {collapsed && onToggle && (
           <button onClick={onToggle} className="grid h-8 w-8 place-items-center rounded-md text-dim transition-colors hover:bg-white/[0.05] hover:text-ink" aria-label="Expand sidebar" title="Expand sidebar">
-            <PanelLeftOpen size={15} />
+            <Sidebar size={17} mirrored />
           </button>
         )}
         <UserBlock collapsed={collapsed} />
@@ -351,21 +349,21 @@ function ConnectGate({ h }: { h: ReturnType<typeof useHealth> }) {
   if (seen || elapsed < 2) return null;
   return (
     <div className="absolute inset-x-0 bottom-0 top-12 z-[30] grid place-items-center bg-bg/95 px-6">
-      <div className="w-full max-w-[420px] rounded-lg border border-line bg-s1 p-5">
+      <div className="w-full max-w-[420px] rounded-xl border border-line bg-s1 p-6">
         <div className="flex items-center gap-3">
-          <span className="grid h-8 w-8 place-items-center rounded-md border border-line-bright bg-s2">
-            <Mark size={15} />
+          <span className="grid h-9 w-9 place-items-center">
+            <Mark size={20} />
           </span>
           <div>
-            <div className="text-[14px] font-semibold text-ink">Connecting to Aegis Memorial</div>
-            <div className="text-[12px] text-dim">The backend runs on a free tier and sleeps when idle.</div>
+            <div className="text-base font-semibold text-ink">Connecting to Aegis Memorial</div>
+            <div className="text-xs text-dim">The backend runs on a free tier and sleeps when idle.</div>
           </div>
         </div>
-        <ol className="mt-4 space-y-2 text-[12.5px]">
+        <ol className="mt-4 space-y-2 text-sm">
           <li className="flex items-center gap-2.5">
             <span className="blink h-1.5 w-1.5 rounded-full bg-med" />
             <span className="text-ink">Waking the backend</span>
-            <span className="num ml-auto font-mono text-[11.5px] text-dim">{elapsed}s</span>
+            <span className="num ml-auto text-xs text-dim">{elapsed}s</span>
           </li>
           <li className="flex items-center gap-2.5 text-dim">
             <span className="h-1.5 w-1.5 rounded-full border border-faint" />
@@ -376,10 +374,10 @@ function ConnectGate({ h }: { h: ReturnType<typeof useHealth> }) {
             Subscribing to the hospital stream
           </li>
         </ol>
-        <div className="mt-4 h-1 overflow-hidden rounded-full bg-s3">
+        <div className="mt-4 h-1 overflow-hidden rounded-full bg-white/[0.07]">
           <div className="working h-full w-full" />
         </div>
-        <p className="mt-3 text-[11.5px] leading-relaxed text-dim">
+        <p className="mt-3 text-xs leading-relaxed text-dim">
           {elapsed < 75 ? "Usually 30–60 seconds. Everything loads on its own once it answers." : "Still waking. If this persists, the backend may be redeploying; it retries on its own."}
         </p>
       </div>
@@ -435,8 +433,8 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
 
   const item = NAV_ITEMS.find((i) => i.key === active);
   return (
-    <div className="flex h-[100dvh] overflow-hidden bg-bg">
-      <aside className={cx("hidden shrink-0 border-r border-line bg-[#1c1f23] transition-[width] duration-150 lg:block", collapsed ? "w-[60px]" : "w-[232px]")}>
+    <div className="flex h-[100dvh] overflow-hidden bg-canvas">
+      <aside className={cx("hidden shrink-0 transition-[width] duration-200 ease-out lg:block", collapsed ? "w-[64px]" : "w-[240px]")}>
         <SidebarBody active={active} counts={counts} alerts={alerts} collapsed={collapsed} onToggle={toggle} onSearch={() => setPalette(true)} />
       </aside>
 
@@ -444,9 +442,9 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
       {drawer && (
         <div className="fixed inset-0 z-[65] lg:hidden">
           <div className="absolute inset-0 bg-black/45" onClick={() => setDrawer(false)} />
-          <aside className="absolute inset-y-0 left-0 w-[268px] border-r border-line bg-[#1c1f23] shadow-[24px_0_48px_-24px_rgb(0_0_0/.6)]">
-            <button onClick={() => setDrawer(false)} className="absolute right-2 top-2.5 z-10 grid h-7 w-7 place-items-center rounded-md text-dim hover:bg-white/[0.05] hover:text-ink" aria-label="Close menu">
-              <X size={15} />
+          <aside className="absolute inset-y-0 left-0 w-[280px] border-r border-line bg-canvas shadow-[24px_0_48px_-24px_rgb(0_0_0/.6)]">
+            <button onClick={() => setDrawer(false)} className="absolute right-3 top-3.5 z-10 grid h-7 w-7 place-items-center rounded-md text-dim hover:bg-white/[0.05] hover:text-ink" aria-label="Close menu">
+              <Close size={16} />
             </button>
             <SidebarBody
               active={active}
@@ -463,28 +461,33 @@ export function AppShell({ active, counts = {}, alerts = {}, actions, children, 
         </div>
       )}
 
-      <div className="relative flex min-w-0 flex-1 flex-col">
+      {/* the sheet: on a desktop the working area is inset from the frame, like a document on a desk */}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-bg lg:my-2 lg:mr-2 lg:rounded-xl lg:border lg:border-line">
         <ConnectGate h={health} />
-        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-4">
+        <header className="flex h-12 shrink-0 items-center gap-3 border-b border-line px-3 sm:px-5">
           <button onClick={() => setDrawer(true)} className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-ink lg:hidden" aria-label="Open menu">
-            <Menu size={17} />
+            <Menu size={18} />
           </button>
           <span className="lg:hidden">
             <Logo compact />
           </span>
-          <div className="flex min-w-0 items-center gap-1.5 text-[13px]">
+          <div className="flex min-w-0 items-center gap-2 text-sm">
             {item && <span className="hidden text-dim sm:inline">{GROUP_OF[item.key]}</span>}
-            {item && <span className="hidden text-faint sm:inline">/</span>}
+            {item && (
+              <svg width="6" height="10" viewBox="0 0 6 10" className="hidden shrink-0 text-faint sm:block" aria-hidden>
+                <path d="M1 1l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
             <span className="truncate font-medium text-ink">{title ?? item?.label ?? ""}</span>
           </div>
-          <div className="ml-auto flex items-center gap-3 sm:gap-4">
+          <div className="ml-auto flex items-center gap-3 sm:gap-5">
             <span className="hidden sm:block">
               <StatusCluster h={health} />
             </span>
             <Clock />
             {actions}
             <button onClick={() => setPalette(true)} className="grid h-8 w-8 place-items-center rounded-md text-muted transition-colors hover:bg-white/[0.05] hover:text-ink lg:hidden" aria-label="Search">
-              <Search size={16} />
+              <Search size={17} />
             </button>
           </div>
         </header>
@@ -517,8 +520,8 @@ export function Page({ children, context, active }: { children: ReactNode; conte
   return (
     <AppShell active={key}>
       <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[1680px] px-3 pb-12 pt-3 sm:px-5 sm:pt-5">
-          {context && <div className="mb-3 flex flex-wrap items-center gap-2">{context}</div>}
+        <div className="mx-auto w-full max-w-[1680px] px-4 pb-16 pt-4 sm:px-6 sm:pt-6">
+          {context && <div className="mb-4 flex flex-wrap items-center gap-2">{context}</div>}
           {children}
         </div>
       </main>
@@ -528,13 +531,13 @@ export function Page({ children, context, active }: { children: ReactNode; conte
 
 export function PageHead({ eyebrow, title, right, children }: { eyebrow?: ReactNode; title: ReactNode; right?: ReactNode; children?: ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end gap-x-3 gap-y-2.5">
+    <div className="mb-6 flex flex-wrap items-end gap-x-4 gap-y-3">
       {/* the text claims a full row on a phone, so the tags wrap below it rather than
           squeezing the paragraph into a column a few words wide */}
       <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
-        {eyebrow && <div className="mb-1 text-[12px] font-medium text-dim">{eyebrow}</div>}
-        <h1 className="text-[20px] font-semibold tracking-[-0.015em] text-ink">{title}</h1>
-        {children && <p className="mt-1.5 max-w-3xl text-[13px] leading-relaxed text-muted">{children}</p>}
+        {eyebrow && <div className="mb-1.5 text-xs font-medium text-dim">{eyebrow}</div>}
+        <h1 className="text-xl font-semibold leading-tight tracking-tighter text-ink">{title}</h1>
+        {children && <p className="mt-2 max-w-[68ch] text-sm leading-relaxed text-muted">{children}</p>}
       </div>
       {right && <div className="flex flex-wrap items-center gap-2">{right}</div>}
     </div>

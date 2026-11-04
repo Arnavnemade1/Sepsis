@@ -1,17 +1,17 @@
 "use client";
 
-import { ArrowRight, BedDouble, BellRing, CornerDownLeft, HeartPulse, LogOut, Plus, Search, Smartphone, UserRound, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { Bed, BellRinging, Enter, Forward, Heartbeat, type Icon, Pager, Plus, Search, SignOut, User } from "@/components/icons";
 import { api } from "@/lib/api";
 import { signInAs, signOut } from "@/lib/session";
 
 import { NAV_ITEMS, SWITCH_USERS } from "./nav";
 import { cx } from "./ui";
 
-type Cmd = { id: string; group: string; label: string; hint?: string; icon: LucideIcon; keywords?: string; run: () => void; tone?: string };
+type Cmd = { id: string; group: string; label: string; hint?: string; icon: Icon; keywords?: string; run: () => void; tone?: string };
 
 type Snapshot = {
   pages: { id: string; priority: number; room: string | null; zone_name: string | null; text: string; status: string }[];
@@ -73,7 +73,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: "Active pages",
         label: `${p.id} · Room ${p.room ?? "?"}`,
         hint: p.text,
-        icon: BellRing,
+        icon: BellRinging,
         tone: p.priority === 1 ? "text-high-ink" : p.priority === 2 ? "text-dys-ink" : undefined,
         keywords: `p${p.priority} ${p.zone_name ?? ""} ${p.status}`,
         run: () => go(`/operator/?page=${encodeURIComponent(p.id)}`),
@@ -86,7 +86,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: "Rooms",
         label: `Room ${r.room} · ${r.name ?? "Patient"}`,
         hint: top ?? `${r.zone_name} · ${r.diagnosis ?? ""}`,
-        icon: BedDouble,
+        icon: Bed,
         tone: r.worst === "critical" ? "text-high-ink" : r.worst === "urgent" ? "text-dys-ink" : undefined,
         keywords: `${r.room} ${r.zone_name} ${r.diagnosis ?? ""} news2 ${r.scores?.news2?.score ?? ""} ${(r.findings ?? []).map((f) => f.title).join(" ")}`,
         run: () => go(`/room/?id=${encodeURIComponent(r.room)}`),
@@ -98,13 +98,13 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: "Patients",
         label: p.name,
         hint: p.kind === "live" ? "Live monitored session" : p.id.replace("bed_", "Bed "),
-        icon: HeartPulse,
+        icon: Heartbeat,
         keywords: p.id,
         run: () => go(`/patient/?id=${encodeURIComponent(p.id)}`),
       });
     }
     for (const c of (snap?.clinicians ?? []).filter((c) => c.pageable)) {
-      out.push({ id: `c:${c.id}`, group: "Pagers", label: c.name, hint: `Open pager · ${c.specialty_label}`, icon: Smartphone, keywords: c.id, run: () => go(`/clinician/?id=${encodeURIComponent(c.id)}`) });
+      out.push({ id: `c:${c.id}`, group: "Pagers", label: c.name, hint: `Open pager · ${c.specialty_label}`, icon: Pager, keywords: c.id, run: () => go(`/clinician/?id=${encodeURIComponent(c.id)}`) });
     }
     for (const u of SWITCH_USERS) {
       out.push({
@@ -112,7 +112,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         group: "Account",
         label: `Switch to ${u.n}`,
         hint: u.r,
-        icon: UserRound,
+        icon: User,
         keywords: `sign in user ${u.u}`,
         run: () => {
           onClose();
@@ -120,7 +120,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         },
       });
     }
-    out.push({ id: "u:out", group: "Account", label: "Sign out", hint: "View only until you choose a user", icon: LogOut, run: () => { onClose(); signOut().then(() => router.refresh()); } });
+    out.push({ id: "u:out", group: "Account", label: "Sign out", hint: "View only until you choose a user", icon: SignOut, run: () => { onClose(); signOut().then(() => router.refresh()); } });
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [snap, roster, rooms, path]);
@@ -167,7 +167,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     <AnimatePresence>
       {open && (
         <motion.div
-          className="fixed inset-0 z-[80] flex items-start justify-center bg-black/45 px-3 pt-[12vh]"
+          className="fixed inset-0 z-[80] flex items-start justify-center bg-black/50 px-3 pt-[12vh]"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -183,24 +183,24 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             role="dialog"
             aria-label="Command palette"
           >
-            <div className="flex h-12 items-center gap-3 border-b border-line px-4">
-              <Search size={16} className="shrink-0 text-dim" />
+            <div className="flex h-[52px] items-center gap-3 border-b border-white/[0.06] px-4">
+              <Search size={18} className="shrink-0 text-dim" />
               <input
                 ref={input}
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 onKeyDown={onKey}
                 placeholder="Search pages, patients, pagers, or jump to a section"
-                className="min-w-0 flex-1 bg-transparent text-[14px] text-ink outline-none placeholder:text-faint"
+                className="min-w-0 flex-1 bg-transparent text-base text-ink outline-none placeholder:text-faint"
                 aria-label="Search"
               />
               <span className="kbd">esc</span>
             </div>
             <div ref={list} className="max-h-[52vh] overflow-y-auto py-1.5">
-              {flat.length === 0 && <div className="px-4 py-8 text-center text-[12.5px] text-dim">No results for “{q}”.</div>}
+              {flat.length === 0 && <div className="px-4 py-8 text-center text-sm text-dim">No results for “{q}”.</div>}
               {shown.map((g) => (
                 <div key={g.group} className="pb-1">
-                  <div className="px-4 pb-1 pt-2 text-[11px] font-medium text-faint">{g.group}</div>
+                  <div className="px-4 pb-1 pt-2 text-xs font-medium text-faint">{g.group}</div>
                   {g.items.map((c) => {
                     n += 1;
                     const i = n;
@@ -213,28 +213,28 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                         onClick={() => c.run()}
                         className={cx("mx-1.5 flex w-[calc(100%-12px)] items-center gap-3 rounded-md px-2.5 py-2 text-left", i === idx ? "bg-white/[0.07]" : "")}
                       >
-                        <Icon size={15} strokeWidth={1.75} className={cx("shrink-0", c.tone ?? (i === idx ? "text-ink" : "text-dim"))} />
-                        <span className={cx("shrink-0 text-[13px]", i === idx ? "text-ink" : "text-ink/90")}>{c.label}</span>
-                        {c.hint && <span className="min-w-0 flex-1 truncate text-[12px] text-dim">{c.hint}</span>}
-                        {i === idx && <ArrowRight size={14} className="ml-auto shrink-0 text-dim" />}
+                        <Icon size={16} className={cx("shrink-0", c.tone ?? (i === idx ? "text-ink" : "text-dim"))} />
+                        <span className={cx("shrink-0 text-sm", i === idx ? "text-ink" : "text-ink/90")}>{c.label}</span>
+                        {c.hint && <span className="min-w-0 flex-1 truncate text-xs text-dim">{c.hint}</span>}
+                        {i === idx && <Forward size={14} className="ml-auto shrink-0 text-dim" />}
                       </button>
                     );
                   })}
                 </div>
               ))}
             </div>
-            <div className="flex items-center gap-4 border-t border-line bg-s2/60 px-4 py-2 text-[11px] text-dim">
+            <div className="flex items-center gap-4 border-t border-white/[0.06] bg-black/[0.12] px-4 py-2.5 text-xs text-dim">
               <span className="flex items-center gap-1.5">
                 <span className="kbd">↑</span>
                 <span className="kbd">↓</span> navigate
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="kbd">
-                  <CornerDownLeft size={10} />
+                  <Enter size={10} />
                 </span>
                 open
               </span>
-              <span className="ml-auto">AegisOS command palette</span>
+              <span className="ml-auto text-faint">AegisOS</span>
             </div>
           </motion.div>
         </motion.div>
