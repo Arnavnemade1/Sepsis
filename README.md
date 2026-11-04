@@ -589,6 +589,7 @@ make verify-genesis
 make verify-mimic   # needs the open MIMIC-IV demo in data/mimic_demo/
 make mimic-demo     # the whole MIMIC-IV pipeline on the demo, ~3.5 min
 make verify-physionet  # the credentialed-data platform: planted failures and mutations, ~15 min
+make verify-notes      # the clinical-text infrastructure, on invented notes, ~1 s
 ```
 
 ## Deployment
@@ -680,6 +681,7 @@ Datasets are never committed. Each one is redistributed only by its own source.
 | [GENESIS](docs/GENESIS.md) | How far hourly early warning goes with all 40 CinC variables, and why 0.90 is out of reach there |
 | [MIMIC](docs/MIMIC.md) | The MIMIC-IV pipeline: data, label, harness, temporal model, levers and runbook |
 | [PHYSIONET](docs/PHYSIONET.md) | The credentialed-data platform: verified acquisition, the Parquet lake, data contracts, the Data Use Agreement as code |
+| [NOTES](docs/NOTES.md) | Clinical text as tier-S features: radiology at its storetime, prior discharge summaries, keyword versus encoder. Infrastructure only, no result |
 | [DATA_LEVER](docs/DATA_LEVER.md) | More patients: a registered win, two refusals, and the four defects shipping it exposed |
 | [CALIBRATION_RESOLUTION](docs/CALIBRATION_RESOLUTION.md) | Calibrating without a staircase: the ranking isotonic threw away |
 | [SUPERVISION_DENSITY](docs/SUPERVISION_DENSITY.md) | Why sepsis detection is patient classification, and the lever that follows |
