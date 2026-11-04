@@ -4,6 +4,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 
 import { BedSelector } from "@/components/bed/selector";
+import { Close } from "@/components/icons";
 import { Page, PageHead } from "@/components/shell";
 import { Button, cx, Empty, Kv, Meter, Pill, Plate, Skeleton } from "@/components/ui";
 import { api } from "@/lib/api";
@@ -131,7 +132,7 @@ function Pharmacy() {
       </PageHead>
 
       {opts.loading && !data ? (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-4">
           <Skeleton className="h-64 rounded-lg" />
           <Skeleton className="h-96 rounded-lg" />
         </div>
@@ -140,10 +141,10 @@ function Pharmacy() {
           <Empty>{opts.data?.detail ?? opts.error ?? "Choose a patient."}</Empty>
         </Plate>
       ) : (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-4">
           <Plate title="Compare the paths" eyebrow={data.comparison.headline} bodyClass="p-0">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] border-collapse text-[12.5px]">
+              <table className="w-full min-w-[860px] border-collapse text-sm">
                 <thead>
                   <tr>
                     <th className="w-[180px] px-4 py-3 text-left font-normal text-dim" />
@@ -158,11 +159,11 @@ function Pharmacy() {
                               active ? "border-accent/50 bg-s3" : "border-transparent hover:bg-s2",
                             )}
                           >
-                            <div className="text-[13px] text-ink">
+                            <div className="text-sm text-ink">
                               {c.label}
-                              {c.key === data.recommended && <span className="ml-1.5 text-[10.5px] text-accent-ink">certified</span>}
+                              {c.key === data.recommended && <span className="ml-1.5 text-2xs text-accent-ink">certified</span>}
                             </div>
-                            <div className={cx("mt-0.5 text-[11px]", c.safe ? "text-dim" : "text-high-ink")}>
+                            <div className={cx("mt-0.5 text-xs", c.safe ? "text-dim" : "text-high-ink")}>
                               {c.safe ? "Z3: satisfies invariants" : "Z3: violates an invariant"}
                             </div>
                           </button>
@@ -176,7 +177,7 @@ function Pharmacy() {
                     <tr key={r.key} className="border-t border-line-soft">
                       <td className="px-4 py-2.5 align-top">
                         <div className="text-ink">{r.label}</div>
-                        <div className="text-[11px] text-dim">{r.note}</div>
+                        <div className="text-xs text-dim">{r.note}</div>
                       </td>
                       {data.comparison.columns.map((c) => {
                         const cell = r.cells[c.key];
@@ -191,7 +192,7 @@ function Pharmacy() {
                 </tbody>
               </table>
             </div>
-            <p className="border-t border-line-soft px-4 py-3 text-[11.5px] leading-relaxed text-dim">{data.comparison.honesty}</p>
+            <p className="border-t border-line-soft px-4 py-3 text-xs leading-relaxed text-dim">{data.comparison.honesty}</p>
           </Plate>
 
           {chosen && <OptionDetail o={chosen} />}
@@ -201,7 +202,7 @@ function Pharmacy() {
             seed={chosen?.arms.map((a) => a.drug.split("-")[0]) ?? []}
             renal={data.patient.egfr < 45}
           />
-          <p className="text-[11.5px] leading-relaxed text-dim">{data.honesty}</p>
+          <p className="text-xs leading-relaxed text-dim">{data.honesty}</p>
         </div>
       )}
     </Page>
@@ -211,7 +212,7 @@ function Pharmacy() {
 function OptionDetail({ o }: { o: Option }) {
   const events = [...o.adverse.events].sort((a, b) => b.probability - a.probability).slice(0, 6);
   return (
-    <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
       <Plate
         title={o.label}
         eyebrow={o.note}
@@ -222,21 +223,21 @@ function OptionDetail({ o }: { o: Option }) {
         }
       >
         {!o.safe && o.verification.violations.length > 0 && (
-          <div className="mb-4 rounded-md border border-high/30 bg-high/10 p-3 text-[12.5px] text-high-ink">
+          <div className="mb-4 rounded-md bg-high/[0.08] p-3 text-sm text-high-ink">
             {o.verification.violations.join(" · ")}
           </div>
         )}
         {o.arms.length === 0 ? (
           <Empty>No drug is given on this path.</Empty>
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {o.arms.map((a) => (
               <div key={a.drug} className="min-w-0">
                 <div className="flex items-baseline gap-2">
-                  <span className="text-[13.5px] text-ink">{a.label}</span>
-                  <span className="text-[11px] text-dim">{title(a.drug_class)}</span>
+                  <span className="text-base text-ink">{a.label}</span>
+                  <span className="text-xs text-dim">{title(a.drug_class)}</span>
                 </div>
-                <div className="text-[11.5px] text-muted">{a.regimen}</div>
+                <div className="text-xs text-muted">{a.regimen}</div>
                 <ConcChart arm={a} />
                 <div className="mt-1 grid grid-cols-2 gap-x-4">
                   {a.kind === "volume" ? (
@@ -255,7 +256,7 @@ function OptionDetail({ o }: { o: Option }) {
                     </>
                   )}
                 </div>
-                <div className="mt-1 text-[10.5px] leading-snug text-faint">{Object.values(a.provenance).join(" · ")}</div>
+                <div className="mt-1 text-2xs leading-snug text-faint">{Object.values(a.provenance).join(" · ")}</div>
               </div>
             ))}
           </div>
@@ -281,9 +282,9 @@ function OptionDetail({ o }: { o: Option }) {
               return (
                 <li key={e.key}>
                   <div className="flex items-baseline gap-2">
-                    <span className="text-[13px] text-ink">{e.label}</span>
-                    <span className="text-[11px] text-dim">{e.drug}</span>
-                    <span className="num ml-auto text-[12px] text-muted">
+                    <span className="text-sm text-ink">{e.label}</span>
+                    <span className="text-xs text-dim">{e.drug}</span>
+                    <span className="num ml-auto text-xs text-muted">
                       {pct(e.probability, 0)}{" "}
                       <span className="text-dim">
                         ({pct(e.ci_low, 0)}–{pct(e.ci_high, 0)})
@@ -291,7 +292,7 @@ function OptionDetail({ o }: { o: Option }) {
                     </span>
                   </div>
                   <Meter value={e.probability} tone={tone} marks={[e.baseline]} className="mt-1" />
-                  <div className="mt-1 text-[11px] leading-snug text-dim">
+                  <div className="mt-1 text-xs leading-snug text-dim">
                     baseline {pct(e.baseline, 0)}
                     {e.onset_p50_h != null && ` · median onset ${Math.round(e.onset_p50_h)} h`} · {e.monitoring}
                   </div>
@@ -300,7 +301,7 @@ function OptionDetail({ o }: { o: Option }) {
             })}
           </ul>
         )}
-        <p className="mt-4 text-[11px] leading-relaxed text-dim">{o.adverse.honesty}</p>
+        <p className="mt-4 text-xs leading-relaxed text-dim">{o.adverse.honesty}</p>
       </Plate>
     </div>
   );
@@ -309,13 +310,13 @@ function OptionDetail({ o }: { o: Option }) {
 function PointList({ title: t, points, warn }: { title: string; points: Point[]; warn?: boolean }) {
   return (
     <div>
-      <div className="mb-1.5 text-[11.5px] text-dim">{t}</div>
+      <div className="mb-1.5 text-xs text-dim">{t}</div>
       {points.length === 0 ? (
-        <div className="text-[12px] text-faint">Nothing crossed a threshold (which is not the same as safe).</div>
+        <div className="text-xs text-faint">Nothing crossed a threshold (which is not the same as safe).</div>
       ) : (
         <ul className="space-y-1.5">
           {points.map((p) => (
-            <li key={p.text} className="flex gap-2 text-[12.5px] leading-snug">
+            <li key={p.text} className="flex gap-2 text-sm leading-snug">
               <span className={cx("mt-[7px] h-1 w-1 shrink-0 rounded-full", warn ? "bg-dys" : "bg-faint")} />
               <span className="text-muted" title={p.evidence}>
                 {p.text}
@@ -427,10 +428,10 @@ function InteractionScreen({ seed, renal }: { seed: string[]; renal: boolean }) 
     >
       <div className="flex flex-wrap items-center gap-2">
         {drugs.map((d) => (
-          <span key={d} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-s2 py-1 pl-3 pr-1.5 text-[12.5px]">
+          <span key={d} className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] py-1 pl-3 pr-1.5 text-sm shadow-[inset_0_0_0_1px_rgb(255_255_255/.07)]">
             {d}
-            <button onClick={() => setDrugs(drugs.filter((x) => x !== d))} className="grid h-4 w-4 place-items-center rounded-full text-dim hover:bg-s3 hover:text-ink" aria-label={`Remove ${d}`}>
-              ×
+            <button onClick={() => setDrugs(drugs.filter((x) => x !== d))} className="grid h-5 w-5 place-items-center rounded-full text-dim transition-colors hover:bg-white/[0.1] hover:text-ink" aria-label={`Remove ${d}`}>
+              <Close size={12} />
             </button>
           </span>
         ))}
@@ -447,33 +448,33 @@ function InteractionScreen({ seed, renal }: { seed: string[]; renal: boolean }) 
             value={add}
             onChange={(e) => setAdd(e.target.value)}
             placeholder="Add a drug (e.g. vancomycin)"
-            className="w-56 rounded-md border border-line bg-s2 px-3 py-1.5 text-[12.5px] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+            className="w-56 field px-3 py-1.5 text-sm text-ink placeholder:text-faint"
           />
           <Button type="submit" disabled={!add.trim()}>
             Add
           </Button>
         </form>
         {renal && <Pill tone="med">Screening with renal impairment</Pill>}
-        {busy && <span className="text-[12px] text-dim">proving…</span>}
+        {busy && <span className="text-xs text-dim">proving…</span>}
       </div>
-      {err && <div className="mt-3 text-[12.5px] text-high-ink">{err}</div>}
+      {err && <div className="mt-3 text-sm text-high-ink">{err}</div>}
       {res && (
-        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <div>
-            <div className="mb-2 text-[11.5px] text-dim">Proof tree · hard constraints</div>
+            <div className="mb-2 text-xs text-dim">Proof tree · hard constraints</div>
             {res.proof_tree.length === 0 ? (
-              <div className="text-[12.5px] text-muted">No hard interaction constraints apply to this list.</div>
+              <div className="text-sm text-muted">No hard interaction constraints apply to this list.</div>
             ) : (
               <ul className="space-y-2.5">
                 {res.proof_tree.map((p) => (
-                  <li key={p.interaction} className="rounded-md border border-line-soft bg-s2/50 p-3">
+                  <li key={p.interaction} className="well p-3.5">
                     <div className="flex items-baseline gap-2">
-                      <span className="text-[13px] text-ink">{p.interaction}</span>
-                      <span className={cx("text-[11px]", p.satisfied ? "text-dim" : "text-high-ink")}>{p.satisfied ? "satisfied" : "violated"}</span>
-                      <span className="ml-auto text-[11px] text-dim">{p.severity}</span>
+                      <span className="text-sm text-ink">{p.interaction}</span>
+                      <span className={cx("text-xs", p.satisfied ? "text-dim" : "text-high-ink")}>{p.satisfied ? "satisfied" : "violated"}</span>
+                      <span className="ml-auto text-xs text-dim">{p.severity}</span>
                     </div>
-                    <div className="text-[12px] text-muted">{p.mechanism}</div>
-                    <div className="mt-1 font-mono text-[10.5px] text-faint">
+                    <div className="text-xs text-muted">{p.mechanism}</div>
+                    <div className="mt-1 font-mono text-2xs text-faint">
                       {p.constraint} · {p.source}
                     </div>
                   </li>
@@ -482,16 +483,16 @@ function InteractionScreen({ seed, renal }: { seed: string[]; renal: boolean }) 
             )}
           </div>
           <div>
-            <div className="mb-2 text-[11.5px] text-dim">Documented interactions · warnings</div>
+            <div className="mb-2 text-xs text-dim">Documented interactions · warnings</div>
             {res.warnings.length === 0 ? (
-              <div className="text-[12.5px] text-muted">None documented between these drugs.</div>
+              <div className="text-sm text-muted">None documented between these drugs.</div>
             ) : (
               <ul className="divide-y divide-line-soft">
                 {res.warnings.map((w) => (
-                  <li key={`${w.a}-${w.b}`} className="flex items-baseline gap-2 py-2 text-[12.5px]">
+                  <li key={`${w.a}-${w.b}`} className="flex items-baseline gap-2 py-2 text-sm">
                     <span className="text-ink">{w.b ? `${w.a} + ${w.b}` : w.a}</span>
                     <span className="truncate text-dim">{w.mechanism}</span>
-                    <span className={cx("ml-auto shrink-0 text-[11px]", w.severity === "Major" ? "text-dys-ink" : "text-muted")}>{w.severity}</span>
+                    <span className={cx("ml-auto shrink-0 text-xs", w.severity === "Major" ? "text-dys-ink" : "text-muted")}>{w.severity}</span>
                   </li>
                 ))}
               </ul>
