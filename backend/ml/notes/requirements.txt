@@ -1,0 +1,4 @@
+# Only for EncoderReader with a real model (local_encoder). The keyword reader, timing, features
+# and verify_notes need nothing beyond the PhysioNet platform's requirements.
+# Pinned to a release that supports Python 3.9 (the run image). Untested here: no model has run yet.
+transformers==4.46.3
