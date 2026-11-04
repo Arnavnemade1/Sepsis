@@ -1,0 +1,26 @@
+# The clinical-text infrastructure, on invented notes: no credentials, no real text, ~1 s.
+name: verify-notes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/ml/notes/**'
+      - 'backend/ml/physionet/lake.py'
+      - 'verify_notes.py'
+      - '.github/workflows/verify-notes.yml'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+      - name: Install
+        run: pip install --disable-pip-version-check numpy==2.0.2 pandas==2.3.3 -r backend/ml/physionet/requirements.txt
+      - name: Verify, mutations included
+        run: PYTHONPATH=. python -W ignore verify_notes.py

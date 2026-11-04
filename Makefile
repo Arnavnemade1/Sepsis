@@ -508,13 +508,17 @@ audit:
 # The PhysioNet data platform (backend/ml/physionet, docs/PHYSIONET.md). DS / ROUTE / ARGS choose:
 #   make physionet-up DS=mimic-iv-demo          the whole path on the open demo
 #   make physionet-up ROUTE=bigquery ARGS="--project my-gcp-project"
-.PHONY: verify-physionet physionet-doctor physionet-access physionet-plan physionet-up physionet-status physionet-login physionet-sqlcheck physionet-smoke physionet-scan
+.PHONY: verify-notes verify-physionet physionet-doctor physionet-access physionet-plan physionet-up physionet-status physionet-login physionet-sqlcheck physionet-smoke physionet-scan
 DS ?= mimiciv
 ROUTE ?= lake
 PHYSIONET = PYTHONPATH=. $(PY) -W ignore -m backend.ml.physionet --dataset $(DS) --route $(ROUTE) $(ARGS)
 
 verify-physionet:
 	PYTHONPATH=. $(PY) -W ignore verify_physionet.py
+
+# The clinical-text infrastructure (backend/ml/notes, docs/NOTES.md), on invented notes, ~1 s
+verify-notes:
+	PYTHONPATH=. $(PY) -W ignore verify_notes.py
 
 physionet-login:
 	@$(PHYSIONET) login $(USER_NAME)
