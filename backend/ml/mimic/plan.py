@@ -109,9 +109,11 @@ def threads() -> int:
     return int(os.environ.get("GENESIS_THREADS", str(CALIBRATION_THREADS)))
 
 
-def estimate(store, n_features: int, scale, n_threads: int = None) -> Dict:
-    """Rows, disk, memory and hours for ``scale`` on ``store`` (before design sampling)."""
-    slow = CALIBRATION_THREADS / max(n_threads or threads(), 1)
+def estimate(store, n_features: int, scale, n_threads: int = None, time_factor: float = 1.0) -> Dict:
+    """Rows, disk, memory and hours for ``scale`` on ``store`` (before design sampling).
+    ``time_factor`` is this machine's measured speed against the constants
+    (``progress.calibration``): 1.33 means its fits took a third longer than planned."""
+    slow = time_factor * CALIBRATION_THREADS / max(n_threads or threads(), 1)
     ever = np.zeros(store.n_patients, dtype=bool)
     for col in [c for c in store.onsets.columns if c.startswith("t_sepsis_") and c.endswith("_min")]:
         ever |= store.onsets[col].notna().to_numpy()
@@ -169,7 +171,8 @@ def estimate(store, n_features: int, scale, n_threads: int = None) -> Dict:
             "features": int(n_features), "keep_rate": scale.keep_rate, "feature_disk_gb": feat_gb,
             "ram_peak_gb": ram_gb, "model_ram_gb": model_gb, "hot_ram_gb": hot_gb, "cold_ram_gb": cold_gb,
             "extract_ram_gb": extract_gb,
-            "threads": n_threads or threads(), "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
+            "threads": n_threads or threads(), "time_factor": time_factor,
+            "tune_fits": int(scale.tune_trials * len(scale.tune_val_folds)), "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
             "booster_hours": booster_h, "twin_hours": twin_h, "hours": booster_h + twin_h + HARNESS_HOURS}
 
 
@@ -178,7 +181,7 @@ def fits_memory(est: Dict, budget: Budget) -> bool:
     return est["hot_ram_gb"] <= budget.ram_gb and est["model_ram_gb"] <= budget.ram_gb + budget.swap_gb
 
 
-def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]:
+def choose(store, n_features: int, scale, budget: Budget, time_factor: float = 1.0) -> Tuple[object, Dict]:
     """The richest plan that fits ``budget``; raises (naming what does not fit) otherwise."""
     tried = []
     keeps = [scale.keep_rate] + [k for k in KEEP_RATES if k < scale.keep_rate]
@@ -186,7 +189,7 @@ def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]
     order += [(k, st) for k in keeps for st in STAGE_SETS if (k, st) not in order]
     for keep, (label, over) in order:
         sc = replace(scale, keep_rate=keep, **over)
-        est = estimate(store, n_features, sc)
+        est = estimate(store, n_features, sc, time_factor=time_factor)
         fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": fits_memory(est, budget),
                 "time": est["hours"] <= budget.hours}
         tried.append({"plan": label, "keep_rate": keep, **{k: round(v, 2) if isinstance(v, float) else v

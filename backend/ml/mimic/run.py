@@ -39,6 +39,7 @@ from backend.ml.mimic import extract as E
 from backend.ml.mimic import infoflow as IF
 from backend.ml.mimic import ledger as LG
 from backend.ml.mimic import plan as PL
+from backend.ml.mimic import progress as PR
 from backend.ml.mimic import trust as TR
 from backend.ml.mimic import tune as TN
 from backend.ml.mimic import twin as TW
@@ -339,8 +340,15 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
         # will it fit this machine? the richest plan that does, before any feature is built
         n_feat = len(LG.build_features(E.subset(store, np.arange(min(8, store.n_patients))))[1])
         os.makedirs(E.CACHE_DIR, exist_ok=True)
-        scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours, path=E.CACHE_DIR))
+        memo = CK.current()                       # earlier runs on this machine: how fast it really fits
+        calib = PR.calibration(os.path.join(memo.dir, PR.JOURNAL), **PR.machine()) if memo else None
+        scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours, path=E.CACHE_DIR),
+                                       time_factor=calib["time"] if calib else 1.0)
+        rep["plan"]["calibration"] = calib
         est = rep["plan"]["estimate"]
+        if calib:
+            print(f"calibration: this machine fitted {calib['time']:.2f}x the planner's time, over {calib['fits']} "
+                  f"earlier fits", flush=True)
         print(f"plan: {rep['plan']['chosen']} | keep_rate {scale.keep_rate} | {est['rows_kept']:,} rows x "
               f"{est['features']} features | ~{est['feature_disk_gb']:.1f} GB disk, ~{est['hot_ram_gb']:.1f} GB hot + "
               f"{est['cold_ram_gb']:.1f} GB cold RAM | ~{est['hours']:.1f} h ({est['booster_fits']} booster fits, twin {est['twin_hours']:.1f} h)",
@@ -350,6 +358,10 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
             with open(os.path.join(REPORT_DIR, f"{tag}_plan.json"), "w") as fh:
                 json.dump(rep["plan"], fh, indent=1, default=_plain)
             return rep
+        if memo:
+            PR.record(memo.dir, event="start", planned_fits=int(est["booster_fits"] + est["tune_fits"]),
+                      planned_hours=round(est["hours"], 2), twin_hours=round(est["twin_hours"], 2),
+                      time_factor=round(est["time_factor"], 3), **PR.machine())
     design_w = None
     if scale.keep_rate < 1.0:
         store, design_w = E.sample_design(store, scale.keep_rate)
