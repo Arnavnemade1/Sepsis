@@ -835,6 +835,20 @@ def c10_pipeline() -> None:
             table_gets = [s for s in w.seen[before[0]:] if s["path"].endswith(".csv.gz")]
             check("a re-run repeats no work", not table_gets and calls == before[1] and all(l.startswith("=") for l in logs),
                   f"{len(table_gets)} table downloads")
+            # the same ingest over byte ranges, staged: the same lake, and nothing raw left behind
+            keep_min, fetch.PART_MIN = fetch.PART_MIN, 1_000_000
+            root3 = os.path.join(tmp, "lake-ranges")
+            n0 = len(w.seen)
+            try:
+                pipeline.up(ctx(root=root3, parallel=2), until="ingest")
+            finally:
+                fetch.PART_MIN = keep_min
+            parts = [s for s in w.seen[n0:] if s["path"].endswith(".csv.gz") and s.get("range") not in (None, "bytes=0-0")]
+            same = PL.fingerprint(ctx().lake, pipeline._specs()) == PL.fingerprint(ctx(root=root3).lake, pipeline._specs())
+            staging = os.path.join(root3, "staging")
+            check("--parallel ingests the same lake over byte ranges, and leaves no raw file behind",
+                  same and len(parts) > len(pipeline._specs()) and (not os.path.isdir(staging) or not os.listdir(staging)),
+                  f"{len(parts)} ranged requests")
             from backend.ml.mimic import trust as TR
             jr = TR.Chain(os.path.join(tmp, "lake", "journal.jsonl"))
             check("the journal is an intact hash chain", jr.verify()[0] and jr.verify()[1] >= 10, f"{jr.verify()[1]} entries")
@@ -1085,6 +1099,7 @@ MUTATIONS = [
     ("a scan of the working copy", guard, '["git", "show", f":{name}"]', '["cat", name]', "9"),
     ("the hook overwrites what was there", guard, 'fh.write(body.rstrip("\\n") + "\\n" + block)', 'fh.write("#!/bin/sh\\n" + block)', "9"),
     ("a lake in Documents allowed", guard, 'add("lake outside Desktop and Documents", not prone', 'add("lake outside Desktop and Documents", True', "9"),
+    ("the staged raw file kept", pipeline, "if staged and os.path.exists(staged):", "if False:", "10"),
     ("no release scan", pipeline, 'if blocks:', 'if False:', "10"),
     ("a changed release accepted", pipeline, 'if pinned != text:', 'if False:', "10"),
     ("stages that always re-run", pipeline, 'if prev and prev.get("status") == "done" and prev.get("fp") == fp:', 'if False:', "10"),
