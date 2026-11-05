@@ -41,10 +41,9 @@ sudo /srv/aegis/Sepsis/deploy/physionet/run.sh doctor
 sudo /srv/aegis/Sepsis/deploy/physionet/run.sh up
 ```
 
-On this machine `run.sh` uses the `cloud` scale. It has three differences from the laptop's `full` scale, all on dev folds only:
+On this machine `run.sh` uses the `cloud` scale. It has two differences from the laptop's `full` scale, both on dev folds only:
 
 * every never-septic stay if the planner can afford it, instead of 25%;
-* 32 tuning trials instead of 16;
 * when time runs short, it gives up negatives (keep rate 1.0 → 0.5 → 0.25) before it drops any stage.
 
 It runs one booster thread per physical core. The planner fits the run into `HOURS` (default 30, so at most about $25 of compute at ~$0.81 an hour). `SCALE=full` or `HOURS=…` before the command overrides either.

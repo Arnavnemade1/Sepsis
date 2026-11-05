@@ -431,7 +431,7 @@ read (§8).
 * BigQuery results are placed into the grid page by page, never held whole.
 
 **Not fitting a laptop (the `cloud` scale).** A dedicated machine ([deploy/physionet](../deploy/physionet/README.md))
-starts the planner from every never-septic stay (keep rate 1.0) and 32 tuning trials, instead of 0.25 and 16.
+starts the planner from every never-septic stay (keep rate 1.0) instead of 0.25. Both scales tune 8 trials: on the first full run 32 trials moved the dev AUROC from 0.8131 to 0.8163, every setting landed within 0.004 of the others, and the first 8 already held 70% of that gain.
 When time runs short, it gives up negatives (1.0 → 0.5 → 0.25) before it drops a stage. The laptop scale walks
 the other way, and `verify_mimic` checks both orders. Booster and twin threads follow `GENESIS_THREADS`, which
 is one per physical core there and 6 on the laptop. These are dev-fold choices made before the lock, like the
