@@ -98,11 +98,14 @@ def memo_fit_lgb(memo: Memo, fit_lgb):
                        None if cols is None else np.asarray(cols), seed,
                        None if strat is None else np.asarray(strat), fixed_rounds, feval_metric)
         ncols = len(cols) if cols is not None else int(getattr(F, "shape", (0, 0))[1])
+        t0 = time.time()
         kept = memo.load(key)
         if kept is not None:
             memo.hits += 1
-            PR.record(memo.dir, kind="lgb", hit=True, seconds=0.0, rows=len(rows), cols=ncols, **PR.memory())
-            return L.LGBFit(lgb.Booster(model_str=kept["model"]), kept["best_iter"], kept["cols"], kept["calib"])
+            out = L.LGBFit(lgb.Booster(model_str=kept["model"]), kept["best_iter"], kept["cols"], kept["calib"])
+            PR.record(memo.dir, kind="lgb", hit=True, seconds=round(time.time() - t0, 3), rows=len(rows), cols=ncols,
+                      **PR.memory())
+            return out
         memo.misses += 1
         t0 = time.time()
         out = fit_lgb(F, rows, target, seg, weight=weight, params=params, rounds=rounds, valid_frac=valid_frac,
