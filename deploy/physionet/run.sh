@@ -21,4 +21,4 @@ N="$(nproc)"
 THREADS="${GENESIS_THREADS:-$(( N > 4 ? N / 2 : N ))}"
 exec docker run --rm --env-file "$ENVFILE" -e GENESIS_THREADS="$THREADS" \
   -e MIMIC_RAM_FRACTION="${MIMIC_RAM_FRACTION:-0.8}" -v /srv/lake:/lake aegis-physionet \
-  --scale "${SCALE:-cloud}" --hours "${HOURS:-30}" "$@"
+  --scale "${SCALE:-cloud}" --hours "${HOURS:-30}" --parallel "${PARALLEL:-4}" "$@"
