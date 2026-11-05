@@ -107,9 +107,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if body is None:
             self.send_error(404)
             return
-        start, rng = 0, self.headers.get("Range")
+        start, end, rng = 0, len(body) - 1, self.headers.get("Range")
         if rng and not ignore_range:
-            start = int(rng.split("=")[1].split("-")[0])
+            lo, hi = rng.split("=")[1].split("-")
+            start = int(lo)
+            end = min(int(hi), len(body) - 1) if hi else len(body) - 1      # "a-b" as well as "a-"
             if start >= len(body):
                 self.send_response(416)
                 self.send_header("Content-Range", f"bytes */{len(body)}")
@@ -117,10 +119,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return
             self.send_response(206)
-            self.send_header("Content-Range", f"bytes {start}-{len(body) - 1}/{len(body)}")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{len(body)}")
         else:
             self.send_response(200)
-        data = body[start:]
+        data = body[start:end + 1]
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("ETag", etag or self.world.etag)
@@ -261,6 +263,119 @@ def c3_access() -> None:
             check("...and leaves no file behind", not os.path.exists(dest))
         finally:
             shutil.rmtree(tmp)
+
+
+def c4b_parallel() -> None:
+    print("\n4b. parallel ranges")
+    data = os.urandom(3_000_000)
+    good = sha(data)
+    w = World()
+    w.files["/f"] = data
+    tmp = tempfile.mkdtemp()
+    dest = os.path.join(tmp, "out", "f")
+    keep_min = fetch.PART_MIN
+    fetch.PART_MIN = 500_000                  # small parts, so a 3 MB file splits like a 3 GB one
+
+    def fresh():
+        shutil.rmtree(os.path.join(tmp, "out"), ignore_errors=True)
+        w.seen.clear()
+
+    def left():
+        d = os.path.join(tmp, "out")
+        return sorted(os.listdir(d)) if os.path.isdir(d) else []
+
+    def parts_only(fn):
+        """Misbehave on the first request for a part (never the one-byte probe)."""
+        state = {"n": 0}
+
+        def b(h):
+            if h.headers.get("Range") != "bytes=0-0":
+                state["n"] += 1
+                if state["n"] == 1:
+                    fn(h)
+                    return True
+            return None
+        return b
+    try:
+        with server(w) as url:
+            fresh()
+            w.behaviour["/f"] = None
+            d, n = fetch.fetch_parallel(client(), url + "/f", dest, good, parts=4)
+            ranges = {s.get("range") for s in w.seen if s.get("range") not in (None, "bytes=0-0")}
+            check("four ranges, joined into exactly the published bytes", d == good and n == len(data)
+                  and open(dest, "rb").read() == data and len(ranges) == 4, f"{sorted(ranges)}")
+            check("...every range asked with If-Range", all(s.get("if-range") for s in w.seen if s.get("range") in ranges))
+            check("...and nothing left but the file", left() == ["f"])
+
+            fresh()
+            w.behaviour["/f"] = parts_only(lambda h: h.serve(limit=100_000))
+            d, _ = fetch.fetch_parallel(client(), url + "/f", dest, good, parts=4)
+            check("a part dropped mid-way resumes from where it stopped",
+                  d == good and open(dest, "rb").read() == data
+                  and any(s.get("range", "").split("=")[1].split("-")[0] not in {str(i * len(data) // 4) for i in range(4)}
+                          for s in w.seen if s.get("range") not in (None, "bytes=0-0")))
+
+            fresh()
+
+            def shifted(h):                    # a 206 for a different range than the one asked
+                if h.headers.get("Range") == "bytes=0-0":
+                    return None
+                lo, hi = h.headers["Range"].split("=")[1].split("-")
+                h.headers.replace_header("Range", f"bytes={int(lo) + 1000}-{hi}")
+                h.serve()
+                return True
+            w.behaviour["/f"] = shifted
+            try:
+                fetch.fetch_parallel(client(retries=1), url + "/f", dest, good, parts=4)
+                why = "accepted"
+            except fetch.IntegrityError:
+                why = "only the hash noticed"
+            except fetch.FetchError as e:
+                why = "wrong range" if "wrong range" in str(e) else str(e)[:60]
+            check("a part answered with the wrong range is refused for that, before any hashing", why == "wrong range"
+                  and left() == [], why)
+
+            fresh()
+            w.behaviour["/f"] = lambda h: None if h.headers.get("Range") == "bytes=0-0" else (h.serve(ignore_range=True) or True)
+            try:
+                fetch.fetch_parallel(client(retries=1), url + "/f", dest, good, parts=4)
+                ok = "accepted"
+            except fetch.RangeIgnored:
+                ok = "named"
+            except fetch.FetchError as e:
+                ok = str(e)[:60]
+            check("a whole file sent for a part is named as ignoring ranges, not written as that part", ok == "named"
+                  and left() == [], ok)
+
+            fresh()
+            w.behaviour["/f"] = lambda h: h.serve(ignore_range=True) or True
+            try:
+                fetch.fetch_parallel(client(), url + "/f", dest, good, parts=4)
+                ok = False
+            except fetch.RangeIgnored:
+                ok = True
+            check("a server that ignores ranges is named, so the caller can stream", ok and left() == [])
+
+            fresh()
+            w.behaviour["/f"] = parts_only(lambda h: h.serve(etag='"v2"'))
+            try:
+                fetch.fetch_parallel(client(), url + "/f", dest, good, parts=4)
+                ok = False
+            except fetch.SourceChanged:
+                ok = True
+            check("a file that changes mid-transfer is refused, and nothing is kept", ok and left() == [])
+
+            fresh()
+            w.behaviour["/f"] = None
+            try:
+                fetch.fetch_parallel(client(), url + "/f", dest, sha(b"another file"), parts=4)
+                ok = False
+            except fetch.IntegrityError:
+                ok = True
+            check("joined bytes that miss the published hash are refused, and nothing is kept", ok and left() == [])
+    finally:
+        fetch.PART_MIN = keep_min
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 def c4_transport() -> None:
@@ -861,7 +976,7 @@ def c12_progress(store) -> None:
               len(lines) == 3 and [e["hit"] for e in lines] == [False, True, False] and all(e["kind"] == "lgb" for e in lines))
         check("...holding only counts, times and memory",
               all(set(e) <= PR.ALLOWED for e in lines) and lines[0]["rows"] == len(rows) and lines[0]["cols"] == len(cols)
-              and lines[2]["rows"] == 2000 and lines[0]["seconds"] > 0 and lines[1]["seconds"] == 0.0)
+              and lines[2]["rows"] == 2000 and lines[0]["seconds"] > 0 and 0 <= lines[1]["seconds"] < lines[0]["seconds"])
         for bad, why in ((dict(label=1), "a key outside the allow-list"), (dict(rows=np.arange(3)), "an array"),
                          (dict(kind="x" * 40), "a long string")):
             try:
@@ -881,7 +996,7 @@ def c12_progress(store) -> None:
         pred = lambda r, c: PLN.SEC_PER_ROW_COL * r * c * PLN.CALIBRATION_THREADS / 2
         fitted = [{"kind": "lgb", "hit": False, "rows": 10_000 * (k + 1), "cols": 900, "seconds": 2 * pred(10_000 * (k + 1), 900)}
                   for k in range(6)]
-        resumed = [{"kind": "lgb", "hit": True, "rows": 50_000, "cols": 900, "seconds": 0.0}] * 4
+        resumed = [{"kind": "lgb", "hit": True, "rows": 50_000, "cols": 900, "seconds": 0.4}] * 8   # loading takes time too
         write([{"event": "start", **me}] + fitted + resumed)
         c = PR.calibration(j, **me)
         check("calibration is the measured / predicted time of fitted boosters, resumed ones ignored",
@@ -895,16 +1010,16 @@ def c12_progress(store) -> None:
         check("the planner scales booster and twin time by the factor",
               abs(e2["booster_hours"] - 2 * e1["booster_hours"]) < 1e-9 and abs(e2["twin_hours"] - 2 * e1["twin_hours"]) < 1e-9)
 
-        # progress and ETA: 10 planned, 4 done (one resumed), three fitted at 60 s, the twin to come
+        # progress and ETA: 10 planned, 7 done (4 resumed, which take seconds), three fitted at 60 s, the twin to come
         write([{"event": "start", "planned_fits": 10, "twin_hours": 1.0, **me}]
               + [{"kind": "lgb", "hit": False, "seconds": 60.0, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}] * 3
-              + [{"kind": "lgb", "hit": True, "seconds": 0.0, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}])
+              + [{"kind": "lgb", "hit": True, "seconds": 0.4, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}] * 4)
         sm = PR.summary(j, now=100.0)
-        check("progress counts fits, and the ETA is the fits left at the median fitted time plus the twin",
-              sm["done"] == 4 and sm["resumed"] == 1 and sm["planned"] == 10 and sm["median_fit_s"] == 60.0
-              and abs(sm["eta_h"] - (6 * 60 / 3600 + 1.0)) < 1e-9, f"ETA {sm['eta_h']:.3f} h")
+        check("progress counts fits, and the ETA is the fits left at the median FITTED time plus the twin",
+              sm["done"] == 7 and sm["resumed"] == 4 and sm["planned"] == 10 and sm["median_fit_s"] == 60.0
+              and abs(sm["eta_h"] - (3 * 60 / 3600 + 1.0)) < 1e-9, f"ETA {sm['eta_h']:.3f} h")
         line = progress_line(sm)
-        check("physionet status prints it", "4 of ~10 booster fits (1 resumed)" in line and "5.4 GB RAM + 4.7 GB swap" in line
+        check("physionet status prints it", "7 of ~10 booster fits (4 resumed)" in line and "5.4 GB RAM + 4.7 GB swap" in line
               and "median fit 1.0 min" in line, line.replace("\n", " | "))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -938,6 +1053,14 @@ MUTATIONS = [
     ("an ignored Range appended", fetch, 'while skipped < self.offset:', 'while False:', "4"),
     ("two versions of a file joined", fetch, 'if self.etag and etag and etag != self.etag:', 'if False:', "4"),
     ("the download hash not compared", fetch, 'if sha256 is None or digest == sha256:', 'if True:', "4"),
+    ("a part's range not checked", fetch, "if not m or int(m.group(1)) != pos or int(m.group(2)) > end:", "if False:", "4b"),
+    ("a part's version not checked", fetch, "if etag and got and got != etag:", "if False:", "4b"),
+    ("a whole-file answer taken as a part", fetch, "if status != 206:\n                    resp.close()\n                    raise RangeIgnored",
+     "if False:\n                    resp.close()\n                    raise RangeIgnored", "4b"),
+    ("joined parts not hashed", fetch, "if sha256 is not None and digest != sha256:\n            raise IntegrityError(f\"{url}: SHA-256",
+     "if False:\n            raise IntegrityError(f\"{url}: SHA-256", "4b"),
+    ("a part resumed from its start", fetch, 'headers = {"Range": f"bytes={pos}-{end}", "Accept-Encoding": "identity"}',
+     'headers = {"Range": f"bytes={start}-{end}", "Accept-Encoding": "identity"}', "4b"),
     ("a partial of unknown origin kept", fetch, 'if have and not etag:', 'if False:', "4"),
     ("text kept for every item", PL, 'if text is not None and tb.num_rows:', 'if False:', "5"),
     ("a bucket that mixes stays", PL, "bucket = tb[spec.key].to_numpy() % spec.buckets", "bucket = np.arange(tb.num_rows) % spec.buckets", "5"),
@@ -981,7 +1104,7 @@ MUTATIONS = [
 
 def run_mutations(sections: Dict[str, Callable]) -> None:
     global _quiet
-    print("\n12. mutations: every mechanism broken on purpose")
+    print("\n13. mutations: every mechanism broken on purpose")
     for label, module, old, new, section in MUTATIONS:
         if old not in inspect.getsource(module):     # a stale target must not read as "caught"
             check(f"mutation target exists: {label}", False, old)
@@ -1016,7 +1139,8 @@ def main(argv=None) -> int:
             PL.ingest(spec, stream, lake_root, None)
             stream.close()
         ref = E.build_store(SRC.CsvSource(E.DEMO_ROOT), verbose=False)
-        sections = {"1": c1_manifest, "2": c2_credentials, "3": c3_access, "4": c4_transport, "5": c5_streaming,
+        sections = {"1": c1_manifest, "2": c2_credentials, "3": c3_access, "4": c4_transport, "4b": c4b_parallel,
+                    "5": c5_streaming,
                     "6": lambda: c6_lake(lake_root), "7": lambda: c7_exact(lake_root, ref),
                     "8": lambda: c8_contract(lake_root), "9": lambda: c9_egress(lake_root), "10": c10_pipeline,
                     "11": lambda: c11_checkpoints(ref), "12": lambda: c12_progress(ref)}
