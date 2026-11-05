@@ -437,6 +437,25 @@ the other way, and `verify_mimic` checks both orders. Booster and twin threads f
 is one per physical core there and 6 on the laptop. These are dev-fold choices made before the lock, like the
 rest of this section.
 
+**Memory, as measured.** The first full run used 10.1 GB where the planner said 7.3. LightGBM's working set matched
+its estimate; the error was a fixed 2 GB allowance for everything else. It's really cold memory (every model's
+out-of-fold scores, masks, the heap) that grows with the rows kept, at about 1,200 bytes a row, and sat in swap
+untouched. The planner now requires the hot set (grid and LightGBM, or the twin) in RAM and lets cold memory use
+free swap where the machine has some. Every fit forces column-wise histograms: LightGBM otherwise builds its
+row-wise layout too, to time both, for about 20% more memory and bit-identical predictions. Cutting LightGBM's
+bin-boundary sample to 50k was measured and rejected: it saved less, and it changed the model.
+
+**Time, as measured.** Each fit is journaled (rows, columns, seconds, memory; no values). The next plan on the same
+machine scales its time by measured over predicted seconds, summed so the big fits dominate, and `physionet status`
+prints the share of planned work done and an ETA.
+
+**The full run's path, on the demo.** `make mimic-demo-prod` runs the demo through the cloud scale's exact data
+path, sized down: planned, sampled and design-weighted, trimmed, and float16 in chunks on disk. `verify_mimic` also
+checks that this path equals the saturated cast of a whole float32 build, cell for cell. Its first run found a bug
+the demo had never reached: LightGBM drops weights that are all exactly 1, and a validation slice built by reference
+to a weighted training set is then read as weight 0. AUC reads 1.0 on every round, so early stopping silently follows
+a constant, and a cross-entropy metric aborts (`learners._valid_weight`).
+
 **Parity first (`parity.py`).** The demo is 100 real MIMIC-IV patients. The parity check fetches
 every binned table for exactly those stays, through BigQuery or the lake, and compares it cell by
 cell with the CSV path. Neither is trusted except where it reproduces the reference. `sqlcheck.py`

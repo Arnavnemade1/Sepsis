@@ -46,7 +46,9 @@ On this machine `run.sh` uses the `cloud` scale. It has two differences from the
 * every never-septic stay if the planner can afford it, instead of 25%;
 * when time runs short, it gives up negatives (keep rate 1.0 → 0.5 → 0.25) before it drops any stage.
 
-It runs one booster thread per physical core. The planner fits the run into `HOURS` (default 30, so at most about $25 of compute at ~$0.81 an hour). `SCALE=full` or `HOURS=…` before the command overrides either.
+It runs one booster thread per physical core (every vCPU on a small machine), and fetches each table over 4 byte ranges. The planner fits the run into `HOURS` (default 30: at most about $25 of compute on an m7i.4xlarge at ~$0.81 an hour, about $3 on the free tier). `SCALE=full`, `HOURS=…` or `PARALLEL=…` before the command overrides each.
+
+Watch it with `sudo /srv/aegis/Sepsis/deploy/physionet/run.sh status`: the stages, then fits done of planned, memory and an ETA. A second run on the same machine plans with the speed the first one measured.
 
 The job survives a disconnect only if you start it inside `tmux` or `nohup`. If the machine stops, start it again and rerun `up`: finished stages and fits are kept.
 
