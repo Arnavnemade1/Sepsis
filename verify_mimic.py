@@ -1201,6 +1201,20 @@ def c23_auroc(store, led) -> None:
           f"extraction {big['extract_ram_gb']:.0f} GB vs modelling {big['model_ram_gb']:.1f} GB; "
           f"boosters {e6['booster_hours']:.3f} h at 6 threads, {e2['booster_hours']:.3f} h at 2")
 
+    # memory in two parts, as measured on the first full run: the hot set (grid + LightGBM) must
+    # be RAM; cold memory (every model's scores, the heap) may sit in swap where swap exists
+    e = PL.estimate(store, n_feat, SCALES["demo"])
+    ok = lambda ram, swap: PL.fits_memory(e, PL.Budget(disk_gb=1e9, ram_gb=ram, hours=1e9, swap_gb=swap))
+    check("no swap: hot and cold must both fit in RAM; with swap, cold may use it; hot never may",
+          not ok(e["hot_ram_gb"], 0.0) and ok(e["model_ram_gb"], 0.0) and ok(e["hot_ram_gb"], e["cold_ram_gb"])
+          and not ok(e["hot_ram_gb"] - 0.01, 1e9) and abs(e["model_ram_gb"] - e["hot_ram_gb"] - e["cold_ram_gb"]) < 1e-9,
+          f"hot {e['hot_ram_gb']:.2f} GB, cold {e['cold_ram_gb']:.2f} GB")
+    lo, hi = (PL.estimate(store, n_feat, replace(SCALES["cloud"], keep_rate=k)) for k in (0.25, 1.0))
+    check("cold memory grows with the rows kept, at the measured rate",
+          hi["rows_kept"] > lo["rows_kept"] and abs((hi["cold_ram_gb"] - lo["cold_ram_gb"])
+                                                    - (hi["rows_kept"] - lo["rows_kept"]) * PL.COLD_BYTES_PER_ROW / 1e9) < 1e-5,
+          f"{lo['rows_kept']:,} -> {hi['rows_kept']:,} rows: cold {lo['cold_ram_gb']:.3f} -> {hi['cold_ram_gb']:.3f} GB")
+
     class Shifted(SRC.CsvSource):
         def binned_uo(self, stays):
             d = super().binned_uo(stays)
