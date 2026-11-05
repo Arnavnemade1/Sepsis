@@ -107,6 +107,12 @@ verify-mimic:
 mimic-demo:
 	PYTHONPATH=. $(PY) -m backend.ml.mimic.run --source demo
 
+# The full run's data path on the demo (float16, chunked, sampled, trimmed, planned). Its report
+# stays in the ignored cache: it is a check, not a result.
+mimic-demo-prod:
+	MIMIC_REPORT_DIR=artifacts/mimic_cache/demo-prod PYTHONPATH=. $(PY) -m backend.ml.mimic.run --source demo \
+		--scale demo-prod --tag demo-prod --checkpoint artifacts/mimic_cache/demo-prod/checkpoints
+
 # The ONE locked evaluation. Reads the design frozen in artifacts/genesis/genesis_spec.json;
 # every run is appended to artifacts/genesis/lock_ledger.jsonl.
 genesis-locked:

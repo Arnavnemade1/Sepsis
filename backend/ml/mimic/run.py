@@ -100,6 +100,17 @@ SCALES = {
 # 0.8131 to 0.8163, every setting tried landed within 0.004 of the others, and the best of the
 # first 8 (0.8153) already had 70% of that gain: the hours belong to data, not search.
 SCALES["cloud"] = replace(SCALES["full"], keep_rate=1.0, prefer_full_stages=True)
+# The cloud run's DATA PATH on the demo: float16 features built in chunks into a map on disk,
+# never-septic stays sampled and design-weighted, septic stays trimmed, the full stage set and
+# the planner, so every switch the full run flips is exercised before a credentialed byte. Only
+# sizes shrink (chunks, twin epochs, tuning, bootstraps, transplant stays), and the booster's
+# settings are the demo's: the full preset's min_data_in_leaf=800 leaves ~2,000 demo rows almost
+# no split, and every model degenerate. The first full run's float16 overflow was invisible to a
+# demo built float32; the first run of THIS scale found LightGBM reading an all-1 validation
+# slice as weight 0 (``learners._valid_weight``). ``make mimic-demo-prod``.
+SCALES["demo-prod"] = replace(SCALES["cloud"], lgbm=dict(SCALES["demo"].lgbm), early_stop=SCALES["demo"].early_stop,
+                              keep_rate=0.5, chunk_stays=20, twin_epochs=4, twin_min_steps=60, twin_d_model=64,
+                              twin_seeds=(0,), tune_trials=2, n_boot=20, cpt_stays=40, learn_stays=60)
 #: a credentialed run reports beside the lake; only the egress scan copies a report into the repo
 REPORT_DIR = os.environ.get("MIMIC_REPORT_DIR") or LG.OUT_DIR
 PHYSIO_FAMILIES = ["vitals", "gcs", "exam", "labs", "inflammation", "urine", "sofa", "history"]
