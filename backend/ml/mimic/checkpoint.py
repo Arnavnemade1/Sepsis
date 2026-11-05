@@ -21,12 +21,14 @@ import hashlib
 import os
 import pickle
 import tempfile
+import time
 from dataclasses import asdict
 from typing import Dict, Optional
 
 import numpy as np
 
 from backend.ml.genesis import learners as L
+from backend.ml.mimic import progress as PR
 from backend.ml.mimic import twin as TW
 
 SAMPLE_ROWS = 2000
@@ -95,14 +97,19 @@ def memo_fit_lgb(memo: Memo, fit_lgb):
                        sorted((params or {}).items()), rounds, valid_frac, early_stop,
                        None if cols is None else np.asarray(cols), seed,
                        None if strat is None else np.asarray(strat), fixed_rounds, feval_metric)
+        ncols = len(cols) if cols is not None else int(getattr(F, "shape", (0, 0))[1])
         kept = memo.load(key)
         if kept is not None:
             memo.hits += 1
+            PR.record(memo.dir, kind="lgb", hit=True, seconds=0.0, rows=len(rows), cols=ncols, **PR.memory())
             return L.LGBFit(lgb.Booster(model_str=kept["model"]), kept["best_iter"], kept["cols"], kept["calib"])
         memo.misses += 1
+        t0 = time.time()
         out = fit_lgb(F, rows, target, seg, weight=weight, params=params, rounds=rounds, valid_frac=valid_frac,
                       early_stop=early_stop, cols=cols, seed=seed, strat=strat, fixed_rounds=fixed_rounds,
                       verbose=verbose, feval_metric=feval_metric)
+        PR.record(memo.dir, kind="lgb", hit=False, seconds=round(time.time() - t0, 2), rows=len(rows), cols=ncols,
+                  **PR.memory())
         memo.save(key, {"model": out.booster.model_to_string(num_iteration=-1), "best_iter": out.best_iter,
                         "cols": out.cols, "calib": out.calib})
         return out
@@ -118,6 +125,7 @@ def memo_twin_fit(memo: Memo, twin_fit):
         if kept is not None:
             import torch
             memo.hits += 1
+            PR.record(memo.dir, kind="twin", hit=True, seconds=0.0, rows=len(train_stays), **PR.memory())
             weights = kept.pop("net_")
             self.__dict__.update(kept)
             xv, xp = self._inputs(led)
@@ -126,20 +134,33 @@ def memo_twin_fit(memo: Memo, twin_fit):
             self.net_.eval()
             return self
         memo.misses += 1
+        t0 = time.time()
         twin_fit(self, led, T, train_stays, verbose)
+        PR.record(memo.dir, kind="twin", hit=False, seconds=round(time.time() - t0, 2), rows=len(train_stays),
+                  **PR.memory())
         # the network's class is local to _build, so the weights are what can be kept
         memo.save(key, dict(self.__dict__, net_={k: v.detach().cpu().numpy() for k, v in self.net_.state_dict().items()}))
         return self
     return fit
 
 
+_CURRENT: Optional[Memo] = None
+
+
+def current() -> Optional[Memo]:
+    """The active memo, so a run can journal its plan beside its fits."""
+    return _CURRENT
+
+
 @contextlib.contextmanager
 def active(directory: Optional[str], salt: str):
     """Everything inside resumes from ``directory``. ``None`` turns the whole thing off."""
+    global _CURRENT
     if not directory:
         yield None
         return
     memo = Memo(directory, salt)
+    _CURRENT = memo
     keep_fit, keep_twin = L.fit_lgb, TW.ProcessTwin.fit
     L.fit_lgb = memo_fit_lgb(memo, keep_fit)
     TW.ProcessTwin.fit = memo_twin_fit(memo, keep_twin)
@@ -147,6 +168,7 @@ def active(directory: Optional[str], salt: str):
         yield memo
     finally:
         L.fit_lgb, TW.ProcessTwin.fit = keep_fit, keep_twin
+        _CURRENT = None
         print(f"checkpoints: {memo.hits} reused, {memo.misses} fitted, {memo.failures} not written", flush=True)
 
 
