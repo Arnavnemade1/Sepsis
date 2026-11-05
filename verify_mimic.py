@@ -323,6 +323,22 @@ def c12_chunking(store) -> None:
     H1, m1 = LG.build_features(big, dtype=np.float16)
     H2, _ = LG.build_features(big, chunk_stays=9, dtype=np.float16)
     ck = H1[:, m1.index("CK")].astype(np.float64)
+    # every fit forces column-wise histograms to save memory; that must not change a model
+    import lightgbm as lgb
+    from backend.ml.genesis import learners as GL
+    rows = np.arange(store.n_rows)
+    yb = np.nan_to_num(store.y.astype(float))
+    seg = store.seg
+    a = GL.fit_lgb(F1, rows, yb, seg, params={"num_leaves": 15}, rounds=40, early_stop=10)
+    real = lgb.train
+    lgb.train = lambda p, *x, **k: real({**p, "force_col_wise": False}, *x, **k)
+    try:
+        b = GL.fit_lgb(F1, rows, yb, seg, params={"num_leaves": 15}, rounds=40, early_stop=10)
+    finally:
+        lgb.train = real
+    check("column-wise histograms change no prediction (only memory)",
+          np.array_equal(a.predict(F1, rows), b.predict(F1, rows)) and a.best_iter == b.best_iter,
+          f"{len(rows):,} rows, {a.best_iter} trees")
     check("a float16 build saturates at 65,504 instead of writing inf, whole or chunked",
           not np.isinf(H1).any() and not np.isinf(H2).any() and np.nanmax(ck) == 65504.0
           and np.array_equal(H1, H2, equal_nan=True), f"CK max {np.nanmax(ck):g}")
