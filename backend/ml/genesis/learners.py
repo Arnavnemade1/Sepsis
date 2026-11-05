@@ -279,6 +279,27 @@ class LGBFit:
         return out if raw else 1.0 / (1.0 + np.exp(-np.clip(out, -35, 35)))
 
 
+#: an exact float32 constant just above 1 (see ``_valid_weight``)
+_NOT_ONE = 1.0 + 2.0 ** -20
+
+
+def _valid_weight(w: np.ndarray) -> np.ndarray:
+    """Validation weights LightGBM will actually keep.
+
+    ``Dataset.set_weight`` drops weights that are ALL exactly 1 as if none were given. A
+    validation set built from a Sequence by reference to a WEIGHTED training set has already
+    been allotted a weight array, so dropping them leaves it all zeros: AUC then reads 1.0 on
+    every round (measured: 1.0000 where the true value was 0.8266) and early stopping follows a
+    constant, while a cross-entropy metric aborts ("sum-of-weights = 0"). It needs a validation
+    slice that is entirely weight 1, e.g. all septic stays in a design-weighted run, so it
+    surfaced only on the demo run through the full run's path (``make mimic-demo-prod``).
+
+    Scaling every weight by one constant changes no AUC and no weighted mean, so all-ones
+    weights are handed over as all-``_NOT_ONE`` instead, which LightGBM keeps."""
+    w = np.asarray(w, dtype=np.float64)
+    return w * _NOT_ONE if len(w) and np.all(w == 1.0) else w
+
+
 def fit_lgb(F: np.ndarray, rows: np.ndarray, target: np.ndarray, seg: np.ndarray,
             weight: Optional[np.ndarray] = None, params: Optional[Dict] = None,
             rounds: int = 3000, valid_frac: float = 0.1, early_stop: int = 150,
@@ -324,7 +345,7 @@ def fit_lgb(F: np.ndarray, rows: np.ndarray, target: np.ndarray, seg: np.ndarray
                             weight=None if w is None else w[fit_pos], free_raw_data=True,
                             params={"max_bin": p["max_bin"], "verbose": -1})
         dv = lgb.Dataset(RowView(F, rows[val_pos], cols), label=target[val_pos],
-                         weight=None if w is None else w[val_pos], reference=ds, free_raw_data=True)
+                         weight=None if w is None else _valid_weight(w[val_pos]), reference=ds, free_raw_data=True)
     cb = [lgb.early_stopping(early_stop, verbose=False)]
     if verbose:
         cb.append(lgb.log_evaluation(100))
