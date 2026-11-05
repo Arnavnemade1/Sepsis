@@ -1019,22 +1019,29 @@ def c12_progress(store) -> None:
               and PR.calibration(j, threads=2, ram_gb=16.0) is None)
         write([{"event": "start", **me}] + fitted[:4])
         check(f"...and only after {PR.MIN_FITS} of them", PR.calibration(j, **me) is None)
+        # hundreds of tiny audit fits, slow for their size from fixed overhead, must not set the speed
+        tiny = [{"kind": "lgb", "hit": False, "rows": 1_000, "cols": 10, "seconds": 100 * pred(1_000, 10)}] * 20
+        write([{"event": "start", **me}] + fitted + tiny)
+        c = PR.calibration(j, **me)
+        check("...weighted by work, so 20 tiny fits at 100x their prediction barely move 6 big ones at 2x",
+              c is not None and abs(c["time"] - 2.0) < 0.25, f"{c['time']:.3f} (averaged per fit it would be ~77)")
         e1 = PLN.estimate(store, len(led.names), SCALES["demo"], time_factor=1.0)
         e2 = PLN.estimate(store, len(led.names), SCALES["demo"], time_factor=2.0)
         check("the planner scales booster and twin time by the factor",
               abs(e2["booster_hours"] - 2 * e1["booster_hours"]) < 1e-9 and abs(e2["twin_hours"] - 2 * e1["twin_hours"]) < 1e-9)
 
-        # progress and ETA: 10 planned, 7 done (4 resumed, which take seconds), three fitted at 60 s, the twin to come
-        write([{"event": "start", "planned_fits": 10, "twin_hours": 1.0, **me}]
-              + [{"kind": "lgb", "hit": False, "seconds": 60.0, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}] * 3
-              + [{"kind": "lgb", "hit": True, "seconds": 0.4, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}] * 4)
+        # progress and ETA, in work: 1.0 Gcell planned; three fits of 0.1 Gcell at 60 s each (600 s per
+        # Gcell), four resumed of 0.05 Gcell (done work, but no measure of speed); the twin to come
+        write([{"event": "start", "planned_gcells": 1.0, "twin_hours": 1.0, **me}]
+              + [{"kind": "lgb", "hit": False, "seconds": 60.0, "rows": 100_000, "cols": 1000, "rss_gb": 5.4, "swap_gb": 4.7}] * 3
+              + [{"kind": "lgb", "hit": True, "seconds": 0.4, "rows": 50_000, "cols": 1000, "rss_gb": 5.4, "swap_gb": 4.7}] * 4)
         sm = PR.summary(j, now=100.0)
-        check("progress counts fits, and the ETA is the fits left at the median FITTED time plus the twin",
-              sm["done"] == 7 and sm["resumed"] == 4 and sm["planned"] == 10 and sm["median_fit_s"] == 60.0
-              and abs(sm["eta_h"] - (3 * 60 / 3600 + 1.0)) < 1e-9, f"ETA {sm['eta_h']:.3f} h")
+        check("progress is work done of planned, and the ETA is the work left at the FITTED rate plus the twin",
+              sm["fits"] == 7 and sm["resumed"] == 4 and abs(sm["share"] - 0.5) < 1e-9 and abs(sm["s_per_gcell"] - 600) < 1e-6
+              and abs(sm["eta_h"] - (0.5 * 600 / 3600 + 1.0)) < 1e-9, f"ETA {sm['eta_h']:.4f} h")
         line = progress_line(sm)
-        check("physionet status prints it", "7 of ~10 booster fits (4 resumed)" in line and "5.4 GB RAM + 4.7 GB swap" in line
-              and "median fit 1.0 min" in line, line.replace("\n", " | "))
+        check("physionet status prints it", "50% of the planned fitting (7 fits, 4 resumed)" in line
+              and "5.4 GB RAM + 4.7 GB swap" in line and "about 1.1 h to go (twin included)" in line, line.replace("\n", " | "))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -1111,7 +1118,11 @@ MUTATIONS = [
     ("calibration across machines", PR, 'if s.get("threads") != threads or abs(s.get("ram_gb", 0) - ram_gb) > SAME_RAM * ram_gb:',
      "if False:", "12"),
     ("resumed fits calibrate", PR, 'and not f.get("hit") and f.get("rows")', 'and f.get("rows")', "12"),
-    ("resumed fits set the ETA", PR, 'fitted = [f["seconds"] for f in lgb if not f.get("hit")]', 'fitted = [f["seconds"] for f in lgb]', "12"),
+    ("resumed fits set the ETA", PR, 'fitted = [f for f in lgb if not f.get("hit")]', 'fitted = list(lgb)', "12"),
+    ("calibration averaged per fit, not by work", PR,
+     'secs += f["seconds"]\n                pred += PL.SEC_PER_ROW_COL * f["rows"] * f["cols"] * PL.CALIBRATION_THREADS / max(threads, 1)',
+     'secs += f["seconds"] / (PL.SEC_PER_ROW_COL * f["rows"] * f["cols"] * PL.CALIBRATION_THREADS / max(threads, 1))\n'
+     '                pred += 1.0', "12"),
     ("the time factor ignored", PLN_MOD, "slow = time_factor * CALIBRATION_THREADS", "slow = CALIBRATION_THREADS", "12"),
     ("a torn checkpoint crashes the run", CK, 'except Exception as err:                 # torn by a crash: a miss, not a failure', 'except ZeroDivisionError as err:', "11"),
 ]
