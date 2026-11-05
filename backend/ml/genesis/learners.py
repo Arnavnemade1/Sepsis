@@ -291,6 +291,11 @@ def fit_lgb(F: np.ndarray, rows: np.ndarray, target: np.ndarray, seg: np.ndarray
     p = dict(LGB_BASE)
     p.update(params or {})
     p["num_threads"] = THREADS
+    # Column-wise histograms only. Left to choose, LightGBM builds the row-wise layout too, to
+    # time both: about 20% more memory per fit (measured, 720k x 800 float16, four runs each) for
+    # predictions that come out bit for bit the same (``verify_mimic`` section 12). On the first
+    # full MIMIC-IV run memory, not time, was the limit.
+    p["force_col_wise"] = True
     p["seed"] = seed
     p["metric"] = feval_metric
     target = np.asarray(target, dtype=np.float64)
