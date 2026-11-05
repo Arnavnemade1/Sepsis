@@ -50,6 +50,8 @@ from backend.ml.mimic import contracts as CT
 from backend.ml.mimic import extract as E
 from backend.ml.mimic import lake as ML
 from backend.ml.mimic import parity as PA
+from backend.ml.mimic import plan as PLN_MOD
+from backend.ml.mimic import progress as PR
 from backend.ml.mimic import sources as SRC
 from backend.ml.mimic import sqlcheck as SC
 from backend.ml.physionet import auth, catalog, fetch, guard, pipeline
@@ -834,6 +836,80 @@ def c11_checkpoints(store) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def c12_progress(store) -> None:
+    print("\n12. progress journal and calibration")
+    import json as _json
+    from backend.ml.genesis import learners as L
+    from backend.ml.mimic import ledger as LG
+    from backend.ml.mimic import plan as PLN
+    from backend.ml.mimic import progress as PR
+    from backend.ml.mimic.run import SCALES
+    from backend.ml.physionet.__main__ import progress_line
+    led = LG.Ledger.build(store)
+    rows = np.flatnonzero(led.folds[store.seg] >= 0)
+    cols = led.columns("P")[:60]
+    y = led.y.astype(float)
+    kw = dict(cols=cols, params={"learning_rate": 0.1, "num_leaves": 7, "min_data_in_leaf": 20}, early_stop=10, rounds=30)
+    tmp = tempfile.mkdtemp()
+    try:
+        with CK.active(tmp, "salt") as memo:
+            L.fit_lgb(led.F, rows, y[rows], store.seg[rows], **kw)
+            L.fit_lgb(led.F, rows, y[rows], store.seg[rows], **kw)
+            L.fit_lgb(led.F, rows[:2000], y[rows[:2000]], store.seg[rows[:2000]], **kw)
+        lines = PR.read(os.path.join(tmp, PR.JOURNAL))
+        check("every fit, fitted or resumed, is one journal line",
+              len(lines) == 3 and [e["hit"] for e in lines] == [False, True, False] and all(e["kind"] == "lgb" for e in lines))
+        check("...holding only counts, times and memory",
+              all(set(e) <= PR.ALLOWED for e in lines) and lines[0]["rows"] == len(rows) and lines[0]["cols"] == len(cols)
+              and lines[2]["rows"] == 2000 and lines[0]["seconds"] > 0 and lines[1]["seconds"] == 0.0)
+        for bad, why in ((dict(label=1), "a key outside the allow-list"), (dict(rows=np.arange(3)), "an array"),
+                         (dict(kind="x" * 40), "a long string")):
+            try:
+                PR.record(tmp, **bad)
+                refused = False
+            except ValueError:
+                refused = True
+            check(f"the journal refuses {why}", refused)
+
+        # calibration: an earlier run on this machine fitted at exactly 2x the planner's model
+        j = os.path.join(tmp, "cal.jsonl")
+        me = {"threads": 2, "ram_gb": 8.16}
+
+        def write(entries):
+            with open(j, "w") as fh:
+                fh.write("\n".join(_json.dumps({"t": i, **e}) for i, e in enumerate(entries)) + "\n")
+        pred = lambda r, c: PLN.SEC_PER_ROW_COL * r * c * PLN.CALIBRATION_THREADS / 2
+        fitted = [{"kind": "lgb", "hit": False, "rows": 10_000 * (k + 1), "cols": 900, "seconds": 2 * pred(10_000 * (k + 1), 900)}
+                  for k in range(6)]
+        resumed = [{"kind": "lgb", "hit": True, "rows": 50_000, "cols": 900, "seconds": 0.0}] * 4
+        write([{"event": "start", **me}] + fitted + resumed)
+        c = PR.calibration(j, **me)
+        check("calibration is the measured / predicted time of fitted boosters, resumed ones ignored",
+              c is not None and abs(c["time"] - 2.0) < 1e-9 and c["fits"] == 6, f"{c}")
+        check("...from this machine only", PR.calibration(j, threads=16, ram_gb=64.0) is None
+              and PR.calibration(j, threads=2, ram_gb=16.0) is None)
+        write([{"event": "start", **me}] + fitted[:4])
+        check(f"...and only after {PR.MIN_FITS} of them", PR.calibration(j, **me) is None)
+        e1 = PLN.estimate(store, len(led.names), SCALES["demo"], time_factor=1.0)
+        e2 = PLN.estimate(store, len(led.names), SCALES["demo"], time_factor=2.0)
+        check("the planner scales booster and twin time by the factor",
+              abs(e2["booster_hours"] - 2 * e1["booster_hours"]) < 1e-9 and abs(e2["twin_hours"] - 2 * e1["twin_hours"]) < 1e-9)
+
+        # progress and ETA: 10 planned, 4 done (one resumed), three fitted at 60 s, the twin to come
+        write([{"event": "start", "planned_fits": 10, "twin_hours": 1.0, **me}]
+              + [{"kind": "lgb", "hit": False, "seconds": 60.0, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}] * 3
+              + [{"kind": "lgb", "hit": True, "seconds": 0.0, "rows": 1, "cols": 1, "rss_gb": 5.4, "swap_gb": 4.7}])
+        sm = PR.summary(j, now=100.0)
+        check("progress counts fits, and the ETA is the fits left at the median fitted time plus the twin",
+              sm["done"] == 4 and sm["resumed"] == 1 and sm["planned"] == 10 and sm["median_fit_s"] == 60.0
+              and abs(sm["eta_h"] - (6 * 60 / 3600 + 1.0)) < 1e-9, f"ETA {sm['eta_h']:.3f} h")
+        line = progress_line(sm)
+        check("physionet status prints it", "4 of ~10 booster fits (1 resumed)" in line and "5.4 GB RAM + 4.7 GB swap" in line
+              and "median fit 1.0 min" in line, line.replace("\n", " | "))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 # --------------------------------------------------------------------------- #
 # Mutations: a green check is not evidence until it has been seen to fail
 # --------------------------------------------------------------------------- #
@@ -893,6 +969,12 @@ MUTATIONS = [
     ("no capacity gate", pipeline, 'if free + have < need:', 'if False:', "10"),
     ("a checkpoint keyed without its features", CK, 'key = memo.key("lgb", _sample(F, rows, cols),', 'key = memo.key("lgb", None,', "11"),
     ("a checkpoint keyed without its target", CK, 'rows, np.asarray(target),', 'rows, None,', "11"),
+    ("the journal takes any key", PR, "if bad:", "if False:", "12"),
+    ("calibration across machines", PR, 'if s.get("threads") != threads or abs(s.get("ram_gb", 0) - ram_gb) > SAME_RAM * ram_gb:',
+     "if False:", "12"),
+    ("resumed fits calibrate", PR, 'and not f.get("hit") and f.get("rows")', 'and f.get("rows")', "12"),
+    ("resumed fits set the ETA", PR, 'fitted = [f["seconds"] for f in lgb if not f.get("hit")]', 'fitted = [f["seconds"] for f in lgb]', "12"),
+    ("the time factor ignored", PLN_MOD, "slow = time_factor * CALIBRATION_THREADS", "slow = CALIBRATION_THREADS", "12"),
     ("a torn checkpoint crashes the run", CK, 'except Exception as err:                 # torn by a crash: a miss, not a failure', 'except ZeroDivisionError as err:', "11"),
 ]
 
@@ -937,7 +1019,7 @@ def main(argv=None) -> int:
         sections = {"1": c1_manifest, "2": c2_credentials, "3": c3_access, "4": c4_transport, "5": c5_streaming,
                     "6": lambda: c6_lake(lake_root), "7": lambda: c7_exact(lake_root, ref),
                     "8": lambda: c8_contract(lake_root), "9": lambda: c9_egress(lake_root), "10": c10_pipeline,
-                    "11": lambda: c11_checkpoints(ref)}
+                    "11": lambda: c11_checkpoints(ref), "12": lambda: c12_progress(ref)}
         for fn in sections.values():
             fn()
         if "--no-mutations" not in args:
