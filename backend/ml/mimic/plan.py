@@ -47,6 +47,17 @@ SAMPLE_ROWS = 200_000                 # LightGBM's bin_construct_sample_cnt
 TWIN_SEC_PER_ROW_STEP = 1.2e-5
 TWIN_INPUTS_PER_ROW = 220
 HARNESS_HOURS = 0.75                  # audits, cross-examination, transplant (sampled), lock plans
+#: Memory a run holds but rarely touches: every model's out-of-fold scores, masks, the Python
+#: heap. Measured on the first full MIMIC-IV run, during the P tier: 10.1 GB of anonymous memory
+#: (5.4 resident + 4.7 in swap, with almost no swap traffic) at 2,364,579 kept rows, of which the
+#: hot estimate below accounts for 5.26 GB. The rest, 4.84 GB, is ``COLD_BASE_GB`` plus
+#: ``COLD_BYTES_PER_ROW`` per kept row. The old planner had only the 2 GB base, and undercounted
+#: by about 40%.
+COLD_BASE_GB = 2.0
+COLD_BYTES_PER_ROW = 1200
+#: of free swap, what cold memory may use. Swap only ever holds cold memory: a hot set that
+#: doesn't fit in RAM is refused whatever the swap, because training against swap thrashes.
+SWAP_FRACTION = 0.8
 
 
 @dataclass
@@ -54,6 +65,7 @@ class Budget:
     disk_gb: float
     ram_gb: float
     hours: float
+    swap_gb: float = 0.0               # for cold memory only; 0 means everything must fit in RAM
 
     @staticmethod
     def detect(hours: float = 12.0, disk_reserve_gb: float = 6.0, ram_fraction: float = None,
@@ -62,7 +74,21 @@ class Budget:
             ram_fraction = float(os.environ.get("MIMIC_RAM_FRACTION", "0.65"))
         free = shutil.disk_usage(path).free / 1e9
         ram = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
-        return Budget(disk_gb=free - disk_reserve_gb, ram_gb=ram * ram_fraction, hours=hours)
+        return Budget(disk_gb=free - disk_reserve_gb, ram_gb=ram * ram_fraction, hours=hours,
+                      swap_gb=free_swap_gb() * SWAP_FRACTION)
+
+
+def free_swap_gb() -> float:
+    """Free swap on Linux (``/proc/meminfo``). Anywhere else, 0: macOS grows swap on demand on
+    the same disk as the run, so it isn't counted on."""
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("SwapFree:"):
+                    return int(line.split()[1]) * 1024 / 1e9
+    except OSError:
+        pass
+    return 0.0
 
 
 #: from the richest plan to the leanest; each overrides fields of the scale
@@ -135,13 +161,21 @@ def estimate(store, n_features: int, scale, n_threads: int = None) -> Dict:
     grid_gb = kept * len(store.columns) * 4 / 1e9
     lgb_gb = (train_rows * cols * 1.2 + min(SAMPLE_ROWS, train_rows) * cols * 10) / 1e9
     twin_gb = kept * TWIN_INPUTS_PER_ROW * 4 / 1e9 if scale.twin else 0.0
-    model_gb = grid_gb + max(lgb_gb, twin_gb) + 2.0
+    hot_gb = grid_gb + max(lgb_gb, twin_gb)                  # touched by every fit: must be RAM
+    cold_gb = COLD_BASE_GB + kept * COLD_BYTES_PER_ROW / 1e9     # held, rarely touched: may swap
+    model_gb = hot_gb + cold_gb
     ram_gb = max(extract_gb, model_gb)
     return {"stays": int(store.n_patients), "hours_all": int(store.n_rows), "rows_kept": int(kept),
             "features": int(n_features), "keep_rate": scale.keep_rate, "feature_disk_gb": feat_gb,
-            "ram_peak_gb": ram_gb, "model_ram_gb": model_gb, "extract_ram_gb": extract_gb,
+            "ram_peak_gb": ram_gb, "model_ram_gb": model_gb, "hot_ram_gb": hot_gb, "cold_ram_gb": cold_gb,
+            "extract_ram_gb": extract_gb,
             "threads": n_threads or threads(), "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
             "booster_hours": booster_h, "twin_hours": twin_h, "hours": booster_h + twin_h + HARNESS_HOURS}
+
+
+def fits_memory(est: Dict, budget: Budget) -> bool:
+    """The hot set in RAM, and everything in RAM plus the swap allowed for cold memory."""
+    return est["hot_ram_gb"] <= budget.ram_gb and est["model_ram_gb"] <= budget.ram_gb + budget.swap_gb
 
 
 def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]:
@@ -153,7 +187,7 @@ def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]
     for keep, (label, over) in order:
         sc = replace(scale, keep_rate=keep, **over)
         est = estimate(store, n_features, sc)
-        fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": est["model_ram_gb"] <= budget.ram_gb,
+        fits = {"disk": est["feature_disk_gb"] <= budget.disk_gb, "ram": fits_memory(est, budget),
                 "time": est["hours"] <= budget.hours}
         tried.append({"plan": label, "keep_rate": keep, **{k: round(v, 2) if isinstance(v, float) else v
                                                              for k, v in est.items()}, "fits": fits})
@@ -161,5 +195,6 @@ def choose(store, n_features: int, scale, budget: Budget) -> Tuple[object, Dict]
             return sc, {"chosen": label, "estimate": est, "budget": asdict(budget), "tried": tried}
     worst = tried[-1]
     raise RuntimeError(f"no plan fits this machine: leanest plan needs {worst['feature_disk_gb']:.1f} GB disk "
-                       f"(have {budget.disk_gb:.1f}), {worst['model_ram_gb']:.1f} GB RAM (budget {budget.ram_gb:.1f}), "
+                       f"(have {budget.disk_gb:.1f}), {worst['hot_ram_gb']:.1f} GB hot + {worst['cold_ram_gb']:.1f} GB cold RAM "
+                       f"(budget {budget.ram_gb:.1f} RAM + {budget.swap_gb:.1f} swap), "
                        f"{worst['hours']:.1f} h (budget {budget.hours:.1f})")

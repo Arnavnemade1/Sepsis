@@ -338,8 +338,8 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
         scale, rep["plan"] = PL.choose(store, n_feat, scale, PL.Budget.detect(hours=hours, path=E.CACHE_DIR))
         est = rep["plan"]["estimate"]
         print(f"plan: {rep['plan']['chosen']} | keep_rate {scale.keep_rate} | {est['rows_kept']:,} rows x "
-              f"{est['features']} features | ~{est['feature_disk_gb']:.1f} GB disk, ~{est['model_ram_gb']:.1f} GB RAM "
-              f"peak | ~{est['hours']:.1f} h ({est['booster_fits']} booster fits, twin {est['twin_hours']:.1f} h)",
+              f"{est['features']} features | ~{est['feature_disk_gb']:.1f} GB disk, ~{est['hot_ram_gb']:.1f} GB hot + "
+              f"{est['cold_ram_gb']:.1f} GB cold RAM | ~{est['hours']:.1f} h ({est['booster_fits']} booster fits, twin {est['twin_hours']:.1f} h)",
               flush=True)
         if plan_only:
             os.makedirs(REPORT_DIR, exist_ok=True)
