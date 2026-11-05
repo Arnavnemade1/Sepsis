@@ -453,3 +453,130 @@ def fetch_file(client: Client, url: str, dest: str, sha256: Optional[str], reser
         if attempt + 1 == attempts:
             raise IntegrityError(f"{url}: SHA-256 {digest[:16]}... where PhysioNet published {sha256[:16]}...")
     raise IntegrityError(f"{url}: could not be fetched intact")
+
+
+# --------------------------------------------------------------------------- #
+# Several ranges at once
+# --------------------------------------------------------------------------- #
+PART_MIN = 64 << 20          # no part smaller than 64 MB: more connections than that only adds load
+PARALLEL_MAX = 4             # measured against physionet.org (2026-11-04, a 183 MB open file): one
+                             # connection 192-478 KB/s, four 699-804 KB/s in total, six 846. Four
+                             # roughly doubles the rate; more mostly adds load on a free service
+
+
+class RangeIgnored(FetchError):
+    """The server answered a range request with the whole file; parallel parts are impossible."""
+
+
+def _probe(client: Client, url: str) -> Tuple[int, Optional[str]]:
+    """(total bytes, ETag) from a one-byte range request, or ``RangeIgnored``."""
+    for attempt in range(client.retries + 1):
+        try:
+            resp = client.open(url, {"Range": "bytes=0-0", "Accept-Encoding": "identity"})
+        except (urllib.error.URLError, OSError, http.client.HTTPException):
+            if attempt == client.retries:
+                raise
+            client._delay(attempt)
+            continue
+        status = resp.getcode()
+        headers = resp.headers
+        resp.close()
+        if status in RETRYABLE_STATUS:
+            client._delay(attempt, headers.get("Retry-After"))
+            continue
+        m = re.match(r"bytes 0-0/(\d+)", headers.get("Content-Range", "")) if status == 206 else None
+        if not m:
+            raise RangeIgnored(f"{url}: HTTP {status} to a range request")
+        return int(m.group(1)), headers.get("ETag")
+    raise FetchError(f"gave up probing {url}")
+
+
+def _fetch_part(client: Client, url: str, path: str, start: int, end: int, etag: Optional[str]) -> None:
+    """Bytes ``start..end`` (inclusive) into ``path`` at their own offset. Reconnects from where it
+    stopped; the retry budget is per stall, as for ``RemoteStream``. Every answer must be a 206 for
+    exactly the range asked, from the same version of the file."""
+    pos, failures = start, 0
+    with open(path, "r+b") as out:
+        while pos <= end:
+            headers = {"Range": f"bytes={pos}-{end}", "Accept-Encoding": "identity"}
+            if etag:
+                headers["If-Range"] = etag
+            try:
+                resp = client.open(url, headers)
+                status = resp.getcode()
+                if status in RETRYABLE_STATUS:
+                    wait = resp.headers.get("Retry-After")
+                    resp.close()
+                    raise _Retry(f"HTTP {status}", wait)
+                if status != 206:
+                    resp.close()
+                    raise RangeIgnored(f"{url}: HTTP {status} for bytes {pos}-{end}")
+                got = resp.headers.get("ETag")
+                if etag and got and got != etag:
+                    resp.close()
+                    raise SourceChanged(f"{url} changed during the transfer ({etag} -> {got})")
+                m = re.match(r"bytes (\d+)-(\d+)/", resp.headers.get("Content-Range", ""))
+                if not m or int(m.group(1)) != pos or int(m.group(2)) > end:
+                    resp.close()
+                    raise FetchError(f"server answered the wrong range for {url}: asked {pos}-{end}")
+                with resp:
+                    out.seek(pos)
+                    while pos <= end:
+                        data = resp.read(min(CHUNK, end + 1 - pos))
+                        if not data:
+                            break
+                        out.write(data)
+                        pos += len(data)
+                        failures = 0          # progress resets the budget
+                if pos <= end:
+                    raise _Retry(f"connection ended at byte {pos} of part {start}-{end}")
+            except _Retry as r:
+                failures += 1
+                if failures > client.retries:
+                    raise FetchError(f"{url}: part {start}-{end} gave up after {client.retries} retries: {r}")
+                client._delay(failures - 1, r.retry_after)
+            except (urllib.error.URLError, OSError, http.client.HTTPException, urllib3.exceptions.HTTPError) as err:
+                failures += 1
+                if failures > client.retries:
+                    raise FetchError(f"{url}: part {start}-{end} gave up after {client.retries} retries: {err}")
+                client._delay(failures - 1)
+
+
+class _Retry(Exception):
+    def __init__(self, why: str, retry_after: Optional[str] = None):
+        super().__init__(why)
+        self.retry_after = retry_after
+
+
+def fetch_parallel(client: Client, url: str, dest: str, sha256: Optional[str], parts: int = PARALLEL_MAX,
+                   reserve: int = 2 << 30) -> Tuple[str, int]:
+    """``url`` into ``dest`` over up to ``parts`` connections, each fetching its own byte range,
+    then verified against ``sha256`` as one file before it appears under its real name. Raises
+    ``RangeIgnored`` when the server won't serve ranges, so the caller can stream instead.
+
+    Each part gets its own client (a session is not shared across threads). A crash leaves a
+    ``.part`` that the next call discards: unlike ``fetch_file``, nothing here resumes across runs."""
+    import concurrent.futures as cf
+    from dataclasses import replace
+    total, etag = _probe(client, url)
+    os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+    require_free(dest, total, reserve)
+    part = dest + ".part"
+    with open(part, "wb") as fh:
+        fh.truncate(total)
+    n = max(1, min(parts, total // PART_MIN or 1))
+    bounds = [(i * total // n, (i + 1) * total // n - 1) for i in range(n)]
+    try:
+        with cf.ThreadPoolExecutor(max_workers=n) as pool:
+            jobs = [pool.submit(_fetch_part, replace(client, _sessions={}), url, part, a, b, etag)
+                    for a, b in bounds if b >= a]
+            for j in cf.as_completed(jobs):
+                j.result()
+        digest = _hash_prefix(part, total).hexdigest()
+        if sha256 is not None and digest != sha256:
+            raise IntegrityError(f"{url}: SHA-256 {digest[:16]}... where PhysioNet published {sha256[:16]}...")
+        os.replace(part, dest)
+        return digest, total
+    finally:
+        if os.path.exists(part):
+            os.remove(part)
