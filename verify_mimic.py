@@ -73,6 +73,7 @@ The harness layers (docs/MIMIC.md §4-7), each attacked with a planted failure:
 """
 from __future__ import annotations
 
+import os
 import re
 import sys
 import warnings
@@ -339,6 +340,44 @@ def c12_chunking(store) -> None:
     check("column-wise histograms change no prediction (only memory)",
           np.array_equal(a.predict(F1, rows), b.predict(F1, rows)) and a.best_iter == b.best_iter,
           f"{len(rows):,} rows, {a.best_iter} trees")
+    # a design-weighted fit whose validation slice is all weight 1 (e.g. all septic stays): LightGBM
+    # dropped those weights and read the slice as weight 0, so AUC said 1.0 every round and a
+    # cross-entropy metric aborted. All 1s and all 2s are the same metric, so the models must match
+    fit_pos, val_pos = GL.grouped_holdout(seg, 0.1, 0, None)
+    w1 = np.where(np.arange(len(rows)) % 3 == 0, 4.0, 1.0)
+    w1[val_pos] = 1.0
+    w2 = w1.copy()
+    w2[val_pos] = 2.0
+    kw = dict(params={"num_leaves": 15}, rounds=200, early_stop=10)
+    f1 = GL.fit_lgb(F1, rows, yb, seg, weight=w1, **kw)
+    f2 = GL.fit_lgb(F1, rows, yb, seg, weight=w2, **kw)
+    try:
+        GL.fit_lgb(F1, rows, yb, seg, weight=w1, params={"num_leaves": 15, "objective": "cross_entropy"},
+                   rounds=20, early_stop=5, feval_metric="cross_entropy")
+        xent = "ran"
+    except Exception as e:
+        xent = str(e)[:50]
+    check("a validation slice of all-1 weights early-stops like any constant weight, and cross-entropy runs",
+          f1.best_iter == f2.best_iter and xent == "ran"
+          and np.array_equal(f1.predict(F1, rows, raw=True, calibrated=False), f2.predict(F1, rows, raw=True, calibrated=False)),
+          f"best iteration {f1.best_iter} vs {f2.best_iter}; cross-entropy {xent}")
+
+    # the full run's path: sampled, trimmed, chunked into a float16 map on disk. It must equal the
+    # exact saturated cast of a whole float32 build of the same store, cell for cell
+    import tempfile
+    sub, _ = E.sample_design(store, 0.5)
+    sub = E.trim_septic(sub)
+    W32, wn = LG.build_features(sub)
+    d = tempfile.mkdtemp()
+    try:
+        M16, mn = LG.build_features(sub, chunk_stays=7, memmap_path=os.path.join(d, "f.npy"), dtype=np.float16)
+        ref = np.clip(W32, -65504.0, 65504.0).astype(np.float16)
+        check("the full run's path (sampled, trimmed, chunked float16 on disk) == the saturated cast of a whole float32 build",
+              wn == mn and isinstance(M16, np.memmap) and np.array_equal(np.asarray(M16), ref, equal_nan=True),
+              f"{sub.n_rows:,} of {store.n_rows:,} rows, {len(mn)} features")
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
     check("a float16 build saturates at 65,504 instead of writing inf, whole or chunked",
           not np.isinf(H1).any() and not np.isinf(H2).any() and np.nanmax(ck) == 65504.0
           and np.array_equal(H1, H2, equal_nan=True), f"CK max {np.nanmax(ck):g}")
