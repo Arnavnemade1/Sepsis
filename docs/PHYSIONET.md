@@ -87,6 +87,8 @@ HTTP → SHA-256 → gunzip → CSV parser → keep the catalog's items and colu
 
 Size figures are projections from the demo with a 3× margin. The real sizes replace them on ingest.
 
+**Faster on a dedicated machine (`--parallel N`).** physionet.org caps each connection. Measured on 2026-11-04 with a 183 MB open file: one connection ran at 192–478 KB/s, four at 699–804 KB/s in total, six at 846. So `--parallel 4` fetches each table as four byte ranges, each from a fresh session. Every answer must be a 206 for exactly the range asked, from the same ETag. The joined file is hashed against the published SHA-256 before it's used, then ingested from the lake's own `staging/` directory and deleted whatever happens. A server that ignores ranges falls back to streaming. The default stays 1, so a laptop never holds a raw table; the AWS run uses 4. That's about twice as fast, and four connections, not more, out of courtesy to a free service.
+
 ## What building this found
 
 These were all live in the code that was waiting for the data (the last was found with the first real login):
@@ -129,6 +131,34 @@ The grid's contents changed, so `STORE_VERSION` is 5. Refreshed demo numbers mov
 Counts under 10 in a report produce a warning, not a block. PhysioNet sets no number; 10 is this project's policy.
 
 **What it can't do:** a scanner can't catch every way to leak something, and it can't stop someone reading a file and retyping it. The agreement still binds you personally, including reporting anything identifying to `PHI-report@physionet.org` (item 5) and publishing the code behind any released result (item 9). The agreement also says access is for research; whether a trained model may ship in a product is a question to put to PhysioNet before any MIMIC-trained model goes into the deployed app. Nothing here does that automatically.
+
+## What the first full run found
+
+MIMIC-IV 3.1 on a free-tier AWS machine (2 vCPU, 8 GB, 24 GB swap), November 2026. None of these showed on the demo:
+
+| Finding | What happened | Now |
+|---|---|---|
+| A ratio can't judge a signed lab | Base excess moved −1 → 0 between the demo's median and the full one: sampling noise near zero, and a ratio of 0. The contract refused | Signed concepts compare the shift against 10% of their plausible range; positive ones keep ×2 |
+| Releases revise patients | Parity refused at 0.977 (vasopressors) and 0.989 (IV antibiotics). Every value present in both agreed; 2 of the demo's 137 stays had been revised between 2.2 and 3.1 (20,398 → 20,245 raw rows) | Across releases, stays whose raw row counts differ are left out and reported; more than 5% refuses |
+| float16 tops out at 65,504 | Ferritin, CK, NT-proBNP and MAP's 24 h variation overflowed to inf: 7,559 of 2.9 billion cells. The demo builds float32, so nothing saw it | Saturated at 65,504; `make mimic-demo-prod` runs the demo through the full run's exact path |
+| CPU isn't idleness | A download throttled to 0.4 MB/s sits at 2–3% CPU, right on the idle alarm's line | The machine stops two hours after its last job; the CPU alarm is a 12 h backstop |
+| The memory model was 40% short | 10.1 GB used where 7.3 was planned. LightGBM matched its estimate (3.5 vs 3.8 GB); the error was cold memory (every model's scores, the heap) that grows with the rows kept, at about 1,200 bytes a row. It sat in swap untouched | Planned as hot (must be RAM) and cold (may swap); column-wise histograms save about 20% per fit |
+| Tuning was nearly flat | 32 trials: 0.8131 → 0.8163, every setting within 0.004 | 8 trials |
+| A silent log isn't a stalled run | 6.5 h without a line while LightGBM fitted a tier; the plan said 29 h and the machine fitted a third slower | A numbers-only progress journal, an ETA in `status`, and the next plan calibrated from this machine's measured speed |
+| The demo hadn't run the full run's path | Running it there (`make mimic-demo-prod`) crashed at once. LightGBM drops weights that are all exactly 1, and a validation set built by reference to a weighted training set is then left with weight 0: AUC reads 1.0 every round (early stopping follows a constant, silently) and a cross-entropy metric aborts. It needs a validation slice of only septic stays, so it took a small fold; the full run's slices always hold weighted never-septic stays | All-1 validation weights are handed over scaled by 1 + 2⁻²⁰, which changes no AUC or weighted mean |
+
+## Watching a run
+
+`make physionet-status` (or `run.sh status` on AWS) prints each stage, then the modelling run's progress from its own journal. The journal is one line per fit with counts, seconds and memory only, never a value:
+
+```
+  modelling: 54% of the planned fitting (612 fits, 3 resumed), 14.2 h in, last fit 12 min ago, 5.4 GB RAM + 4.7 GB swap
+             about 13.1 h to go (twin included), around 2026-11-05 14:40 UTC
+```
+
+Progress counts **work**, not fits: rows × columns, the planner's own cost model. A run makes hundreds of tiny audit fits beside about 80 big ones; on the demo, 95 of 815 fits were 92% of the work. Counted as fits, the plan was overrun almost at once. A finished demo run had done 81% of its planned work, so the ETA errs long.
+
+The same journal calibrates the next plan on the same machine: measured over predicted time, summed over its fitted boosters so the big ones dominate, after at least five.
 
 ## Crash recovery
 
