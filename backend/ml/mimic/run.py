@@ -371,6 +371,7 @@ def run(source: str, tag: str, scale_name: str, project: str = "", hours: float 
             return rep
         if memo:
             PR.record(memo.dir, event="start", planned_fits=int(est["booster_fits"] + est["tune_fits"]),
+                      planned_gcells=round(est["work_gcells"], 4),
                       planned_hours=round(est["hours"], 2), twin_hours=round(est["twin_hours"], 2),
                       time_factor=round(est["time_factor"], 3), **PR.machine())
     design_w = None

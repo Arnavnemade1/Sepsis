@@ -147,6 +147,9 @@ def estimate(store, n_features: int, scale, n_threads: int = None, time_factor: 
     tune_s = slow * scale.tune_trials * len(scale.tune_val_folds) * SEC_PER_ROW_COL * \
         min(scale.tune_rows, train_rows) * cols
     booster_h = ((n_fits - CONSTRUCT_SHARE * shared) * fit_s + tune_s) / 3600.0
+    # the same model as WORK, for the progress journal: billions of row x column cells to fit
+    work_gcells = (n_fits * train_rows * cols + scale.tune_trials * len(scale.tune_val_folds)
+                   * min(scale.tune_rows, train_rows) * cols) / 1e9
     twin_h = 0.0
     if scale.twin:
         stays_train = 0.64 * (float(ever.sum()) + scale.keep_rate * float((~ever).sum()))
@@ -172,7 +175,8 @@ def estimate(store, n_features: int, scale, n_threads: int = None, time_factor: 
             "ram_peak_gb": ram_gb, "model_ram_gb": model_gb, "hot_ram_gb": hot_gb, "cold_ram_gb": cold_gb,
             "extract_ram_gb": extract_gb,
             "threads": n_threads or threads(), "time_factor": time_factor,
-            "tune_fits": int(scale.tune_trials * len(scale.tune_val_folds)), "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
+            "tune_fits": int(scale.tune_trials * len(scale.tune_val_folds)), "work_gcells": work_gcells,
+            "booster_fits": int(round(n_fits)), "seconds_per_fit": fit_s,
             "booster_hours": booster_h, "twin_hours": twin_h, "hours": booster_h + twin_h + HARNESS_HOURS}
 
 

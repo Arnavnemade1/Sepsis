@@ -12,6 +12,12 @@ and refuses anything else.
 ``summary``      progress and an ETA from the journal, for ``physionet status``
 ``calibration``  how much slower or faster this machine fitted than the planner's constants,
                  from earlier runs on the SAME machine (threads and RAM), for the next plan
+
+Both count WORK, not fits: a fit's work is rows x columns, the planner's own cost model, in
+billions of cells. A run makes hundreds of tiny audit fits (the information-flow audit alone
+made ~760 of the demo run's ~780) beside ~80 big ones. Counted as fits, progress overflowed
+the plan at once, and a median of per-fit timings read the tiny fits' fixed overhead as a
+machine 100x too slow. Ratios of sums let the big fits, which are the time, dominate.
 """
 from __future__ import annotations
 
@@ -24,7 +30,8 @@ import numpy as np
 
 JOURNAL = "progress.jsonl"
 ALLOWED = frozenset({"t", "event", "kind", "hit", "seconds", "rows", "cols", "rss_gb", "swap_gb", "peak_gb",
-                     "threads", "ram_gb", "planned_fits", "planned_hours", "twin_hours", "time_factor"})
+                     "threads", "ram_gb", "planned_fits", "planned_gcells", "planned_hours", "twin_hours",
+                     "time_factor"})
 MIN_FITS = 5            # fewer fitted (not resumed) boosters than this calibrate nothing
 SAME_RAM = 0.10         # machines within 10% of RAM, with the same threads, count as the same
 
@@ -95,27 +102,33 @@ def _runs(entries: List[Dict]) -> List[Dict]:
     return runs
 
 
+def _gcells(f: Dict) -> float:
+    return f.get("rows", 0) * f.get("cols", 0) / 1e9
+
+
 def calibration(path: str, threads: int, ram_gb: float) -> Optional[Dict]:
-    """``{"time": factor, "fits": n}``: the median of measured / predicted seconds over every
-    booster FITTED (not resumed) by an earlier run on this same machine. None until there are
-    ``MIN_FITS`` of them. Predicted is the planner's own model for that fit's rows and columns."""
+    """``{"time": factor, "fits": n}``: measured over predicted seconds, summed over every booster
+    FITTED (not resumed) by an earlier run on this same machine, so the big fits dominate. None
+    until there are ``MIN_FITS`` of them. Predicted is the planner's model for those rows x columns."""
     from backend.ml.mimic import plan as PL
-    ratios = []
+    secs = pred = 0.0
+    n = 0
     for r in _runs(read(path)):
         s = r["start"]
         if s.get("threads") != threads or abs(s.get("ram_gb", 0) - ram_gb) > SAME_RAM * ram_gb:
             continue
         for f in r["fits"]:
             if f.get("kind") == "lgb" and not f.get("hit") and f.get("rows") and f.get("cols") and f.get("seconds"):
-                pred = PL.SEC_PER_ROW_COL * f["rows"] * f["cols"] * PL.CALIBRATION_THREADS / max(threads, 1)
-                ratios.append(f["seconds"] / pred)
-    if len(ratios) < MIN_FITS:
+                secs += f["seconds"]
+                pred += PL.SEC_PER_ROW_COL * f["rows"] * f["cols"] * PL.CALIBRATION_THREADS / max(threads, 1)
+                n += 1
+    if n < MIN_FITS or pred <= 0:
         return None
-    return {"time": float(np.median(ratios)), "fits": len(ratios)}
+    return {"time": secs / pred, "fits": n}
 
 
 def summary(path: str, now: Optional[float] = None) -> Optional[Dict]:
-    """The latest run: fits done of planned, the median fitted booster, memory, and an ETA."""
+    """The latest run: work done of planned, the fitted rate, memory, and an ETA."""
     runs = _runs(read(path))
     if not runs:
         return None
@@ -123,16 +136,18 @@ def summary(path: str, now: Optional[float] = None) -> Optional[Dict]:
     r = runs[-1]
     s, fits = r["start"], r["fits"]
     lgb = [f for f in fits if f.get("kind") == "lgb"]
-    fitted = [f["seconds"] for f in lgb if not f.get("hit")]
-    med = float(np.median(fitted)) if fitted else None
-    planned = int(s.get("planned_fits", 0))
-    left = max(planned - len(lgb), 0)
+    fitted = [f for f in lgb if not f.get("hit")]
+    done = sum(_gcells(f) for f in lgb)                  # resumed work is done work
+    fitted_cells = sum(_gcells(f) for f in fitted)
+    rate = sum(f["seconds"] for f in fitted) / fitted_cells if fitted_cells > 0 else None   # s per Gcell
+    planned = float(s.get("planned_gcells", 0.0))
     twin_done = any(f.get("kind") == "twin" for f in fits)
     eta_h = None
-    if med is not None:
-        eta_h = left * med / 3600 + (0.0 if twin_done else float(s.get("twin_hours", 0.0)))
+    if rate is not None:
+        eta_h = max(planned - done, 0.0) * rate / 3600 + (0.0 if twin_done else float(s.get("twin_hours", 0.0)))
     last = fits[-1] if fits else s
     mem = {k: last[k] for k in ("rss_gb", "swap_gb", "peak_gb") if k in last}
-    return {"done": len(lgb), "resumed": sum(1 for f in lgb if f.get("hit")), "planned": planned,
-            "median_fit_s": med, "since_last_s": now - last["t"], "elapsed_h": (now - s["t"]) / 3600,
-            "twin_done": twin_done, "eta_h": eta_h, "eta_t": None if eta_h is None else now + eta_h * 3600, **mem}
+    return {"fits": len(lgb), "resumed": sum(1 for f in lgb if f.get("hit")), "done_gcells": done,
+            "planned_gcells": planned, "share": done / planned if planned > 0 else None, "s_per_gcell": rate,
+            "since_last_s": now - last["t"], "elapsed_h": (now - s["t"]) / 3600, "twin_done": twin_done,
+            "eta_h": eta_h, "eta_t": None if eta_h is None else now + eta_h * 3600, **mem}
