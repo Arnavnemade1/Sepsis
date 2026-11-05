@@ -68,6 +68,7 @@ class Ctx:
     client: Optional[fetch.Client] = None
     hours: float = 12.0
     scale_name: Optional[str] = None           # "cloud" on a dedicated machine; else by access
+    parallel: int = 1                          # >1: each table over that many ranges, staged (deploy/physionet)
     runner: Optional[Callable] = None          # runs a modelling step; the verifier plants one
     repo: str = config.REPO_ROOT
     demo_root: Optional[str] = None
@@ -251,14 +252,26 @@ def _stage_ingest(ctx: Ctx) -> Dict:
         check()
         t0 = time.time()
         ctx.log(f"  {spec.rel} ...")
+        staged = None
         if ctx.from_dir:
             stream = fetch.LocalStream(os.path.join(ctx.from_dir, spec.source))
         else:
-            stream = fetch.RemoteStream(ctx.http(), ctx.url + spec.source, on_retry=lambda w: ctx.log(f"    retrying: {w}"))
+            stream = None
+            if ctx.parallel > 1:              # the raw file lands on the lake's disk, briefly, then goes
+                staged = os.path.join(ctx.root, "staging", os.path.basename(spec.source))
+                try:
+                    fetch.fetch_parallel(ctx.http(), ctx.url + spec.source, staged, sha, parts=ctx.parallel)
+                    stream = fetch.LocalStream(staged)
+                except fetch.RangeIgnored:
+                    ctx.log("    ranges not served: streaming instead")
+            if stream is None:
+                stream = fetch.RemoteStream(ctx.http(), ctx.url + spec.source, on_retry=lambda w: ctx.log(f"    retrying: {w}"))
         try:
             m = PL.ingest(spec, stream, ctx.lake, sha, disk_check=check)
         finally:
             stream.close()
+            if staged and os.path.exists(staged):
+                os.remove(staged)
         done[spec.rel] = {k: m[k] for k in ("rows_in", "rows_kept", "bytes", "source_bytes", "reconnects")}
         ctx.log(f"    {m['rows_kept']:,} of {m['rows_in']:,} rows, {m['bytes'] / 1e6:,.0f} MB, "
                 f"{time.time() - t0:,.0f}s, sha256 verified")
