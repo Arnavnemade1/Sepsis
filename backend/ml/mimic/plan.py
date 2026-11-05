@@ -96,11 +96,11 @@ STAGE_SETS: List[Tuple[str, Dict]] = [
     ("full", {}),
     ("no tier T, one record-twin seed", {"tiers": ("P", "S"), "twin_seeds": (0,)}),
     ("lean: no soft label, fewer tuning trials", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False,
-                                                  "tune_trials": 8}),
+                                                  "tune_trials": 4}),
     ("lean, no distilled student", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False, "distill": False,
-                                    "tune_trials": 8}),
+                                    "tune_trials": 4}),
     ("core: direct boosters + twin", {"tiers": ("P", "S"), "twin_seeds": (0,), "soft": False, "distill": False,
-                                      "products": False, "tune_trials": 6, "phys_seeds": (0,)}),
+                                      "products": False, "tune_trials": 3, "phys_seeds": (0,)}),
 ]
 KEEP_RATES = (0.5, 0.25, 0.15, 0.10, 0.05)
 

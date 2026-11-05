@@ -89,12 +89,16 @@ SCALES = {
                         "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0},
                   early_stop=150, twin_epochs=25, twin_seeds=(0, 1), phys_seeds=(0,), keep_rate=0.25,
                   chunk_stays=2000, dtype="float16", cpt_stays=3000, learn_stays=8000, n_boot=300,
-                  tune_trials=16, tune_val_folds=(0, 1), info_ledger=False, trim_septic=True),
+                  tune_trials=8, tune_val_folds=(0, 1), info_ledger=False, trim_septic=True),
 }
 # A dedicated cloud machine (deploy/physionet): every never-septic stay if the planner can afford
-# it, twice the tuning trials, and the full stage set kept before any negatives are given up.
-# Everything stays on dev folds; the lock is untouched.
-SCALES["cloud"] = replace(SCALES["full"], keep_rate=1.0, tune_trials=32, prefer_full_stages=True)
+# it, and the full stage set kept before any negatives are given up. Everything stays on dev
+# folds; the lock is untouched.
+#
+# Tuning is 8 trials on both scales. On the first full run, 32 trials moved the dev AUROC from
+# 0.8131 to 0.8163, every setting tried landed within 0.004 of the others, and the best of the
+# first 8 (0.8153) already had 70% of that gain: the hours belong to data, not search.
+SCALES["cloud"] = replace(SCALES["full"], keep_rate=1.0, prefer_full_stages=True)
 #: a credentialed run reports beside the lake; only the egress scan copies a report into the repo
 REPORT_DIR = os.environ.get("MIMIC_REPORT_DIR") or LG.OUT_DIR
 PHYSIO_FAMILIES = ["vitals", "gcs", "exam", "labs", "inflammation", "urine", "sofa", "history"]
