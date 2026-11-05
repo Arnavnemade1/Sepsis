@@ -531,6 +531,12 @@ def next_steps(ctx: Ctx) -> str:
             "and only then confirm. docs/MIMIC.md section 8.")
 
 
+def progress(ctx: Ctx) -> Optional[Dict]:
+    """The modelling run's own journal (``mimic.progress``): fits done, memory, an ETA. Numbers only."""
+    from backend.ml.mimic import progress as PR
+    return PR.summary(os.path.join(ctx.cache, "checkpoints", PR.JOURNAL))
+
+
 def status(ctx: Ctx) -> List[Dict]:
     state = _load_state(ctx)
     return [{"stage": st.name, **{k: state.get(st.name, {}).get(k, "") for k in ("status", "finished", "seconds", "reason")}}

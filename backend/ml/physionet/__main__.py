@@ -92,7 +92,24 @@ def cmd_status(a) -> int:
         print(f"  {row['stage']:<10} {s:<8} {row['finished']}" + (f"  {row['seconds']}s" if row["seconds"] != "" else ""))
         if row["reason"]:
             print("    " + str(row["reason"]).replace("\n", "\n    "))
+    p = pipeline.progress(_ctx(a))
+    if p:
+        print(progress_line(p))
     return 0
+
+
+def progress_line(p: dict) -> str:
+    import time
+    mem = (f"{p['rss_gb']:.1f} GB RAM + {p.get('swap_gb', 0):.1f} GB swap" if "rss_gb" in p
+           else f"peak {p.get('peak_gb', 0):.1f} GB")
+    out = (f"  modelling: {p['done']} of ~{p['planned']} booster fits ({p['resumed']} resumed), "
+           f"{p['elapsed_h']:.1f} h in, last fit {p['since_last_s'] / 60:.0f} min ago, {mem}")
+    if p["median_fit_s"] is not None:
+        out += f"\n             median fit {p['median_fit_s'] / 60:.1f} min"
+        if p["eta_h"] is not None:
+            eta = time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime(p["eta_t"]))
+            out += f"; about {p['eta_h']:.1f} h to go{'' if p['twin_done'] else ' (twin included)'}, around {eta}"
+    return out
 
 
 def cmd_fetch(a) -> int:
