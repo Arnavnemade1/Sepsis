@@ -315,3 +315,35 @@ same cohort then scores chance), and `9069b54` makes LoRA on a 1.7B backbone fit
 7.6 GB worker (gradient checkpointing, float32 adapters on a bf16 backbone). A rerun of
 the 135M + lexical configuration with the fix, and a timing probe of 1.7B LoRA on
 synthetic text, are queued.
+
+### After the fix (2026-11-08, exploratory)
+
+All five outer folds of the same bundle; text and stacked AUROC from each run's own
+receipt, stacked-vs-GBM with a paired patient bootstrap (1,000 draws). GBM alone is
+0.801 on these rows.
+
+| Configuration | Head C chosen per fold | Inner CV (subject-grouped) | Text alone | Stacked vs GBM |
+|---|---|---|---|---|
+| 135M + lexical | 10 ×5 (grid top) | 0.52-0.59 | 0.542 | +0.002 [−0.006, +0.009] |
+| 1.7B + lexical, layers −1,−8 | 10 ×5 (grid top) | 0.52-0.63 | 0.545 | +0.002 [−0.006, +0.009] |
+| 1.7B + lexical, layers 12,16 | 10 ×5 (grid top) | 0.52-0.62 | 0.541 | −0.002 [−0.008, +0.004] |
+| 1.7B + lexical, grid to C=1000 | 1000, 1000, 300, 1000, 100 | 0.53-0.63 | 0.545 | −0.003 [−0.010, +0.004] |
+
+The fix did what it should: the internal score fell from an inflated 0.61-0.71 to an
+honest 0.52-0.63. It did not change the outcome. The 135M rerun reproduced the earlier
+predictions exactly, and freeing the head's regularisation by two more decades moved
+its choice without moving held-out AUROC. With the selection fault gone, the frozen
+1.7B encoder is no better than the 135M one, and neither adds to the GBM. The null is
+the notes at this scale, not the plumbing.
+
+Fine-tuning the 1.7B is not affordable on the worker. A LoRA probe on synthetic text
+(batch 2, 512 tokens) took 62 s per context and peaked at 7.59 GB resident, the whole
+machine; one fold fit is about 36 hours and a nested evaluation needs 20 fits. The code
+path is fixed and tested (`9069b54`) for a GPU worker if one is ever funded.
+
+Infrastructure from this round, all in Forge `a749a3d`..`4893ae1`: a label-free
+on-disk embedding cache inside the lake (every hidden layer in fp16, keyed on
+checkpoint, tokenizer and context budget), which cut a repeat 1.7B configuration from
+about 85 minutes to 15-20; a futility gate that stops a run whose text arm cannot
+reach a bar; and a wider head grid. At 240 subjects the bootstrap interval is too wide
+for the gate to fire at a 0.55 bar, so it saved nothing here.
