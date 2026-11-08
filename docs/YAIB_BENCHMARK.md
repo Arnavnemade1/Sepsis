@@ -94,5 +94,21 @@ python -m backend.ml.yaib.bench compare --ours <lake>/ours --yaib <logs>/miiv/Se
     --out compare.json
 ```
 
-Memory: the feature matrix is 443 float32 columns, about 1.8 kB per stay-hour. Check the
-cohort's row count against the box's 7.6 GB before running, with one heavy job at a time.
+Memory: the feature matrix is 443 float32 columns, about 1.8 kB per stay-hour, and a fit
+also holds the training rows' copy and LightGBM's binned data. Price a cohort before
+running, and keep the matrix on disk on the 7.6 GB worker:
+
+```
+python -m backend.ml.yaib.bench plan <cohort> --features     # planned peak vs MemAvailable
+python -m backend.ml.yaib.bench run <cohort> ... --features <lake>/X.npy
+```
+
+`run` refuses up front when the planned peak exceeds 85% of available memory. One heavy
+job at a time.
+
+Compute: YAIB's LR and LightGBM baselines run on the CPU worker. Its neural baselines
+(GRU, LSTM, TCN, Transformer) with `--tune` were trained on GPUs. Their cost on the
+2-vCPU worker is unmeasured: time them on the open demo first and scale by row count.
+If a tuned 25-run protocol does not fit the time available, compare paired with LR and
+LightGBM, and cite YAIB's published neural-model numbers as published (not paired, and
+labelled so).
