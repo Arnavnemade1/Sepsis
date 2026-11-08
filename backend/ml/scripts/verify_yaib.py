@@ -174,13 +174,60 @@ def feature_checks(c: C.Cohort) -> None:
         del Xm
 
 
+def rich_checks(c: C.Cohort) -> None:
+    print("[3a] rich feature set")
+    Xb, nb = FE.build(c)
+    X, names = FE.build(c, feature_set="rich")
+    check("rich keeps every base column unchanged, in front",
+          names[:len(nb)] == nb and np.array_equal(X[:, :len(nb)], Xb, equal_nan=True), f"{X.shape[1]} columns")
+    check("columns come out in the declared order", names == FE.feature_names("rich"))
+    check("an unknown feature set is refused", refused(FE.feature_names, "everything"))
+    sid = c.dyn.stay_id.to_numpy()
+    rows = np.flatnonzero(sid == sid[0])
+    nxt = np.flatnonzero(sid == np.unique(sid)[1])
+    k = rows[len(rows) // 2]
+    d2 = c.dyn.copy()
+    for v in ("hr", "lact", "plt", "crea", "po2", "urine"):
+        d2.loc[k, v] = 400.0 if v != "plt" else 5.0
+    X2, _ = FE.build(C.Cohort(d2, c.sta, c.label), feature_set="rich")
+    earlier = rows[rows < k]
+    check("rich: a spike at hour h moves no earlier hour", np.array_equal(X[earlier], X2[earlier], equal_nan=True))
+    moved = [n for j, n in enumerate(names) if j >= len(nb) and not np.array_equal(X[k, j], X2[k, j], equal_nan=True)]
+    check("... and it moves the windowed and organ columns at h (the check can fail)",
+          {"hr__max6", "sofa_proxy", "urine6"} <= set(moved), f"{len(moved)} rich columns moved")
+    check("... and no hour of the next stay", np.array_equal(X[nxt], X2[nxt], equal_nan=True))
+    X3, _ = FE.build(C.Cohort(c.dyn, c.sta, 1 - np.nan_to_num(c.label)), feature_set="rich")
+    check("rich: flipping every label changes no feature", np.array_equal(X, X3, equal_nan=True))
+    # hand-checked values on a two-stay cohort
+    dyn = pd.DataFrame({"stay_id": [1, 1, 1, 1, 2, 2], "hour": [0.0, 1, 2, 3, 0, 1]})
+    for v in C.DYNAMIC:
+        dyn[v] = np.nan
+    dyn["hr"] = [80, np.nan, 120, 90, 60, np.nan]
+    dyn["plt"] = [np.nan, 40, np.nan, np.nan, 200, np.nan]
+    dyn["urine"] = [100, np.nan, 50, 25, 10, 10]
+    sta = pd.DataFrame({"stay_id": [1, 2], "age": [60.0, 70], "sex": [1.0, 0], "height": [170.0, 160], "weight": [70.0, 60]})
+    t = C.Cohort(dyn, sta, np.zeros(6))
+    Xt, nt = FE.build(t, feature_set="rich")
+    col = lambda n: Xt[:, nt.index(n)]
+    check("max6 is the max of measured values so far in the window",
+          np.allclose(col("hr__max6")[:4], [80, 80, 120, 120]) and np.allclose(col("hr__max6")[4], 60))
+    check("dev_first is carried value minus the stay's first value",
+          np.allclose(col("hr__dev_first")[:4], [0, 0, 40, 10]) and col("hr__dev_first")[4] == 0)
+    check("platelets 40 score coagulation 3; unmeasured scores 0 (SOFA's convention)",
+          np.allclose(col("sofa_coag"), [0, 3, 3, 3, 0, 0]))
+    check("urine6 sums within the stay only", np.allclose(col("urine6"), [100, 100, 150, 175, 10, 20]))
+
+
 def memory_checks(c: C.Cohort) -> None:
-    print("[3b] memory plan")
+    print("[3b] memory plan and streaming")
     big = FE.memory_plan(4_000_000, available_bytes=int(7.6e9), on_disk=False)
     disk = FE.memory_plan(4_000_000, available_bytes=int(7.6e9), on_disk=True)
-    check("a memmapped matrix lowers the planned heap by exactly the matrix",
-          math.isclose(big["peak_heap_gb"] - disk["peak_heap_gb"], big["matrix_gb"]))
+    check("streaming from a memmap plans below the matrix itself (no matrix, no row copies on the heap)",
+          disk["peak_heap_gb"] < disk["matrix_gb"] < big["peak_heap_gb"],
+          f"{disk['peak_heap_gb']:.1f} GB vs a {disk['matrix_gb']:.1f} GB matrix")
     check("4M stay-hours in RAM do not fit a 7.6 GB worker", big["fits"] is False, f"{big['peak_heap_gb']:.1f} GB")
+    eicu = FE.memory_plan(6_000_000, available_bytes=int(7.6e9), on_disk=True, feature_set="rich")
+    check("full eICU (~6M stay-hours), rich, streamed, fits it", eicu["fits"] is True, f"{eicu['peak_heap_gb']:.1f} GB")
     real = FE._mem_available
     built = []
     real_build = FE.build
@@ -194,6 +241,23 @@ def memory_checks(c: C.Cohort) -> None:
     finally:
         FE._mem_available, FE.build = real, real_build
     check("an over-budget run is refused before anything is built", refused_ and not built)
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = B.TrainConfig(max_rounds=60, early_stopping=10)
+        mem = B.run(c, cfg, runs=[(0, 0), (1, 2)])
+        old = FE.STREAM_ROWS
+        FE.STREAM_ROWS = 97                          # many uneven batches
+        try:
+            own = C.Cohort(c.dyn.copy(), c.sta, c.label)          # the run releases its variables
+            st = B.run(own, cfg, runs=[(0, 0), (1, 2)], features_path=os.path.join(tmp, "X.npy"))
+        finally:
+            FE.STREAM_ROWS = old
+        check("a streamed fit scores exactly as the in-memory fit",
+              [r["auroc"] for r in st["runs"]] == [r["auroc"] for r in mem["runs"]]
+              and st["model"]["streamed_from_memmap"] and not mem["model"]["streamed_from_memmap"])
+        check("a streamed run releases the cohort's variables once the memmap is written",
+              list(own.dyn.columns) == [C.GROUP, "hour"] and len(own.dyn) == len(c.dyn))
+        check("each run reports a validation AUROC for selection",
+              all(0.0 <= r["val_auroc"] <= 1.0 for r in st["runs"]) and "val_auroc_mean" in st["validation_metric"])
 
 
 def metric_checks() -> None:
@@ -282,6 +346,7 @@ def main() -> int:
         c = cohort_checks(tmp)
         split_checks(c)
         feature_checks(c)
+        rich_checks(c)
         memory_checks(c)
         metric_checks()
         compare_checks()
