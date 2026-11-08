@@ -20,7 +20,7 @@ Values are kept in the cohort's units; trees do not need them scaled.
 """
 from __future__ import annotations
 
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -65,19 +65,40 @@ def _lag_within(c: np.ndarray, k: int, seg_start: np.ndarray, fill: float) -> np
     return np.where(ok, c[np.maximum(j, 0)], fill)
 
 
-def build(cohort: Cohort) -> Tuple[np.ndarray, List[str]]:
-    """(rows x features) float32 matrix aligned with ``cohort.dyn`` and the column names."""
+PER_VARIABLE = ("", "__since", "__count", "__min", "__max", "__mean", "__mean24", "__count24", "__delta6")
+COMPOSITE = ("shock_index", "map_lt65", "lact_ge2", "lact_ge4", "sirs_count", "qsofa_vitals")
+
+
+def feature_names() -> List[str]:
+    """Column names in build order, known before any data is read (to preallocate)."""
+    return (["hour"] + [f"{v}{s}" for v in DYNAMIC for s in PER_VARIABLE] + list(COMPOSITE)
+            + [f"static_{v}" for v in STATIC])
+
+
+def build(cohort: Cohort, out: Optional[str] = None) -> Tuple[np.ndarray, List[str]]:
+    """(rows x features) float32 matrix aligned with ``cohort.dyn`` and the column names.
+
+    Columns are written straight into one preallocated array, so peak memory is the
+    matrix plus a few working columns, not twice the matrix. With ``out`` (a path; keep
+    it inside the lake for credentialed cohorts) the matrix is a disk-backed memmap and
+    the page cache, not the heap, holds it."""
     d = cohort.dyn
     stay = d[GROUP].to_numpy()
     hour = d["hour"].to_numpy(dtype=float)
     if len(stay) > 1 and np.any((stay[1:] == stay[:-1]) & (np.diff(hour) <= 0)):
         raise ValueError("rows must be sorted by stay and strictly increasing hour")
     s0 = _seg_index(stay)
-    cols: List[np.ndarray] = []
+    expected = feature_names()
+    shape = (len(stay), len(expected))
+    X = (np.lib.format.open_memmap(out, mode="w+", dtype=np.float32, shape=shape) if out
+         else np.empty(shape, dtype=np.float32))
     names: List[str] = []
 
     def add(name: str, a: np.ndarray) -> None:
-        cols.append(np.asarray(a, dtype=np.float32))
+        j = len(names)
+        if j >= len(expected) or expected[j] != name:
+            raise AssertionError(f"feature {j} built as {name!r}, declared as {expected[j:j + 1]}")
+        X[:, j] = a
         names.append(name)
 
     add("hour", hour)
@@ -119,4 +140,47 @@ def build(cohort: Cohort) -> Tuple[np.ndarray, List[str]]:
     st = cohort.sta.set_index(GROUP).reindex(stay)
     for v in STATIC:
         add(f"static_{v}", st[v].to_numpy(dtype=float))
-    return np.column_stack(cols), names
+    if names != expected:
+        raise AssertionError("built fewer features than declared")
+    if out:
+        X.flush()
+    return X, names
+
+
+BYTES_PER_ROW = 4 * len(feature_names())
+
+
+def memory_plan(rows: int, train_fraction: float = 0.64, available_bytes: Optional[int] = None,
+                on_disk: bool = True) -> dict:
+    """Peak resident bytes of one ``bench.run`` fit, from the row count alone.
+
+    Matrix (heap, or page cache when memmapped) + the training rows' copy handed to
+    LightGBM + LightGBM's binned dataset (about one byte per cell) + the validation copy.
+    ``fits`` is judged against ``available_bytes`` (default: this host's MemAvailable)."""
+    matrix = rows * BYTES_PER_ROW
+    train = int(rows * train_fraction) * BYTES_PER_ROW
+    valid = int(rows * train_fraction / 4) * BYTES_PER_ROW
+    binned = int(rows * train_fraction * 1.25) * len(feature_names())
+    frame = rows * (len(DYNAMIC) + 4) * 8          # the loaded cohort itself (float64 columns)
+    heap = frame + train + valid + binned + (0 if on_disk else matrix)
+    if available_bytes is None:
+        available_bytes = _mem_available()
+    return {"rows": rows, "matrix_gb": matrix / 1e9, "peak_heap_gb": heap / 1e9,
+            "available_gb": None if available_bytes is None else available_bytes / 1e9,
+            "fits": None if available_bytes is None else heap < 0.85 * available_bytes,
+            "matrix_on_disk": on_disk}
+
+
+def _mem_available() -> Optional[int]:
+    try:
+        with open("/proc/meminfo") as fh:
+            for line in fh:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024
+    except OSError:
+        pass
+    try:
+        import os
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_AVPHYS_PAGES")
+    except (ValueError, OSError, AttributeError):
+        return None
