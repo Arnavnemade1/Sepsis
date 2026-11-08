@@ -72,6 +72,56 @@ The baseline is YAIB's own run of that model, with YAIB's tuning.
 "Best" means better than every YAIB baseline we ran on that dataset. A tie or a loss is
 reported as it comes out.
 
+### The published numbers to beat
+
+YAIB's paper (ICLR 2024, sepsis, AUROC × 100, mean ± its "std" field):
+
+| Model | eICU | MIMIC-IV |
+|---|---|---|
+| LR | 71.8 ± 0.3 | 77.1 ± 0.4 |
+| LightGBM | 69.1 ± 0.3 | 77.5 ± 0.3 |
+| GRU | **77.4 ± 0.2** | **83.6 ± 0.3** |
+| LSTM | 74.0 ± 0.2 | 82.0 ± 0.3 |
+| TCN | 76.7 ± 0.1 | 82.7 ± 0.3 |
+| Transformer | 76.2 ± 0.1 | 80.0 ± 0.8 |
+
+The recurrent and convolutional models beat the tree models by 5-8 points. YAIB's tree
+models see only the history's min, max, mean and count of each variable, so that gap
+measures features rather than learners. Our learner is also a tree model, so this is the
+gap our features have to close.
+
+A comparison with this table is unpaired, and it rests on a cohort regenerated with
+today's ricu. We regenerated YAIB's eICU demo with ricu at YAIB-cohorts' pinned commit and
+got 873 of YAIB's 896 shipped stays, with 62 of 63 septic stays. The README of
+YAIB-cohorts warns of this ("might differ marginally"). The paired claims use YAIB's own
+code on our regenerated cohort, so both sides see the same rows.
+
+### Model selection
+
+The `rich` feature set (`--feature-set rich`) adds 6-hour extremes, 1- and 24-hour
+changes, change from the stay's first value, and a SOFA proxy with its 24-hour change
+and its rise above the stay's best value. Sepsis-3 is an acute SOFA rise, and no YAIB
+model is handed one. Whether `rich` replaces `base`, and any learner setting, is chosen
+on the validation AUROC of repetition 0's first folds, which every run now reports. The
+test folds are scored once, with the chosen configuration.
+
+### Baselines without re-tuning
+
+YAIB tunes each model once, on its first folds, then fixes the result for all 25 runs. On
+the 2-vCPU worker that search does not fit: logistic-regression tuning alone took 3 hours
+on the 896-stay demo. So the baselines run YAIB's own code with the values of YAIB's own
+published eICU models (YAIB-models, repetition 0 fold 0), fixed in
+`backend/ml/yaib/gin/*_eicu_published.gin`:
+
+| Model | Fixed values |
+|---|---|
+| LightGBM | 52 leaves, depth 7, min 1,000 rows per leaf, column sample 0.897, row sample 0.604 |
+| LR | elastic net (l1 ratio 0.620), C 0.00198, saga, 100 iterations as published |
+| GRU | 2 layers, hidden size 77, Adam lr 8.51e-5, weight decay 1e-6 |
+
+The values were read without executing the published files: the pickle was
+disassembled, and the torch file was loaded with `weights_only=True`.
+
 ## Running it on the AWS box
 
 This step needs the credentialed MIMIC-IV and eICU data, the eICU data-use agreement, and
