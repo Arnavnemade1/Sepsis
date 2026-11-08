@@ -26,6 +26,7 @@ from collections import deque
 from typing import Any, Callable, Deque, Dict, List, Optional
 
 from backend.aegis.paging import demo, policy, sbar
+from backend.aegis.paging import detector_episode as DE
 from backend.aegis.paging.hospital import (ICU_ROOMS, LIVE_ROOM, REMOTE_ZONE, ROOMS, SPECIALTY_LABEL, ZONES,
                                            build_roster, layout_payload, synthetic_patients, zone_of)
 from backend.aegis.paging.router import RouteDecision, rank
@@ -710,45 +711,47 @@ class PagingOS:
         _journal("upgraded", "notice", page=page["id"], room=room)
 
     def _episode(self, room: str, bed: str, risk: float, b: Dict[str, Any], now: float) -> None:
-        ep = self.episodes.get(room) or {"open": False, "priority": None, "page": None, "below": 0}
-        if risk >= DETECTOR_ALARM:
-            tri = triage_detector(room, b.get("name") or room, risk, b.get("enterprise") or {},
-                                  b.get("drivers") or [], b.get("population_risk"), b.get("probability"))
-            page = self.pages.get(ep["page"]) if ep.get("page") else None
-            if not ep["open"]:
-                prior = self._active_detector_page(room)
-                if prior:
-                    # the last episode's page is still being handled: one patient, one page.
-                    # The re-crossing is written on it (and can raise it), never paged again
-                    prior["escalation_log"].append({"at": now, "why": f"risk re-crossed the alarm line ({risk:.2f})",
-                                                    "to": prior.get("assignee")})
-                    if tri.priority < prior["priority"]:
-                        self._upgrade(prior, tri, now, room)
-                    else:
-                        self.emit("page", prior)
-                    _journal("recrossed", "info", page=prior["id"], room=room, risk=round(risk, 3))
-                    ep = {"open": True, "priority": prior["priority"], "page": prior["id"], "opened_at": now,
-                          "below": 0}
-                else:
-                    text = (f"Sepsis risk {risk:.2f} on {b.get('name')} (room {room}). "
-                            + ("; ".join((b.get('drivers') or [])[:3]) or "Risk above the alarm line."))
-                    page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
-                    ep = {"open": True, "priority": tri.priority, "page": page["id"], "opened_at": now, "below": 0}
-            elif tri.priority < (ep.get("priority") or 4):
-                ep["priority"] = tri.priority
-                if page and page["status"] in ACTIVE:
-                    self._upgrade(page, tri, now, room)
-                else:
-                    text = f"Septic-shock criteria on {b.get('name')} (room {room}): risk {risk:.2f}."
-                    page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
-                    ep["page"] = page["id"]
-            ep["below"] = 0
-        elif ep["open"] and risk < DETECTOR_CLEAR:
-            ep["below"] = ep.get("below", 0) + 1
-            if ep["below"] >= 3:
-                ep["open"] = False
-                self._note(f"{b.get('name')} (room {room}): sepsis risk back to {risk:.2f}, below "
-                           f"{DETECTOR_CLEAR:.2f}. Detector episode closed.", room)
+        # the decision is detector_episode.step (shared with the offline system replay);
+        # this method only carries it out on live pages
+        tri = triage_detector(room, b.get("name") or room, risk, b.get("enterprise") or {},
+                              b.get("drivers") or [], b.get("population_risk"), b.get("probability")) \
+            if risk >= DETECTOR_ALARM else None
+        prev = self.episodes.get(room)
+        page = self.pages.get(prev["page"]) if prev and prev.get("page") else None
+        found: Dict[str, Any] = {}
+
+        def prior_priority() -> Optional[int]:
+            found["prior"] = self._active_detector_page(room)
+            return found["prior"]["priority"] if found["prior"] else None
+
+        ep, action = DE.step(prev, risk, tri.priority if tri else 4, prior_priority,
+                             lambda: bool(page and page["status"] in ACTIVE))
+        if action in (DE.RECROSS, DE.RECROSS_UPGRADE):
+            # the last episode's page is still being handled: one patient, one page.
+            # The re-crossing is written on it (and can raise it), never paged again
+            prior = found["prior"]
+            prior["escalation_log"].append({"at": now, "why": f"risk re-crossed the alarm line ({risk:.2f})",
+                                            "to": prior.get("assignee")})
+            if action == DE.RECROSS_UPGRADE:
+                self._upgrade(prior, tri, now, room)
+            else:
+                self.emit("page", prior)
+            _journal("recrossed", "info", page=prior["id"], room=room, risk=round(risk, 3))
+            ep.update(page=prior["id"], opened_at=now)
+        elif action == DE.PAGE:
+            text = (f"Sepsis risk {risk:.2f} on {b.get('name')} (room {room}). "
+                    + ("; ".join((b.get('drivers') or [])[:3]) or "Risk above the alarm line."))
+            page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
+            ep.update(page=page["id"], opened_at=now)
+        elif action == DE.UPGRADE:
+            self._upgrade(page, tri, now, room)
+        elif action == DE.REPAGE:
+            text = f"Septic-shock criteria on {b.get('name')} (room {room}): risk {risk:.2f}."
+            page = self._open_case(tri, text, "detector", "AegisOS detector", False, bed=bed)
+            ep["page"] = page["id"]
+        elif action == DE.CLOSE:
+            self._note(f"{b.get('name')} (room {room}): sepsis risk back to {risk:.2f}, below "
+                       f"{DETECTOR_CLEAR:.2f}. Detector episode closed.", room)
         self.episodes[room] = ep
 
     def _note(self, text: str, room: Optional[str]) -> None:
