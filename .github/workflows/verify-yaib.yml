@@ -1,0 +1,31 @@
+# Our model under YAIB's protocol: the split must equal YAIB's own (pinned fingerprints,
+# computed with YAIB installed), features must stay causal, and the paired comparison must
+# refuse mismatched rows. Synthetic data only: no cohort, no credentials.
+name: verify-yaib
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/ml/yaib/**'
+      - 'backend/ml/scripts/verify_yaib.py'
+      - '.github/workflows/verify-yaib.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'backend/ml/yaib/**'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11.9'
+      - name: Install
+        run: pip install --disable-pip-version-check numpy==2.0.2 scipy==1.13.1 pandas==2.3.3 scikit-learn==1.6.1 lightgbm==4.6.0 pyarrow==21.0.0
+      - name: Verify
+        run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib
