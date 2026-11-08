@@ -328,6 +328,7 @@ receipt, stacked-vs-GBM with a paired patient bootstrap (1,000 draws). GBM alone
 | 1.7B + lexical, layers −1,−8 | 10 ×5 (grid top) | 0.52-0.63 | 0.545 | +0.002 [−0.006, +0.009] |
 | 1.7B + lexical, layers 12,16 | 10 ×5 (grid top) | 0.52-0.62 | 0.541 | −0.002 [−0.008, +0.004] |
 | 1.7B + lexical, grid to C=1000 | 1000, 1000, 300, 1000, 100 | 0.53-0.63 | 0.545 | −0.003 [−0.010, +0.004] |
+| 1.7B + lexical, layers 12,16, grid to C=1000 | 100, 300, 1000, 1000, 10 | 0.52-0.62 | 0.530 | +0.001 [−0.005, +0.007] |
 
 The fix did what it should: the internal score fell from an inflated 0.61-0.71 to an
 honest 0.52-0.63. It did not change the outcome. The 135M rerun reproduced the earlier
