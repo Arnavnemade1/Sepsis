@@ -288,7 +288,30 @@ bfloat16), an opt-in stacked GBM that takes the inner out-of-fold text logit as 
 feature, and a leakage-safe domain-pretraining script for a future GPU worker. Its
 design and guards are in the branch's `docs/sepsis-text-model.md`.
 
-A four-step ladder (135M, +lexical, 360M, 1.7B; each with stacking) is queued on the
-private worker to start after pilot-500 exits, on the same bundle and folds, followed
-by an aggregate-only v1-versus-v2 comparison on the pilot's completed folds with a
-paired patient bootstrap. No result is claimed here until it is released.
+### Ladder result (2026-11-08, exploratory)
+
+The four-step ladder ran on the private worker on the same bundle and folds. The table
+compares on the pilot's completed outer folds 0-2 (17,485 rows, 240 subjects), with a
+paired patient bootstrap (1,000 draws); only these aggregates left the lake.
+
+| Configuration | Text alone, AUROC | Text alone vs v1 | Stacked vs GBM (0.799) |
+|---|---|---|---|
+| v1 (pilot) | 0.467 | | |
+| 135M | 0.494 | +0.027 [−0.076, +0.131] | −0.003 [−0.013, +0.009] |
+| 135M + lexical | 0.526 | +0.060 [−0.042, +0.162] | −0.001 [−0.009, +0.008] |
+| 360M + lexical | 0.524 | +0.057 [−0.042, +0.169] | −0.003 [−0.013, +0.010] |
+| 1.7B (bf16) + lexical | 0.517 | +0.050 [−0.053, +0.166] | −0.005 [−0.015, +0.006] |
+
+No configuration met the bar (a stacked interval above zero). The text arm stays near
+chance, and a 13-fold larger encoder changes nothing, so capacity is not the limit.
+
+The receipts pointed at a selection fault. In every run the head's internal CV over
+training contexts reported AUROC 0.61-0.71 and chose the weakest regularisation on the
+grid (C=10) in every fold, while held-out subjects scored about 0.52-0.55. The CV split
+contexts, not subjects; consecutive hourly contexts of one stay share notes, so the
+split rewarded memorising patients. On a planted cohort whose only signal is patient
+identity, that selector scores 0.997. Forge `2b37bb1` makes it subject-grouped (the
+same cohort then scores chance), and `9069b54` makes LoRA on a 1.7B backbone fit the
+7.6 GB worker (gradient checkpointing, float32 adapters on a bf16 backbone). A rerun of
+the 135M + lexical configuration with the fix, and a timing probe of 1.7B LoRA on
+synthetic text, are queued.
