@@ -54,10 +54,38 @@ class TrainConfig:
     early_stopping: int = 100
     threads: int = 2
     seed: int = 0
+    balanced: bool = True
+
+
+class _Rows:
+    """Some rows of a (memmapped) matrix as a LightGBM ``Sequence``: LightGBM samples rows
+    to place its bins, then reads ``batch_size`` rows at a time, so the training rows are
+    never copied whole onto the heap."""
+
+    def __init__(self, X: np.ndarray, rows: np.ndarray):
+        self.X, self.rows, self.batch_size = X, np.asarray(rows), FE.STREAM_ROWS
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def __getitem__(self, idx):
+        return np.asarray(self.X[self.rows[idx]], dtype=np.float32)
+
+
+def _predict(booster, X: np.ndarray, rows: np.ndarray, stream: bool) -> np.ndarray:
+    if not stream:
+        return booster.predict(X[rows], num_iteration=booster.best_iteration)
+    out = np.empty(len(rows))
+    for i in range(0, len(rows), FE.STREAM_ROWS):
+        j = rows[i:i + FE.STREAM_ROWS]
+        out[i:i + len(j)] = booster.predict(np.asarray(X[j]), num_iteration=booster.best_iteration)
+    return out
 
 
 def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
-                 cfg: TrainConfig) -> Dict[str, Any]:
+                 cfg: TrainConfig, stream: bool = False) -> Dict[str, Any]:
+    """Fit on ``tr``, stop early on ``va``, score ``te``. ``stream`` feeds LightGBM from the
+    matrix in batches (for a memmap bigger than RAM) instead of copying the rows."""
     import lightgbm as lgb
     pos = max(float(y[tr].sum()), 1.0)
     neg = max(float(len(tr) - y[tr].sum()), 1.0)
@@ -68,16 +96,23 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
         "min_child_samples": int(min(cfg.min_child_samples, max(5, len(tr) // 50))),
         "feature_fraction": cfg.feature_fraction, "bagging_fraction": cfg.bagging_fraction,
         "bagging_freq": 1, "lambda_l2": cfg.lambda_l2,
-        # YAIB trains with weight="balanced"; the same class balance here
-        "scale_pos_weight": neg / pos,
         "num_threads": cfg.threads, "seed": cfg.seed, "deterministic": True, "verbose": -1,
     }
-    dtr = lgb.Dataset(X[tr], y[tr], free_raw_data=True)
-    dva = lgb.Dataset(X[va], y[va], reference=dtr, free_raw_data=True)
+    if cfg.balanced:
+        # YAIB trains with weight="balanced"; the same class balance here
+        params["scale_pos_weight"] = neg / pos
+    if stream:
+        # no weights on a Sequence: LightGBM 4.x silently zeroes a weighted Sequence's
+        # validation weights (AUC 1.0); class balance goes through scale_pos_weight only
+        dtr = lgb.Dataset(_Rows(X, tr), label=y[tr], free_raw_data=True)
+        dva = lgb.Dataset(_Rows(X, va), label=y[va], reference=dtr, free_raw_data=True)
+    else:
+        dtr = lgb.Dataset(X[tr], y[tr], free_raw_data=True)
+        dva = lgb.Dataset(X[va], y[va], reference=dtr, free_raw_data=True)
     booster = lgb.train(params, dtr, cfg.max_rounds, valid_sets=[dva],
                         callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
-    return {"p": booster.predict(X[te], num_iteration=booster.best_iteration),
-            "rounds": int(booster.best_iteration)}
+    return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
+            "val_auroc": float(booster.best_score["valid_0"]["auc"])}
 
 
 def yaib_summary(name: str, v: np.ndarray) -> Dict[str, Any]:
@@ -105,23 +140,31 @@ def _metric(y: np.ndarray, p: np.ndarray) -> Dict[str, float]:
 def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 5, cv_folds: int = 5,
         seed: int = SP.YAIB_CLI_SEED, runs: Optional[Sequence[tuple]] = None,
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
-        memory_check: bool = True) -> Dict[str, Any]:
+        memory_check: bool = True, feature_set: str = "base") -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
-    ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake).
+    ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
+    and then streams it to LightGBM in batches, so no copy of the rows is held in RAM.
+    Each run also records its validation AUROC: choose between configurations on that,
+    never on the test score.
     A run whose planned peak exceeds this host's available memory is refused up front,
     instead of swapping for hours or being killed mid-protocol."""
     t0 = time.time()
     if memory_check:
-        plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None)
+        plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None, feature_set=feature_set)
         if plan["fits"] is False:
             raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB > 85% of available "
                               f"{plan['available_gb']:.1f} GB; pass features_path (memmap) or a larger host")
-    X, names = FE.build(cohort, out=features_path)
+    X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
+    stream = features_path is not None
     y_all = cohort.label
-    stay = cohort.dyn[GROUP].to_numpy()
-    hour = cohort.dyn["hour"].to_numpy()
+    stay = cohort.dyn[GROUP].to_numpy().copy()
+    hour = cohort.dyn["hour"].to_numpy().copy()
     labels = cohort.stay_labels()
+    if stream:
+        # the features are on disk now; the cohort's variables are not needed again, and on
+        # a full cohort they are gigabytes. The caller's cohort keeps its ids, hours, labels.
+        cohort.dyn = cohort.dyn[[GROUP, "hour"]]
     per_run: List[Dict[str, Any]] = []
     for sp in SP.all_splits(labels, cv_repetitions, cv_folds, seed):
         if runs is not None and (sp.repetition, sp.fold) not in runs:
@@ -131,10 +174,10 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         va = np.flatnonzero(np.isin(stay, sp.val) & lab)
         te = np.flatnonzero(np.isin(stay, sp.test) & lab)
         y = np.nan_to_num(y_all, nan=0.0)
-        fit = _fit_predict(X, y, tr, va, te, cfg)
+        fit = _fit_predict(X, y, tr, va, te, cfg, stream=stream)
         m = _metric(y[te], fit["p"])
         per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
-                        "rounds": fit["rounds"], "test_rows": int(len(te)),
+                        "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
                         "test_stays": int(len(sp.test)), **m})
         if predictions_dir:
             os.makedirs(predictions_dir, exist_ok=True)
@@ -142,16 +185,19 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                 os.path.join(predictions_dir, f"ours_r{sp.repetition}_f{sp.fold}.parquet"), index=False)
     au = np.array([r["auroc"] for r in per_run], float)
     pr = np.array([r["auprc"] for r in per_run], float)
+    va_au = np.array([r["val_auroc"] for r in per_run], float)
     return {
         "schema": "yaib_bench/1",
         "cohort": {"name": cohort.name, "stays": int(len(labels)), "septic_stays": int(labels.sum()),
                    "rows": int(len(stay)), "labelled_rows": int(np.isfinite(y_all).sum())},
         "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
                      "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
-        "model": {"learner": "LightGBM", **asdict(cfg), "n_features": len(names)},
+        "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
+                  "streamed_from_memmap": stream},
         "runs": per_run,
         "yaib_metric": {**yaib_summary("auroc", au), **yaib_summary("auprc", pr),
                         "n_runs": int(np.isfinite(au).sum())},
+        "validation_metric": yaib_summary("val_auroc", va_au),
         "seconds": round(time.time() - t0, 1),
     }
 
@@ -277,9 +323,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--threads", type=int, default=2)
     r.add_argument("--predictions", help="directory for per-run test predictions (inside the lake)")
     r.add_argument("--features", help="memmap the feature matrix to this .npy path (inside the lake)")
+    r.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
+    r.add_argument("--runs", help="only these runs, e.g. 0:0,0:1 (development; select on validation AUROC)")
+    r.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
+    r.add_argument("--num-leaves", type=int, default=TrainConfig.num_leaves)
+    r.add_argument("--min-child-samples", type=int, default=TrainConfig.min_child_samples)
+    r.add_argument("--feature-fraction", type=float, default=TrainConfig.feature_fraction)
+    r.add_argument("--unbalanced", action="store_true", help="no scale_pos_weight")
     p = sub.add_parser("plan", help="planned peak memory for a cohort, without building anything")
     p.add_argument("cohort")
     p.add_argument("--features", action="store_true", help="plan with the matrix memmapped to disk")
+    p.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
     c = sub.add_parser("compare", help="paired AUROC vs YAIB's saved baseline predictions")
     c.add_argument("--ours", required=True, help="directory of ours_r*_f*.parquet")
     c.add_argument("--yaib", required=True, help="YAIB log directory of one baseline model")
@@ -290,14 +344,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if a.cmd == "plan":
         import pyarrow.parquet as pq
         rows = pq.ParquetFile(os.path.join(a.cohort, "dyn.parquet")).metadata.num_rows
-        print(json.dumps(FE.memory_plan(rows, on_disk=a.features)))
+        print(json.dumps(FE.memory_plan(rows, on_disk=a.features, feature_set=a.feature_set)))
         return 0
     if a.cmd == "run":
-        res = run(load(a.cohort), TrainConfig(threads=a.threads), a.repetitions, a.folds, a.seed,
-                  predictions_dir=a.predictions, features_path=a.features)
-        m = res["yaib_metric"]
-        print(f"AUROC {m['auroc_mean']:.4f} ± {m['auroc_yaib_std_field']:.4f}  AUPRC {m['auprc_mean']:.4f} "
-              f"± {m['auprc_yaib_std_field']:.4f}  over {m['n_runs']} runs (± as YAIB reports it)")
+        cfg = TrainConfig(learning_rate=a.learning_rate, num_leaves=a.num_leaves,
+                          min_child_samples=a.min_child_samples, feature_fraction=a.feature_fraction,
+                          threads=a.threads, balanced=not a.unbalanced)
+        runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
+        cohort = load(a.cohort)
+        res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
+                  predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set)
+        m, v = res["yaib_metric"], res["validation_metric"]
+        print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
+        if runs is None:
+            print(f"AUROC {m['auroc_mean']:.4f} ± {m['auroc_yaib_std_field']:.4f}  AUPRC {m['auprc_mean']:.4f} "
+                  f"± {m['auprc_yaib_std_field']:.4f}  over {m['n_runs']} runs (± as YAIB reports it)")
     else:
         ours, theirs = load_runs(os.path.join(a.ours, "ours_r*_f*.parquet"), a.yaib)
         res = compare(ours, theirs, a.n_boot)
