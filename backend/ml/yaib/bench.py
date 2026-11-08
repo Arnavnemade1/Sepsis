@@ -104,11 +104,20 @@ def _metric(y: np.ndarray, p: np.ndarray) -> Dict[str, float]:
 
 def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 5, cv_folds: int = 5,
         seed: int = SP.YAIB_CLI_SEED, runs: Optional[Sequence[tuple]] = None,
-        predictions_dir: Optional[str] = None) -> Dict[str, Any]:
+        predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
+        memory_check: bool = True) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
-    ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake)."""
+    ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
+    ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake).
+    A run whose planned peak exceeds this host's available memory is refused up front,
+    instead of swapping for hours or being killed mid-protocol."""
     t0 = time.time()
-    X, names = FE.build(cohort)
+    if memory_check:
+        plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None)
+        if plan["fits"] is False:
+            raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB > 85% of available "
+                              f"{plan['available_gb']:.1f} GB; pass features_path (memmap) or a larger host")
+    X, names = FE.build(cohort, out=features_path)
     y_all = cohort.label
     stay = cohort.dyn[GROUP].to_numpy()
     hour = cohort.dyn["hour"].to_numpy()
@@ -267,6 +276,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--folds", type=int, default=5)
     r.add_argument("--threads", type=int, default=2)
     r.add_argument("--predictions", help="directory for per-run test predictions (inside the lake)")
+    r.add_argument("--features", help="memmap the feature matrix to this .npy path (inside the lake)")
+    p = sub.add_parser("plan", help="planned peak memory for a cohort, without building anything")
+    p.add_argument("cohort")
+    p.add_argument("--features", action="store_true", help="plan with the matrix memmapped to disk")
     c = sub.add_parser("compare", help="paired AUROC vs YAIB's saved baseline predictions")
     c.add_argument("--ours", required=True, help="directory of ours_r*_f*.parquet")
     c.add_argument("--yaib", required=True, help="YAIB log directory of one baseline model")
@@ -274,9 +287,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     c.add_argument("--n-boot", type=int, default=1000)
     a = ap.parse_args(argv)
 
+    if a.cmd == "plan":
+        import pyarrow.parquet as pq
+        rows = pq.ParquetFile(os.path.join(a.cohort, "dyn.parquet")).metadata.num_rows
+        print(json.dumps(FE.memory_plan(rows, on_disk=a.features)))
+        return 0
     if a.cmd == "run":
         res = run(load(a.cohort), TrainConfig(threads=a.threads), a.repetitions, a.folds, a.seed,
-                  predictions_dir=a.predictions)
+                  predictions_dir=a.predictions, features_path=a.features)
         m = res["yaib_metric"]
         print(f"AUROC {m['auroc_mean']:.4f} ± {m['auroc_yaib_std_field']:.4f}  AUPRC {m['auprc_mean']:.4f} "
               f"± {m['auprc_yaib_std_field']:.4f}  over {m['n_runs']} runs (± as YAIB reports it)")
