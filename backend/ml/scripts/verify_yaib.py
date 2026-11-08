@@ -164,6 +164,36 @@ def feature_checks(c: C.Cohort) -> None:
     check("flipping every label changes no feature", np.array_equal(X, X3, equal_nan=True))
     hr_since = X[:, names.index("hr__since")]
     check("hours-since-measured is 0 where measured", bool(np.all(hr_since[np.isfinite(c.dyn.hr.to_numpy())] == 0)))
+    check("columns come out in the declared order", names == FE.feature_names() and X.shape[1] == len(names))
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "X.npy")
+        Xm, _ = FE.build(c, out=path)
+        check("a memmapped build is byte-identical to the in-memory one",
+              isinstance(Xm, np.memmap) and X.dtype == Xm.dtype and X.tobytes() == np.asarray(Xm).tobytes())
+        check("... and is readable back from disk", np.array_equal(np.load(path, mmap_mode="r"), X, equal_nan=True))
+        del Xm
+
+
+def memory_checks(c: C.Cohort) -> None:
+    print("[3b] memory plan")
+    big = FE.memory_plan(4_000_000, available_bytes=int(7.6e9), on_disk=False)
+    disk = FE.memory_plan(4_000_000, available_bytes=int(7.6e9), on_disk=True)
+    check("a memmapped matrix lowers the planned heap by exactly the matrix",
+          math.isclose(big["peak_heap_gb"] - disk["peak_heap_gb"], big["matrix_gb"]))
+    check("4M stay-hours in RAM do not fit a 7.6 GB worker", big["fits"] is False, f"{big['peak_heap_gb']:.1f} GB")
+    real = FE._mem_available
+    built = []
+    real_build = FE.build
+    FE._mem_available = lambda: 1_000_000          # a 1 MB host
+    FE.build = lambda *a, **k: built.append(1) or real_build(*a, **k)
+    try:
+        B.run(c, B.TrainConfig(), 5, 5, runs=[(0, 0)])
+        refused_ = False
+    except MemoryError:
+        refused_ = True
+    finally:
+        FE._mem_available, FE.build = real, real_build
+    check("an over-budget run is refused before anything is built", refused_ and not built)
 
 
 def metric_checks() -> None:
@@ -252,6 +282,7 @@ def main() -> int:
         c = cohort_checks(tmp)
         split_checks(c)
         feature_checks(c)
+        memory_checks(c)
         metric_checks()
         compare_checks()
         end_to_end(c, tmp)
