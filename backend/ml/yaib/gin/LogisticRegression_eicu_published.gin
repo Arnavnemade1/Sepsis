@@ -1,0 +1,15 @@
+# YAIB's logistic regression for eICU sepsis with the hyperparameters of YAIB's own published
+# model (YAIB-models sepsis/eicu/eicu_sepsis_LogisticRegression_repetition_0_fold_0_model.joblib,
+# read by disassembling the pickle, never loading it): elastic net, saga, max_iter as published.
+include "configs/prediction_models/common/MLCommon.gin"
+
+train_common.model = @LogisticRegression
+MLWrapper.patience = 10
+
+model/hyperparameter.class_to_tune = @LogisticRegression
+model/hyperparameter.solver = "saga"
+model/hyperparameter.n_jobs = 2
+model/hyperparameter.max_iter = 100
+model/hyperparameter.C = 0.0019825398965667394
+model/hyperparameter.penalty = "elasticnet"
+model/hyperparameter.l1_ratio = 0.6199682402841002

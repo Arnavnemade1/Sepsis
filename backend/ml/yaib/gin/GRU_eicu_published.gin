@@ -1,0 +1,15 @@
+# YAIB's GRU for eICU sepsis with the architecture and optimiser of YAIB's own published model
+# (YAIB-models sepsis/eicu/eicu_sepsis_GRU_repetition_0_fold_0_model.torch: 2 layers, hidden 77,
+# Adam lr 8.51e-5, weight decay 1e-6; read with weights_only=True).
+include "configs/prediction_models/common/DLCommon.gin"
+
+train_common.model = @GRUNet
+
+optimizer/hyperparameter.class_to_tune = @Adam
+optimizer/hyperparameter.weight_decay = 1e-6
+optimizer/hyperparameter.lr = 8.511955459563192e-05
+
+model/hyperparameter.class_to_tune = @GRUNet
+model/hyperparameter.num_classes = %NUM_CLASSES
+model/hyperparameter.hidden_dim = 77
+model/hyperparameter.layer_dim = 2

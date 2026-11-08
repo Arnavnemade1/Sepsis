@@ -1,0 +1,15 @@
+# YAIB's LightGBM for eICU sepsis with the hyperparameters of YAIB's own published model
+# (YAIB-models sepsis/eicu/eicu_sepsis_LGBMClassifier_repetition_0_fold_0_model.txt), fixed
+# instead of re-tuned. Same estimator, preprocessing and early stopping as LGBMClassifier.gin.
+include "configs/prediction_models/common/MLCommon.gin"
+
+train_common.model = @LGBMClassifier
+
+model/hyperparameter.class_to_tune = @LGBMClassifier
+model/hyperparameter.colsample_bytree = 0.896612
+model/hyperparameter.max_depth = 7
+model/hyperparameter.min_child_samples = 1000
+model/hyperparameter.n_estimators = 100000
+model/hyperparameter.num_leaves = 52
+model/hyperparameter.subsample = 0.603731
+model/hyperparameter.subsample_freq = 1
