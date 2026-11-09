@@ -55,3 +55,26 @@ The job survives a disconnect only if you start it inside `tmux` or `nohup`. If 
 When you're finished, `terraform destroy` deletes the machine **and its disk**, which is the point. Copy out only the released report, never the lake.
 
 The `doctor` check reports disk encryption as "not measurable here" inside a container; on this stack the `encrypted = true` above is what guarantees it.
+
+## One heavy job at a time
+
+The worker has 2 vCPUs and 7.6 GB of RAM. Two heavy jobs at once run it out of memory, and
+several agents share it. So every heavy job takes one lock, and the kernel enforces it:
+
+```bash
+sudo install -m 755 deploy/physionet/heavy.sh /usr/local/sbin/aegis-heavy
+sudo systemd-run --unit yaib-full aegis-heavy run yaib-full -- docker run --rm ...  # waits its turn
+sudo aegis-heavy run probe --no-wait -- ...    # exits 75 at once if the box is busy
+aegis-heavy status                             # "free", or who holds it and since when
+```
+
+The lock is `flock` on `/run/lock/aegis-heavy.lock`. It is released when its holder exits or
+is killed, and a reboot clears it. Children inherit it, so a pipeline holds it across all its
+stages. Keep `docker run` in the foreground (no `-d`), or the container outlives the lock.
+A unit started before the lock existed is covered with `aegis-heavy hold-while <unit>`.
+
+`sudo bash deploy/physionet/test_heavy.sh` checks it on a private lock file (11 checks; with
+the `flock` call removed, 6 of them fail).
+
+The lock covers one job at a time. A reservation that spans several jobs, with gaps between
+them, is still agreed between the agents (on Axis, with a release marker).
