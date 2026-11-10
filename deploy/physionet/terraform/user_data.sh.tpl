@@ -15,6 +15,8 @@ cat > /usr/local/sbin/aegis-idle-stop <<'IDLE'
 #!/bin/bash
 mark=/run/aegis-idle-since
 if [ -n "$(docker ps -q)" ]; then rm -f "$mark"; exit 0; fi
+# a job holding the one heavy-job lock is not idle, even between its containers
+if [ -x /usr/local/sbin/aegis-heavy ] && /usr/local/sbin/aegis-heavy status | grep -q "^busy"; then rm -f "$mark"; exit 0; fi
 [ -f "$mark" ] || { date +%s > "$mark"; exit 0; }
 [ $(( $(date +%s) - $(cat "$mark") )) -ge 7200 ] && shutdown -h now "aegis: no job for two hours" || true
 IDLE
