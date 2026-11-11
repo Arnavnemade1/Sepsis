@@ -55,6 +55,9 @@ can be believed.
 | **Across hospitals** | **AUROC 0.68–0.70**, trained at one hospital and scored at the other. This is the honest deployment number |
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The acquisition platform ([PHYSIONET](docs/PHYSIONET.md)) is ready for credentialed data; no credentialed data has been run and no full-MIMIC result exists |
+| **System replay** | A hospital runs a paging system, not a model, so held-out stays are replayed hour by hour through the paging OS's own detector rule (imported, never copied) against a bare threshold on the same scores. It reports pages per 100 patient-days, sensitivity and **false pages per caught case**. The bar was fixed before any held-out run: the system must cut false pages per case and stay non-inferior on sensitivity. No MIMIC result is claimed yet ([SYSTEM_REPLAY](docs/SYSTEM_REPLAY.md)) |
+| **YAIB benchmark** | Our model runs under the [YAIB](https://github.com/rvandewater/YAIB) protocol (its cohort, its splits, its metric over 5×5 runs) and is compared paired against YAIB's own baselines. The split is identical to YAIB's own function in 25 of 25 repetition-fold pairs. On the open eICU demo the difference is +0.011 AUROC [−0.028, +0.050], so there is nothing to report. That demo checks the pipeline and is not a claim. Credentialed runs are queued ([YAIB_BENCHMARK](docs/YAIB_BENCHMARK.md)) |
+| **Clinical text** | A local text model over MIMIC-IV-Note, tried from a 135M to a 1.7B encoder, adds nothing to the tier-S GBM (stacked difference within ±0.005 AUROC on all five outer folds). A selection fault that rewarded memorising patients was found and fixed, and the result stayed null. Reported as a null ([DURABLE_RESEARCH](docs/DURABLE_RESEARCH.md)) |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
 | **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 73 and the integration plane 208, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
 
@@ -499,6 +502,8 @@ Every layer has its own `verify_*.py`. Run them all with `make verify-os`.
 | `patient_terminal.py` · `patient_records.py` | A terminal for each bed (tracking foci, watch rules) and medical-history intake |
 | `devices.py` | Device pairing and management |
 | `scale/loadgen.py` | The bed-count load harness |
+| `backend/ml/system_replay.py` | Replays held-out stays through `paging/detector_episode.step`, the pure state machine the live engine runs, against a bare threshold. 33 planted-failure checks (`make verify-replay`) |
+| `backend/ml/yaib/` | Reads YAIB cohorts as they are, reproduces its split, computes causal hourly features and runs 5×5 LightGBM with YAIB's metric and a paired comparison. It refuses an over-budget run up front and resumes from checkpoints after a worker stop (`make verify-yaib`) |
 | `server.py` · `stream.py` | The composition root (kernel bring-up, session, cohort, drive loops) and the versioned snapshot contract. The routes live in `backend/api/routes/` |
 
 </details>
@@ -534,13 +539,13 @@ Every layer has its own `verify_*.py`. Run them all with `make verify-os`.
 │   │   ├── kernel/       /dev/bio, memory fabric, schedulers, egress cage, gate, ABI, journal, VFS
 │   │   ├── apps/         capability-confined apps and their SDK
 │   │   └── scale/        the bed-count load harness
-│   ├── ml/               detection research on CinC 2019 (genesis/, mimic/, quantum/)
+│   ├── ml/               detection research on CinC 2019 (genesis/, mimic/, quantum/, yaib/) and the system replay
 │   ├── vision/           contactless optical biosensor
 │   ├── physio/           HRV, PPG morphology, coupling, autonomic recovery
 │   ├── llm/              Dr. Aegis: grounded consult, voice relay, provider failover
 │   ├── hostresponse/     the pre-registered GEO gene-expression study
 │   └── core/             the original primitives: HDC, simulator, neurosymbolic rules, Z3 verifier
-├── deploy/               how each piece is deployed (Vercel, Render, Supabase)
+├── deploy/               how each piece is deployed (Vercel, Render, Supabase) and the credentialed-data worker (physionet/, with the aegis-heavy lock)
 ├── webui/                the previous OS shell, being retired
 ├── site/                 the public Next.js site
 ├── docs/                 FINDINGS.md and one report per finding
@@ -590,6 +595,17 @@ make verify-mimic   # needs the open MIMIC-IV demo in data/mimic_demo/
 make mimic-demo     # the whole MIMIC-IV pipeline on the demo, ~3.5 min
 make verify-physionet  # the credentialed-data platform: planted failures and mutations, ~15 min
 make verify-notes      # the clinical-text infrastructure, on invented notes, ~1 s
+make verify-replay     # the system replay: planted drift, late credit and a quiet system that loses catches
+make verify-yaib       # our model under YAIB's protocol; needs pyarrow
+```
+
+Heavy private jobs on the 2-vCPU, 7.6 GB credentialed-data worker run one at a time under a
+kernel lock (`flock`), so two cannot run it out of memory:
+
+```bash
+sudo install -m 755 deploy/physionet/heavy.sh /usr/local/sbin/aegis-heavy
+sudo aegis-heavy run <name> -- <command>   # waits its turn; --no-wait exits 75 if busy
+aegis-heavy status                         # "free", or who holds it
 ```
 
 ## Deployment
@@ -681,6 +697,9 @@ Datasets are never committed. Each one is redistributed only by its own source.
 | [GENESIS](docs/GENESIS.md) | How far hourly early warning goes with all 40 CinC variables, and why 0.90 is out of reach there |
 | [MIMIC](docs/MIMIC.md) | The MIMIC-IV pipeline: data, label, harness, temporal model, levers and runbook |
 | [PHYSIONET](docs/PHYSIONET.md) | The credentialed-data platform: verified acquisition, the Parquet lake, data contracts, the Data Use Agreement as code |
+| [SYSTEM_REPLAY](docs/SYSTEM_REPLAY.md) | Held-out stays through the paging OS against a bare threshold: alert load, false pages per caught case, and a pre-registered bar |
+| [YAIB_BENCHMARK](docs/YAIB_BENCHMARK.md) | Our model under YAIB's cohort, splits and metric: protocol evidence, published numbers to beat, resumable private runs |
+| [DURABLE_RESEARCH](docs/DURABLE_RESEARCH.md) | Durable autonomous research on a replaceable worker, and the clinical-text model ladder (null) |
 | [NOTES](docs/NOTES.md) | Clinical text as tier-S features: radiology at its storetime, prior discharge summaries, keyword versus encoder. Infrastructure only, no result |
 | [DATA_LEVER](docs/DATA_LEVER.md) | More patients: a registered win, two refusals, and the four defects shipping it exposed |
 | [CALIBRATION_RESOLUTION](docs/CALIBRATION_RESOLUTION.md) | Calibrating without a staircase: the ranking isotonic threw away |
@@ -725,6 +744,11 @@ Each subsystem also has its own README:
   FHIR server. MLLP is off on the hosted deployment (Render exposes only HTTP). Evidence verifies
   scale and gross identity, not meaning: 28 concept pairs are indistinguishable by distribution,
   and identities are checked within one interface, not across them.
+- **No YAIB or system-replay result on credentialed data exists yet.** The eICU demo numbers
+  (63 septic stays) show the pipeline works, not that one model beats another. YAIB's neural
+  baselines were tuned on GPUs, and their cost on the CPU worker is unmeasured.
+- **Clinical text adds nothing so far.** A 1.7B frozen encoder is no better than a 135M one, and
+  fine-tuning it is not affordable on the worker.
 - **The room monitor runs published rules, not a trained model.** Its detectors are checked
   against hand-computed answers and planted failures, not against outcomes. Synthetic rooms run
   on simulated vitals and every course there is labelled simulated.
