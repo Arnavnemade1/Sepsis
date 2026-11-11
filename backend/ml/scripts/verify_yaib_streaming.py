@@ -202,6 +202,9 @@ class StreamingChecks(unittest.TestCase):
             report = json.loads(result.stdout)
             self.assertEqual(report, json.loads(output.read_text()))
             self.assertEqual(report["status"], "completed")
+            stages = [item["stage"] for item in report["stages"]]
+            for name in ("train_dataset_built", "validation_dataset_built", "booster_fit_completed"):
+                self.assertEqual(stages.count(name), 1)
             self.assertGreater(report["stages"][-1]["peak_rss_bytes"], 0)
             self.assertEqual(set(report), {"purpose", "status", "stages"})
             self.assertEqual(output.parent.stat().st_mode & 0o777, 0o700)

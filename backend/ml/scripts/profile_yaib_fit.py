@@ -101,6 +101,7 @@ def profile(directory, features, output):
                 te,
                 B.TrainConfig(max_rounds=1, early_stopping=1),
                 stream=True,
+                stage=record,
             )
             del result
             gc.collect()

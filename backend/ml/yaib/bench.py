@@ -102,7 +102,7 @@ def _predict(booster, X: np.ndarray, rows: np.ndarray, stream: bool) -> np.ndarr
 
 
 def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
-                 cfg: TrainConfig, stream: bool = False) -> Dict[str, Any]:
+                 cfg: TrainConfig, stream: bool = False, stage=None) -> Dict[str, Any]:
     """Fit on ``tr``, stop early on ``va``, score ``te``. ``stream`` feeds LightGBM from the
     matrix in batches (for a memmap bigger than RAM) instead of copying the rows."""
     import lightgbm as lgb
@@ -124,6 +124,13 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
         # no weights on a Sequence: LightGBM 4.x silently zeroes a weighted Sequence's
         # validation weights (AUC 1.0); class balance goes through scale_pos_weight only
         class SequenceDataset(lgb.Dataset):
+            def construct(self):
+                first = self._handle is None
+                result = super().construct()
+                if first and stage is not None:
+                    stage("train_dataset_built" if self.reference is None else "validation_dataset_built")
+                return result
+
             def get_params(self):
                 # Sequence construction calls this method for its native sample path.
                 # LightGBM's default filter omits min_child_samples and num_threads,
@@ -138,6 +145,8 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
     booster = lgb.train(params, dtr, cfg.max_rounds, valid_sets=[dva],
                         callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
     try:
+        if stage is not None:
+            stage("booster_fit_completed")
         return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
                 "val_auroc": float(booster.best_score["valid_0"]["auc"])}
     finally:
