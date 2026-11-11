@@ -74,7 +74,7 @@ def profile(directory, features, output):
     with private_logs(output.parent / "private-fit.log"):
         try:
             record("loading_cohort")
-            cohort = C.load(str(directory))
+            cohort = C.load(str(directory), stage=record)
             record("cohort_loaded")
             X = np.load(features, mmap_mode="r", allow_pickle=False)
             if (

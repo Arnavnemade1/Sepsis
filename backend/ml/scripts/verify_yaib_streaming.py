@@ -211,6 +211,7 @@ class StreamingChecks(unittest.TestCase):
         from pathlib import Path
 
         import pandas as pd
+        import pyarrow.parquet as pq
 
         from backend.ml.scripts.verify_yaib import synthetic, write
         from backend.ml.yaib import cohort as C
@@ -220,15 +221,16 @@ class StreamingChecks(unittest.TestCase):
         dyn["unused_blob"] = "unneeded-" * 100
         with tempfile.TemporaryDirectory() as root:
             directory = write(str(Path(root) / "cohort"), dyn, sta, outc)
-            original = pd.read_parquet
+            original = pq.ParquetFile.read
             reads = []
 
-            def read(path, **kwargs):
+            def read(parquet, **kwargs):
                 self.assertIsNotNone(kwargs.get("columns"))
+                self.assertFalse(kwargs["use_threads"])
                 reads.append(kwargs["columns"])
-                return original(path, **kwargs)
+                return original(parquet, **kwargs)
 
-            with patch.object(pd, "read_parquet", read):
+            with patch.object(pq.ParquetFile, "read", read):
                 got = C.load(directory)
         expected = dyn.assign(hour=dyn[C.SEQUENCE] / pd.Timedelta(hours=1))
         expected = expected.sort_values(

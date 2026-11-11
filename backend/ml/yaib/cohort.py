@@ -51,16 +51,26 @@ def _hours(t: pd.Series) -> np.ndarray:
     return t.to_numpy(dtype=float)
 
 
-def load(directory: str) -> Cohort:
+def load(directory: str, *, stage=None) -> Cohort:
     import pyarrow.parquet as pq
+
+    def mark(name):
+        if stage is not None:
+            stage(name)
 
     def read(name, columns):
         path = os.path.join(directory, name + ".parquet")
         with pq.ParquetFile(path) as metadata:
             missing = [c for c in columns if c not in metadata.schema_arrow.names]
-        if missing:
-            raise KeyError(f"{name}.parquet lacks {missing}")
-        return pd.read_parquet(path, columns=columns)
+            if missing:
+                raise KeyError(f"{name}.parquet lacks {missing}")
+            table = metadata.read(columns=columns, use_threads=False)
+        # Avoid pandas' default consolidation of every numeric column into one
+        # second full-frame allocation. Never access table after self_destruct.
+        frame = table.to_pandas(split_blocks=True, self_destruct=True)
+        del table
+        mark(name + "_read")
+        return frame
 
     # Project at read time: unrelated parquet columns must never inflate this loader.
     dyn = read("dyn", [GROUP, SEQUENCE] + DYNAMIC)
@@ -73,6 +83,7 @@ def load(directory: str) -> Cohort:
     outc["hour"] = _hours(outc[SEQUENCE])
     del outc[SEQUENCE]
     dyn.sort_values([GROUP, "hour"], kind="mergesort", inplace=True, ignore_index=True)
+    mark("dynamic_sorted")
     if dyn.duplicated([GROUP, "hour"]).any():
         raise ValueError("dyn.parquet has more than one row for a stay-hour")
     if outc.duplicated([GROUP, "hour"]).any():
@@ -84,6 +95,7 @@ def load(directory: str) -> Cohort:
     if extra:
         raise ValueError(f"{extra} labelled outc rows have no dyn row")
     label = lab[LABEL].astype(float).to_numpy()
+    mark("labels_aligned")
 
     sta = sta[[GROUP] + STATIC].copy()
     sex = sta["sex"]
