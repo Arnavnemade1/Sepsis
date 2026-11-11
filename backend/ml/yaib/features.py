@@ -33,6 +33,7 @@ All of them still read hours <= h of the same stay only.
 """
 from __future__ import annotations
 
+import os
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -132,7 +133,13 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
     Columns are written straight into one preallocated array, so peak memory is the
     matrix plus a few working columns, not twice the matrix. With ``out`` (a path; keep
     it inside the lake for credentialed cohorts) the matrix is a disk-backed memmap and
-    the page cache, not the heap, holds it."""
+    the page cache, not the heap, holds it.
+
+    On disk, the columns go first into a column-major scratch file, where writing one
+    column is one sequential write, and are then copied into the row-major ``out`` in row
+    blocks. Writing columns straight into a row-major file larger than RAM rereads and
+    rewrites the whole file once per column: on full eICU (11 GB, 443 columns) that is
+    terabytes of disk traffic, and the build ran for 18 hours at under 3% CPU."""
     d = cohort.dyn
     stay = d[GROUP].to_numpy()
     hour = d["hour"].to_numpy(dtype=float)
@@ -141,8 +148,9 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
     s0 = _seg_index(stay)
     expected = feature_names(feature_set)
     shape = (len(stay), len(expected))
-    X = (np.lib.format.open_memmap(out, mode="w+", dtype=np.float32, shape=shape) if out
-         else np.empty(shape, dtype=np.float32))
+    scratch = f"{out}.columns.npy" if out else None
+    X = (np.lib.format.open_memmap(scratch, mode="w+", dtype=np.float32, shape=shape, fortran_order=True)
+         if out else np.empty(shape, dtype=np.float32))
     names: List[str] = []
 
     def add(name: str, a: np.ndarray) -> None:
@@ -231,6 +239,13 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
         raise AssertionError("built fewer features than declared")
     if out:
         X.flush()
+        rows = np.lib.format.open_memmap(out, mode="w+", dtype=np.float32, shape=shape)
+        for r in range(0, shape[0], STREAM_ROWS):
+            rows[r:r + STREAM_ROWS] = X[r:r + STREAM_ROWS]
+        rows.flush()
+        del X
+        os.remove(scratch)
+        X = rows
     return X, names
 
 
