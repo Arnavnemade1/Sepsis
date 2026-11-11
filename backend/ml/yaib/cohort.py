@@ -52,17 +52,27 @@ def _hours(t: pd.Series) -> np.ndarray:
 
 
 def load(directory: str) -> Cohort:
-    dyn = pd.read_parquet(os.path.join(directory, "dyn.parquet"))
-    sta = pd.read_parquet(os.path.join(directory, "sta.parquet"))
-    outc = pd.read_parquet(os.path.join(directory, "outc.parquet"))
-    for name, df, need in (("dyn", dyn, [GROUP, SEQUENCE] + DYNAMIC), ("sta", sta, [GROUP] + STATIC),
-                           ("outc", outc, [GROUP, SEQUENCE, LABEL])):
-        missing = [c for c in need if c not in df.columns]
+    import pyarrow.parquet as pq
+
+    def read(name, columns):
+        path = os.path.join(directory, name + ".parquet")
+        with pq.ParquetFile(path) as metadata:
+            missing = [c for c in columns if c not in metadata.schema_arrow.names]
         if missing:
             raise KeyError(f"{name}.parquet lacks {missing}")
-    dyn = dyn.assign(hour=_hours(dyn[SEQUENCE])).drop(columns=[SEQUENCE])
-    outc = outc.assign(hour=_hours(outc[SEQUENCE])).drop(columns=[SEQUENCE])
-    dyn = dyn.sort_values([GROUP, "hour"], kind="mergesort").reset_index(drop=True)
+        return pd.read_parquet(path, columns=columns)
+
+    # Project at read time: unrelated parquet columns must never inflate this loader.
+    dyn = read("dyn", [GROUP, SEQUENCE] + DYNAMIC)
+    sta = read("sta", [GROUP] + STATIC)
+    outc = read("outc", [GROUP, SEQUENCE, LABEL])
+    # assign(...).drop(...) and selection.copy() made multiple full-size copies on
+    # the 6.4M-row cohort. Normalize these owned frames without that transient peak.
+    dyn["hour"] = _hours(dyn[SEQUENCE])
+    del dyn[SEQUENCE]
+    outc["hour"] = _hours(outc[SEQUENCE])
+    del outc[SEQUENCE]
+    dyn.sort_values([GROUP, "hour"], kind="mergesort", inplace=True, ignore_index=True)
     if dyn.duplicated([GROUP, "hour"]).any():
         raise ValueError("dyn.parquet has more than one row for a stay-hour")
     if outc.duplicated([GROUP, "hour"]).any():
@@ -83,4 +93,4 @@ def load(directory: str) -> Cohort:
     if sta[GROUP].duplicated().any():
         raise ValueError("sta.parquet has more than one row for a stay")
     keep = [GROUP, "hour"] + DYNAMIC
-    return Cohort(dyn[keep].copy(), sta, label, os.path.basename(os.path.normpath(directory)))
+    return Cohort(dyn.reindex(columns=keep, copy=False), sta, label, os.path.basename(os.path.normpath(directory)))

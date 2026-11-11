@@ -206,6 +206,48 @@ class StreamingChecks(unittest.TestCase):
             self.assertEqual(set(report), {"purpose", "status", "stages"})
             self.assertEqual(output.parent.stat().st_mode & 0o777, 0o700)
 
+    def test_cohort_projection_and_normalization_preserve_all_values_and_order(self):
+        import tempfile
+        from pathlib import Path
+
+        import pandas as pd
+
+        from backend.ml.scripts.verify_yaib import synthetic, write
+        from backend.ml.yaib import cohort as C
+
+        dyn, sta, outc = synthetic(n=100)
+        # Irrelevant columns should never be materialized, even if they are large.
+        dyn["unused_blob"] = "unneeded-" * 100
+        with tempfile.TemporaryDirectory() as root:
+            directory = write(str(Path(root) / "cohort"), dyn, sta, outc)
+            original = pd.read_parquet
+            reads = []
+
+            def read(path, **kwargs):
+                self.assertIsNotNone(kwargs.get("columns"))
+                reads.append(kwargs["columns"])
+                return original(path, **kwargs)
+
+            with patch.object(pd, "read_parquet", read):
+                got = C.load(directory)
+        expected = dyn.assign(hour=dyn[C.SEQUENCE] / pd.Timedelta(hours=1))
+        expected = expected.sort_values(
+            [C.GROUP, "hour"], kind="mergesort"
+        ).reset_index(drop=True)
+        expected = expected[[C.GROUP, "hour"] + C.DYNAMIC]
+        expected["hour"] = expected["hour"].astype(float)
+        pd.testing.assert_frame_equal(got.dyn, expected)
+        labels = outc.assign(hour=outc[C.SEQUENCE] / pd.Timedelta(hours=1)).set_index(
+            [C.GROUP, "hour"]
+        )[C.LABEL]
+        truth = labels.reindex(
+            pd.MultiIndex.from_frame(expected[[C.GROUP, "hour"]])
+        ).to_numpy(dtype=float)
+        np.testing.assert_array_equal(got.label, truth)
+        self.assertNotIn(
+            "unused_blob", [column for columns in reads for column in columns]
+        )
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -242,6 +242,12 @@ forward fills, gradients and histogram overhead. It distinguishes the already lo
 cohort from additional heap and independently checks the absolute peak against a
 cgroup memory cap. The estimate remains a conservative plan, not a measured peak.
 
+The cohort loader projects only required parquet columns and normalizes its owned
+frames without chained full-frame copies. Stable stay/hour ordering, column dtypes,
+labels and feature inputs remain unchanged. The resource probe records loading
+separately from fitting so a loader allocation cannot be mistaken for native model
+memory use.
+
 ```sh
 python -m backend.ml.scripts.verify_yaib_streaming
 ```
