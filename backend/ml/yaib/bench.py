@@ -64,21 +64,39 @@ class _Rows:
     never copied whole onto the heap."""
 
     def __init__(self, X: np.ndarray, rows: np.ndarray):
-        self.X, self.rows, self.batch_size = X, np.asarray(rows), FE.STREAM_ROWS
+        self.X, self.rows = X, np.asarray(rows)
+        self.batch_size = min(FE.STREAM_ROWS, FE.DATASET_BATCH_ROWS)
 
     def __len__(self) -> int:
         return len(self.rows)
 
     def __getitem__(self, idx):
-        return np.asarray(self.X[self.rows[idx]], dtype=np.float32)
+        # Native bin construction requires double sample rows. Pushed batches can
+        # retain the matrix's float32 storage; every float32 sample converts exactly.
+        dtype = np.float64 if np.isscalar(idx) else np.float32
+        return np.asarray(self.X[self.rows[idx]], dtype=dtype)
+
+    def __array__(self, *args, **kwargs):
+        raise TypeError("A row adapter must use LightGBM Sequence, never whole-matrix conversion")
+
+
+def _row_sequence(X, rows):
+    # Lazy import preserves the optional dependency and avoids loading OpenMP at import.
+    import lightgbm as lgb
+
+    class Rows(_Rows, lgb.Sequence):
+        pass
+
+    return Rows(X, rows)
 
 
 def _predict(booster, X: np.ndarray, rows: np.ndarray, stream: bool) -> np.ndarray:
     if not stream:
         return booster.predict(X[rows], num_iteration=booster.best_iteration)
     out = np.empty(len(rows))
-    for i in range(0, len(rows), FE.STREAM_ROWS):
-        j = rows[i:i + FE.STREAM_ROWS]
+    batch_size = min(FE.STREAM_ROWS, FE.DATASET_BATCH_ROWS)
+    for i in range(0, len(rows), batch_size):
+        j = rows[i:i + batch_size]
         out[i:i + len(j)] = booster.predict(np.asarray(X[j]), num_iteration=booster.best_iteration)
     return out
 
@@ -105,15 +123,25 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
     if stream:
         # no weights on a Sequence: LightGBM 4.x silently zeroes a weighted Sequence's
         # validation weights (AUC 1.0); class balance goes through scale_pos_weight only
-        dtr = lgb.Dataset(_Rows(X, tr), label=y[tr], free_raw_data=True)
-        dva = lgb.Dataset(_Rows(X, va), label=y[va], reference=dtr, free_raw_data=True)
+        class SequenceDataset(lgb.Dataset):
+            def get_params(self):
+                # Sequence construction calls this method for its native sample path.
+                # LightGBM's default filter omits min_child_samples and num_threads,
+                # unlike dense/CSR construction. Preserve the exact supplied settings.
+                return dict(self.params or {})
+
+        dtr = SequenceDataset(_row_sequence(X, tr), label=y[tr], params=params, free_raw_data=True)
+        dva = SequenceDataset(_row_sequence(X, va), label=y[va], params=params, reference=dtr, free_raw_data=True)
     else:
         dtr = lgb.Dataset(X[tr], y[tr], free_raw_data=True)
         dva = lgb.Dataset(X[va], y[va], reference=dtr, free_raw_data=True)
     booster = lgb.train(params, dtr, cfg.max_rounds, valid_sets=[dva],
                         callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
-    return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
-            "val_auroc": float(booster.best_score["valid_0"]["auc"])}
+    try:
+        return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
+                "val_auroc": float(booster.best_score["valid_0"]["auc"])}
+    finally:
+        booster.free_dataset()
 
 
 def yaib_summary(name: str, v: np.ndarray) -> Dict[str, Any]:
@@ -164,10 +192,11 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
     with context as checkpoints:
         t0 = time.time()
         if memory_check:
-            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=feature_set)
+            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=feature_set, cohort_loaded=True)
             if plan["fits"] is False:
-                raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB > 85% of available "
-                                  f"{plan['available_gb']:.1f} GB; pass features_path (memmap) or a larger host")
+                raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB, additional "
+                                  f"{plan['additional_heap_gb']:.1f} GB, free {plan['available_gb']:.1f} GB, "
+                                  f"cgroup cap {plan['cgroup_limit_gb']}; memory safety margin exceeded")
         if checkpoints:
             names = FE.feature_names(feature_set)
             X = checkpoints.features((len(cohort.dyn), len(names)),
@@ -183,6 +212,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
             # the features are on disk now; the cohort's variables are not needed again, and on
             # a full cohort they are gigabytes. The caller's cohort keeps its ids, hours, labels.
             cohort.dyn = cohort.dyn[[GROUP, "hour"]]
+            import gc
+            gc.collect()
         per_run: List[Dict[str, Any]] = []
         for sp in SP.all_splits(labels, cv_repetitions, cv_folds, seed):
             if runs is not None and (sp.repetition, sp.fold) not in runs:

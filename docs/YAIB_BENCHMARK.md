@@ -217,3 +217,54 @@ and probability corruption, edited validation receipts, changed input/configurat
 source/environment, concurrent writers, disk exhaustion before work, and parity of
 real streamed LightGBM predictions and metrics. This infrastructure preserves training
 semantics; it does not establish a clinical AUROC improvement.
+
+
+## Genuine bounded LightGBM input
+
+A Python row adapter with `__getitem__` is not automatically a `lightgbm.Sequence`.
+LightGBM can instead convert it to SciPy CSR, materializing the full training matrix.
+That hidden fallback explains the observed full-eICU container OOM after the fast
+feature build. Small numerical parity tests alone did not catch the allocation.
+
+The streamed path now instantiates a real Sequence lazily, rejects whole-array
+conversion, samples scalar rows as float64 for the native bin constructor, and pushes
+float32 batches of at most 8,192 rows. Prediction uses the same bounded batch size.
+The feature-layout conversion keeps its separate large sequential disk blocks.
+
+LightGBM's Sequence sample constructor reads `Dataset.get_params()`, whose default
+filter omits settings such as `min_child_samples` and `num_threads`. The streamed
+Dataset preserves the full originally supplied parameters for this native path,
+matching dense construction. No split, label, class balance, boosting setting or
+feature value is changed. Native datasets are explicitly released after prediction.
+
+The memory plan includes double sampled-column values, sample indices, retained
+forward fills, gradients and histogram overhead. It distinguishes the already loaded
+cohort from additional heap and independently checks the absolute peak against a
+cgroup memory cap. The estimate remains a conservative plan, not a measured peak.
+
+```sh
+python -m backend.ml.scripts.verify_yaib_streaming
+```
+
+These checks prove actual Sequence dispatch, prohibit CSR fallback and oversized
+reads, verify exact predictions/rounds/validation scores (also above the default
+200,000-row native sampling ceiling), and check cgroup budgeting and cleanup after
+errors. The original protocol and resume checks remain required. Existing source-
+hashed checkpoint directories require a new identity after this implementation change.
+The contract is documented in the [LightGBM Sequence API](https://lightgbm.readthedocs.io/en/v4.6.0/pythonapi/lightgbm.Sequence.html).
+
+
+A private full-cohort memory diagnostic can reuse an existing base matrix without
+claiming its output as a benchmark or adopting it into a content-hashed cache:
+
+```sh
+python -m backend.ml.scripts.profile_yaib_fit \
+  --cohort /cohorts/sepsis/eicu --features /work/X-base.npy \
+  --output /work/native-probe/resources.json
+```
+
+This runs exactly one boosting round on the original first subject split. It records
+fixed stage names, elapsed seconds and peak resident bytes; no score, prediction or
+patient row is emitted. Native output stays in a private mode-0700 directory beside
+the matrix. Run under `aegis-heavy` and the existing container memory cap, with a hard
+execution timeout. A completed resource probe is not clinical performance evidence.

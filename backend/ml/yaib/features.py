@@ -252,18 +252,22 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
 BYTES_PER_ROW = 4 * len(feature_names())
 #: rows handed to LightGBM per batch when streaming from a memmap, and predicted per batch
 STREAM_ROWS = 250_000
+# Native Dataset construction/prediction use smaller batches than disk-layout copies.
+DATASET_BATCH_ROWS = 8192
 
 
 def memory_plan(rows: int, train_fraction: float = 0.64, available_bytes: Optional[int] = None,
-                on_disk: bool = True, feature_set: str = "base") -> dict:
+                on_disk: bool = True, feature_set: str = "base", cohort_loaded: bool = False) -> dict:
     """Peak resident bytes of one ``bench.run`` fit, from the row count alone.
 
     In memory: the matrix + the training and validation rows' copies handed to LightGBM +
     LightGBM's binned datasets (about one byte per cell). Memmapped (``on_disk``): the
     matrix stays in the page cache and LightGBM is fed and scored in batches of
     ``STREAM_ROWS``, so neither the matrix nor a row copy is on the heap; only the binned
-    datasets and one batch are. ``fits`` is judged against ``available_bytes`` (default:
-    this host's MemAvailable)."""
+    datasets, native sampled-column buffers and a bounded batch are. ``fits`` is judged against ``available_bytes`` (default:
+    this host's MemAvailable). With ``cohort_loaded`` the input frame is already
+    resident, so only additional heap is compared to free memory. The full estimated
+    peak must independently fit the container hard limit when one is present."""
     cols = len(feature_names(feature_set))
     per_row = 4 * cols
     matrix = rows * per_row
@@ -271,22 +275,50 @@ def memory_plan(rows: int, train_fraction: float = 0.64, available_bytes: Option
     valid = int(rows * train_fraction / 4) * per_row
     binned = int(rows * train_fraction * 1.25) * cols
     frame = rows * (len(DYNAMIC) + 4) * 8          # the loaded cohort itself (float64 columns)
-    batch = min(rows, STREAM_ROWS) * per_row
+    batch = min(rows, STREAM_ROWS, DATASET_BATCH_ROWS) * per_row
+    # Sequence sampling retains double values and int32 row indices per feature.
+    # Before native allocation it also briefly holds the stacked double sample.
+    sampled = min(int(rows * train_fraction), 200000)
+    sampled_columns = sampled * cols * (8 + 4)
+    sampling_peak = sampled * cols * (8 + 8 + 4)
+    gradients = int(rows * train_fraction) * 16
+    histograms = cols * 255 * 16 * 63
     if on_disk:
         # bench.run drops the cohort frame once the memmap is written, so the build phase
         # (frame + a dozen float64 working columns) and the fit phase (binned + one batch +
         # ids and labels) peak at different times
-        build_peak = frame + 12 * rows * 8
-        fit_peak = binned + batch + 3 * rows * 8
+        build_peak = frame + (len(DYNAMIC) + 12) * rows * 8
+        fit_peak = max(sampling_peak, binned + sampled_columns + batch + 3 * rows * 8 + gradients + histograms)
         heap = max(build_peak, fit_peak)
     else:
         heap = frame + binned + matrix + train + valid
     if available_bytes is None:
         available_bytes = _mem_available()
+    # bench.run already loaded the input frame; do not count it twice against free
+    # host memory. The absolute peak must independently fit the cgroup hard cap.
+    additional = max(0, heap - frame) if cohort_loaded else heap
+    limit = _cgroup_limit()
+    fits = None if available_bytes is None else additional < 0.85 * available_bytes
+    if limit is not None and heap >= 0.85 * limit:
+        fits = False
     return {"rows": rows, "features": cols, "matrix_gb": matrix / 1e9, "peak_heap_gb": heap / 1e9,
             "available_gb": None if available_bytes is None else available_bytes / 1e9,
-            "fits": None if available_bytes is None else heap < 0.85 * available_bytes,
-            "matrix_on_disk": on_disk}
+            "fits": fits, "additional_heap_gb": additional / 1e9, "cohort_loaded": cohort_loaded,
+            "cgroup_limit_gb": None if limit is None else limit / 1e9,
+            "matrix_on_disk": on_disk, "dataset_batch_rows": min(STREAM_ROWS, DATASET_BATCH_ROWS),
+            "sampled_columns_gb": sampled_columns / 1e9, "sampling_peak_gb": sampling_peak / 1e9}
+
+
+def _cgroup_limit() -> Optional[int]:
+    for path in ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"):
+        try:
+            with open(path) as stream:
+                value = int(stream.read().strip())
+            if 0 < value < (1 << 60):
+                return value
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def _mem_available() -> Optional[int]:

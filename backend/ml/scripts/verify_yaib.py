@@ -265,6 +265,16 @@ def memory_checks(c: C.Cohort) -> None:
         check("a streamed fit scores exactly as the in-memory fit",
               [r["auroc"] for r in st["runs"]] == [r["auroc"] for r in mem["runs"]]
               and st["model"]["streamed_from_memmap"] and not mem["model"]["streamed_from_memmap"])
+        import lightgbm as lgb
+        sequence = B._row_sequence(np.zeros((4, 2), dtype=np.float32), np.arange(4))
+        check("streamed input is a real LightGBM Sequence, not a dense fallback",
+              isinstance(sequence, lgb.Sequence) and sequence[0].dtype == np.float64)
+        try:
+            np.asarray(sequence)
+            refused_conversion = False
+        except TypeError:
+            refused_conversion = True
+        check("whole-matrix conversion of a row adapter is refused", refused_conversion)
         check("a streamed run releases the cohort's variables once the memmap is written",
               list(own.dyn.columns) == [C.GROUP, "hour"] and len(own.dyn) == len(c.dyn))
         check("each run reports a validation AUROC for selection",
