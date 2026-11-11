@@ -162,3 +162,58 @@ Compute: YAIB's LR and LightGBM baselines run on the CPU worker. Its neural base
 If a tuned 25-run protocol does not fit the time available, compare paired with LR and
 LightGBM, and cite YAIB's published neural-model numbers as published (not paired, and
 labelled so).
+
+
+## Resumable private experiments
+
+Use `--resume-dir` instead of `--features` when a benchmark must survive worker stops:
+
+```sh
+python -m backend.ml.yaib.bench run /lake/yaib-cohorts/sepsis/eicu \
+  --seed 1234 --feature-set base \
+  --resume-dir /lake/yaib-work/checkpoints/base-fixed \
+  --predictions /lake/yaib-work/ours --out /output/ours.json
+```
+
+Rerun the same command after interruption. The first call creates a private experiment
+manifest, a validated row-major feature matrix, and one checkpoint after each completed
+fit. Committed fits are loaded without training again; any missing prediction export is
+regenerated from that fit's saved probabilities. Only the unfinished fit is repeated.
+A feature build interrupted before its commit receipt is rebuilt, rather than trusted.
+There is no resume within a single booster fit or unfinished matrix build.
+
+The manifest fixes the content hashes of dynamic/static rows and labels, the feature
+set, training configuration, cross-validation counts and seed, all YAIB module sources,
+and the numeric-library versions. Changing these inputs refuses reuse and requires a
+new directory. The requested run subset may grow (for example, from two development
+folds to the full protocol) only with those fixed settings and original splits. Select
+the feature set on validation AUROC only. Reuse does not authorize test-set selection.
+
+Receipts, matrix data and per-run probabilities commit through atomic replacement and
+file/directory synchronization. Checksums reject torn or changed files. A nonblocking
+file lock prevents two coordinators from writing the same experiment. Before building,
+free disk must cover both the column-major scratch and row-major matrix, plus receipt
+headroom. Partial owned feature files are removed on a failed build. The independent
+`aegis-heavy` lock still governs shared-host compute; checkpoint locking does not grant
+a host reservation or defeat the six-hour cap of other experiment lanes.
+
+Keep the entire resume directory and prediction exports inside the credentialed lake.
+New resume directories are mode 0700; an existing directory that permits group or
+other access is refused, without changing its permissions.
+The JSON manifest contains hashes, not patient rows; its binary matrix and probability
+files are nevertheless private derivatives. No patient artifact is sent to a hosted
+model or committed to GitHub. For API calls, reload the cohort before each `run`: the
+existing streamed path drops dynamic columns after building to release memory.
+
+Verification uses invented patients only:
+
+```sh
+python -m backend.ml.scripts.verify_yaib
+python -m backend.ml.scripts.verify_yaib_resume
+```
+
+The resume checks include interruption/replay, zero-fit completed recovery, feature
+and probability corruption, edited validation receipts, changed input/configuration/
+source/environment, concurrent writers, disk exhaustion before work, and parity of
+real streamed LightGBM predictions and metrics. This infrastructure preserves training
+semantics; it does not establish a clinical AUROC improvement.

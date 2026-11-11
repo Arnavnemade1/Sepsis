@@ -26,6 +26,7 @@ comparison. Never a row.
 """
 from __future__ import annotations
 
+import contextlib
 import glob
 import math
 import os
@@ -140,7 +141,8 @@ def _metric(y: np.ndarray, p: np.ndarray) -> Dict[str, float]:
 def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 5, cv_folds: int = 5,
         seed: int = SP.YAIB_CLI_SEED, runs: Optional[Sequence[tuple]] = None,
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
-        memory_check: bool = True, feature_set: str = "base") -> Dict[str, Any]:
+        memory_check: bool = True, feature_set: str = "base",
+        resume_dir: Optional[str] = None) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
     ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
@@ -149,57 +151,77 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
     never on the test score.
     A run whose planned peak exceeds this host's available memory is refused up front,
     instead of swapping for hours or being killed mid-protocol."""
-    t0 = time.time()
-    if memory_check:
-        plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None, feature_set=feature_set)
-        if plan["fits"] is False:
-            raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB > 85% of available "
-                              f"{plan['available_gb']:.1f} GB; pass features_path (memmap) or a larger host")
-    X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
-    stream = features_path is not None
-    y_all = cohort.label
-    stay = cohort.dyn[GROUP].to_numpy().copy()
-    hour = cohort.dyn["hour"].to_numpy().copy()
-    labels = cohort.stay_labels()
-    if stream:
-        # the features are on disk now; the cohort's variables are not needed again, and on
-        # a full cohort they are gigabytes. The caller's cohort keeps its ids, hours, labels.
-        cohort.dyn = cohort.dyn[[GROUP, "hour"]]
-    per_run: List[Dict[str, Any]] = []
-    for sp in SP.all_splits(labels, cv_repetitions, cv_folds, seed):
-        if runs is not None and (sp.repetition, sp.fold) not in runs:
-            continue
-        lab = np.isfinite(y_all)
-        tr = np.flatnonzero(np.isin(stay, sp.train) & lab)
-        va = np.flatnonzero(np.isin(stay, sp.val) & lab)
-        te = np.flatnonzero(np.isin(stay, sp.test) & lab)
-        y = np.nan_to_num(y_all, nan=0.0)
-        fit = _fit_predict(X, y, tr, va, te, cfg, stream=stream)
-        m = _metric(y[te], fit["p"])
-        per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
-                        "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
-                        "test_stays": int(len(sp.test)), **m})
-        if predictions_dir:
-            os.makedirs(predictions_dir, exist_ok=True)
-            pd.DataFrame({"stay_id": stay[te], "hour": hour[te], "label": y[te], "p": fit["p"]}).to_parquet(
-                os.path.join(predictions_dir, f"ours_r{sp.repetition}_f{sp.fold}.parquet"), index=False)
-    au = np.array([r["auroc"] for r in per_run], float)
-    pr = np.array([r["auprc"] for r in per_run], float)
-    va_au = np.array([r["val_auroc"] for r in per_run], float)
-    return {
-        "schema": "yaib_bench/1",
-        "cohort": {"name": cohort.name, "stays": int(len(labels)), "septic_stays": int(labels.sum()),
-                   "rows": int(len(stay)), "labelled_rows": int(np.isfinite(y_all).sum())},
-        "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
-                     "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
-        "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
-                  "streamed_from_memmap": stream},
-        "runs": per_run,
-        "yaib_metric": {**yaib_summary("auroc", au), **yaib_summary("auprc", pr),
-                        "n_runs": int(np.isfinite(au).sum())},
-        "validation_metric": yaib_summary("val_auroc", va_au),
-        "seconds": round(time.time() - t0, 1),
-    }
+    if resume_dir is not None and features_path is not None:
+        raise ValueError("Use --resume-dir or --features, not both")
+    if resume_dir is not None:
+        from backend.ml.yaib.checkpoint import Checkpoints, experiment_spec
+        spec = experiment_spec(cohort, asdict(cfg),
+                               {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}, feature_set)
+        store = Checkpoints(resume_dir, spec)
+        context = store.locked()
+    else:
+        context = contextlib.nullcontext(None)
+    with context as checkpoints:
+        t0 = time.time()
+        if memory_check:
+            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=feature_set)
+            if plan["fits"] is False:
+                raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB > 85% of available "
+                                  f"{plan['available_gb']:.1f} GB; pass features_path (memmap) or a larger host")
+        if checkpoints:
+            names = FE.feature_names(feature_set)
+            X = checkpoints.features((len(cohort.dyn), len(names)),
+                                     lambda path: FE.build(cohort, out=path, feature_set=feature_set)[0])
+        else:
+            X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
+        stream = features_path is not None or checkpoints is not None
+        y_all = cohort.label
+        stay = cohort.dyn[GROUP].to_numpy().copy()
+        hour = cohort.dyn["hour"].to_numpy().copy()
+        labels = cohort.stay_labels()
+        if stream:
+            # the features are on disk now; the cohort's variables are not needed again, and on
+            # a full cohort they are gigabytes. The caller's cohort keeps its ids, hours, labels.
+            cohort.dyn = cohort.dyn[[GROUP, "hour"]]
+        per_run: List[Dict[str, Any]] = []
+        for sp in SP.all_splits(labels, cv_repetitions, cv_folds, seed):
+            if runs is not None and (sp.repetition, sp.fold) not in runs:
+                continue
+            lab = np.isfinite(y_all)
+            tr = np.flatnonzero(np.isin(stay, sp.train) & lab)
+            va = np.flatnonzero(np.isin(stay, sp.val) & lab)
+            te = np.flatnonzero(np.isin(stay, sp.test) & lab)
+            y = np.nan_to_num(y_all, nan=0.0)
+            fit = checkpoints.load_fit(sp.repetition, sp.fold, sp.fingerprint(), len(te)) if checkpoints else None
+            if fit is None:
+                fit = _fit_predict(X, y, tr, va, te, cfg, stream=stream)
+                if checkpoints:
+                    checkpoints.save_fit(sp.repetition, sp.fold, sp.fingerprint(), fit, len(te))
+            m = _metric(y[te], fit["p"])
+            per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
+                            "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
+                            "test_stays": int(len(sp.test)), **m})
+            if predictions_dir:
+                os.makedirs(predictions_dir, exist_ok=True)
+                pd.DataFrame({"stay_id": stay[te], "hour": hour[te], "label": y[te], "p": fit["p"]}).to_parquet(
+                    os.path.join(predictions_dir, f"ours_r{sp.repetition}_f{sp.fold}.parquet"), index=False)
+        au = np.array([r["auroc"] for r in per_run], float)
+        pr = np.array([r["auprc"] for r in per_run], float)
+        va_au = np.array([r["val_auroc"] for r in per_run], float)
+        return {
+            "schema": "yaib_bench/1",
+            "cohort": {"name": cohort.name, "stays": int(len(labels)), "septic_stays": int(labels.sum()),
+                       "rows": int(len(stay)), "labelled_rows": int(np.isfinite(y_all).sum())},
+            "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
+                         "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
+            "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
+                      "streamed_from_memmap": stream},
+            "runs": per_run,
+            "yaib_metric": {**yaib_summary("auroc", au), **yaib_summary("auprc", pr),
+                            "n_runs": int(np.isfinite(au).sum())},
+            "validation_metric": yaib_summary("val_auroc", va_au),
+            "seconds": round(time.time() - t0, 1),
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -323,6 +345,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--threads", type=int, default=2)
     r.add_argument("--predictions", help="directory for per-run test predictions (inside the lake)")
     r.add_argument("--features", help="memmap the feature matrix to this .npy path (inside the lake)")
+    r.add_argument("--resume-dir", help="private immutable feature/fit checkpoints; rerun with the same settings")
     r.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
     r.add_argument("--runs", help="only these runs, e.g. 0:0,0:1 (development; select on validation AUROC)")
     r.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
@@ -353,7 +376,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
-                  predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set)
+                  predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set,
+                  resume_dir=a.resume_dir)
         m, v = res["yaib_metric"], res["validation_metric"]
         print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
         if runs is None:
