@@ -171,7 +171,18 @@ def feature_checks(c: C.Cohort) -> None:
         check("a memmapped build is byte-identical to the in-memory one",
               isinstance(Xm, np.memmap) and X.dtype == Xm.dtype and X.tobytes() == np.asarray(Xm).tobytes())
         check("... and is readable back from disk", np.array_equal(np.load(path, mmap_mode="r"), X, equal_nan=True))
-        del Xm
+        back = np.load(path, mmap_mode="r")
+        check("... stored row-major, with its column scratch file removed",
+              back.flags.c_contiguous and os.listdir(tmp) == ["X.npy"])
+        del Xm, back
+        saved = FE.STREAM_ROWS
+        FE.STREAM_ROWS = 97                       # many row blocks, and a ragged last one
+        try:
+            Xs, _ = FE.build(c, out=os.path.join(tmp, "Xs.npy"))
+            check("... identical when copied in many small row blocks", X.tobytes() == np.asarray(Xs).tobytes())
+            del Xs
+        finally:
+            FE.STREAM_ROWS = saved
 
 
 def rich_checks(c: C.Cohort) -> None:
