@@ -104,5 +104,8 @@ def load(directory: str, *, stage=None) -> Cohort:
     sta = sta.sort_values(GROUP).reset_index(drop=True)
     if sta[GROUP].duplicated().any():
         raise ValueError("sta.parquet has more than one row for a stay")
-    keep = [GROUP, "hour"] + DYNAMIC
-    return Cohort(dyn.reindex(columns=keep, copy=False), sta, label, os.path.basename(os.path.normpath(directory)))
+    # reindex(copy=False) can still consolidate Arrow's split numeric blocks into
+    # another full frame. Moving this one column preserves the established order
+    # without materializing every variable again.
+    dyn.insert(1, "hour", dyn.pop("hour"))
+    return Cohort(dyn, sta, label, os.path.basename(os.path.normpath(directory)))
