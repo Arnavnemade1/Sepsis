@@ -235,7 +235,17 @@ LightGBM's Sequence sample constructor reads `Dataset.get_params()`, whose defau
 filter omits settings such as `min_child_samples` and `num_threads`. The streamed
 Dataset preserves the full originally supplied parameters for this native path,
 matching dense construction. No split, label, class balance, boosting setting or
-feature value is changed. Native datasets are explicitly released after prediction.
+feature value is changed. After native bin creation, consumed sample buffers are
+released before rows are pushed. Native datasets are explicitly released after
+prediction. This adapter targets the pinned LightGBM 4.6 API; keep the dispatch,
+buffer-lifetime and numerical parity checks when upgrading it.
+
+Histogram construction is now explicitly column-wise (`force_col_wise=True`,
+recorded in the model configuration), rather than allowing an automatic row-wise
+trial to duplicate the dataset. This follows [LightGBM's memory guidance](https://lightgbm.readthedocs.io/en/v4.6.0/Parameters.html#force_col_wise).
+Invented-data checks compare the old automatic mode with the bounded column-wise
+path and require exactly equal probabilities, best rounds and validation AUROC.
+Full-cohort clinical performance remains unmeasured until the scored runs complete.
 
 The memory plan includes double sampled-column values, sample indices, retained
 forward fills, gradients and histogram overhead. It distinguishes the already loaded

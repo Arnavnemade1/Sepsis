@@ -56,6 +56,7 @@ class TrainConfig:
     threads: int = 2
     seed: int = 0
     balanced: bool = True
+    force_col_wise: bool = True
 
 
 class _Rows:
@@ -116,6 +117,7 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
         "feature_fraction": cfg.feature_fraction, "bagging_fraction": cfg.bagging_fraction,
         "bagging_freq": 1, "lambda_l2": cfg.lambda_l2,
         "num_threads": cfg.threads, "seed": cfg.seed, "deterministic": True, "verbose": -1,
+        "force_col_wise": cfg.force_col_wise,
     }
     if cfg.balanced:
         # YAIB trains with weight="balanced"; the same class balance here
@@ -124,6 +126,17 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
         # no weights on a Sequence: LightGBM 4.x silently zeroes a weighted Sequence's
         # validation weights (AUC 1.0); class balance goes through scale_pos_weight only
         class SequenceDataset(lgb.Dataset):
+            def _init_from_sample(self, sample_data, sample_indices, sample_cnt, total_nrow):
+                result = super()._init_from_sample(sample_data, sample_indices, sample_cnt, total_nrow)
+                # LightGBM 4.6 retains these lists while pushing the entire dataset,
+                # although native bin creation has already consumed their values.
+                # Releasing them now changes no bin or row and avoids ~1 GB overlap.
+                sample_data.clear()
+                sample_indices.clear()
+                if stage is not None:
+                    stage("native_bins_constructed")
+                return result
+
             def construct(self):
                 first = self._handle is None
                 result = super().construct()

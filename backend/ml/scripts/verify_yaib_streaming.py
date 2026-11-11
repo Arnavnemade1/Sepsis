@@ -124,6 +124,34 @@ class StreamingChecks(unittest.TestCase):
             B._fit_predict(X, y, tr, va, te, B.TrainConfig(), stream=True)
         self.assertTrue(booster.freed)
 
+    def test_samples_are_released_before_pushing_rows_and_column_mode_matches_auto(self):
+        import weakref
+        from dataclasses import replace
+
+        X, y, tr, va, te = fixture(1500, 443)
+        cfg = B.TrainConfig(max_rounds=25, early_stopping=5)
+        expected = B._fit_predict(X, y, tr, va, te, replace(cfg, force_col_wise=False))
+        original_sample = lgb.Dataset._init_from_sample
+        original_push = lgb.Dataset._push_rows
+        references, pushes = [], []
+
+        def sample(dataset, values, indices, *args):
+            references.extend(weakref.ref(item) for item in values + indices)
+            return original_sample(dataset, values, indices, *args)
+
+        def push(dataset, data):
+            self.assertTrue(references)
+            self.assertTrue(all(reference() is None for reference in references))
+            pushes.append(len(data))
+            return original_push(dataset, data)
+
+        with patch.object(lgb.Dataset, "_init_from_sample", sample), patch.object(lgb.Dataset, "_push_rows", push):
+            actual = B._fit_predict(X, y, tr, va, te, cfg, stream=True)
+        self.assertTrue(pushes)
+        np.testing.assert_array_equal(actual["p"], expected["p"])
+        self.assertEqual(actual["rounds"], expected["rounds"])
+        self.assertEqual(actual["val_auroc"], expected["val_auroc"])
+
     def test_memory_plan_includes_sampling_and_respects_container_cap(self):
         with patch.object(FE, "_cgroup_limit", return_value=7 * 1024**3):
             cold = FE.memory_plan(
