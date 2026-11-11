@@ -86,6 +86,8 @@ class StreamingChecks(unittest.TestCase):
         self.assertEqual(actual["val_auroc"], expected["val_auroc"])
 
     def test_native_bin_sampling_parity_above_default_sample_ceiling(self):
+        from dataclasses import replace
+
         X, y, _, _, _ = fixture(210100, 6)
         tr, va, te = (
             np.arange(200050),
@@ -95,9 +97,13 @@ class StreamingChecks(unittest.TestCase):
         cfg = B.TrainConfig(max_rounds=8, early_stopping=3)
         expected = B._fit_predict(X, y, tr, va, te, cfg)
         actual = B._fit_predict(X, y, tr, va, te, cfg, stream=True)
+        automatic = B._fit_predict(X, y, tr, va, te, replace(cfg, force_col_wise=False))
         np.testing.assert_array_equal(actual["p"], expected["p"])
+        np.testing.assert_array_equal(actual["p"], automatic["p"])
         self.assertEqual(actual["rounds"], expected["rounds"])
+        self.assertEqual(actual["rounds"], automatic["rounds"])
         self.assertEqual(actual["val_auroc"], expected["val_auroc"])
+        self.assertEqual(actual["val_auroc"], automatic["val_auroc"])
 
     def test_native_datasets_are_freed_even_if_prediction_fails(self):
         X, y, tr, va, te = fixture()
