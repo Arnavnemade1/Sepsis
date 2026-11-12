@@ -334,11 +334,12 @@ export function Segmented<T extends string>({ value, options, onChange, size = "
   size?: "sm" | "md";
 }) {
   return (
-    <div className="inline-flex shrink-0 gap-px rounded-md bg-black/[0.18] p-[3px] shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]">
+    <div role="group" className="inline-flex shrink-0 gap-px rounded-md bg-black/[0.18] p-[3px] shadow-[inset_0_0_0_1px_rgb(255_255_255/.05)]">
       {options.map((o) => (
         <button
           key={o.value}
           onClick={() => onChange(o.value)}
+          aria-pressed={value === o.value}
           className={cx(
             "whitespace-nowrap rounded-[5px] font-medium transition-colors duration-100",
             size === "sm" ? "h-6 px-2 text-xs" : "h-[26px] px-2.5 text-xs",
