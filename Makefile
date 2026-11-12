@@ -487,6 +487,8 @@ verify-replay:
 # refuses mismatched rows and holds its nominal rate on null data. Needs pyarrow.
 verify-yaib:
 	$(PY) -m backend.ml.scripts.verify_yaib
+	$(PY) -m backend.ml.scripts.verify_yaib_resume
+	$(PY) -m backend.ml.scripts.verify_yaib_streaming
 
 # The ward is scored by the shipped detector: index pinned at the operating point,
 # causal scores, held-out patients only, the current hour never the next, one copy.
