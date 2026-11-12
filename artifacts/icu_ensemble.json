@@ -1,0 +1,97 @@
+{
+  "generated": "2026-11-11T18:37:05",
+  "prereg": "artifacts/icu_ensemble_prereg.json",
+  "detector": "icu:ens-all40-dyn~platt#7fbbdd0ad322",
+  "incumbent": "icu:lgbm-all40~platt#7fbbdd0ad322",
+  "train_patients": 24206,
+  "judged_patients": 8062,
+  "rows": 312901,
+  "weights": {
+    "trajectory": 0.5,
+    "randomized": 0.25,
+    "depthwise": 0.25
+  },
+  "training": [
+    {
+      "name": "trajectory",
+      "trees": 213,
+      "seconds": 131.10885620117188
+    },
+    {
+      "name": "randomized",
+      "trees": 148,
+      "seconds": 143.76308584213257
+    },
+    {
+      "name": "depthwise",
+      "trees": 118,
+      "seconds": 1040.5664148330688
+    }
+  ],
+  "calibration": [
+    1.0217647788002608,
+    0.06937589765891539
+  ],
+  "scores": {
+    "candidate": {
+      "auroc": 0.8427164136330725,
+      "hour_matched": 0.7946739114986414,
+      "auprc": 0.14263790690637485,
+      "ece": 0.0022744464499955853
+    },
+    "incumbent": {
+      "auroc": 0.8463322347901104,
+      "hour_matched": 0.7986185710529246,
+      "auprc": 0.13768713811011202,
+      "ece": 0.0024971201673433872
+    }
+  },
+  "member_auroc": {
+    "trajectory": 0.8411488526010749,
+    "randomized": 0.8424633240336968,
+    "depthwise": 0.8326081763774614
+  },
+  "delta": {
+    "delta": -0.0036158211570378462,
+    "lo": -0.006821144250523534,
+    "hi": -0.000476736877149895,
+    "draws": 1000
+  },
+  "alarms_half_b": {
+    "candidate": {
+      "threshold": 0.0425,
+      "detection": 0.5076923076923077,
+      "false_alarm": 0.12476421449744005,
+      "median_lead_h": 49.0,
+      "utility": 0.4529108876984418
+    },
+    "incumbent": {
+      "threshold": 0.045,
+      "detection": 0.5107692307692308,
+      "false_alarm": 0.14335758555645378,
+      "median_lead_h": 50.5,
+      "utility": 0.446138793082361
+    }
+  },
+  "budget15_half_b": {
+    "delta": 0.021538461538461506,
+    "lo": 0.0,
+    "hi": 0.040000000000000036
+  },
+  "operating_point": {
+    "high": 0.0425,
+    "medium": 0.0213
+  },
+  "gates": {
+    "delta_lo>0": false,
+    "hour_matched_not_worse": false,
+    "auprc_not_worse": true,
+    "budget15_not_worse": true,
+    "operating_point_exists": true
+  },
+  "passed": false,
+  "shipped": false,
+  "reload_max_error": 0.0,
+  "threads": 4,
+  "seconds": 1387.9633889198303
+}
