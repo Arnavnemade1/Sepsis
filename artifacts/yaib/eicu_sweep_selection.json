@@ -1,0 +1,167 @@
+{
+ "chosen": "deep_unbalanced",
+ "chosen_mean_val_auroc": 0.8059964351876107,
+ "chosen_settings": {
+  "bagging_fraction": 0.7,
+  "early_stopping": 150,
+  "feature_fraction": 0.3,
+  "lambda_l2": 10.0,
+  "learning_rate": 0.03,
+  "min_child_samples": 400,
+  "num_leaves": 127,
+  "unbalanced": true
+ },
+ "compared": [
+  {
+   "mean": 0.8059964351876107,
+   "name": "deep_unbalanced",
+   "reference": false
+  },
+  {
+   "mean": 0.8055920250262565,
+   "name": "slow_unbalanced",
+   "reference": false
+  },
+  {
+   "mean": 0.7852191317385235,
+   "name": "default",
+   "reference": true
+  }
+ ],
+ "failed": {},
+ "lead_over_reference": 0.020777303449087126,
+ "min_gain": 0.001,
+ "note": "validation AUROC only; no test metric of any candidate was computed into these files",
+ "plan": {
+  "after": "The chosen configuration runs all 25 (resuming its development fits), then YAIB's LightGBM and logistic regression baselines with the hyperparameters of YAIB's published eICU models, then the paired comparison. Nothing is re-chosen after the 25 runs are scored.",
+  "configs": {
+   "deep_unbalanced": {
+    "bagging_fraction": 0.7,
+    "early_stopping": 150,
+    "feature_fraction": 0.3,
+    "lambda_l2": 10.0,
+    "learning_rate": 0.03,
+    "min_child_samples": 400,
+    "num_leaves": 127,
+    "unbalanced": true
+   },
+   "slow": {
+    "bagging_fraction": 0.7,
+    "early_stopping": 150,
+    "feature_fraction": 0.3,
+    "lambda_l2": 10.0,
+    "learning_rate": 0.02,
+    "min_child_samples": 800
+   },
+   "slow_unbalanced": {
+    "bagging_fraction": 0.7,
+    "early_stopping": 150,
+    "feature_fraction": 0.3,
+    "lambda_l2": 10.0,
+    "learning_rate": 0.02,
+    "min_child_samples": 800,
+    "unbalanced": true
+   },
+   "unbalanced": {
+    "unbalanced": true
+   }
+  },
+  "disclosures": [
+   "The reference's two development results (dev-rich.json) and the base set's (dev-base.json) include test AUROC for runs 0:0 and 0:1, and those four numbers have been read (0.785/0.786 rich, 0.783/0.780 base). They played no part in choosing rich or in this candidate list, and no candidate's test metric will exist until the 25 runs.",
+   "Runs 0:0 and 0:1 are two of the 25 scored runs. Their validation stays are never their own test stays, but they are training or test stays of other runs: this is YAIB's own arrangement for tuning.",
+   "Four candidates on two folds can separate differences of about 0.003 at best. A lead inside min_gain is treated as no lead."
+  ],
+  "feature_set": "rich",
+  "feature_set_choice": "rich over base by the rule already in docs/YAIB_BENCHMARK.md: mean validation AUROC over development runs 0:0 and 0:1 at the default configuration, 0.7852 (rich) against 0.7815 (base).",
+  "min_gain": 0.001,
+  "question": "On YAIB's eICU sepsis cohort, which LightGBM configuration over the rich feature set should run the 25-run protocol?",
+  "reference": {
+   "name": "default",
+   "settings": {},
+   "source": "dev-rich.json, source 84b1ab8, aggregate sha256 cf2627daefde269703be3304995a6e6b15efdff05d9f859b203f138299567471. Not re-fitted: the fit path is unchanged since.",
+   "val_auroc": {
+    "0:0": 0.7807405584069365,
+    "0:1": 0.7896977050701106
+   }
+  },
+  "registered": "2026-11-11",
+  "rule": "Stage 1 fits every candidate on run 0:0. Stage 2 fits the best two by that run's validation AUROC on run 0:1 as well. The choice is the highest mean validation AUROC over both runs; the reference keeps its place unless a candidate leads it by more than min_gain. Every candidate runs with --validation-only, so no candidate's test metric is computed into a result file.",
+  "seed": 1234,
+  "stage1_runs": "0:0",
+  "stage2_runs": "0:0,0:1",
+  "stage2_top": 2,
+  "why_these": {
+   "deep_unbalanced": "Larger trees for interactions among 695 columns, held back by the same regularisation.",
+   "slow": "The settings GENESIS tuned on CinC 2019 (docs/GENESIS.md): a default LightGBM was under-regularised there by 0.0065 AUROC.",
+   "slow_unbalanced": "Both changes together.",
+   "unbalanced": "The default stops after 188 and 245 rounds. With about 2% positive hours, scale_pos_weight makes each round aggressive; ranking often improves without it."
+  }
+ },
+ "runs": [
+  "0:0",
+  "0:1"
+ ],
+ "seconds": 11215.1,
+ "stage1": {
+  "deep_unbalanced": {
+   "rounds": {
+    "0:0": 296
+   },
+   "seconds": 1586.4,
+   "val": {
+    "0:0": 0.8008565840438016
+   }
+  },
+  "slow": {
+   "rounds": {
+    "0:0": 397
+   },
+   "seconds": 1556.6,
+   "val": {
+    "0:0": 0.7929127695520221
+   }
+  },
+  "slow_unbalanced": {
+   "rounds": {
+    "0:0": 1100
+   },
+   "seconds": 2623.5,
+   "val": {
+    "0:0": 0.8005936312349241
+   }
+  },
+  "unbalanced": {
+   "rounds": {
+    "0:0": 344
+   },
+   "seconds": 1629.9,
+   "val": {
+    "0:0": 0.7917326210160817
+   }
+  }
+ },
+ "stage2": {
+  "deep_unbalanced": {
+   "rounds": {
+    "0:0": 296,
+    "0:1": 309
+   },
+   "seconds": 1612.9,
+   "val": {
+    "0:0": 0.8008565840438016,
+    "0:1": 0.8111362863314198
+   }
+  },
+  "slow_unbalanced": {
+   "rounds": {
+    "0:0": 1100,
+    "0:1": 762
+   },
+   "seconds": 2111.6,
+   "val": {
+    "0:0": 0.8005936312349241,
+    "0:1": 0.8105904188175889
+   }
+  }
+ }
+}
