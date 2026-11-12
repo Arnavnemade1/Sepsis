@@ -1,0 +1,27 @@
+{
+  "registered": "2026-11-11",
+  "question": "Should the twelve ICU replay beds be scored by the frozen October 24 ensemble (trajectory LightGBM + randomized LightGBM + depth-wise XGBoost) instead of the served single LightGBM?",
+  "evidence_so_far": {
+    "docs/ICU_ARCHITECTURE.md (2026-10-24)": "on 6,454 development confirmation patients the frozen ensemble scored AUROC 0.85176 against 0.84977 for the same-split single LightGBM; paired patient bootstrap +0.00199 [+0.00008, +0.00413]. Members were fitted on 19,360 patients. It was not promoted: no production-compatible fit existed."
+  },
+  "incumbent": "the DEPLOYED artifact icu:lgbm-all40~platt#7fbbdd0ad322 (artifacts/gbm_icu.joblib), scored not refitted, read at its shipped operating point HIGH 0.045",
+  "candidate": {
+    "members": "improve_icu.CANDIDATES 'trajectory', 'randomized' and 'depthwise', parameters unchanged, seed 20261024, 1600 rounds, early stopping 100 on a 10% patient-held-out slice of the training patients (the same slice for every member)",
+    "weights": "0.50 trajectory, 0.25 randomized, 0.25 depthwise: frozen from artifacts/icu_architecture/selection.json, not re-selected",
+    "calibration": "a two-parameter monotone Platt map on the logit of the blend, fitted on the members' shared early-stopping slice. Ranking is unaffected by it.",
+    "features": "the 510 GENESIS features plus the 204 observed-dynamics columns (icu_ensemble.trajectory_block, observed-dynamics-v1)"
+  },
+  "training_patients": "exactly the 24,206 training patients of the shipped fits (promotion_split of artifacts/detector_manifest.json, digest 7fbbdd0ad322). The holdout, the bundled demo sample and the GENESIS locked 8,067 are not touched by any fit, calibration or threshold.",
+  "judged_patients": "the 8,062-patient promotion holdout, every hour, challenge label, scored once. For alarms it is split by patient (stratified_group_split, seed 43): the candidate's operating point is derived on half A (operating_point.derive, constrained, max false-alarm rate 0.15) and both detectors are judged on half B, each at its own threshold.",
+  "predictions": {
+    "delta AUROC vs incumbent": "+0.001 to +0.003. The lower bound of the paired interval may not clear zero: the October interval barely did.",
+    "hour-matched AUROC and AUPRC": "not below the incumbent's 0.7986 and 0.1377"
+  },
+  "decision_rule": "Ship iff all of: paired patient bootstrap (1,000 draws) lower bound of delta AUROC > 0; hour-matched AUROC >= incumbent; AUPRC >= incumbent; detection inside a 15% alarm budget on half B not significantly worse (upper bound >= 0); an operating point exists under the 15% cap. Shipped as artifacts/gbm_icu.joblib with artifacts/operating_point_icu.json, stamped icu:ens-all40-dyn~platt#7fbbdd0ad322. It scores the ICU replay beds only; the live room keeps the 7-vital stack. Otherwise nothing is promoted and the result is written.",
+  "disclosures": [
+    "This holdout has now judged the stack's promotion, the ward before/after and the incumbent's own promotion. This is its first look at any ensemble or observed-dynamics model.",
+    "The blend weights were selected in October on development patients, some of whom are in this holdout, and the October confirmation patients overlap it too. The choice was one point on a 35-point grid; no model, calibration or threshold in this test is fitted on a holdout patient.",
+    "The expected gain is small. A pass would raise the served AUROC by a few thousandths, not change what the detector can see: the CinC inputs are spent (docs/GENESIS.md)."
+  ],
+  "rules": ["No gate, parameter, weight or code path changes after the run.", "The result is reported whatever it is. If refused, this candidate is not re-tested on these patients."]
+}
