@@ -78,3 +78,15 @@ the `flock` call removed, 6 of them fail).
 
 The lock covers one job at a time. A reservation that spans several jobs, with gaps between
 them, is still agreed between the agents (on Axis, with a release marker).
+
+`yaib_conductor.sh` uses such a gap on purpose. After a benchmark sweep it writes the
+release marker, lets the Forge optimization worker run its one six-hour job, and only then
+queues the benchmark's 25 runs behind the lock:
+
+```bash
+sudo systemd-run --unit aegis-conductor-<rev> --setenv SWEEP=<sweep rev> --setenv FINAL=<rev> \
+    /srv/aegis/launch/yaib_conductor.sh
+```
+
+Name the unit anything but `yaib-*` or `eicu-*`: the Forge worker reads those names as the
+benchmark still running and will not start.
