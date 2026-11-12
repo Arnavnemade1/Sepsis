@@ -471,14 +471,25 @@ class SweepChecks(unittest.TestCase):
             self.assertEqual(len(list((root / "store").glob("*/features.npy"))), 1)
             self.assertEqual(list((root / "work").glob("*/features.npy")), [])
             self.assertNotIn("auprc", (root / "out" / "selection.json").read_text())
-            # the winner's checkpoint resumes into scored runs without refitting its two folds
-            from backend.ml.yaib import bench as bench_module
-            cfg = B.TrainConfig(**{k: v for k, v in plan["configs"][chosen["chosen"]].items() if k != "unbalanced"},
-                                threads=1, balanced=not plan["configs"][chosen["chosen"]].get("unbalanced", False))
-            with patch.object(bench_module, "_fit_predict", side_effect=AssertionError("fit repeated")):
-                scored = B.run(C.load(cohort), cfg, runs=[(0, 0), (0, 1)], memory_check=False,
-                               resume_dir=str(root / "work" / chosen["chosen"]), feature_store=str(root / "store"))
-            self.assertEqual(scored["yaib_metric"]["n_runs"], 2)
+            # the final call is the sweep's call for the winner, scored, in the same checkpoint
+            from backend.ml.scripts import yaib_final as F
+            final = F.build(chosen, cohort, str(root / "work"), str(root / "store"), str(root / "p"),
+                            str(root / "final.json"), threads=1)
+            self.assertNotIn("--runs", final)
+            self.assertNotIn("--validation-only", final)
+            self.assertEqual(final[final.index("--resume-dir") + 1], str(root / "work" / chosen["chosen"]))
+            with patch.object(B, "_fit_predict", wraps=B._fit_predict) as fits:
+                self.assertEqual(B.main(final[3:]), 0)
+            self.assertEqual(fits.call_count, 23)            # 25 runs, the two development fits resumed
+            scored = json.loads((root / "final.json").read_text())
+            self.assertEqual(scored["yaib_metric"]["n_runs"], 25)
+            self.assertEqual(len(list((root / "p").glob("ours_r*_f*.parquet"))), 25)
+            # a selection whose choice or provenance was edited is refused
+            other = next(n for n in plan["configs"] if n != chosen["chosen"])
+            with self.assertRaisesRegex(ValueError, "registered rule"):
+                F.build({**chosen, "chosen": other}, cohort, "/w", "/s", "/p", "/o.json")
+            with self.assertRaisesRegex(ValueError, "validation scores only"):
+                F.build({**chosen, "note": ""}, cohort, "/w", "/s", "/p", "/o.json")
             # a second sweep over finished results fits nothing
             with patch.object(S.subprocess, "run", side_effect=AssertionError("refitted")):
                 self.assertEqual(S.main(arguments), 0)
