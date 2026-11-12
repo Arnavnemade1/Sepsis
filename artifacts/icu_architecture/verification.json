@@ -1,0 +1,19 @@
+{
+  "checks": [
+    {
+      "command": "make verify-icu-ensemble",
+      "passed": true,
+      "tests": 12
+    },
+    {
+      "command": "GENESIS_THREADS=1 OMP_NUM_THREADS=1 .venv/bin/python -m backend.aegis.verify_ward_risk",
+      "passed": true,
+      "checks": 15
+    },
+    {
+      "command": "git diff --check",
+      "passed": true
+    }
+  ],
+  "note": "Focused ensemble tests use synthetic data; ward verification also checks the existing production artifacts."
+}

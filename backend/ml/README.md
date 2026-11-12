@@ -30,6 +30,20 @@ leakage-free, patient-level evaluation.
 
 ---
 
+## ICU architecture development experiment
+
+`make improve-icu` compares the tuned all-variable baseline with causal observation
+dynamics, randomized LightGBM, and depth-wise XGBoost, then selects a convex ensemble.
+Training, blend selection, calibration, and confirmation use disjoint patients;
+the historical GENESIS lock is excluded. It writes a research artifact and all
+outcomes without promoting a model. See [the protocol and results](../../docs/ICU_ARCHITECTURE.md)
+and run `make verify-icu-ensemble` for its causality and inference checks.
+The October 24 run improved AUROC **0.84977 → 0.85176** on 6,454 development
+confirmation patients (paired 95% delta interval **+0.00008 to +0.00413**). All five
+research gates passed; **0.90 was not reached**, and the candidate remains a research artifact.
+
+---
+
 ## The dataset: PhysioNet/CinC 2019
 
 ~40,000 ICU patients, one hourly row per patient, with a `SepsisLabel` that is

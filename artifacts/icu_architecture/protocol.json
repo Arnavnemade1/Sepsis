@@ -1,0 +1,99 @@
+{
+  "seed": 20261024,
+  "feature_version": "observed-dynamics-v1",
+  "candidates": [
+    {
+      "name": "baseline",
+      "kind": "lgbm",
+      "dynamic": false,
+      "params": {
+        "learning_rate": 0.02,
+        "num_leaves": 31,
+        "min_data_in_leaf": 800,
+        "feature_fraction": 0.3,
+        "bagging_fraction": 0.7,
+        "lambda_l2": 10.0
+      }
+    },
+    {
+      "name": "trajectory",
+      "kind": "lgbm",
+      "dynamic": true,
+      "params": {
+        "learning_rate": 0.02,
+        "num_leaves": 31,
+        "min_data_in_leaf": 800,
+        "feature_fraction": 0.3,
+        "bagging_fraction": 0.7,
+        "lambda_l2": 10.0
+      }
+    },
+    {
+      "name": "randomized",
+      "kind": "lgbm",
+      "dynamic": true,
+      "params": {
+        "learning_rate": 0.04,
+        "num_leaves": 63,
+        "min_data_in_leaf": 400,
+        "feature_fraction": 0.6,
+        "bagging_fraction": 0.7,
+        "lambda_l2": 10.0,
+        "extra_trees": true
+      }
+    },
+    {
+      "name": "depthwise",
+      "kind": "xgb",
+      "dynamic": false,
+      "params": {
+        "objective": "binary:logistic",
+        "eval_metric": "auc",
+        "tree_method": "hist",
+        "eta": 0.03,
+        "max_depth": 5,
+        "min_child_weight": 40,
+        "lambda": 20,
+        "subsample": 0.8,
+        "colsample_bytree": 0.6,
+        "max_bin": 128
+      }
+    }
+  ],
+  "rounds": 1600,
+  "early_stop": 100,
+  "target": "original hourly SepsisLabel",
+  "blend_grid_step": 0.25,
+  "selection": "max AUROC, hour-matched regression <=0.002",
+  "target_auroc": 0.9,
+  "bootstrap_draws": 1000,
+  "gates": "delta CI lower >0, hour-matched >= baseline, AUPRC >= baseline, fixed detection >= baseline, fixed FAR <=0.15",
+  "historical_locked_set": "excluded from all roles, never scored",
+  "confirmation_caveat": "Previously used development patients; not a new external or pristine lock.",
+  "roles": {
+    "train": {
+      "patients": 19360,
+      "rows": 742629,
+      "patient_sha256": "efac37f442dc3c5ed0500e2e737223ecbafa05683881fb54950a1a3a0e0259e4"
+    },
+    "selection": {
+      "patients": 4195,
+      "rows": 161225,
+      "patient_sha256": "7c54d246a2db3481faf0a8c8a48b15fd82e3e96829c427f2809cfd5134ab2d55"
+    },
+    "calibration": {
+      "patients": 2259,
+      "rows": 86381,
+      "patient_sha256": "12e6fdae982268cfd4b1cb43271eada7dd621337e990b869cb2550c1c700fec0"
+    },
+    "confirmation": {
+      "patients": 6454,
+      "rows": 252704,
+      "patient_sha256": "0ff7b4910de365bcd00af44abd3eae4318dc538111187aa17380a2db290fc951"
+    }
+  },
+  "source_sha256": {
+    "improve_icu.py": "a76721cde43a5feb07605e71a39e12238dddf850aafbe6ece3e6202218f87eca",
+    "icu_ensemble.py": "4d6a9d1899be06ffd6586e79915e2733e8f8a7961b232ea8d9840c5014877461"
+  }
+}

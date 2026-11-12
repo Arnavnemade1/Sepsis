@@ -1,0 +1,46 @@
+{
+  "note": "Training split-gain importance is descriptive, not causal attribution or held-out evidence.",
+  "dynamics_gain_share": 0.06192121735184549,
+  "top_dynamic_features": [
+    {
+      "name": "HR__innovation24",
+      "gain": 2130.636594772339
+    },
+    {
+      "name": "Glucose__obs_slope24",
+      "gain": 1829.4047183990479
+    },
+    {
+      "name": "SBP__obs_std24",
+      "gain": 1754.7905139923096
+    },
+    {
+      "name": "Temp__innovation24",
+      "gain": 1687.1764831542969
+    },
+    {
+      "name": "FiO2__obs_std24",
+      "gain": 1673.5574913024902
+    },
+    {
+      "name": "Temp__obs_slope24",
+      "gain": 1498.693286895752
+    },
+    {
+      "name": "Temp__obs_std24",
+      "gain": 1455.2661972045898
+    },
+    {
+      "name": "SBP__obs_std6",
+      "gain": 1454.89208984375
+    },
+    {
+      "name": "DBP__obs_std24",
+      "gain": 1307.2994995117188
+    },
+    {
+      "name": "Resp__obs_std24",
+      "gain": 1267.4392948150635
+    }
+  ]
+}

@@ -1,0 +1,242 @@
+{
+  "protocol": {
+    "seed": 20261024,
+    "feature_version": "observed-dynamics-v1",
+    "candidates": [
+      {
+        "name": "baseline",
+        "kind": "lgbm",
+        "dynamic": false,
+        "params": {
+          "learning_rate": 0.02,
+          "num_leaves": 31,
+          "min_data_in_leaf": 800,
+          "feature_fraction": 0.3,
+          "bagging_fraction": 0.7,
+          "lambda_l2": 10.0
+        }
+      },
+      {
+        "name": "trajectory",
+        "kind": "lgbm",
+        "dynamic": true,
+        "params": {
+          "learning_rate": 0.02,
+          "num_leaves": 31,
+          "min_data_in_leaf": 800,
+          "feature_fraction": 0.3,
+          "bagging_fraction": 0.7,
+          "lambda_l2": 10.0
+        }
+      },
+      {
+        "name": "randomized",
+        "kind": "lgbm",
+        "dynamic": true,
+        "params": {
+          "learning_rate": 0.04,
+          "num_leaves": 63,
+          "min_data_in_leaf": 400,
+          "feature_fraction": 0.6,
+          "bagging_fraction": 0.7,
+          "lambda_l2": 10.0,
+          "extra_trees": true
+        }
+      },
+      {
+        "name": "depthwise",
+        "kind": "xgb",
+        "dynamic": false,
+        "params": {
+          "objective": "binary:logistic",
+          "eval_metric": "auc",
+          "tree_method": "hist",
+          "eta": 0.03,
+          "max_depth": 5,
+          "min_child_weight": 40,
+          "lambda": 20,
+          "subsample": 0.8,
+          "colsample_bytree": 0.6,
+          "max_bin": 128
+        }
+      }
+    ],
+    "rounds": 1600,
+    "early_stop": 100,
+    "target": "original hourly SepsisLabel",
+    "blend_grid_step": 0.25,
+    "selection": "max AUROC, hour-matched regression <=0.002",
+    "target_auroc": 0.9,
+    "bootstrap_draws": 1000,
+    "gates": "delta CI lower >0, hour-matched >= baseline, AUPRC >= baseline, fixed detection >= baseline, fixed FAR <=0.15",
+    "historical_locked_set": "excluded from all roles, never scored",
+    "confirmation_caveat": "Previously used development patients; not a new external or pristine lock.",
+    "roles": {
+      "train": {
+        "patients": 19360,
+        "rows": 742629,
+        "patient_sha256": "efac37f442dc3c5ed0500e2e737223ecbafa05683881fb54950a1a3a0e0259e4"
+      },
+      "selection": {
+        "patients": 4195,
+        "rows": 161225,
+        "patient_sha256": "7c54d246a2db3481faf0a8c8a48b15fd82e3e96829c427f2809cfd5134ab2d55"
+      },
+      "calibration": {
+        "patients": 2259,
+        "rows": 86381,
+        "patient_sha256": "12e6fdae982268cfd4b1cb43271eada7dd621337e990b869cb2550c1c700fec0"
+      },
+      "confirmation": {
+        "patients": 6454,
+        "rows": 252704,
+        "patient_sha256": "0ff7b4910de365bcd00af44abd3eae4318dc538111187aa17380a2db290fc951"
+      }
+    },
+    "source_sha256": {
+      "improve_icu.py": "a76721cde43a5feb07605e71a39e12238dddf850aafbe6ece3e6202218f87eca",
+      "icu_ensemble.py": "4d6a9d1899be06ffd6586e79915e2733e8f8a7961b232ea8d9840c5014877461"
+    }
+  },
+  "training": [
+    {
+      "name": "baseline",
+      "trees": 399,
+      "seconds": 49.866063833236694,
+      "selection_auroc": 0.8294807182886006
+    },
+    {
+      "name": "trajectory",
+      "trees": 484,
+      "seconds": 136.5283579826355,
+      "selection_auroc": 0.8314753880607217
+    },
+    {
+      "name": "randomized",
+      "trees": 212,
+      "seconds": 103.07836508750916,
+      "selection_auroc": 0.8281506936552285
+    },
+    {
+      "name": "depthwise",
+      "trees": 367,
+      "seconds": 1291.6023771762848,
+      "selection_auroc": 0.8297288731685608
+    }
+  ],
+  "weights": [
+    0.0,
+    0.5,
+    0.25,
+    0.25
+  ],
+  "candidate": {
+    "auroc": 0.8517589436215172,
+    "between": 0.8865780389022586,
+    "within_septic": 0.553080569636816,
+    "neg_share_septic": 0.10440587557510858,
+    "within_stay": 0.736233585395547,
+    "auroc_lt60": 0.8143004703376547,
+    "auroc_hourmatched": 0.7951311563676902,
+    "auprc": 0.12555562997186198,
+    "patient_auroc": 0.8699121415974513,
+    "patient_auroc_pre": 0.7609225665604733,
+    "detect_far5": 0.4,
+    "detect_far15": 0.5595744680851064,
+    "utility_best": null,
+    "thr_best": null,
+    "fixed_alarm": {
+      "threshold": 0.043348298239740846,
+      "detection": 0.551063829787234,
+      "false_alarm": 0.14087566844919786
+    },
+    "brier": 0.016386876216993997,
+    "ece": 0.0011118290633311979,
+    "by_hospital": {
+      "0": {
+        "auroc": 0.8445375570695345,
+        "auprc": 0.12577284125285149
+      },
+      "1": {
+        "auroc": 0.8566655280252865,
+        "auprc": 0.13149935283985809
+      }
+    }
+  },
+  "baseline": {
+    "auroc": 0.8497682423186702,
+    "between": 0.8846397172226884,
+    "within_septic": 0.5506405556627436,
+    "neg_share_septic": 0.10440587557510858,
+    "within_stay": 0.7367487238781139,
+    "auroc_lt60": 0.8121655882995286,
+    "auroc_hourmatched": 0.7929915573149752,
+    "auprc": 0.12169769536997627,
+    "patient_auroc": 0.8673108786551371,
+    "patient_auroc_pre": 0.7578217445101831,
+    "detect_far5": 0.4021276595744681,
+    "detect_far15": 0.5446808510638298,
+    "utility_best": null,
+    "thr_best": null,
+    "fixed_alarm": {
+      "threshold": 0.05175389469146947,
+      "detection": 0.5319148936170213,
+      "false_alarm": 0.1385360962566845
+    },
+    "brier": 0.01665519282859279,
+    "ece": 0.0026687095452483304,
+    "by_hospital": {
+      "0": {
+        "auroc": 0.8412197068316402,
+        "auprc": 0.12351132475009934
+      },
+      "1": {
+        "auroc": 0.856167718766418,
+        "auprc": 0.1223485915114132
+      }
+    }
+  },
+  "members": {
+    "baseline": {
+      "auroc": 0.8497682423186702,
+      "auprc": 0.12169769536997627
+    },
+    "trajectory": {
+      "auroc": 0.8510545654413482,
+      "auprc": 0.12422154677728914
+    },
+    "randomized": {
+      "auroc": 0.8476407813769005,
+      "auprc": 0.11979848544245018
+    },
+    "depthwise": {
+      "auroc": 0.8487601837325407,
+      "auprc": 0.12374934065447048
+    }
+  },
+  "paired_bootstrap": {
+    "draws": 1000,
+    "unit": "patient",
+    "auroc_ci": [
+      0.8373702315265283,
+      0.8649126052447837
+    ],
+    "delta": 0.0019907013028469533,
+    "delta_ci": [
+      8.072438093960359e-05,
+      0.004132249014802486
+    ]
+  },
+  "gates": {
+    "auroc_gain": true,
+    "hour_matched_not_worse": true,
+    "auprc_not_worse": true,
+    "fixed_detection_not_worse": true,
+    "fixed_false_alarm_within_budget": true
+  },
+  "target_reached": false,
+  "research_gate_passed": true,
+  "production_promoted": false,
+  "reload_max_error": 0.0,
+  "seconds": 1605.874752998352
+}

@@ -1,0 +1,26 @@
+[
+  {
+    "name": "baseline",
+    "trees": 399,
+    "seconds": 49.866063833236694,
+    "selection_auroc": 0.8294807182886006
+  },
+  {
+    "name": "trajectory",
+    "trees": 484,
+    "seconds": 136.5283579826355,
+    "selection_auroc": 0.8314753880607217
+  },
+  {
+    "name": "randomized",
+    "trees": 212,
+    "seconds": 103.07836508750916,
+    "selection_auroc": 0.8281506936552285
+  },
+  {
+    "name": "depthwise",
+    "trees": 367,
+    "seconds": 1291.6023771762848,
+    "selection_auroc": 0.8297288731685608
+  }
+]

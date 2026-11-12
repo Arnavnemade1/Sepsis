@@ -1,0 +1,412 @@
+{
+  "weights": [
+    0.0,
+    0.5,
+    0.25,
+    0.25
+  ],
+  "calibration": [
+    0.867629611434434,
+    -0.5477434210958393
+  ],
+  "threshold": 0.043348298239740846,
+  "baseline_threshold": 0.05175389469146947,
+  "selection_table": [
+    {
+      "weights": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8294807182886006,
+      "hour_matched": 0.7864452044861653,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "auroc": 0.8297288731685608,
+      "hour_matched": 0.7848373948031929,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.0,
+        0.25,
+        0.75
+      ],
+      "auroc": 0.8310333773106356,
+      "hour_matched": 0.7874630099340834,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.0,
+        0.5,
+        0.5
+      ],
+      "auroc": 0.8311284839781441,
+      "hour_matched": 0.7884051206383126,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.0,
+        0.75,
+        0.25
+      ],
+      "auroc": 0.8302048484193728,
+      "hour_matched": 0.7881162659412612,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "auroc": 0.8281506936552285,
+      "hour_matched": 0.7863112203459176,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.25,
+        0.0,
+        0.75
+      ],
+      "auroc": 0.8310371097447673,
+      "hour_matched": 0.786825455771976,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.25,
+        0.25,
+        0.5
+      ],
+      "auroc": 0.83186203725951,
+      "hour_matched": 0.7888047029692337,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.25,
+        0.5,
+        0.25
+      ],
+      "auroc": 0.8315491843273188,
+      "hour_matched": 0.7892602046068917,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.25,
+        0.75,
+        0.0
+      ],
+      "auroc": 0.8301924076943478,
+      "hour_matched": 0.7882955039840469,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.5,
+        0.0,
+        0.5
+      ],
+      "auroc": 0.8317249737432032,
+      "hour_matched": 0.7880438300710775,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.5,
+        0.25,
+        0.25
+      ],
+      "auroc": 0.8321419936480426,
+      "hour_matched": 0.7894972135890878,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.5,
+        0.5,
+        0.0
+      ],
+      "auroc": 0.8313934109830403,
+      "hour_matched": 0.7893937443552977,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.75,
+        0.0,
+        0.25
+      ],
+      "auroc": 0.831882110736516,
+      "hour_matched": 0.7885451040684222,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        0.75,
+        0.25,
+        0.0
+      ],
+      "auroc": 0.8318610007129448,
+      "hour_matched": 0.7894626250907485,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8314753880607217,
+      "hour_matched": 0.7884457824918206,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.0,
+        0.0,
+        0.75
+      ],
+      "auroc": 0.8305180652801386,
+      "hour_matched": 0.7863219598154233,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.0,
+        0.25,
+        0.5
+      ],
+      "auroc": 0.831437106240655,
+      "hour_matched": 0.7885086639374095,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.0,
+        0.5,
+        0.25
+      ],
+      "auroc": 0.8311737952519296,
+      "hour_matched": 0.7890406009718257,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.0,
+        0.75,
+        0.0
+      ],
+      "auroc": 0.8298436568908779,
+      "hour_matched": 0.7881705558112454,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.25,
+        0.0,
+        0.5
+      ],
+      "auroc": 0.8314394403658882,
+      "hour_matched": 0.7878359287545075,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.25,
+        0.25,
+        0.25
+      ],
+      "auroc": 0.8319163276043784,
+      "hour_matched": 0.7894509968375595,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.25,
+        0.5,
+        0.0
+      ],
+      "auroc": 0.8312210875535813,
+      "hour_matched": 0.7894235926739931,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.5,
+        0.0,
+        0.25
+      ],
+      "auroc": 0.8317986010429621,
+      "hour_matched": 0.7886259093182896,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.5,
+        0.25,
+        0.0
+      ],
+      "auroc": 0.8318325005564424,
+      "hour_matched": 0.7896047564147592,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.25,
+        0.75,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8316069417417332,
+      "hour_matched": 0.788701011539523,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.0,
+        0.0,
+        0.5
+      ],
+      "auroc": 0.8307070156963521,
+      "hour_matched": 0.7870291353660508,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.0,
+        0.25,
+        0.25
+      ],
+      "auroc": 0.831283307425518,
+      "hour_matched": 0.7888592891004458,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.0,
+        0.5,
+        0.0
+      ],
+      "auroc": 0.8306387238494465,
+      "hour_matched": 0.7889423163095213,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.25,
+        0.0,
+        0.25
+      ],
+      "auroc": 0.8312946531154569,
+      "hour_matched": 0.7881382633374212,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.25,
+        0.25,
+        0.0
+      ],
+      "auroc": 0.8314093252763359,
+      "hour_matched": 0.7892967928685183,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.5,
+        0.5,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8313057236927233,
+      "hour_matched": 0.7884933324188736,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.75,
+        0.0,
+        0.0,
+        0.25
+      ],
+      "auroc": 0.8303735423111722,
+      "hour_matched": 0.7871012749750067,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.75,
+        0.0,
+        0.25,
+        0.0
+      ],
+      "auroc": 0.8305749626966712,
+      "hour_matched": 0.7884546703286529,
+      "admissible": true
+    },
+    {
+      "weights": [
+        0.75,
+        0.25,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8306018555019689,
+      "hour_matched": 0.7877408289004013,
+      "admissible": true
+    },
+    {
+      "weights": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "auroc": 0.8294807182886006,
+      "hour_matched": 0.7864452044861653,
+      "admissible": true
+    }
+  ]
+}
