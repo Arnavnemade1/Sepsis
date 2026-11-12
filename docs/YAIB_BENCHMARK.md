@@ -7,8 +7,33 @@ own finding is that the cohort and preprocessing move results more than the choi
 model does. A number is therefore comparable only if it was made on YAIB's cohort, YAIB's
 splits and YAIB's metric. `backend/ml/yaib/` makes that true for our model.
 
-No result on credentialed data is claimed here. The only numbers below come from YAIB's
-open eICU demo, where they show that the pipeline works, not that one model beats another.
+## Where the full eICU run stands (2026-11-12)
+
+The benchmark result does not exist yet: the 25 runs have not been scored. What exists is
+development evidence on YAIB's full eICU sepsis cohort (123,412 stays, 5,639 septic,
+6,416,789 labelled hours), from two of the 25 runs (repetition 0, folds 0 and 1) at the
+default learner settings:
+
+| Feature set | Columns | Validation AUROC (fold 0, fold 1) | Mean |
+|---|---|---|---|
+| `base` | 443 | 0.7727, 0.7903 | 0.7815 |
+| `rich` | 695 | 0.7807, 0.7897 | **0.7852** |
+
+`rich` is chosen, by the rule fixed below (validation only). The two development results
+also carry those two runs' test AUROC, and they have been read: 0.785 and 0.786 for
+`rich`, 0.783 and 0.780 for `base`. They are two runs of 25, they chose nothing, and they
+are not the benchmark number. For orientation only: YAIB's best published eICU baseline
+is the GRU at 0.774 (table below), which is an unpaired comparison on a regenerated
+cohort.
+
+Next, in this order, all on the worker:
+
+1. A registered sweep of four learner configurations against the default, chosen on
+   validation AUROC only ([plan](../artifacts/yaib/eicu_sweep_prereg.json), running).
+2. All 25 runs with the chosen configuration.
+3. YAIB's LightGBM and logistic-regression baselines, then the paired comparison.
+
+The eICU demo numbers further down only show that the pipeline works.
 
 ## What is YAIB's, and what is ours
 
@@ -104,6 +129,24 @@ and its rise above the stay's best value. Sepsis-3 is an acute SOFA rise, and no
 model is handed one. Whether `rich` replaces `base`, and any learner setting, is chosen
 on the validation AUROC of repetition 0's first folds, which every run now reports. The
 test folds are scored once, with the chosen configuration.
+
+The learner's settings are chosen the same way, by a sweep registered before it ran
+(`artifacts/yaib/eicu_sweep_prereg.json`, `backend/ml/scripts/yaib_sweep.py`):
+
+- Stage 1 fits every candidate on run 0:0. Stage 2 fits the best two on run 0:1 as well.
+- The choice is the highest mean validation AUROC over both runs. The default keeps its
+  place unless a candidate leads it by more than 0.001: four candidates on two folds
+  cannot separate less.
+- Every candidate runs with `--validation-only`, which leaves the test metric out of the
+  result file. The sweep refuses to read a result that carries one.
+- `backend/ml/scripts/yaib_final.py` then runs all 25 with whatever `selection.json`
+  names. It recomputes the rule on the recorded validation scores and refuses a
+  selection that does not follow from them. It uses the sweep's checkpoint directory, so
+  the two development fits are resumed, not repeated.
+
+The candidates: no class weighting; the slower, more regularised settings GENESIS tuned
+on CinC 2019 (learning rate 0.02, 800 rows per leaf, column sample 0.3, L2 10); both
+together; and larger trees (127 leaves) under the same regularisation.
 
 ### Baselines without re-tuning
 
@@ -218,6 +261,40 @@ source/environment, concurrent writers, disk exhaustion before work, and parity 
 real streamed LightGBM predictions and metrics. This infrastructure preserves training
 semantics; it does not establish a clinical AUROC improvement.
 
+
+## One matrix for every configuration
+
+A learner setting does not change a feature. The experiment checkpoint above is keyed by
+the whole experiment, so each configuration used to rebuild the cohort's matrix: 18 GB
+and ten minutes on full eICU, on a disk with 16 GB free. `--feature-store <dir>` (with
+`--resume-dir`) keeps the matrix in a store keyed only by what decides it: the cohort's
+content hashes, the feature set, `features.py` and `cohort.py`, and the environment. Every
+configuration with that identity shares one file, validated by content hash on each open.
+
+```sh
+# share a matrix an experiment already committed: checked, then hard-linked (no copy)
+python -m backend.ml.yaib.bench adopt-features <cohort> --feature-set rich \
+    --from <old checkpoint dir> --feature-store <lake>/feature-store
+```
+
+Adoption is refused unless the old experiment's receipt is intact, its matrix still
+hashes to that receipt, and its feature identity is the store's. On the worker the 695-
+column matrix built for the development run was adopted in two minutes at no disk cost.
+
+The invented-patient checks (`verify_yaib_resume`, 28 in all) cover: two configurations
+build once (and twice without the store); a second feature set gets its own matrix; a
+flipped byte in the store is refused; adoption shares the inode and refuses another
+feature set, a changed matrix and an edited receipt; a whole sweep in real subprocesses
+builds one matrix, writes no test metric, and its final call fits 23 of 25 runs.
+
+## On the worker: sweep, then Forge, then the 25 runs
+
+`deploy/physionet/yaib_conductor.sh` runs as its own unit and holds no lock. When the
+sweep's unit exits with a `selection.json`, it writes the release marker the Forge
+optimization worker waits for, starts no container until that worker has taken the box,
+waits for its job (capped at six hours), and then starts the 25 runs, which queue behind
+the heavy lock. The Forge worker's queue deadline would otherwise pass before the
+benchmark's baselines finish. If the sweep fails, nothing is released and nothing starts.
 
 ## Genuine bounded LightGBM input
 
