@@ -26,12 +26,31 @@ are not the benchmark number. For orientation only: YAIB's best published eICU b
 is the GRU at 0.774 (table below), which is an unpaired comparison on a regenerated
 cohort.
 
-Next, in this order, all on the worker:
+The learner's settings were then chosen by the registered sweep
+([plan](../artifacts/yaib/eicu_sweep_prereg.json),
+[result](../artifacts/yaib/eicu_sweep_selection.json); validation AUROC only, 3.1 hours):
 
-1. A registered sweep of four learner configurations against the default, chosen on
-   validation AUROC only ([plan](../artifacts/yaib/eicu_sweep_prereg.json), running).
-2. All 25 runs with the chosen configuration.
-3. YAIB's LightGBM and logistic-regression baselines, then the paired comparison.
+| Configuration | Fold 0 | Fold 1 | Mean | Rounds |
+|---|---|---|---|---|
+| default (reference) | 0.7807 | 0.7897 | 0.7852 | 188, 245 |
+| unbalanced | 0.7917 | not run (stage 1 only) | | 344 |
+| slow | 0.7929 | not run (stage 1 only) | | 397 |
+| slow_unbalanced | 0.8006 | 0.8106 | 0.8056 | 1,100, 762 |
+| **deep_unbalanced** | 0.8009 | 0.8111 | **0.8060** | 296, 309 |
+
+`deep_unbalanced` is chosen: 127 leaves, learning rate 0.03, at least 400 rows per leaf,
+column sample 0.3, row sample 0.7, L2 10, no class weighting. Its lead over the default is
+0.0208, twenty times the registered margin. Its lead over `slow_unbalanced` is 0.0004,
+which two folds cannot separate; the rule takes the higher mean, and it is also the
+cheaper of the two (about 300 rounds against about 900). Dropping the class weighting and
+regularising harder each helped on their own (fold 0: +0.011 and +0.012), and together
+they gave +0.020. No test metric of any candidate was computed.
+
+Still to come, in this order, all on the worker:
+
+1. All 25 runs with `deep_unbalanced` (running since 2026-11-12 04:48 UTC).
+2. YAIB's LightGBM and logistic-regression baselines, then the paired comparison. Their
+   cost on the 7.6 GB worker is unmeasured: YAIB holds its generated features in memory.
 
 The eICU demo numbers further down only show that the pipeline works.
 
