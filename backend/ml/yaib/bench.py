@@ -192,22 +192,32 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         seed: int = SP.YAIB_CLI_SEED, runs: Optional[Sequence[tuple]] = None,
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
         memory_check: bool = True, feature_set: str = "base",
-        resume_dir: Optional[str] = None) -> Dict[str, Any]:
+        resume_dir: Optional[str] = None, feature_store: Optional[str] = None,
+        validation_only: bool = False) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
     ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
     and then streams it to LightGBM in batches, so no copy of the rows is held in RAM.
     Each run also records its validation AUROC: choose between configurations on that,
     never on the test score.
+    ``feature_store`` (with ``resume_dir``) keeps the matrix in a store shared by every
+    configuration with the same inputs, feature set and feature code, so a sweep builds
+    it once. ``validation_only`` leaves every test metric out of the result: a
+    development run then cannot show the number it must not be selected on.
     A run whose planned peak exceeds this host's available memory is refused up front,
     instead of swapping for hours or being killed mid-protocol."""
     if resume_dir is not None and features_path is not None:
         raise ValueError("Use --resume-dir or --features, not both")
+    if feature_store is not None and resume_dir is None:
+        raise ValueError("--feature-store needs --resume-dir")
+    shared = None
     if resume_dir is not None:
-        from backend.ml.yaib.checkpoint import Checkpoints, experiment_spec
+        from backend.ml.yaib.checkpoint import Checkpoints, FeatureStore, experiment_spec
         spec = experiment_spec(cohort, asdict(cfg),
                                {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}, feature_set)
         store = Checkpoints(resume_dir, spec)
+        if feature_store is not None:
+            shared = FeatureStore(feature_store, spec)
         context = store.locked()
     else:
         context = contextlib.nullcontext(None)
@@ -222,7 +232,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         if checkpoints:
             names = FE.feature_names(feature_set)
             X = checkpoints.features((len(cohort.dyn), len(names)),
-                                     lambda path: FE.build(cohort, out=path, feature_set=feature_set)[0])
+                                     lambda path: FE.build(cohort, out=path, feature_set=feature_set)[0],
+                                     store=shared)
         else:
             X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
         stream = features_path is not None or checkpoints is not None
@@ -250,7 +261,7 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                 fit = _fit_predict(X, y, tr, va, te, cfg, stream=stream)
                 if checkpoints:
                     checkpoints.save_fit(sp.repetition, sp.fold, sp.fingerprint(), fit, len(te))
-            m = _metric(y[te], fit["p"])
+            m = {} if validation_only else _metric(y[te], fit["p"])
             per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
                             "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
                             "test_stays": int(len(sp.test)), **m})
@@ -258,9 +269,13 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                 os.makedirs(predictions_dir, exist_ok=True)
                 pd.DataFrame({"stay_id": stay[te], "hour": hour[te], "label": y[te], "p": fit["p"]}).to_parquet(
                     os.path.join(predictions_dir, f"ours_r{sp.repetition}_f{sp.fold}.parquet"), index=False)
-        au = np.array([r["auroc"] for r in per_run], float)
-        pr = np.array([r["auprc"] for r in per_run], float)
         va_au = np.array([r["val_auroc"] for r in per_run], float)
+        tested = {}
+        if not validation_only:
+            au = np.array([r["auroc"] for r in per_run], float)
+            pr = np.array([r["auprc"] for r in per_run], float)
+            tested = {"yaib_metric": {**yaib_summary("auroc", au), **yaib_summary("auprc", pr),
+                                      "n_runs": int(np.isfinite(au).sum())}}
         return {
             "schema": "yaib_bench/1",
             "cohort": {"name": cohort.name, "stays": int(len(labels)), "septic_stays": int(labels.sum()),
@@ -269,9 +284,9 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                          "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
             "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
                       "streamed_from_memmap": stream},
+            "validation_only": validation_only,
             "runs": per_run,
-            "yaib_metric": {**yaib_summary("auroc", au), **yaib_summary("auprc", pr),
-                            "n_runs": int(np.isfinite(au).sum())},
+            **tested,
             "validation_metric": yaib_summary("val_auroc", va_au),
             "seconds": round(time.time() - t0, 1),
         }
@@ -406,6 +421,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--min-child-samples", type=int, default=TrainConfig.min_child_samples)
     r.add_argument("--feature-fraction", type=float, default=TrainConfig.feature_fraction)
     r.add_argument("--unbalanced", action="store_true", help="no scale_pos_weight")
+    r.add_argument("--bagging-fraction", type=float, default=TrainConfig.bagging_fraction)
+    r.add_argument("--lambda-l2", type=float, default=TrainConfig.lambda_l2)
+    r.add_argument("--max-rounds", type=int, default=TrainConfig.max_rounds)
+    r.add_argument("--early-stopping", type=int, default=TrainConfig.early_stopping)
+    r.add_argument("--feature-store", help="private store shared by configurations (with --resume-dir)")
+    r.add_argument("--validation-only", action="store_true",
+                   help="development: report validation AUROC only, no test metric")
+    f = sub.add_parser("adopt-features", help="share a checkpoint's committed matrix through a feature store")
+    f.add_argument("cohort")
+    f.add_argument("--from", dest="source", required=True, help="an experiment checkpoint directory")
+    f.add_argument("--feature-store", required=True)
+    f.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
     p = sub.add_parser("plan", help="planned peak memory for a cohort, without building anything")
     p.add_argument("cohort")
     p.add_argument("--features", action="store_true", help="plan with the matrix memmapped to disk")
@@ -422,18 +449,27 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         rows = pq.ParquetFile(os.path.join(a.cohort, "dyn.parquet")).metadata.num_rows
         print(json.dumps(FE.memory_plan(rows, on_disk=a.features, feature_set=a.feature_set)))
         return 0
+    if a.cmd == "adopt-features":
+        from backend.ml.yaib.checkpoint import FeatureStore, experiment_spec
+        spec = experiment_spec(load(a.cohort), {}, {}, a.feature_set)
+        store = FeatureStore(a.feature_store, spec)
+        saved = store.adopt(a.source)
+        print(json.dumps({"store": store.identity[:16], "sha256": saved["sha256"]}))
+        return 0
     if a.cmd == "run":
         cfg = TrainConfig(learning_rate=a.learning_rate, num_leaves=a.num_leaves,
                           min_child_samples=a.min_child_samples, feature_fraction=a.feature_fraction,
+                          bagging_fraction=a.bagging_fraction, lambda_l2=a.lambda_l2,
+                          max_rounds=a.max_rounds, early_stopping=a.early_stopping,
                           threads=a.threads, balanced=not a.unbalanced)
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
                   predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set,
-                  resume_dir=a.resume_dir)
-        m, v = res["yaib_metric"], res["validation_metric"]
+                  resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only)
+        m, v = res.get("yaib_metric"), res["validation_metric"]
         print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
-        if runs is None:
+        if runs is None and m is not None:
             print(f"AUROC {m['auroc_mean']:.4f} ± {m['auroc_yaib_std_field']:.4f}  AUPRC {m['auprc_mean']:.4f} "
                   f"± {m['auprc_yaib_std_field']:.4f}  over {m['n_runs']} runs (± as YAIB reports it)")
     else:
