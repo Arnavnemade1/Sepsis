@@ -41,6 +41,9 @@ and run `make verify-icu-ensemble` for its causality and inference checks.
 The October 24 run improved AUROC **0.84977 → 0.85176** on 6,454 development
 confirmation patients (paired 95% delta interval **+0.00008 to +0.00413**). All five
 research gates passed; **0.90 was not reached**, and the candidate remains a research artifact.
+A registered production fit on November 11 (`make icu-ensemble`) was **refused**: on the
+8,062-patient holdout the ensemble scored 0.8427 against the served model's 0.8463
+(delta −0.0036 [−0.0068, −0.0005]). The served single LightGBM stays.
 
 ---
 

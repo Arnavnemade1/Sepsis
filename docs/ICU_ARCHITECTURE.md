@@ -128,3 +128,31 @@ isolation, outcome/site independence, hand-computed observed slopes, missing-his
 handling, record/cohort feature parity, partition disjointness and lock preservation,
 blend constraints, rejecting a harmful member, monotone calibration, native model
 reloads, batch invariance, and skipping zero-weight members. It needs no clinical data.
+
+## Production fit — November 11, 2026: refused
+
+The frozen ensemble was fitted on the shipped fits' 24,206 training patients and judged
+once on the 8,062-patient holdout against the served single LightGBM
+(`make icu-ensemble`; protocol [icu_ensemble_prereg.json](../artifacts/icu_ensemble_prereg.json),
+result [icu_ensemble.json](../artifacts/icu_ensemble.json)). It did **not** reproduce the
+October gain. The served detector stays.
+
+| Holdout metric (8,062 patients, 312,901 hours) | Served single LightGBM | Frozen ensemble |
+|---|---:|---:|
+| Hourly AUROC | **0.84633** | 0.84272 |
+| Hour-matched AUROC | **0.79862** | 0.79467 |
+| AUPRC | 0.13769 | **0.14264** |
+| Detection / false alarms at own point (half B) | 51.1% / 14.3% | 50.8% / 12.5% |
+
+Paired patient-bootstrap delta AUROC: **−0.00362 [−0.00682, −0.00048]** (1,000 draws).
+Two of five registered gates failed (AUROC delta, hour-matched AUROC), so nothing was
+promoted. Detection inside a fixed 15% alarm budget was +0.0215 [+0.0000, +0.0400], and
+AUPRC was higher; neither was a promotion criterion on its own.
+
+One unregistered observation, not a tested explanation: the members stopped early at
+213, 148 and 118 trees, against 484, 212 and 367 in October and 539 for the served model
+(which uses a patience of 150 rounds, not 100). Per the registration, this candidate is
+not re-tested on these patients.
+
+The run also rebuilt the local feature caches, which had been cleared; the rebuilt split
+reproduced the shipped fit digest `7fbbdd0ad322` before anything was fitted.
