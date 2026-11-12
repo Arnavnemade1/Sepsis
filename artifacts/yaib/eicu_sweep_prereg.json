@@ -1,0 +1,36 @@
+{
+ "registered": "2026-11-11",
+ "question": "On YAIB's eICU sepsis cohort, which LightGBM configuration over the rich feature set should run the 25-run protocol?",
+ "feature_set": "rich",
+ "feature_set_choice": "rich over base by the rule already in docs/YAIB_BENCHMARK.md: mean validation AUROC over development runs 0:0 and 0:1 at the default configuration, 0.7852 (rich) against 0.7815 (base).",
+ "seed": 1234,
+ "stage1_runs": "0:0",
+ "stage2_runs": "0:0,0:1",
+ "stage2_top": 2,
+ "min_gain": 0.001,
+ "reference": {
+  "name": "default",
+  "settings": {},
+  "val_auroc": {"0:0": 0.7807405584069365, "0:1": 0.7896977050701106},
+  "source": "dev-rich.json, source 84b1ab8, aggregate sha256 cf2627daefde269703be3304995a6e6b15efdff05d9f859b203f138299567471. Not re-fitted: the fit path is unchanged since."
+ },
+ "configs": {
+  "unbalanced": {"unbalanced": true},
+  "slow": {"learning_rate": 0.02, "min_child_samples": 800, "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0, "early_stopping": 150},
+  "slow_unbalanced": {"learning_rate": 0.02, "min_child_samples": 800, "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0, "early_stopping": 150, "unbalanced": true},
+  "deep_unbalanced": {"learning_rate": 0.03, "num_leaves": 127, "min_child_samples": 400, "feature_fraction": 0.3, "bagging_fraction": 0.7, "lambda_l2": 10.0, "early_stopping": 150, "unbalanced": true}
+ },
+ "why_these": {
+  "unbalanced": "The default stops after 188 and 245 rounds. With about 2% positive hours, scale_pos_weight makes each round aggressive; ranking often improves without it.",
+  "slow": "The settings GENESIS tuned on CinC 2019 (docs/GENESIS.md): a default LightGBM was under-regularised there by 0.0065 AUROC.",
+  "slow_unbalanced": "Both changes together.",
+  "deep_unbalanced": "Larger trees for interactions among 695 columns, held back by the same regularisation."
+ },
+ "rule": "Stage 1 fits every candidate on run 0:0. Stage 2 fits the best two by that run's validation AUROC on run 0:1 as well. The choice is the highest mean validation AUROC over both runs; the reference keeps its place unless a candidate leads it by more than min_gain. Every candidate runs with --validation-only, so no candidate's test metric is computed into a result file.",
+ "disclosures": [
+  "The reference's two development results (dev-rich.json) and the base set's (dev-base.json) include test AUROC for runs 0:0 and 0:1, and those four numbers have been read (0.785/0.786 rich, 0.783/0.780 base). They played no part in choosing rich or in this candidate list, and no candidate's test metric will exist until the 25 runs.",
+  "Runs 0:0 and 0:1 are two of the 25 scored runs. Their validation stays are never their own test stays, but they are training or test stays of other runs: this is YAIB's own arrangement for tuning.",
+  "Four candidates on two folds can separate differences of about 0.003 at best. A lead inside min_gain is treated as no lead."
+ ],
+ "after": "The chosen configuration runs all 25 (resuming its development fits), then YAIB's LightGBM and logistic regression baselines with the hyperparameters of YAIB's published eICU models, then the paired comparison. Nothing is re-chosen after the 25 runs are scored."
+}
