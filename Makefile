@@ -1,5 +1,7 @@
 .PHONY: help setup verify verify-genesis genesis-locked verify-mimic mimic-demo verify-core verify-alert-episodes verify-evidence-router verify-evidence-replay verify-integrity verify-frontier verify-supervision verify-coordination verify-recovery verify-mimic3 mimic3-cohort mimic3-windows recovery-outcome recovery-univariate verify-scenarios scenarios frontier frontier-report verify-agent verify-doctor verify-llm verify-pk verify-ae verify-pk-api verify-opts verify-z3 verify-alarm verify-selfimprove verify-subgroup verify-op verify-conformal conformal conformal-external verify-minirocket verify-shift transfer verify-coupling falsify verify-falsify verify-fitid subgroup-audit alarm-policy geo-manifest hostresponse verify-hostresponse serve train-gbm train-stack self-improve operating-point rigorous clean-cache verify-os verify-os-fast verify-fastpaths check-webui web web-build verify-paging verify-rooms verify-interop interop-reference interop-census verify-ward ward-auroc icu-detector screens audit lab-run lab-run-full verify-lab lab-registry verify-timeline verify-disposition verify-replay verify-yaib
 
+.PHONY: improve-icu verify-icu-ensemble icu-ensemble icu-ensemble-promote
+
 PY ?= .venv/bin/python
 PIP ?= .venv/bin/pip
 SPEC ?= dev
@@ -65,6 +67,8 @@ help:
 	@echo "  make web-build    Typecheck and static-export the clinical app to frontend/out"
 	@echo "  make train-gbm    Train the calibrated GBM/HDC comparison baseline"
 	@echo "  make train-stack  Train the stacked detector candidate"
+	@echo "  make improve-icu  Evaluate the research ICU ensemble (separate patient roles, no promotion)"
+	@echo "  make verify-icu-ensemble  Causality, patient isolation, blending and native serialization"
 	@echo "  make frontier     Benchmark every detector technology on identical folds"
 	@echo "  make frontier-report  Rebuild the frontier results table from saved OOF"
 	@echo "  make self-improve Recursive self-improvement search (gated on locked patients)"
@@ -74,6 +78,21 @@ help:
 	@echo "  make conformal-external  Calibrate on hospital A, measure coverage on hospital B"
 	@echo "  make rigorous     Cross-hospital evaluation with reduced bootstrap"
 	@echo "  make clean-cache  Remove regenerated feature caches"
+
+improve-icu:
+	GENESIS_THREADS=4 OMP_NUM_THREADS=4 $(PY) -m backend.ml.scripts.improve_icu $(ARGS)
+
+verify-icu-ensemble:
+	GENESIS_THREADS=1 OMP_NUM_THREADS=1 $(PY) -m backend.ml.scripts.verify_icu_ensemble
+
+# Registered (artifacts/icu_ensemble_prereg.json): fit the frozen ensemble on the shipped
+# fits' training patients, judge it once against the served ICU detector, stage it.
+icu-ensemble:
+	GENESIS_THREADS=4 OMP_NUM_THREADS=4 $(PY) -m backend.ml.scripts.train_icu_ensemble
+
+# Serve the staged ensemble. Refuses unless the registered test passed.
+icu-ensemble-promote:
+	$(PY) -m backend.ml.scripts.train_icu_ensemble --promote
 
 setup:
 	python3 -m venv .venv

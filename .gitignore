@@ -34,6 +34,8 @@ artifacts/genesis/**/*.npy
 artifacts/genesis/**/*.npz
 artifacts/*.joblib
 artifacts/*.log
+artifacts/icu_architecture*/*.joblib
+artifacts/icu_architecture*/*.npz
 # …except the production model, which must ship so the deployed backend can load it
 !artifacts/gbm_wearable.joblib
 !artifacts/gbm_icu.joblib
