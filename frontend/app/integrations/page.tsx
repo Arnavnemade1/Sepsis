@@ -48,7 +48,7 @@ function Integrations() {
           )
         }
       >
-        Every system that feeds the hospital&apos;s rooms (admissions, monitors, laboratories) speaks HL7 v2 or FHIR in its own dialect. Each local code is mapped onto an AegisOS concept only when its own data agrees, and keeps being checked: a feed that drifts is quarantined before a wrong value reaches a detector.
+        HL7 and FHIR feeds, mapping evidence, and delivery health. Mappings are validated against each source&apos;s data; drifting feeds are quarantined before reaching a detector.
       </PageHead>
       <div className="mb-5">
         <Segmented

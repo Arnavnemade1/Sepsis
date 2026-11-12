@@ -562,8 +562,7 @@ export function Architecture() {
         <div className="min-w-0 flex-1 basis-[min(100%,30rem)]">
           <h1 className="text-xl font-semibold leading-tight tracking-tighter text-ink">Architecture</h1>
           <p className="mt-2 max-w-[68ch] text-sm leading-relaxed text-muted">
-            Every model it runs, by name, then every layer of AegisOS, live. Requests travel down through the syscall gate; telemetry
-            travels up from the devices. Select any model or component to inspect it.
+            Live models, services, and infrastructure. Select a component to inspect its health and runtime details.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

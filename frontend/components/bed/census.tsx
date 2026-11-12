@@ -66,9 +66,8 @@ export function Census() {
   return (
     <div>
       <PageHead title="Patients">
-        Every monitored bed, ranked by the sepsis detector&rsquo;s score of the current hour. The score is a 0&ndash;1 index whose 0.70 line is the
-        detector&rsquo;s validated alarm point; its calibrated probability is shown beneath. ICU rooms 301&ndash;312 replay de-identified PhysioNet/CinC
-        2019 stays the detector never trained on; room 402 is the live session.
+        Monitored patients ranked by sepsis risk. The validated paging threshold is 0.70; calibrated probabilities appear below each score.
+        ICU rooms 301&ndash;312 replay de-identified, held-out PhysioNet/CinC 2019 records; room 402 is live.
       </PageHead>
 
       <StatStrip

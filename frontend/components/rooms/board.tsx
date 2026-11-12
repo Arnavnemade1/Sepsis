@@ -56,8 +56,8 @@ export function WatchBoard() {
   return (
     <div>
       <PageHead title="Rooms">
-        Every occupied room is watched as one unit: the patient&apos;s record, the vitals the room is producing and {data?.detectors.length ?? 19} detectors that read
-        both. Synthetic rooms are paged by the room monitor; the ICU replay rooms and the live session by the sepsis detector.
+        Live room status, vitals, and findings from {data?.detectors.length ?? 19} detectors. Synthetic rooms use the room monitor;
+        ICU replay rooms and the live session use the sepsis detector.
       </PageHead>
 
       <StatStrip
