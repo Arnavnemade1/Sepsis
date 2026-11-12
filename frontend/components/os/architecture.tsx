@@ -675,7 +675,7 @@ function Inspector({ c, onClose }: { c: Component & { layer: string }; onClose: 
           {c.facts.length === 0 ? (
             <div className="py-2 text-xs text-dim">Waiting for data</div>
           ) : (
-            c.facts.map(([k, v]) => <Kv key={k} k={k} v={<span className="font-mono text-xs">{String(v)}</span>} />)
+            c.facts.map(([k, v], i) => <Kv key={`${k}:${i}`} k={k} v={<span className="font-mono text-xs">{String(v)}</span>} />)
           )}
         </div>
         <div className="num mt-3 text-xs text-dim">{c.lines.filter(Boolean).join(" · ")}</div>
