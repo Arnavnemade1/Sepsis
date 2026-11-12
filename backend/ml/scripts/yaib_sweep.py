@@ -37,18 +37,32 @@ FLAGS = {"learning_rate": "--learning-rate", "num_leaves": "--num-leaves",
          "max_rounds": "--max-rounds", "early_stopping": "--early-stopping"}
 
 
-def command(cohort: str, plan: Dict[str, Any], name: str, runs: str, work: str, store: str,
-            out: str, threads: int) -> List[str]:
-    """The exact ``bench run`` call of one candidate. The final 25-run call is this one
-    without ``--runs`` and ``--validation-only``."""
-    cfg = dict(plan["configs"][name])
+def settings_of(plan: Dict[str, Any], name: str) -> Dict[str, Any]:
+    """A candidate's settings, or the reference's when ``name`` is the reference."""
+    if name in plan["configs"]:
+        return dict(plan["configs"][name])
+    if name == plan["reference"]["name"]:
+        return dict(plan["reference"].get("settings", {}))
+    raise ValueError(f"{name} is neither a candidate nor the reference")
+
+
+def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], work: str, store: str,
+            out: str, threads: int, predictions: Optional[str] = None) -> List[str]:
+    """The exact ``bench run`` call of one configuration. With ``runs`` it is a
+    development call (those runs, validation only). Without, it is the scored call: every
+    run of the protocol, in the same checkpoint directory, so the development fits are
+    resumed and not repeated."""
+    cfg = settings_of(plan, name)
     unknown = set(cfg) - set(FLAGS) - {"unbalanced"}
     if unknown:
         raise ValueError(f"{name}: unknown settings {sorted(unknown)}")
     cmd = [sys.executable, "-m", "backend.ml.yaib.bench", "run", cohort,
            "--feature-set", plan["feature_set"], "--seed", str(plan["seed"]), "--threads", str(threads),
-           "--runs", runs, "--validation-only", "--resume-dir", os.path.join(work, name),
-           "--feature-store", store, "--out", out]
+           "--resume-dir", os.path.join(work, name), "--feature-store", store, "--out", out]
+    if runs is not None:
+        cmd += ["--runs", runs, "--validation-only"]
+    if predictions is not None:
+        cmd += ["--predictions", predictions]
     for key in sorted(cfg):
         if key == "unbalanced":
             if cfg[key]:
