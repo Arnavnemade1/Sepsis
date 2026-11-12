@@ -90,3 +90,21 @@ sudo systemd-run --unit aegis-conductor-<rev> --setenv SWEEP=<sweep rev> --seten
 
 Name the unit anything but `yaib-*` or `eicu-*`: the Forge worker reads those names as the
 benchmark still running and will not start.
+
+### The shared checkout on the worker is pinned
+
+`/srv/aegis/Sepsis` stays at commit `549804e`. The Forge optimization job records a
+fingerprint of every `backend/ml/*.py` in that checkout when its private bundle is
+prepared, and refuses to start when the fingerprint differs. An earlier benchmark
+pipeline ran `git reset --hard` there on each launch, so on 2026-11-12 both of the Forge
+job's attempts exited within five seconds, before any fit. The checkout was put back, the
+job's own startup checks were dry-run in its image (all four pass), and the worker was
+restarted with a clean state.
+
+Never `reset`, `checkout` or `pull` in that directory. Deploy newer code by export, which
+leaves the working tree alone:
+
+```bash
+git -C /srv/aegis/Sepsis fetch --depth 1 origin main
+git -C /srv/aegis/Sepsis archive FETCH_HEAD backend/ml/yaib backend/ml/scripts | tar -x -C <staging dir>
+```
