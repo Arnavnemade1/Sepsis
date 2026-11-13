@@ -9,22 +9,26 @@ splits and YAIB's metric. `backend/ml/yaib/` makes that true for our model.
 
 ## Where the full eICU run stands (2026-11-12)
 
-The benchmark result does not exist yet: the 25 runs have not been scored. What exists is
-development evidence on YAIB's full eICU sepsis cohort (123,412 stays, 5,639 septic,
-6,416,789 labelled hours), from two of the 25 runs (repetition 0, folds 0 and 1) at the
-default learner settings:
+The final 25-run result is **0.8031774 mean AUROC** and **0.0661157 mean AUPRC** on
+the regenerated YAIB eICU sepsis cohort (123,412 stays, 5,639 septic, 6,416,789
+labelled hours). The aggregate is on the credentialed worker at
+`/srv/aegis/yaib-final-fd9dd6f/final.json`; the 25 private prediction files stay in
+the lake. [This beta graphic](figures/yaib-eicu-sepsis-beta.png) places the score beside
+all six eICU sepsis baselines in YAIB's ICLR 2024 Table 3. It is an **unpaired
+orientation**, because the original paper's cohort was generated at a different time.
+
+Before the final run, development evidence on two of the 25 runs (repetition 0, folds
+0 and 1) at the default learner settings was:
 
 | Feature set | Columns | Validation AUROC (fold 0, fold 1) | Mean |
 |---|---|---|---|
 | `base` | 443 | 0.7727, 0.7903 | 0.7815 |
 | `rich` | 695 | 0.7807, 0.7897 | **0.7852** |
 
-`rich` is chosen, by the rule fixed below (validation only). The two development results
-also carry those two runs' test AUROC, and they have been read: 0.785 and 0.786 for
-`rich`, 0.783 and 0.780 for `base`. They are two runs of 25, they chose nothing, and they
-are not the benchmark number. For orientation only: YAIB's best published eICU baseline
-is the GRU at 0.774 (table below), which is an unpaired comparison on a regenerated
-cohort.
+`rich` was chosen by the rule fixed below (validation only). The two development
+results also carry those two runs' test AUROC, and they were read: 0.785 and 0.786 for
+`rich`, 0.783 and 0.780 for `base`. They chose nothing and are not substituted for the
+25-run result. YAIB's best published eICU baseline in Table 3 is the GRU at 0.774.
 
 The learner's settings were then chosen by the registered sweep
 ([plan](../artifacts/yaib/eicu_sweep_prereg.json),
@@ -46,11 +50,14 @@ cheaper of the two (about 300 rounds against about 900). Dropping the class weig
 regularising harder each helped on their own (fold 0: +0.011 and +0.012), and together
 they gave +0.020. No test metric of any candidate was computed.
 
-Still to come, in this order, all on the worker:
-
-1. All 25 runs with `deep_unbalanced` (running since 2026-11-12 04:48 UTC).
-2. YAIB's LightGBM and logistic-regression baselines, then the paired comparison. Their
-   cost on the 7.6 GB worker is unmeasured: YAIB holds its generated features in memory.
+The paired comparison is still pending. YAIB's own LightGBM baseline first failed its
+one-fold resource probe (exit 137, zero predictions) near the 7 GiB container memory
+limit with heavy swap use. A second, bounded one-fold probe with an extra 8 GiB of swap
+is running on the same encrypted worker. The follow-up service starts the 25-run
+LightGBM baseline only if that probe produces a prediction; it then runs the paired
+patient bootstrap on the same rows. The AWS Free plan blocked changing this worker to
+a 64 GiB instance. A paired result against LightGBM would establish a comparison with
+that baseline, not a world ranking against all published models.
 
 The eICU demo numbers further down only show that the pipeline works.
 

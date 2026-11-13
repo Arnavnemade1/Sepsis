@@ -58,7 +58,8 @@ HOURS=${HOURS:-$([ "$MODE" = probe ] && echo 8 || echo 120)}
 SAMPLER=$!
 t0=$(date +%s)
 docker run --name yaib-$NAME --rm --network none --user 0 \
-  --memory 7g --memory-swap 30g --cpus 2 --pids-limit 512 \
+  --memory "${BASELINE_MEMORY:-7g}" --memory-swap "${BASELINE_MEMORY_SWAP:-30g}" \
+  --cpus "${BASELINE_CPUS:-2}" --pids-limit 512 \
   --tmpfs /heavy:rw,nosuid,nodev,size=1m \
   --mount type=bind,source=/run/lock/aegis-heavy.lock,target=/heavy/shared.lock \
   --mount type=bind,source=/usr/local/sbin/aegis-heavy,target=/opt/aegis-heavy,readonly \
