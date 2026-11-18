@@ -61,6 +61,135 @@ that baseline, not a world ranking against all published models.
 
 The eICU demo numbers further down only show that the pipeline works.
 
+## Round 2: found on open data, registered before any eICU fit (2026-11-18)
+
+The 25-run result above is scored, and nothing is re-chosen on it. A different
+configuration can only enter through a new registered sweep whose candidates were found
+without the eICU test folds. They were found on **PhysioNet/CinC 2019** (open access,
+40,336 ICU stays from two hospitals, 2,932 septic), converted to YAIB's cohort format and
+split by YAIB's own protocol (`backend/ml/scripts/yaib_proxy_screen.py`; result
+[`artifacts/yaib/cinc_proxy_screen.json`](../artifacts/yaib/cinc_proxy_screen.json)).
+Every candidate is fitted through the worker's own streamed LightGBM path with round 1's
+chosen settings (`deep_unbalanced`), on five runs whose test sets are disjoint (0:0 to 4:0,
+so every stay is tested once). CinC is not the benchmark, so its test folds may be read.
+Candidates are compared paired, bootstrapping test stays (300 resamples).
+
+Each comparison is also given as **hour-matched AUROC**, which pairs only rows at the same
+stay hour. On CinC the ICU clock alone scores about 0.64, because never-septic records
+stop near 60 h ([GENESIS](GENESIS.md)). A candidate that only learned stay length better
+gains nothing under it.
+
+### What was screened
+
+Two kinds of change, each added to round 1's model (`rich` + `deep_unbalanced`):
+
+**Columns beside `rich`** (`backend/ml/yaib/extension.py`), from the families of GENESIS's
+CinC representation that `rich` lacks:
+
+| Family | Columns | What it is |
+|---|---|---|
+| `obs` | 96 | per variable: the change between its last two **measurements**, and the hours between them. `rich`'s deltas are hour-lagged and read 0 when nothing was re-measured. |
+| `dmean` | 48 | carried value minus the stay's running mean of measurements |
+| `roll` | 28 | per vital sign: SD and least-squares slope over 6 h and 24 h |
+| `process` | 14 | care intensity: labs drawn per hour, 6 h and 24 h, hours since a draw, new lab types, blood gases |
+
+`features.py` is not touched by any of this. The feature store keys the 17.8 GB `rich`
+matrix on that file's hash, and the worker has about 16 GB free, so one edited line there
+would ask for a rebuild that does not fit. An extension is stored as its own matrix with its
+own identity. `bench` reads the two side by side, one batch of rows at a time, so they are
+never joined on disk or on the heap. Window sums restart at every stay; `verify_yaib`
+rewrites every stay's future and checks that no earlier value moves, bit for bit, and that
+each stay built alone gives the same rows. Both checks fail if a cohort-wide running sum is
+planted.
+
+**Seed-bagging** (`bench --bag 3`): three boosters averaged per run. Member 0 is round 1's
+model exactly (`--bag 1`, the default, is byte-identical to round 1's fit, in memory and
+streamed); members 1 and 2 differ only in their row and column sampling seeds and reuse its
+binned datasets, so a bag costs boosting rounds, not dataset construction.
+
+### Results on CinC 2019 (5 runs, paired, minus round 1's model)
+
+| Candidate | Columns | Mean test AUROC | Δ AUROC [95% CI] | Δ hour-matched [95% CI] |
+|---|---|---|---|---|
+| `rich`, round 1's settings (the reference) | 695 | 0.8380 | | |
+| + `obs`, 40 common variables (the `obs` extension) | 775 | 0.8395 | **+0.0015 [+0.00005, +0.0028]** | +0.0019 [−0.0004, +0.0040] |
+| + `obs`, all 48 variables | 791 | 0.8395 | **+0.0015 [+0.00003, +0.0029]** | **+0.0029 [+0.0005, +0.0050]** |
+| + `dlast` only | 743 | 0.8392 | +0.0012 [−0.0004, +0.0026] | +0.0020 [−0.0008, +0.0040] |
+| + `roll` | 723 | 0.8396 | **+0.0016 [+0.0003, +0.0028]** | **+0.0030 [+0.0009, +0.0050]** |
+| + `dmean` | 743 | 0.8390 | +0.0010 [−0.0004, +0.0022] | +0.0016 [−0.0007, +0.0035] |
+| + `process` | 709 | 0.8383 | +0.0003 [−0.0011, +0.0018] | +0.0002 [−0.0021, +0.0024] |
+| + all four families | 881 | 0.8390 | +0.0010 [−0.0004, +0.0024] | +0.0014 [−0.0007, +0.0036] |
+| **bagged ×3** | 695 | 0.8411 | **+0.0031 [+0.0022, +0.0039]** | **+0.0042 [+0.0029, +0.0055]** |
+| **+ `obs`, bagged ×3** | 775 | **0.8418** | **+0.0038 [+0.0026, +0.0048]** | **+0.0049 [+0.0028, +0.0066]** |
+
+Bold intervals exclude zero. What this says:
+
+- **Bagging is the lever.** It wins on all five runs (+0.0015 to +0.0043). Single-seed
+  models are noisy here: on run 2:0 round 1's model stopped early at 127 rounds against
+  about 250 elsewhere, and every single-seed candidate "gained" about +0.004 on that run.
+  Averaging three seeds removes that noise instead of adding signal.
+- **Columns add little, and they do not stack.** Each family alone is worth at most
+  +0.0016; all four together are worth less than `obs` or `roll` alone, and `process`
+  is null. That matches GENESIS on the same data: beyond a tuned booster, representation
+  moves CinC by about ±0.002.
+- On top of bagging, `obs` adds +0.0007 [−0.0001, +0.0016]: the same direction, not
+  separable here. The 40-variable `obs` loses nothing against all 48 (−0.0000 [−0.0013,
+  +0.0012]).
+
+Ten candidates were compared on the same five test sets and the two taken forward are the
+best of them, so their CinC deltas are optimistic. The eICU validation scores decide.
+
+### Why the eICU candidates are these two
+
+On full eICU (6,416,789 rows), `rich` alone plans a 5.75 GB fit peak against a 6.39 GB
+budget (85% of the worker's 7 GiB container cap). Each further column adds about 7.3 MB,
+so about 87 columns fit. All four families (186 columns) plan 7.1 GB and would be refused
+before anything is built; `obs` with all 48 variables (96) would too. The `obs` extension
+keeps the family for the 40 variables that at least 5% of the open eICU demo's stays measure
+twice (a change between two measurements needs two). That choice reads measurement counts
+only, no label, on open data. It drops `cai`, `crp`, `bili_dir`, `fgn`, `bnd`, `methb`,
+`tnt` and `ckmb`, and plans 6.33 GB. A bag holds one booster at a time over shared binned
+data, so it does not raise the plan. `verify_yaib` checks both plans under a 7 GiB cap.
+
+`roll` did as well as `obs` alone, but `roll` and `obs` together do not fit, and only `obs`
+was screened with bagging. It was not taken forward.
+
+### The registered eICU sweep (round 2)
+
+[`artifacts/yaib/eicu_round2_prereg.json`](../artifacts/yaib/eicu_round2_prereg.json), run by
+the same `yaib_sweep.py` / `yaib_final.py` as round 1, launched by
+`deploy/physionet/yaib_round2.sh`:
+
+| | |
+|---|---|
+| Reference | round 1's `deep_unbalanced`, with the validation AUROC round 1 recorded (0.8009, 0.8111). Not re-fitted: its fit is byte-identical. |
+| Candidates | `deep_unbalanced_bag3`; `deep_unbalanced_obs_bag3` (each is round 1's settings plus `bag` / `extension`, nothing else) |
+| Rule | Round 1's: both on run 0:0, the best two on 0:1 as well, highest mean validation AUROC; round 1's configuration keeps its place unless a candidate leads it by more than 0.001. `--validation-only` throughout. |
+| After | If round 1's configuration keeps its place, nothing is rescored. If a candidate is chosen, its 25 runs are scored (about 1.1 to 1.4 h each on the worker) and the paired comparison with YAIB's LightGBM is run on them too. |
+
+Round 1's 25-run test result had been read before this plan was written. It chose
+nothing here; the candidates come from CinC, which never read an eICU row. If a candidate
+is chosen, its 25 runs are a second look at the same test folds. Both results are reported,
+round 1's first, and the second does not replace it.
+
+Rehearsed end to end on the open eICU demo under the worker image's Python 3.9 (with the
+reference's scores set to 0.5 so that the final stage runs): the sweep, the shared store
+(one `rich` matrix, one extension matrix), the selection, and the 25 scored runs.
+
+### Reproducing the screen
+
+```sh
+python -m backend.ml.data.cinc2019 --download     # 40,336 files from physionet.org; resumable
+python -m backend.ml.scripts.yaib_proxy_screen convert --cinc data/cinc2019 --out <dir>
+python -m backend.ml.scripts.yaib_proxy_screen screen <dir> --runs 0:0,1:0,2:0,3:0,4:0 \
+    --candidates rich,temporal,only-obs,only-dmean,only-roll,only-process,only-obs_common,only-dlast,rich_bag3,obs_common_bag3 \
+    --pairs obs_common_bag3:rich_bag3,only-obs_common:only-obs --work <private dir> --out screen.json --threads 4 --n-boot 300
+```
+
+On 4 vCPUs a single fit takes about 2 minutes and a bag of three about 5; the whole screen
+takes about two hours. The same candidate on the 2-vCPU worker's full eICU takes 30 to
+80 minutes per fit, so this is where a new idea should be tried first.
+
 ## What is YAIB's, and what is ours
 
 | Piece | Source |
