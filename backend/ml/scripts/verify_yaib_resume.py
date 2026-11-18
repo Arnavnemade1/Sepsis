@@ -501,6 +501,28 @@ class SweepChecks(unittest.TestCase):
             S.command("/c", plan, name, plan["stage1_runs"], "/w", "/s", "/o.json", 2)
         self.assertEqual(set(plan["reference"]["val_auroc"]), set(plan["stage2_runs"].split(",")))
 
+    def test_round_two_reuses_round_one_and_names_real_settings(self):
+        from backend.ml.scripts import yaib_sweep as S
+        from backend.ml.yaib import extension as EX
+        root = Path(__file__).parents[3] / "artifacts" / "yaib"
+        plan = json.loads((root / "eicu_round2_prereg.json").read_text())
+        first = json.loads((root / "eicu_sweep_selection.json").read_text())
+        # the reference is round 1's choice, with the scores round 1 recorded for it
+        self.assertEqual(plan["reference"]["name"], first["chosen"])
+        self.assertEqual(plan["reference"]["settings"], first["chosen_settings"])
+        self.assertEqual(plan["reference"]["val_auroc"], first["stage2"][first["chosen"]]["val"])
+        self.assertEqual(plan["feature_set"], first["plan"]["feature_set"])
+        for name, cfg in plan["configs"].items():
+            cmd = S.command("/c", plan, name, plan["stage1_runs"], "/w", "/s", "/o.json", 2)
+            self.assertIn("--validation-only", cmd)
+            if "extension" in cfg:
+                self.assertIn(cfg["extension"], EX.EXTENSIONS)
+                self.assertEqual(cmd[cmd.index("--extension") + 1], cfg["extension"])
+            if "bag" in cfg:
+                self.assertEqual(cmd[cmd.index("--bag") + 1], str(cfg["bag"]))
+            # every candidate keeps round 1's learner settings; it only adds to them
+            self.assertEqual({k: v for k, v in cfg.items() if k not in ("extension", "bag")}, first["chosen_settings"])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

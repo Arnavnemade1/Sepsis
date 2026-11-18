@@ -1,0 +1,97 @@
+{
+ "registered": "2026-11-18",
+ "round": 2,
+ "question": "On YAIB's eICU sepsis cohort, does a configuration found on open CinC 2019 data displace round 1's choice (rich + deep_unbalanced) on validation AUROC?",
+ "feature_set": "rich",
+ "seed": 1234,
+ "stage1_runs": "0:0",
+ "stage2_runs": "0:0,0:1",
+ "stage2_top": 2,
+ "min_gain": 0.001,
+ "reference": {
+  "name": "deep_unbalanced",
+  "settings": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true
+  },
+  "val_auroc": {
+   "0:0": 0.8008565840438016,
+   "0:1": 0.8111362863314198
+  },
+  "source": "artifacts/yaib/eicu_sweep_selection.json (round 1, worker source fd9dd6f). Not re-fitted: with bag 1 and no extension the fit is byte-identical to round 1's (bench._fit_predict before and after this change, in memory and streamed)."
+ },
+ "configs": {
+  "deep_unbalanced_bag3": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true,
+   "bag": 3
+  },
+  "deep_unbalanced_obs_bag3": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true,
+   "extension": "obs",
+   "bag": 3
+  }
+ },
+ "why_these": {
+  "deep_unbalanced_bag3": "Round 1's configuration, averaged over three boosters that differ only in their row and column sampling seeds (member 0 is round 1's model itself). On CinC every candidate's single-seed gain was of the size of one seed's early-stopping noise; averaging removes that noise instead of adding signal.",
+  "deep_unbalanced_obs_bag3": "Both: the obs extension, averaged over three boosters."
+ },
+ "evidence": {
+  "source": "artifacts/yaib/cinc_proxy_screen.json: PhysioNet/CinC 2019 (open access, 40,336 stays, 2,932 septic) in YAIB's cohort format, YAIB's splits (seed 1234), runs 0:0..4:0 (disjoint test sets), every candidate with round 1's deep_unbalanced settings, paired bootstrap over test stays. CinC's test folds were read; eICU's were not.",
+  "deep_unbalanced_bag3": {
+   "cinc_screen_candidate": "rich_bag3",
+   "auroc_delta_vs_round1_config": 0.0031,
+   "auroc_ci95": [
+    0.0022,
+    0.0039
+   ],
+   "hour_matched_delta": 0.0042,
+   "hour_matched_ci95": [
+    0.0029,
+    0.0055
+   ]
+  },
+  "deep_unbalanced_obs_bag3": {
+   "cinc_screen_candidate": "obs_common_bag3",
+   "auroc_delta_vs_round1_config": 0.0038,
+   "auroc_ci95": [
+    0.0026,
+    0.0048
+   ],
+   "hour_matched_delta": 0.0049,
+   "hour_matched_ci95": [
+    0.0028,
+    0.0066
+   ]
+  }
+ },
+ "memory": "Full eICU (6,416,789 rows) under the 7 GiB container cap: rich alone plans 5.75 GB, rich + obs 6.33 GB, against a 6.39 GB budget (backend/ml/yaib/extension.py memory_plan, checked in verify_yaib). A bag holds one booster at a time over shared binned data, so it does not raise the plan.",
+ "rule": "Stage 1 fits every candidate on run 0:0. Stage 2 fits the best two by that run's validation AUROC on run 0:1 as well. The choice is the highest mean validation AUROC over both runs; round 1's configuration keeps its place unless a candidate leads it by more than min_gain. Every candidate runs with --validation-only, so no candidate's test metric is computed into a result file.",
+ "disclosures": [
+  "Round 1's 25-run test result (0.8032 mean AUROC) was computed and read before this plan was written. It chose nothing here: the candidates come from the CinC 2019 screen, which never read an eICU row.",
+  "If a candidate is chosen, its 25 runs are scored on the same test folds as round 1. That is a second look at those folds. Both results are reported, round 1's first; the second does not replace it.",
+  "The CinC screen compared ten candidates on the same five test sets; the two families taken forward were the ones with the most consistent gains there, so their CinC deltas are optimistic. eICU validation decides.",
+  "Runs 0:0 and 0:1 are two of the 25 scored runs. Their validation stays are never their own test stays, but they are training or test stays of other runs: this is YAIB's own arrangement for tuning.",
+  "Three candidates on two folds can separate differences of about 0.003 at best. A lead inside min_gain is treated as no lead."
+ ],
+ "after": "If round 1's configuration keeps its place, nothing is rescored and its 25-run result stands. If a candidate is chosen, deploy/physionet/yaib_round2.sh runs its 25 runs (resuming the two development fits), and the paired comparison against YAIB's own LightGBM is run on its predictions as well as round 1's. Nothing is re-chosen after the 25 runs are scored."
+}

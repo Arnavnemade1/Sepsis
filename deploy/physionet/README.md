@@ -108,3 +108,38 @@ leaves the working tree alone:
 git -C /srv/aegis/Sepsis fetch --depth 1 origin main
 git -C /srv/aegis/Sepsis archive FETCH_HEAD backend/ml/yaib backend/ml/scripts | tar -x -C <staging dir>
 ```
+
+### Round 2 of the eICU benchmark
+
+`yaib_round2.sh` runs the registered round-2 sweep (`artifacts/yaib/eicu_round2_prereg.json`)
+and, only if a candidate displaces round 1's configuration on validation AUROC, its 25
+scored runs. Stage the source by export, as above, into the directory the script reads,
+plan included:
+
+```bash
+REV=<rev>; mkdir -p -m 700 /srv/aegis/sepsis-yaib-r2-$REV
+git -C /srv/aegis/Sepsis fetch --depth 1 origin <branch or rev>
+git -C /srv/aegis/Sepsis archive FETCH_HEAD backend/__init__.py backend/ml/__init__.py backend/ml/jsonio.py \
+    backend/ml/yaib backend/ml/scripts artifacts/yaib deploy/physionet/yaib_round2.sh | tar -x -C /srv/aegis/sepsis-yaib-r2-$REV
+sudo install -m 755 /srv/aegis/sepsis-yaib-r2-$REV/deploy/physionet/yaib_round2.sh /srv/aegis/launch/yaib_round2.sh
+```
+
+Check the memory plan in the round-1 image before launching; it must say `"fits": true`
+under the 7 GiB container cap:
+
+```bash
+sudo docker run --rm --network none --memory 7g -v /srv/lake/yaib-cohorts:/cohorts:ro \
+    -v /srv/aegis/sepsis-yaib-r2-$REV:/src:ro --env PYTHONPATH=/src --entrypoint python aegis-yaib-sweep:fd9dd6f \
+    -m backend.ml.yaib.bench plan /cohorts/sepsis/eicu --features --feature-set rich --extension obs
+```
+
+```bash
+sudo systemd-run --unit aegis-round2-$REV --collect --setenv REV=$REV \
+    --setenv WAIT_FOR=<the paired follow-up's unit, or none> /srv/aegis/launch/yaib_round2.sh
+```
+
+It runs the new source inside the round-1 image (`aegis-yaib-sweep:fd9dd6f`), so Python and
+every library are the ones the shared feature store's 17.8 GB `rich` matrix was built
+under. That matrix is reused as it is; only the extension's own matrix is built (0.026 GB
+per column on full eICU, plus the same again as scratch while it is written). Name the unit
+anything but `yaib-*` or `eicu-*`. Progress is in `/srv/aegis/yaib-round2-$REV/round2.log`.
