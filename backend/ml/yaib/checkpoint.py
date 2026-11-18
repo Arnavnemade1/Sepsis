@@ -24,6 +24,8 @@ import pandas as pd
 HASH_ROWS = 65536
 #: the sources that decide a feature matrix; a learner or CLI change does not rebuild it
 FEATURE_SOURCES = ("cohort.py", "features.py")
+#: an extension matrix also depends on its own module (which imports features.py helpers)
+EXTENSION_SOURCES = FEATURE_SOURCES + ("extension.py",)
 
 
 def sha_file(path):
@@ -48,9 +50,12 @@ def fingerprint_frame(frame):
     return h.hexdigest()
 
 
-def experiment_spec(cohort, configuration, protocol, feature_set):
+def experiment_spec(cohort, configuration, protocol, feature_set, extension=None):
+    """What decides an experiment's results. ``extension`` (a name in
+    ``extension.EXTENSIONS``) is recorded only when used, and never enters
+    ``feature_spec``: the base matrix keeps the identity it had without one."""
     root = Path(__file__).parent
-    return {
+    spec = {
         "version": 1,
         "inputs": {
             "dynamic": fingerprint_frame(cohort.dyn),
@@ -76,6 +81,21 @@ def experiment_spec(cohort, configuration, protocol, feature_set):
                 )
             },
         },
+    }
+    if extension is not None:
+        spec["extension"] = extension
+    return spec
+
+
+def extension_spec(spec):
+    """What decides an experiment's extension matrix: the inputs, the extension's name,
+    its code (and the feature code it borrows helpers from) and the environment."""
+    return {
+        "version": 1,
+        "inputs": spec["inputs"],
+        "feature_set": f"extension:{spec['extension']}",
+        "implementation": {name: spec["implementation"][name] for name in EXTENSION_SOURCES},
+        "environment": spec["environment"],
     }
 
 
@@ -184,8 +204,9 @@ class FeatureStore:
     full cohort needs one 18 GB matrix, not one per configuration. The matrix is
     validated by content hash on every open, exactly as an experiment's own is."""
 
-    def __init__(self, root, spec):
-        self.spec = feature_spec(spec)
+    def __init__(self, root, spec, extension=False):
+        # an extension matrix gets its own identity, hence its own directory in the store
+        self.spec = extension_spec(spec) if extension else feature_spec(spec)
         self.identity = identity_of(self.spec)
         base = Path(root).resolve()
         base.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -289,6 +310,15 @@ class Checkpoints:
         if store is not None and not (self.root / "features.json").exists():
             return store.matrix(shape, builder)
         return committed_matrix(self.root, self.identity, shape, builder)
+
+    def extension(self, shape, builder, store=None):
+        """This experiment's extension matrix: in ``store`` (a :class:`FeatureStore` made
+        with ``extension=True``) when given, otherwise in a private subdirectory."""
+        if store is not None and not (self.root / "extension" / "features.json").exists():
+            return store.matrix(shape, builder)
+        root = self.root / "extension"
+        root.mkdir(exist_ok=True, mode=0o700)
+        return committed_matrix(root, identity_of(extension_spec(self.spec)), shape, builder)
 
     def _paths(self, repetition, fold):
         stem = self.root / f"fit-r{int(repetition)}-f{int(fold)}"

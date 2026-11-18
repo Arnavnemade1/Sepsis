@@ -34,7 +34,9 @@ from typing import Any, Dict, List, Optional
 FLAGS = {"learning_rate": "--learning-rate", "num_leaves": "--num-leaves",
          "min_child_samples": "--min-child-samples", "feature_fraction": "--feature-fraction",
          "bagging_fraction": "--bagging-fraction", "lambda_l2": "--lambda-l2",
-         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping"}
+         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping",
+         # columns read beside the plan's feature set (backend/ml/yaib/extension.py)
+         "extension": "--extension", "bag": "--bag"}
 
 
 def settings_of(plan: Dict[str, Any], name: str) -> Dict[str, Any]:

@@ -11,6 +11,12 @@ and metric. Each check below plants a way that could silently stop being true:
                  too few septic stays is refused, as YAIB refuses it
   [3] features   a planted future spike moves no earlier hour and no other stay; the
                  labels are never read
+  [3c] extension rewriting every stay's future moves no earlier hour, bit for bit; each
+                 stay built alone gives the same rows (no cohort-wide running sum); hand-
+                 checked values; the side-by-side view; the base matrix keeps its store
+                 identity with an extension, and the extension gets its own
+  [3d] bag       a bag of one is the single model; a bag of three averages boosters,
+                 is judged on its averaged validation scores, and streams exactly
   [4] metric     per-run AUROC is sklearn's on the labelled test hours; the summary's
                  "std" field is YAIB's (population SD / sqrt(n))
   [5] compare    the baseline's ids written out of order (as YAIB writes them) pair
@@ -281,6 +287,146 @@ def memory_checks(c: C.Cohort) -> None:
               all(0.0 <= r["val_auroc"] <= 1.0 for r in st["runs"]) and "val_auroc_mean" in st["validation_metric"])
 
 
+def extension_checks(c: C.Cohort, tmp: str) -> None:
+    print("[3c] extension: columns beside the base matrix")
+    from backend.ml.yaib import checkpoint as CP
+    from backend.ml.yaib import extension as EX
+    E, names = EX.build(c)
+    check("columns come out in the declared order", names == EX.extension_names("temporal") and E.shape == (len(c.dyn), len(names)),
+          f"{E.shape[1]} columns")
+    check("an unknown extension is refused", refused(EX.extension_names, "everything"))
+    check("no extension column shares a name with a rich column",
+          not set(names) & set(FE.feature_names("rich")))
+    sid = c.dyn.stay_id.to_numpy()
+    rng = np.random.default_rng(3)
+    starts = np.flatnonzero(np.r_[True, sid[1:] != sid[:-1]])
+    ends = np.r_[starts[1:], len(sid)]
+    future = np.zeros(len(sid), bool)
+    for a, b in zip(starts, ends):
+        future[rng.integers(a, b) + 1:b] = True
+    d2 = c.dyn.copy()
+    vals = d2[C.DYNAMIC].to_numpy()
+    d2[C.DYNAMIC] = np.where(future[:, None], np.where(rng.random(vals.shape) < 0.5, np.nan, vals * 3 + 50), vals)
+    E2, _ = EX.build(C.Cohort(d2, c.sta, c.label))
+    check("rewriting every stay's future moves no earlier hour (bit for bit)",
+          np.array_equal(E[~future], E2[~future], equal_nan=True))
+    check("... and it does move later hours (the check can fail)",
+          not np.array_equal(E[future], E2[future], equal_nan=True))
+    alone = np.concatenate([EX.build(C.Cohort(c.dyn.iloc[a:b].reset_index(drop=True), c.sta, c.label[a:b]))[0]
+                            for a, b in zip(starts[:6], ends[:6])])
+    check("each stay built on its own gives the same rows (no cohort-wide running sum)",
+          np.array_equal(alone, E[:ends[5]], equal_nan=True))
+    E3, _ = EX.build(C.Cohort(c.dyn, c.sta, 1 - np.nan_to_num(c.label)))
+    check("flipping every label changes no column", np.array_equal(E, E3, equal_nan=True))
+    # hand-checked values on a two-stay cohort
+    dyn = pd.DataFrame({"stay_id": [1, 1, 1, 1, 2, 2], "hour": [0.0, 1, 2, 3, 0, 1]})
+    for v in C.DYNAMIC:
+        dyn[v] = np.nan
+    dyn["hr"] = [80, np.nan, 100, 90, 70, 75]
+    dyn["lact"] = [1.0, np.nan, np.nan, 4.0, 2.0, np.nan]
+    dyn["crea"] = [np.nan, 1.0, np.nan, np.nan, np.nan, 1.5]
+    dyn["ph"] = [np.nan, np.nan, 7.3, np.nan, np.nan, np.nan]
+    sta = pd.DataFrame({"stay_id": [1, 2], "age": [60.0, 70], "sex": [1.0, 0], "height": np.nan, "weight": np.nan})
+    H, hn = EX.build(C.Cohort(dyn, sta, np.zeros(6)))
+
+    def col(n):
+        return H[:, hn.index(n)].astype(float)
+    same = lambda a, b: np.allclose(a, b, equal_nan=True)  # noqa: E731
+    check("dlast / dtlast: change and gap between the last two measurements, within the stay",
+          same(col("lact__dlast"), [np.nan, np.nan, np.nan, 3, np.nan, np.nan])
+          and same(col("lact__dtlast"), [np.nan, np.nan, np.nan, 3, np.nan, np.nan]))
+    check("dmean: carried value minus the running mean of measurements",
+          same(col("hr__dmean"), [0, 0, 10, 0, 0, 2.5]))
+    check("slope6 on the carried value, per hour; std6 of it",
+          same(col("hr__slope6")[:2], [np.nan, 0]) and same(col("hr__slope6")[4:], [np.nan, 5])
+          and same(col("hr__std6")[4:], [0, 2.5]))
+    check("labs drawn this hour, in 24 h, new lab types and types so far (ph, lact, crea are labs; hr is not)",
+          same(col("proc__labs_now"), [1, 1, 1, 1, 1, 1]) and same(col("proc__labs24"), [1, 2, 3, 4, 1, 2])
+          and same(col("proc__new_now"), [1, 1, 1, 0, 1, 1]) and same(col("proc__lab_types"), [1, 2, 3, 3, 1, 2]))
+    check("hours since a blood gas, and gases in 24 h",
+          same(col("proc__gas_since"), [FE.NEVER, FE.NEVER, 0, 1, FE.NEVER, FE.NEVER])
+          and same(col("proc__gas24"), [0, 0, 1, 1, 0, 0]))
+    # the side-by-side view
+    A = np.arange(20, dtype=np.float32).reshape(5, 4)
+    Bm = -np.arange(10, dtype=np.float32).reshape(5, 2)
+    view = EX.Columns([A, Bm], keep=[np.array([0, 2]), None])
+    rows = np.array([4, 0, 2])
+    check("Columns gathers rows from every part, keeping the chosen columns",
+          view.shape == (5, 4) and np.array_equal(view[rows], np.hstack([A[rows][:, [0, 2]], Bm[rows]]))
+          and np.array_equal(view[3], np.r_[A[3, [0, 2]], Bm[3]]))
+    try:
+        np.asarray(view)
+        whole = True
+    except TypeError:
+        whole = False
+    check("... and refuses whole-matrix conversion", not whole)
+    same_plan = all(EX.memory_plan(n, "rich", None, available_bytes=int(7.6e9), on_disk=d)
+                    == FE.memory_plan(n, available_bytes=int(7.6e9), on_disk=d, feature_set="rich")
+                    for n in (10_000, 6_000_000) for d in (True, False))
+    check("the plan without an extension is features.memory_plan exactly", same_plan)
+    O, on = EX.build(c, extension="obs")
+    check("the obs extension is exactly temporal's obs columns for the common variables",
+          on == [n for n in names if EX.in_families(n, ("obs_common",))]
+          and np.array_equal(O, E[:, [names.index(n) for n in on]], equal_nan=True), f"{len(on)} columns")
+    real_limit = FE._cgroup_limit
+    FE._cgroup_limit = lambda: 7 * 1024 ** 3          # the worker's container cap
+    try:
+        fit_obs = EX.memory_plan(6_416_789, "rich", "obs", available_bytes=int(7.6e9), cohort_loaded=True)
+        fit_all = EX.memory_plan(6_416_789, "rich", "temporal", available_bytes=int(7.6e9), cohort_loaded=True)
+    finally:
+        FE._cgroup_limit = real_limit
+    check("full eICU under a 7 GiB cap: rich + obs is planned to fit, rich + temporal is not",
+          fit_obs["fits"] is True and fit_all["fits"] is False,
+          f"{fit_obs['peak_heap_gb']:.2f} vs {fit_all['peak_heap_gb']:.2f} GB")
+    grown = EX.memory_plan(6_000_000, "rich", "temporal", available_bytes=int(7.6e9))
+    check("... and an extension raises the planned fit peak", grown["peak_heap_gb"] >
+          FE.memory_plan(6_000_000, available_bytes=int(7.6e9), feature_set="rich")["peak_heap_gb"],
+          f"{grown['peak_heap_gb']:.1f} GB for {grown['features']} columns")
+    # through bench: in memory, streamed, and from checkpoints and the shared store
+    cfg = B.TrainConfig(max_rounds=60, early_stopping=10)
+    mem = B.run(c, cfg, runs=[(0, 0), (1, 2)], feature_set="rich", extension="temporal")
+    st = B.run(C.Cohort(c.dyn.copy(), c.sta, c.label), cfg, runs=[(0, 0), (1, 2)], feature_set="rich",
+               extension="temporal", features_path=os.path.join(tmp, "Xe.npy"))
+    check("bench hands LightGBM base + extension columns",
+          mem["model"]["n_features"] == len(FE.feature_names("rich")) + len(names) and mem["model"]["extension"] == "temporal")
+    check("a streamed fit with an extension scores exactly as in memory",
+          [r["auroc"] for r in st["runs"]] == [r["auroc"] for r in mem["runs"]])
+    store = os.path.join(tmp, "store")
+    first = B.run(C.Cohort(c.dyn.copy(), c.sta, c.label), cfg, runs=[(0, 0)], feature_set="rich",
+                  resume_dir=os.path.join(tmp, "e1"), feature_store=store, extension="temporal")
+    plain = B.run(C.Cohort(c.dyn.copy(), c.sta, c.label), cfg, runs=[(0, 0)], feature_set="rich",
+                  resume_dir=os.path.join(tmp, "e0"), feature_store=store)
+    spec0 = CP.experiment_spec(c, {}, {}, "rich")
+    spec1 = CP.experiment_spec(c, {}, {}, "rich", extension="temporal")
+    check("the base matrix keeps one identity with or without an extension",
+          CP.feature_spec(spec0) == CP.feature_spec(spec1) and len(os.listdir(store)) == 2,
+          f"{len(os.listdir(store))} matrices in the store")
+    check("... the extension has its own", CP.identity_of(CP.extension_spec(spec1)) != CP.identity_of(CP.feature_spec(spec1)))
+    check("checkpointed with an extension scores as in memory",
+          first["runs"][0]["val_auroc"] == mem["runs"][0]["val_auroc"]
+          and plain["runs"][0]["val_auroc"] != first["runs"][0]["val_auroc"])
+
+
+def bag_checks(c: C.Cohort, tmp: str) -> None:
+    print("[3d] bag: boosters averaged per run")
+    X, _ = FE.build(c, feature_set="rich")
+    y = np.nan_to_num(c.label)
+    n = len(y)
+    tr, va, te = np.arange(n * 6 // 10), np.arange(n * 6 // 10, n * 8 // 10), np.arange(n * 8 // 10, n)
+    cfg = B.TrainConfig(max_rounds=60, early_stopping=10)
+    one = B._fit_predict(X, y, tr, va, te, cfg)
+    three = B._fit_predict(X, y, tr, va, te, B.TrainConfig(max_rounds=60, early_stopping=10, bag=3))
+    check("a bag of one is the single model (the default)", B.TrainConfig().bag == 1)
+    check("a bag of three averages different boosters into probabilities",
+          not np.array_equal(one["p"], three["p"]) and bool(((three["p"] >= 0) & (three["p"] <= 1)).all())
+          and isinstance(three["rounds"], int) and three["rounds"] >= 1)
+    check("... and is judged on its averaged validation scores", 0.0 <= three["val_auroc"] <= 1.0
+          and three["val_auroc"] != one["val_auroc"])
+    st = B._fit_predict(X, y, tr, va, te, B.TrainConfig(max_rounds=60, early_stopping=10, bag=3), stream=True)
+    check("a streamed bag scores exactly as in memory", np.array_equal(st["p"], three["p"]) and st["val_auroc"] == three["val_auroc"])
+    check("a bag below one is refused", refused(B._fit_predict, X, y, tr, va, te, B.TrainConfig(bag=0)))
+
+
 def metric_checks() -> None:
     print("[4] metric")
     from sklearn.metrics import roc_auc_score
@@ -369,6 +515,8 @@ def main() -> int:
         feature_checks(c)
         rich_checks(c)
         memory_checks(c)
+        extension_checks(c, tmp)
+        bag_checks(c, tmp)
         metric_checks()
         compare_checks()
         end_to_end(c, tmp)

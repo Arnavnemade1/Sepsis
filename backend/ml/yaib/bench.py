@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
+from backend.ml.yaib import extension as EX
 from backend.ml.yaib import features as FE
 from backend.ml.yaib import splits as SP
 from backend.ml.yaib.cohort import GROUP, Cohort
@@ -57,6 +58,9 @@ class TrainConfig:
     seed: int = 0
     balanced: bool = True
     force_col_wise: bool = True
+    #: boosters averaged per run. Member 0 is exactly the single model; members 1.. differ
+    #: only in their row and column sampling seeds, and share its binned datasets.
+    bag: int = 1
 
 
 class _Rows:
@@ -155,15 +159,35 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
     else:
         dtr = lgb.Dataset(X[tr], y[tr], free_raw_data=True)
         dva = lgb.Dataset(X[va], y[va], reference=dtr, free_raw_data=True)
-    booster = lgb.train(params, dtr, cfg.max_rounds, valid_sets=[dva],
-                        callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
-    try:
-        if stage is not None:
-            stage("booster_fit_completed")
-        return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
-                "val_auroc": float(booster.best_score["valid_0"]["auc"])}
-    finally:
-        booster.free_dataset()
+    if cfg.bag < 1:
+        raise ValueError("bag must be at least 1")
+    p_te, p_va, rounds, val = None, None, [], None
+    for member in range(cfg.bag):
+        member_params = dict(params)
+        if member:
+            # explicit seeds outrank the one derived from ``seed``; neither is a Dataset
+            # parameter, so the constructed bins are reused unchanged
+            member_params.update(bagging_seed=10_007 * member + cfg.seed, feature_fraction_seed=20_011 * member + cfg.seed)
+        booster = lgb.train(member_params, dtr, cfg.max_rounds, valid_sets=[dva],
+                            callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
+        try:
+            if stage is not None:
+                stage("booster_fit_completed")
+            p = _predict(booster, X, te, stream)
+            p_te = p if p_te is None else p_te + p
+            rounds.append(int(booster.best_iteration))
+            if cfg.bag == 1:
+                val = float(booster.best_score["valid_0"]["auc"])
+            else:
+                q = _predict(booster, X, va, stream)
+                p_va = q if p_va is None else p_va + q
+        finally:
+            booster.free_dataset()
+    if cfg.bag > 1:
+        # the bag is judged as it predicts: the AUROC of its averaged validation scores
+        p_te, p_va = p_te / cfg.bag, p_va / cfg.bag
+        val = float(roc_auc_score(y[va], p_va))
+    return {"p": p_te, "rounds": int(round(float(np.mean(rounds)))), "val_auroc": val}
 
 
 def yaib_summary(name: str, v: np.ndarray) -> Dict[str, Any]:
@@ -193,7 +217,7 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
         memory_check: bool = True, feature_set: str = "base",
         resume_dir: Optional[str] = None, feature_store: Optional[str] = None,
-        validation_only: bool = False) -> Dict[str, Any]:
+        validation_only: bool = False, extension: Optional[str] = None) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
     ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
@@ -204,27 +228,38 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
     configuration with the same inputs, feature set and feature code, so a sweep builds
     it once. ``validation_only`` leaves every test metric out of the result: a
     development run then cannot show the number it must not be selected on.
+    ``extension`` (a name in ``extension.EXTENSIONS``) adds columns that are built and
+    stored as a matrix of their own and read beside the base matrix row by row; the base
+    matrix, and its place in the feature store, are exactly what they are without one.
     A run whose planned peak exceeds this host's available memory is refused up front,
     instead of swapping for hours or being killed mid-protocol."""
     if resume_dir is not None and features_path is not None:
         raise ValueError("Use --resume-dir or --features, not both")
     if feature_store is not None and resume_dir is None:
         raise ValueError("--feature-store needs --resume-dir")
-    shared = None
+    if extension is not None:
+        EX.extension_names(extension)        # refuse an unknown name before any work
+    shared = shared_ext = None
     if resume_dir is not None:
         from backend.ml.yaib.checkpoint import Checkpoints, FeatureStore, experiment_spec
         spec = experiment_spec(cohort, asdict(cfg),
-                               {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}, feature_set)
+                               {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}, feature_set,
+                               extension=extension)
         store = Checkpoints(resume_dir, spec)
         if feature_store is not None:
             shared = FeatureStore(feature_store, spec)
+            if extension is not None:
+                shared_ext = FeatureStore(feature_store, spec, extension=True)
         context = store.locked()
     else:
         context = contextlib.nullcontext(None)
     with context as checkpoints:
         t0 = time.time()
         if memory_check:
-            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=feature_set, cohort_loaded=True)
+            on_disk = features_path is not None or resume_dir is not None
+            plan = (EX.memory_plan(len(cohort.dyn), feature_set, extension, on_disk=on_disk, cohort_loaded=True)
+                    if extension else
+                    FE.memory_plan(len(cohort.dyn), on_disk=on_disk, feature_set=feature_set, cohort_loaded=True))
             if plan["fits"] is False:
                 raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB, additional "
                                   f"{plan['additional_heap_gb']:.1f} GB, free {plan['available_gb']:.1f} GB, "
@@ -236,6 +271,17 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                                      store=shared)
         else:
             X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
+        if extension is not None:
+            ext_names = EX.extension_names(extension)
+            if checkpoints:
+                E = checkpoints.extension((len(cohort.dyn), len(ext_names)),
+                                          lambda path: EX.build(cohort, out=path, extension=extension)[0],
+                                          store=shared_ext)
+            else:
+                E, _ = EX.build(cohort, out=f"{features_path}.{extension}.npy" if features_path else None,
+                                extension=extension)
+            # the base matrix is read as it is; the two are joined one batch of rows at a time
+            X, names = EX.Columns([X, E]), list(names) + ext_names
         stream = features_path is not None or checkpoints is not None
         y_all = cohort.label
         stay = cohort.dyn[GROUP].to_numpy().copy()
@@ -282,7 +328,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                        "rows": int(len(stay)), "labelled_rows": int(np.isfinite(y_all).sum())},
             "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
                          "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
-            "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
+            "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "extension": extension,
+                      "n_features": len(names),
                       "streamed_from_memmap": stream},
             "validation_only": validation_only,
             "runs": per_run,
@@ -415,6 +462,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--features", help="memmap the feature matrix to this .npy path (inside the lake)")
     r.add_argument("--resume-dir", help="private immutable feature/fit checkpoints; rerun with the same settings")
     r.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
+    r.add_argument("--extension", choices=tuple(EX.EXTENSIONS), help="columns read beside the feature set")
     r.add_argument("--runs", help="only these runs, e.g. 0:0,0:1 (development; select on validation AUROC)")
     r.add_argument("--learning-rate", type=float, default=TrainConfig.learning_rate)
     r.add_argument("--num-leaves", type=int, default=TrainConfig.num_leaves)
@@ -425,6 +473,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--lambda-l2", type=float, default=TrainConfig.lambda_l2)
     r.add_argument("--max-rounds", type=int, default=TrainConfig.max_rounds)
     r.add_argument("--early-stopping", type=int, default=TrainConfig.early_stopping)
+    r.add_argument("--bag", type=int, default=TrainConfig.bag, help="boosters averaged per run")
     r.add_argument("--feature-store", help="private store shared by configurations (with --resume-dir)")
     r.add_argument("--validation-only", action="store_true",
                    help="development: report validation AUROC only, no test metric")
@@ -437,6 +486,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     p.add_argument("cohort")
     p.add_argument("--features", action="store_true", help="plan with the matrix memmapped to disk")
     p.add_argument("--feature-set", choices=FE.FEATURE_SETS, default="base")
+    p.add_argument("--extension", choices=tuple(EX.EXTENSIONS))
     c = sub.add_parser("compare", help="paired AUROC vs YAIB's saved baseline predictions")
     c.add_argument("--ours", required=True, help="directory of ours_r*_f*.parquet")
     c.add_argument("--yaib", required=True, help="YAIB log directory of one baseline model")
@@ -447,7 +497,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if a.cmd == "plan":
         import pyarrow.parquet as pq
         rows = pq.ParquetFile(os.path.join(a.cohort, "dyn.parquet")).metadata.num_rows
-        print(json.dumps(FE.memory_plan(rows, on_disk=a.features, feature_set=a.feature_set)))
+        print(json.dumps(EX.memory_plan(rows, a.feature_set, a.extension, on_disk=a.features) if a.extension
+                         else FE.memory_plan(rows, on_disk=a.features, feature_set=a.feature_set)))
         return 0
     if a.cmd == "adopt-features":
         from backend.ml.yaib.checkpoint import FeatureStore, experiment_spec
@@ -461,12 +512,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           min_child_samples=a.min_child_samples, feature_fraction=a.feature_fraction,
                           bagging_fraction=a.bagging_fraction, lambda_l2=a.lambda_l2,
                           max_rounds=a.max_rounds, early_stopping=a.early_stopping,
-                          threads=a.threads, balanced=not a.unbalanced)
+                          threads=a.threads, balanced=not a.unbalanced, bag=a.bag)
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
                   predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set,
-                  resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only)
+                  resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only,
+                  extension=a.extension)
         m, v = res.get("yaib_metric"), res["validation_metric"]
         print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
         if runs is None and m is not None:

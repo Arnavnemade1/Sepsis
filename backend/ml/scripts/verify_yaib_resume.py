@@ -154,8 +154,8 @@ class ResumeChecks(unittest.TestCase):
         self.seed_checkpoint()
         old = CP.experiment_spec
 
-        def changed(*args):
-            spec = old(*args)
+        def changed(*args, **kwargs):
+            spec = old(*args, **kwargs)
             spec["implementation"]["bench.py"] = "changed"
             return spec
 
