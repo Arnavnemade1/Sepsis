@@ -18,8 +18,10 @@ This driver removes those copies and nothing else:
 
 1. It binds ``train_common.ram_cache=False``, through YAIB's own ``-hp`` bindings.
 2. It replaces the dataset class that ``train_common`` uses with a subclass that skips
-   the per-stay partition. Its ``__getitem__`` raises instead of serving deep-learning
-   items, so it cannot be used, by mistake, for a model that needs them.
+   the per-stay partition and builds a stay's arrays only when an item is asked for.
+   ML models ask for one shuffled batch, which ``train_common`` reads for its shape
+   (``data_shape = next(iter(train_loader))[0].shape``). Those items come from YAIB's own
+   ``_build_item``, and the shuffle draws from the same random generator as stock YAIB.
 3. Right after ``preprocess_data`` returns, it casts the float64 and boolean feature
    columns to float32, and ``get_data_and_labels`` fills one preallocated float32 array.
 
@@ -78,6 +80,7 @@ def float32_features(data: dict, keep: Sequence[str]) -> dict:
 def install() -> None:
     import gin
     import numpy as np
+    import polars as pl
     import icu_benchmarks.cross_validation as cross_validation
     import icu_benchmarks.models.train as train
     from icu_benchmarks.data.loader import CommonPolarsDataset, PredictionPolarsDataset
@@ -90,6 +93,17 @@ def install() -> None:
         float32_features(data, keep=[vars["GROUP"], vars["SEQUENCE"]])
         return data, target_transform
 
+    class PerStay:
+        """One stay's float32 array, made when it is looked up (read-only, as in the stock class)."""
+
+        def __init__(self, frame, group, pick):
+            self.frame, self.group, self.pick = frame, group, pick
+
+        def __getitem__(self, stay):
+            array = self.pick(self.frame.filter(pl.col(self.group) == stay)).to_numpy().astype(np.float32)
+            array.setflags(write=False)
+            return array
+
     class LeanPredictionPolarsDataset(PredictionPolarsDataset):
         """``PredictionPolarsDataset`` for ML models: no per-stay copy, no item cache."""
 
@@ -100,13 +114,13 @@ def install() -> None:
             vars = vars if vars is not None else gin.query_parameter("vars/gin.macro.value")
             CommonPolarsDataset.__init__(self, data, *args, vars=vars, **kwargs)
             self.outcome_df = self.grouping_df
+            group, label = self.vars["GROUP"], self.vars["LABEL"]
+            # The stock class keys these by partition_by(GROUP, maintain_order=True): stays in order of
+            # first appearance, rows in frame order. A filter keeps the same rows in the same order.
+            self._stay_order = self.outcome_df[group].unique(maintain_order=True).to_list()
+            self._feat_arrays = PerStay(self.features_df, group, lambda part: part.select(pl.exclude(group)))
+            self._label_arrays = PerStay(self.outcome_df, group, lambda part: part[label])
             self._cached_dataset = None
-
-        def __getitem__(self, idx):
-            raise NotImplementedError("the lean dataset serves ML models only (get_data_and_labels)")
-
-        def get_stay_ids(self):
-            raise NotImplementedError("the lean dataset serves ML models only (get_data_and_labels)")
 
         def get_data_and_labels(self):
             labels = self.outcome_df[self.vars["LABEL"]].to_numpy().astype(np.float32)
