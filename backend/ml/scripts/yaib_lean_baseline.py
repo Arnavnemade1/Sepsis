@@ -33,8 +33,10 @@ or 1.0 either way. Nothing does arithmetic on the features between those two poi
 columns (the hour index, encoded static categories) are left as they are and converted
 column by column. They are far below 2**24, so they are exact in float32.
 That argument is checked, not trusted: ``deploy/physionet/yaib_lean_check.sh`` runs stock
-YAIB and this driver on YAIB's eICU demo cohort and requires byte-identical
-``pred_indicators.csv`` files for every run. Use the driver only after that check passes.
+YAIB and this driver on YAIB's eICU demo cohort and requires, for every run, the label
+and probability columns of ``pred_indicators.csv`` byte-identical row by row and the same
+set of (stay, hour) ids (the order of YAIB's id columns varies between two stock runs).
+Use the driver only after that check passes.
 
 Run it like ``backend.ml.yaib.run_baseline`` (YAIB's checkout as working directory)::
 
