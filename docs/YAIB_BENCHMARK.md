@@ -52,11 +52,12 @@ they gave +0.020. No test metric of any candidate was computed.
 
 The paired comparison is still pending. YAIB's own LightGBM baseline first failed its
 one-fold resource probe (exit 137, zero predictions) near the 7 GiB container memory
-limit with heavy swap use. A second, bounded one-fold probe with an extra 8 GiB of swap
-is running on the same encrypted worker. The follow-up service starts the 25-run
-LightGBM baseline only if that probe produces a prediction; it then runs the paired
-patient bootstrap on the same rows. The AWS Free plan blocked changing this worker to
-a 64 GiB instance. A paired result against LightGBM would establish a comparison with
+limit with heavy swap use. A second one-fold probe with an extra 8 GiB of swap failed
+the same way on 2026-11-13: exit 137 after 3,528 s, zero predictions, 7,168 MB peak
+container memory and 31,080 MB peak host swap. The follow-up service refused to start the
+25-run baseline, as designed, so no paired result exists. YAIB's LightGBM baseline does
+not fit on this 7.6 GB worker as shipped, and the AWS Free plan blocked changing the worker
+to a 64 GiB instance. A paired result against LightGBM would establish a comparison with
 that baseline, not a world ranking against all published models.
 
 The eICU demo numbers further down only show that the pipeline works.
