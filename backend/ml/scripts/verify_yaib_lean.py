@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import unittest
 
-from backend.ml.scripts.yaib_lean_baseline import RAM_CACHE_OFF, with_ram_cache_off
+from backend.ml.scripts.yaib_lean_baseline import RAM_CACHE_OFF, release, with_ram_cache_off
 
 
 class LeanArguments(unittest.TestCase):
@@ -30,6 +30,20 @@ class LeanArguments(unittest.TestCase):
     def test_a_caller_cannot_turn_the_item_cache_back_on(self):
         with self.assertRaises(ValueError):
             with_ram_cache_off(["train", "-hp", "train_common.ram_cache=True"])
+
+
+class LeanRelease(unittest.TestCase):
+    def test_release_empties_the_callers_dict(self):
+        # execute_repeated_cv keeps its own name for the dict: only an in-place clear frees the frames
+        fold = {"train": {"FEATURES": object(), "OUTCOME": object()}, "val": {"FEATURES": object()}}
+        held_by_caller, train = fold, fold["train"]
+        release(fold)
+        self.assertEqual(held_by_caller, {})
+        self.assertEqual(train, {})
+
+    def test_release_of_nothing_is_a_no_op(self):
+        release(None)
+        release({})
 
 
 if __name__ == "__main__":
