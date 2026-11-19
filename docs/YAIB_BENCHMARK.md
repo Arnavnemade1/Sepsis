@@ -57,8 +57,31 @@ the same way on 2026-11-13: exit 137 after 3,528 s, zero predictions, 7,168 MB p
 container memory and 31,080 MB peak host swap. The follow-up service refused to start the
 25-run baseline, as designed, so no paired result exists. YAIB's LightGBM baseline does
 not fit on this 7.6 GB worker as shipped, and the AWS Free plan blocked changing the worker
-to a 64 GiB instance. A paired result against LightGBM would establish a comparison with
-that baseline, not a world ranking against all published models.
+to a 64 GiB instance.
+
+Both probes finished preprocessing (about 25 minutes) and were killed while YAIB built the
+train dataset. That step holds copies only YAIB's deep-learning models read: the padded
+item cache (`train_common.ram_cache = True` in `BinaryClassification.gin`), a per-stay
+float32 copy of every split, and three copies of the features on their way to the float32
+array the model is given. `backend/ml/scripts/yaib_lean_baseline.py` runs the same YAIB
+code, data, splits and published hyperparameters without those copies. It binds
+`ram_cache=False` through YAIB's own `-hp`, uses a dataset subclass that builds a stay's
+arrays only when asked, and casts the features to float32 once, after preprocessing.
+YAIB's checkout is not modified.
+
+That the model sees the same inputs is checked, not assumed.
+`deploy/physionet/yaib_lean_check.sh` runs stock YAIB and the lean driver on YAIB's open
+eICU demo cohort. On 2026-11-19 (revision bc41a78) it passed for LightGBM and for logistic
+regression: in all 5 runs of each, the label and probability columns were byte-identical
+row by row and the (stay, hour) id sets were identical. The id columns' *order* is not
+compared. YAIB writes them from its unsorted frame, and two stock runs reproduced their own
+files byte for byte in 0 of 5 runs. `bench compare` pairs rows by sorted position for that
+reason.
+
+The 25-run LightGBM baseline then started on full eICU (2026-11-19 05:55 UTC), followed by
+its paired patient bootstrap, then the same for logistic regression
+(`deploy/physionet/yaib_lean_followup.sh`). A paired result against these baselines would
+establish a comparison with them, not a world ranking against all published models.
 
 The eICU demo numbers further down only show that the pipeline works.
 
