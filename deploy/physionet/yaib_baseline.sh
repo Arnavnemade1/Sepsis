@@ -13,6 +13,8 @@
 # The unit must not be named yaib-* / eicu-* (see yaib_conductor.sh). By default the script
 # starts no container while the Forge optimization worker is waiting or running, because a
 # container that merely queues for the heavy lock still keeps that worker from starting.
+# DRIVER=backend.ml.scripts.yaib_lean_baseline runs the same model without the copies only
+# deep learning reads; it is allowed only after deploy/physionet/yaib_lean_check.sh passed.
 # Predictions and YAIB's logs (rows) stay in the lake; only aggregates and resource numbers
 # go to /srv/aegis.
 set -uo pipefail
@@ -31,7 +33,7 @@ step() { echo "$(date -u +%FT%TZ) $*" >> "$O/steps.log"; }
 forge() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("status","?"))' $FORGE_STATE 2>/dev/null || echo unreadable; }
 [ -f "$GIN" ] || { step "FAILED: no $GIN"; exit 1; }
 
-step "start $MODEL $MODE (source $REV)"
+step "start $MODEL $MODE (source $REV, driver ${DRIVER:-backend.ml.yaib.run_baseline})"
 if [ "${WAIT_FOR:-}" ]; then
   while systemctl is-active -q "$WAIT_FOR"; do sleep 60; done
   step "$WAIT_FOR finished"
@@ -69,7 +71,7 @@ docker run --name yaib-$NAME --rm --network none --user 0 \
   -v "$GIN":/yaib/configs/prediction_models/${MODEL}_published.gin:ro \
   --entrypoint sh yaib:af9a5b3 -c 'umask 077; exec "$@" > /output/private-run.log 2>&1' baseline \
   /opt/aegis-heavy run yaib-$NAME -- timeout --signal=TERM --kill-after=30s ${HOURS}h \
-  python -m backend.ml.yaib.run_baseline train -d /cohorts/sepsis/$COHORT -n $COHORT \
+  python -m "${DRIVER:-backend.ml.yaib.run_baseline}" train -d /cohorts/sepsis/$COHORT -n $COHORT \
     -t BinaryClassification -tn Sepsis -m ${MODEL}_published --seed 1234 -l /logs "${EXTRA[@]}"
 rc=$?
 kill $SAMPLER 2>/dev/null
