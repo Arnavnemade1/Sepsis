@@ -24,6 +24,12 @@ This driver removes those copies and nothing else:
    ``_build_item``, and the shuffle draws from the same random generator as stock YAIB.
 3. Right after ``preprocess_data`` returns, it casts the float64 and boolean feature
    columns to float32, and ``get_data_and_labels`` fills one preallocated float32 array.
+4. Before each fold's ``preprocess_data``, it empties the previous fold's data dict.
+   ``execute_repeated_cv`` still holds that dict while it preprocesses the next fold, so
+   the first full-eICU run held two folds at once and was killed starting fold 1 (both
+   LightGBM and LR: fold 0 scored, exit 137 with swap full). Nothing reads a fold's data
+   after its ``train_common`` returns. The folds stay in one process, so the random
+   state each fold starts from is the same as in stock YAIB.
 
 Why the model inputs are the same: YAIB hands the ML model ``to_numpy().astype(float32)``
 of the same frame. A float64 value rounded to float32 once is the same value whether
@@ -45,6 +51,7 @@ Run it like ``backend.ml.yaib.run_baseline`` (YAIB's checkout as working directo
 """
 from __future__ import annotations
 
+import gc
 import logging
 import sys
 from typing import List, Optional, Sequence
@@ -62,6 +69,16 @@ def with_ram_cache_off(argv: Sequence[str]) -> List[str]:
             i = args.index(flag)
             return args[: i + 1] + [RAM_CACHE_OFF] + args[i + 1:]
     return args + ["-hp", RAM_CACHE_OFF]
+
+
+def release(data: Optional[dict]) -> None:
+    """Empty a fold's {split: {segment: frame}} dict in place, so the caller's reference frees it."""
+    if not data:
+        return
+    for split in data.values():
+        if isinstance(split, dict):
+            split.clear()
+    data.clear()
 
 
 def float32_features(data: dict, keep: Sequence[str]) -> dict:
@@ -89,8 +106,14 @@ def install() -> None:
 
     stock_preprocess = cross_validation.preprocess_data
 
+    previous: List[dict] = []
+
     def preprocess_data(*args, **kwargs):
+        while previous:
+            release(previous.pop())
+        gc.collect()
         data, target_transform = stock_preprocess(*args, **kwargs)
+        previous.append(data)
         vars = gin.query_parameter("vars/gin.macro.value")
         float32_features(data, keep=[vars["GROUP"], vars["SEQUENCE"]])
         return data, target_transform
