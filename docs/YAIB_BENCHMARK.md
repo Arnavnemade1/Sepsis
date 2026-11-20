@@ -78,9 +78,14 @@ compared. YAIB writes them from its unsorted frame, and two stock runs reproduce
 files byte for byte in 0 of 5 runs. `bench compare` pairs rows by sorted position for that
 reason.
 
-The 25-run LightGBM baseline then started on full eICU (2026-11-19 05:55 UTC), followed by
-its paired patient bootstrap, then the same for logistic regression
-(`deploy/physionet/yaib_lean_followup.sh`). A paired result against these baselines would
+The first 25-run attempts (2026-11-19) scored fold 0 for each model and were killed
+starting fold 1 with swap full: YAIB's `execute_repeated_cv` still holds the previous
+fold's data while it preprocesses the next. The driver now empties that data first
+(revision a76fe61; the folds stay in one process, so each starts from stock YAIB's random
+state). The gate passed again on that revision, 5 of 5 runs identical for each model. The
+rerun started 2026-11-19 23:40 UTC and was past fold 1 at 01:27 UTC (19.2 GB peak swap,
+about 53 minutes a fold). It runs LightGBM's 25 runs and their paired patient bootstrap,
+then the same for logistic regression (`deploy/physionet/yaib_lean_followup.sh`). A paired result against these baselines would
 establish a comparison with them, not a world ranking against all published models.
 
 The eICU demo numbers further down only show that the pipeline works.
