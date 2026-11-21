@@ -85,8 +85,25 @@ fold's data while it preprocesses the next. The driver now empties that data fir
 state). The gate passed again on that revision, 5 of 5 runs identical for each model. The
 rerun started 2026-11-19 23:40 UTC and was past fold 1 at 01:27 UTC (19.2 GB peak swap,
 about 53 minutes a fold). It runs LightGBM's 25 runs and their paired patient bootstrap,
-then the same for logistic regression (`deploy/physionet/yaib_lean_followup.sh`). A paired result against these baselines would
-establish a comparison with them, not a world ranking against all published models.
+then the same for logistic regression (`deploy/physionet/yaib_lean_followup.sh`).
+
+**LightGBM, paired (2026-11-21).** All 25 runs finished (2026-11-20 23:13 UTC, 19.8 GB peak
+swap). YAIB's own LightGBM scored a mean test AUROC of 0.761 (range 0.745 to 0.771; AUPRC
+0.049), against our 0.803 (AUPRC 0.066). Its published figure is 0.691, so stock YAIB run on
+the full cohort does better than its paper reports. The paired patient bootstrap (1,000
+resamples, same test rows, 25 runs) gives our model **+0.042 AUROC, 95% CI 0.040 to 0.045**.
+The interval excludes zero, so on this protocol our model is better than YAIB's LightGBM.
+Logistic regression started 2026-11-21 01:54 UTC (about 75 minutes a run).
+
+During that run, `deploy/physionet/yaib_compress_preds.sh` gzips LightGBM's prediction files
+once its paired aggregate exists, to make disk room for logistic regression. Re-running the
+LightGBM comparison needs them unzipped first. `deploy/physionet/yaib_guardian.sh` (a 5-minute
+systemd timer on the worker, needing no laptop login) records status and alerts in
+`/srv/aegis/guardian/`. Its only automatic actions are journal, package-cache and build-cache
+cleanup, and the same LightGBM compression.
+
+These paired results are comparisons with YAIB's baselines, not a world ranking against all
+published models.
 
 The eICU demo numbers further down only show that the pipeline works.
 
