@@ -1,8 +1,14 @@
 #!/bin/bash
 # Box-side watchdog for the paired YAIB chain (needs no laptop login). Every 5 min: record
 # status, write alerts, and take only pre-approved non-destructive disk actions.
+#
+#   REV=<rev> systemd-run --unit aegis-yaib-guardian --on-calendar='*:0/5' \
+#     --setenv REV=<rev> /srv/aegis/launch/yaib_guardian.sh
+#
+# Reads /srv/aegis/guardian/{status.json,alerts.log}; alerts repeat at most hourly per kind.
 set -u
-REV=a76fe61; P=/srv/aegis/yaib-paired-$REV; G=/srv/aegis/guardian; mkdir -p $G
+REV=${REV:?staged source revision of the running chain}
+P=/srv/aegis/yaib-paired-$REV; G=${GUARDIAN_DIR:-/srv/aegis/guardian}; mkdir -p $G
 L=/srv/lake/yaib-work/yaib-logs-full/eicu/Sepsis
 now=$(date -u +%FT%TZ)
 alert() { k=$1; shift; f=$G/.last-$k; t=$(date +%s)
@@ -17,7 +23,7 @@ lg_csv=$(find $L/LGBMClassifier_published -name pred_indicators.csv 2>/dev/null 
 lg_gz=$(find $L/LGBMClassifier_published -name pred_indicators.csv.gz 2>/dev/null | wc -l)
 lr=$(find $L/LogisticRegression_published -name pred_indicators.csv 2>/dev/null | wc -l)
 last=$(tail -1 $P/steps.log)
-# disk: harmless cleanups first, then the already-approved LGBM compression (only after its paired json)
+# disk: harmless cleanups first, then compressing LGBM predictions (only once their paired json exists)
 if [ "$fr" -lt 1500 ]; then
   journalctl --vacuum-size=20M -q; dnf clean all -q; docker builder prune -f >/dev/null 2>&1
   if [ "$(free_mb)" -lt 1500 ] && [ -s $P/paired-lgbmclassifier.json ] && [ "$lg_csv" -gt 0 ]; then
