@@ -102,6 +102,22 @@ systemd timer on the worker, needing no laptop login) records status and alerts 
 `/srv/aegis/guardian/`. Its only automatic actions are journal, package-cache and build-cache
 cleanup, and the same LightGBM compression.
 
+That bootstrap took 2 h 41 min on the worker, single-threaded and silent: sklearn's weighted
+AUROC re-sorts about 1.28M rows 50,000 times. `backend/ml/scripts/yaib_paired_fast.py`
+computes the same statistic: the same `_join` pairing, the same random stream, and the same
+ties-count-half weighted AUROC. It sorts each run once, so a draw needs only a gather and
+grouped sums (15 ms against sklearn's 125 ms at eICU scale, the same value to 0.0). It
+prints per-repetition progress and reads `pred_indicators.csv.gz`.
+`verify_yaib_paired_fast` (in `make verify-yaib`) checks it against `bench.compare` to
+1e-12, with and without ties, and on draws that skip single-class runs. It also checks
+that a tie-blind variant is caught. It lives in `scripts/` because editing
+`backend/ml/yaib/*.py` changes every fit identity. The logistic regression chain already
+running (a76fe61) still uses `bench compare`. Later chains default to the fast one
+(`COMPARE`, `COMPARE_SRC` in `yaib_lean_followup.sh`), compress each model's predictions
+after its paired aggregate, and refuse to start a model with less than `MIN_FREE_MB` (5,000)
+free. `deploy/physionet/box_run.sh` runs a script on the worker over SSM. It exits 3 on an
+expired `aws login` instead of polling forever.
+
 These paired results are comparisons with YAIB's baselines, not a world ranking against all
 published models.
 
