@@ -95,7 +95,19 @@ this worker, and the driver was checked identical to it on the demo only, so thi
 show what stock YAIB would score, or why the two figures differ. The paired patient bootstrap (1,000
 resamples, same test rows, 25 runs) gives our model **+0.042 AUROC, 95% CI 0.040 to 0.045**.
 The interval excludes zero, so on this protocol our model is better than YAIB's LightGBM.
-Logistic regression started 2026-11-21 01:54 UTC (about 75 minutes a run).
+
+**Logistic regression, paired (2026-11-22).** All 25 runs finished (2026-11-22 09:06 UTC,
+18.0 GB peak swap). With the same lean driver it scored a mean test AUROC of 0.712 (range
+0.693 to 0.721; AUPRC 0.028), against our 0.803 (AUPRC 0.066). Its published figure is
+0.718. The same paired bootstrap gives our model **+0.091 AUROC, 95% CI 0.087 to 0.096**.
+
+| YAIB baseline (lean driver) | Its AUROC | Its AUPRC | Ours minus it, AUROC (95% CI) | Runs where ours is higher (AUROC) | Smallest gap in a run |
+|---|---|---|---|---|---|
+| LightGBM | 0.7609 | 0.0490 | +0.042 (0.040 to 0.045) | 25 of 25 | +0.036 |
+| Logistic regression | 0.7120 | 0.0283 | +0.091 (0.087 to 0.096) | 25 of 25 | +0.086 |
+
+These are the only two baselines run so far. The GRU, YAIB's best published eICU model
+(0.774), has not been run, so there is no paired claim against it or the other deep models.
 
 During that run, `deploy/physionet/yaib_compress_preds.sh` gzips LightGBM's prediction files
 once its paired aggregate exists, to make disk room for logistic regression. Re-running the
