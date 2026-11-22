@@ -7,7 +7,7 @@ own finding is that the cohort and preprocessing move results more than the choi
 model does. A number is therefore comparable only if it was made on YAIB's cohort, YAIB's
 splits and YAIB's metric. `backend/ml/yaib/` makes that true for our model.
 
-## Where the full eICU run stands (2026-11-12)
+## Where the full eICU run stands (2026-11-22)
 
 The final 25-run result is **0.8031774 mean AUROC** and **0.0661157 mean AUPRC** on
 the regenerated YAIB eICU sepsis cohort (123,412 stays, 5,639 septic, 6,416,789
@@ -50,12 +50,12 @@ cheaper of the two (about 300 rounds against about 900). Dropping the class weig
 regularising harder each helped on their own (fold 0: +0.011 and +0.012), and together
 they gave +0.020. No test metric of any candidate was computed.
 
-The paired comparison is still pending. YAIB's own LightGBM baseline first failed its
+The paired comparisons finished on 2026-11-22 (below), after two failures. YAIB's own LightGBM baseline first failed its
 one-fold resource probe (exit 137, zero predictions) near the 7 GiB container memory
 limit with heavy swap use. A second one-fold probe with an extra 8 GiB of swap failed
 the same way on 2026-11-13: exit 137 after 3,528 s, zero predictions, 7,168 MB peak
 container memory and 31,080 MB peak host swap. The follow-up service refused to start the
-25-run baseline, as designed, so no paired result exists. YAIB's LightGBM baseline does
+25-run baseline, as designed, so there was no paired result then. YAIB's LightGBM baseline does
 not fit on this 7.6 GB worker as shipped, and the AWS Free plan blocked changing the worker
 to a 64 GiB instance.
 
@@ -125,8 +125,8 @@ prints per-repetition progress and reads `pred_indicators.csv.gz`.
 `verify_yaib_paired_fast` (in `make verify-yaib`) checks it against `bench.compare` to
 1e-12, with and without ties, and on draws that skip single-class runs. It also checks
 that a tie-blind variant is caught. It lives in `scripts/` because editing
-`backend/ml/yaib/*.py` changes every fit identity. The logistic regression chain already
-running (a76fe61) still uses `bench compare`. Later chains default to the fast one
+`backend/ml/yaib/*.py` changes every fit identity. The logistic regression chain
+(a76fe61) was already running and used `bench compare`. Later chains default to the fast one
 (`COMPARE`, `COMPARE_SRC` in `yaib_lean_followup.sh`), compress each model's predictions
 after its paired aggregate, and refuse to start a model with less than `MIN_FREE_MB` (5,000)
 free. `deploy/physionet/box_run.sh` runs a script on the worker over SSM. It exits 3 on an
