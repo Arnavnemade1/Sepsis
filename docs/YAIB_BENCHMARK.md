@@ -89,8 +89,10 @@ then the same for logistic regression (`deploy/physionet/yaib_lean_followup.sh`)
 
 **LightGBM, paired (2026-11-21).** All 25 runs finished (2026-11-20 23:13 UTC, 19.8 GB peak
 swap). YAIB's own LightGBM scored a mean test AUROC of 0.761 (range 0.745 to 0.771; AUPRC
-0.049), against our 0.803 (AUPRC 0.066). Its published figure is 0.691, so stock YAIB run on
-the full cohort does better than its paper reports. The paired patient bootstrap (1,000
+0.049), against our 0.803 (AUPRC 0.066). Its published figure is 0.691. The run here used the
+lean driver on our regenerated cohort. Stock YAIB has never completed on the full cohort on
+this worker, and the driver was checked identical to it on the demo only, so this does not
+show what stock YAIB would score, or why the two figures differ. The paired patient bootstrap (1,000
 resamples, same test rows, 25 runs) gives our model **+0.042 AUROC, 95% CI 0.040 to 0.045**.
 The interval excludes zero, so on this protocol our model is better than YAIB's LightGBM.
 Logistic regression started 2026-11-21 01:54 UTC (about 75 minutes a run).
@@ -130,7 +132,7 @@ The eICU demo numbers further down only show that the pipeline works.
 | Cohort (`dyn` / `sta` / `outc` parquet) | YAIB's cohort generation. It is read as is: nothing is added, dropped or relabelled. |
 | Splits | YAIB's `make_single_split_polars`, reproduced in `splits.py` |
 | Metric | YAIB's: AUROC and AUPRC over every labelled test hour, per run; then the mean, the field YAIB labels "std", and a t interval over the 25 runs |
-| Baselines | YAIB itself, run by `run_baseline.py`. The driver only turns on saving per-hour predictions. |
+| Baselines | YAIB's code and published hyperparameters. `run_baseline.py` only turns on saving per-hour predictions. The full eICU runs needed `yaib_lean_baseline.py`, which also changes memory handling and was checked identical to stock on the demo only. |
 | Features and learner | Ours: causal hourly features from the same 48 dynamic and 4 static variables, then LightGBM |
 
 ## Evidence that the protocol is YAIB's
