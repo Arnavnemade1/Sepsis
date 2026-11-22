@@ -744,9 +744,10 @@ Each subsystem also has its own README:
   FHIR server. MLLP is off on the hosted deployment (Render exposes only HTTP). Evidence verifies
   scale and gross identity, not meaning: 28 concept pairs are indistinguishable by distribution,
   and identities are checked within one interface, not across them.
-- **No YAIB or system-replay result on credentialed data exists yet.** The eICU demo numbers
-  (63 septic stays) show the pipeline works, not that one model beats another. YAIB's neural
-  baselines were tuned on GPUs, and their cost on the CPU worker is unmeasured.
+- **No system-replay result on credentialed data exists yet.** The YAIB results cover eICU and
+  two baselines (LightGBM, logistic regression), so they are not a ranking against all models.
+  The eICU demo numbers only show the pipeline works. YAIB's neural baselines have not been
+  run: they were tuned on GPUs, and their cost on the CPU worker is unmeasured.
 - **Clinical text adds nothing so far.** A 1.7B frozen encoder is no better than a 135M one, and
   fine-tuning it is not affordable on the worker.
 - **The room monitor runs published rules, not a trained model.** Its detectors are checked
