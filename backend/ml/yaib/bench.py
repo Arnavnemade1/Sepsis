@@ -57,6 +57,8 @@ class TrainConfig:
     seed: int = 0
     balanced: bool = True
     force_col_wise: bool = True
+    extra_trees: bool = False      # random split thresholds: less variance on wide, noisy columns
+    path_smooth: float = 0.0       # shrink small leaves' outputs toward their parents'
 
 
 class _Rows:
@@ -119,6 +121,11 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
         "num_threads": cfg.threads, "seed": cfg.seed, "deterministic": True, "verbose": -1,
         "force_col_wise": cfg.force_col_wise,
     }
+    # set only when asked, so every earlier configuration passes LightGBM the same parameters
+    if cfg.extra_trees:
+        params["extra_trees"] = True
+    if cfg.path_smooth:
+        params["path_smooth"] = cfg.path_smooth
     if cfg.balanced:
         # YAIB trains with weight="balanced"; the same class balance here
         params["scale_pos_weight"] = neg / pos
@@ -426,6 +433,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--max-rounds", type=int, default=TrainConfig.max_rounds)
     r.add_argument("--early-stopping", type=int, default=TrainConfig.early_stopping)
     r.add_argument("--feature-store", help="private store shared by configurations (with --resume-dir)")
+    r.add_argument("--extra-trees", action="store_true", help="LightGBM extra_trees")
+    r.add_argument("--path-smooth", type=float, default=TrainConfig.path_smooth, help="LightGBM path_smooth")
     r.add_argument("--validation-only", action="store_true",
                    help="development: report validation AUROC only, no test metric")
     f = sub.add_parser("adopt-features", help="share a checkpoint's committed matrix through a feature store")
@@ -461,7 +470,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           min_child_samples=a.min_child_samples, feature_fraction=a.feature_fraction,
                           bagging_fraction=a.bagging_fraction, lambda_l2=a.lambda_l2,
                           max_rounds=a.max_rounds, early_stopping=a.early_stopping,
-                          threads=a.threads, balanced=not a.unbalanced)
+                          threads=a.threads, balanced=not a.unbalanced,
+                          extra_trees=a.extra_trees, path_smooth=a.path_smooth)
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
