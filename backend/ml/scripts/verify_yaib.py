@@ -229,6 +229,52 @@ def rich_checks(c: C.Cohort) -> None:
     check("urine6 sums within the stay only", np.allclose(col("urine6"), [100, 100, 150, 175, 10, 20]))
 
 
+def trend_checks(c: C.Cohort) -> None:
+    print("[3c] trend feature set")
+    Xr, nr = FE.build(c, feature_set="rich")
+    X, names = FE.build(c, feature_set="trend")
+    check("trend keeps every rich column unchanged, in front",
+          names[:len(nr)] == nr and np.array_equal(X[:, :len(nr)], Xr, equal_nan=True), f"{X.shape[1]} columns")
+    check("columns come out in the declared order", names == FE.feature_names("trend"))
+    sid = c.dyn.stay_id.to_numpy()
+    rows = np.flatnonzero(sid == sid[0])
+    nxt = np.flatnonzero(sid == np.unique(sid)[1])
+    k = rows[len(rows) // 2]
+    d2 = c.dyn.copy()
+    for v in ("hr", "map", "lact"):
+        d2.loc[k, v] = 400.0
+    X2, _ = FE.build(C.Cohort(d2, c.sta, c.label), feature_set="trend")
+    earlier = rows[rows < k]
+    check("trend: a spike at hour h moves no earlier hour", np.array_equal(X[earlier], X2[earlier], equal_nan=True))
+    moved = [n for j, n in enumerate(names) if j >= len(nr) and not np.array_equal(X[k, j], X2[k, j], equal_nan=True)]
+    check("... and it moves the spread and slope columns at h (the check can fail)",
+          {"hr__std6", "hr__std24", "hr__slope12", "map__slope12"} <= set(moved), f"{len(moved)} trend columns moved")
+    check("... and no hour of the next stay", np.array_equal(X[nxt], X2[nxt], equal_nan=True))
+    X3, _ = FE.build(C.Cohort(c.dyn, c.sta, 1 - np.nan_to_num(c.label)), feature_set="trend")
+    check("trend: flipping every label changes no feature", np.array_equal(X, X3, equal_nan=True))
+    # hand-checked values: stay 1 has hr 80, -, 120, 90; stay 3 sits after a stay of huge values
+    dyn = pd.DataFrame({"stay_id": [1, 1, 1, 1, 2, 2, 3, 3, 3], "hour": [0.0, 1, 2, 3, 0, 1, 0, 1, 2]})
+    for v in C.DYNAMIC:
+        dyn[v] = np.nan
+    dyn["hr"] = [80, np.nan, 120, 90, 3e7, 3.1e7, 80, 80.5, 81]
+    dyn["glu"] = [100, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan, np.nan]
+    sta = pd.DataFrame({"stay_id": [1, 2, 3], "age": [60.0, 70, 50], "sex": [1.0, 0, 1],
+                        "height": [170.0, 160, 180], "weight": [70.0, 60, 80]})
+    Xt, nt = FE.build(C.Cohort(dyn, sta, np.zeros(9)), feature_set="trend")
+    col = lambda n: Xt[:, nt.index(n)]
+    check("std6 is the population SD of the measured values in the window; NaN under two",
+          np.isnan(col("hr__std6")[:2]).all() and np.allclose(col("hr__std6")[2:4], [20.0, np.sqrt(866.6666667 / 3)]))
+    check("slope12 is the least-squares slope per hour (20, then 40/7)",
+          np.isnan(col("hr__slope12")[:2]).all() and np.allclose(col("hr__slope12")[2:4], [20.0, 40.0 / 7.0]))
+    check("a stay after a stay of huge values keeps an exact small SD and slope",
+          np.allclose(col("hr__std6")[8], np.std([80, 80.5, 81]), rtol=1e-6) and np.allclose(col("hr__slope12")[8], 0.5, rtol=1e-6),
+          f"sd {col('hr__std6')[8]:.6f}, slope {col('hr__slope12')[8]:.6f}")
+    check("a variable measured once has no spread and no slope",
+          np.isnan(col("glu__std24")[:4]).all() and np.isnan(col("glu__slope12")[:4]).all())
+    check("trend, streamed, fits the worker's memory",
+          FE.memory_plan(6_416_789, available_bytes=int(7.6e9), on_disk=True, feature_set="trend")["fits"] is True)
+
+
 def memory_checks(c: C.Cohort) -> None:
     print("[3b] memory plan and streaming")
     big = FE.memory_plan(4_000_000, available_bytes=int(7.6e9), on_disk=False)
@@ -368,6 +414,7 @@ def main() -> int:
         split_checks(c)
         feature_checks(c)
         rich_checks(c)
+        trend_checks(c)
         memory_checks(c)
         metric_checks()
         compare_checks()
