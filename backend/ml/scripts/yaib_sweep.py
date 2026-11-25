@@ -34,7 +34,8 @@ from typing import Any, Dict, List, Optional
 FLAGS = {"learning_rate": "--learning-rate", "num_leaves": "--num-leaves",
          "min_child_samples": "--min-child-samples", "feature_fraction": "--feature-fraction",
          "bagging_fraction": "--bagging-fraction", "lambda_l2": "--lambda-l2",
-         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping"}
+         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping", "path_smooth": "--path-smooth"}
+SWITCHES = {"unbalanced": "--unbalanced", "extra_trees": "--extra-trees"}
 
 
 def settings_of(plan: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -53,7 +54,7 @@ def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], w
     run of the protocol, in the same checkpoint directory, so the development fits are
     resumed and not repeated."""
     cfg = settings_of(plan, name)
-    unknown = set(cfg) - set(FLAGS) - {"unbalanced"}
+    unknown = set(cfg) - set(FLAGS) - set(SWITCHES)
     if unknown:
         raise ValueError(f"{name}: unknown settings {sorted(unknown)}")
     cmd = [sys.executable, "-m", "backend.ml.yaib.bench", "run", cohort,
@@ -64,9 +65,9 @@ def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], w
     if predictions is not None:
         cmd += ["--predictions", predictions]
     for key in sorted(cfg):
-        if key == "unbalanced":
+        if key in SWITCHES:
             if cfg[key]:
-                cmd.append("--unbalanced")
+                cmd.append(SWITCHES[key])
         else:
             cmd += [FLAGS[key], str(cfg[key])]
     return cmd
