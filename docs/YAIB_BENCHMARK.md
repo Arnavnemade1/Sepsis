@@ -174,6 +174,39 @@ The candidates: no class weighting; the slower, more regularised settings GENESI
 on CinC 2019 (learning rate 0.02, 800 rows per leaf, column sample 0.3, L2 10); both
 together; and larger trees (127 leaves) under the same regularisation.
 
+### A second sweep: trend features (v2)
+
+Registered in `artifacts/yaib/eicu_v2_prereg.json` before any MIMIC-IV result existed,
+with the same rule. The reference is Alloy itself (`rich`, `deep_unbalanced`), at its
+recorded validation scores and not re-fitted. A candidate replaces it only by leading
+its mean validation AUROC on runs 0:0 and 0:1 by more than 0.001.
+
+The `trend` set adds, to every `rich` column:
+
+- the SD of the measured values over 6 and 24 hours;
+- their least-squares slope over 12 hours.
+
+These are added for the ten variables charted often enough to have a spread within hours:
+the vitals, urine output, glucose and lactate. The same three columns for all 48
+variables (839 columns) do not fit the 7.6 GB worker by the memory plan; the ten do
+(725 columns, 5.9 GB peak).
+
+The candidates are Alloy's learner on `trend` and three changes to it:
+
+- half the learning rate with twice the leaves;
+- `extra_trees`;
+- `path_smooth` 10.
+
+Averaging several seeds was left out: it multiplies the 25-run protocol's cost by the
+number of seeds on a two-vCPU machine.
+
+- **If a candidate wins,** it runs the 25 eICU runs. It is then compared with Alloy (paired,
+  same runs and splits) and with YAIB's GRU, and runs on MIMIC-IV unchanged.
+- **If Alloy keeps its place,** `yaib_final` refuses to run anything: there is no new
+  configuration.
+
+The MIMIC-IV run of Alloy's frozen eICU recipe is not affected either way.
+
 ### Baselines without re-tuning
 
 YAIB tunes each model once, on its first folds, then fixes the result for all 25 runs. On
