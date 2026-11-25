@@ -29,6 +29,15 @@ The ``rich`` set appends, after every ``base`` column (the base columns are unch
                change and its rise above the stay's best so far, since Sepsis-3 itself
                is an acute SOFA rise; urine output over 6 and 24 hours; BUN/creatinine
 
+The ``trend`` set appends, after every ``rich`` column (the rich columns are unchanged),
+for the variables charted often enough to have a spread and a slope within hours (the
+vitals, urine output, and the glucose and lactate that sepsis care repeats; a lab drawn
+once a day would give a nearly empty column, and each column costs worker memory):
+
+    std6/std24 spread of the measured values over the last 6 and 24 hours (instability)
+    slope12    least-squares slope of the measured values over the last 12 hours, per hour
+               (a trend that one lagged difference, delta6, reads off two noisy points)
+
 All of them still read hours <= h of the same stay only.
 """
 from __future__ import annotations
@@ -84,7 +93,9 @@ COMPOSITE = ("shock_index", "map_lt65", "lact_ge2", "lact_ge4", "sirs_count", "q
 RICH_PER_VARIABLE = ("__min6", "__max6", "__delta1", "__delta24", "__dev_first")
 RICH_COMPOSITE = ("pf_ratio", "sofa_resp", "sofa_coag", "sofa_liver", "sofa_cardio", "sofa_renal",
                   "sofa_proxy", "sofa_proxy_delta24", "sofa_proxy_rise", "urine6", "urine24", "bun_crea")
-FEATURE_SETS = ("base", "rich")
+TREND_VARIABLES = ("hr", "sbp", "dbp", "map", "resp", "temp", "o2sat", "urine", "glu", "lact")
+TREND_PER_VARIABLE = ("__std6", "__std24", "__slope12")
+FEATURE_SETS = ("base", "rich", "trend")
 
 
 def feature_names(feature_set: str = "base") -> List[str]:
@@ -95,7 +106,10 @@ def feature_names(feature_set: str = "base") -> List[str]:
             + [f"static_{v}" for v in STATIC])
     if feature_set == "base":
         return base
-    return base + [f"{v}{s}" for v in DYNAMIC for s in RICH_PER_VARIABLE] + list(RICH_COMPOSITE)
+    rich = base + [f"{v}{s}" for v in DYNAMIC for s in RICH_PER_VARIABLE] + list(RICH_COMPOSITE)
+    if feature_set == "rich":
+        return rich
+    return rich + [f"{v}{s}" for v in TREND_VARIABLES for s in TREND_PER_VARIABLE]
 
 
 def _window(v: np.ndarray, k: int, seg_start: np.ndarray, op) -> np.ndarray:
@@ -115,6 +129,51 @@ def _first(v: np.ndarray, seg_start: np.ndarray) -> np.ndarray:
     first_idx = nxt[seg_start]
     ok = (first_idx < n) & (np.arange(n) >= first_idx)
     return np.where(ok, v[np.minimum(first_idx, n - 1)], np.nan)
+
+
+def _window_std(x: np.ndarray, k: int, seg_start: np.ndarray) -> np.ndarray:
+    """Population SD of the measured values of hours h-k+1..h, within the stay (NaN under 2).
+
+    Exact sums over the k lags of values centred on the stay's first measurement, so no
+    sum runs across stays: a cumulative sum over the whole cohort would carry another
+    stay's rounding into this one."""
+    n = np.zeros(len(x)); s1 = np.zeros(len(x)); s2 = np.zeros(len(x))
+    base = _first(x, seg_start)
+    for lag in range(k):
+        xl = _lag_within(x, lag, seg_start, np.nan) - base
+        ok = np.isfinite(xl)
+        xv = np.where(ok, xl, 0.0)
+        n += ok
+        s1 += xv
+        s2 += xv * xv
+    with np.errstate(invalid="ignore", divide="ignore"):
+        m = s1 / n
+        var = np.maximum(s2 / n - m * m, 0.0)
+    return np.where(n >= 2, np.sqrt(var), np.nan)
+
+
+def _window_slope(x: np.ndarray, hour: np.ndarray, k: int, seg_start: np.ndarray) -> np.ndarray:
+    """Least-squares slope (per hour) of the measured values of hours h-k+1..h against
+    their hour, within the stay; NaN with fewer than two measured hours. Exact sums over
+    the k lags, in hour offsets from h, so no cumulative sum is involved."""
+    n = np.zeros(len(x)); sd = np.zeros(len(x)); sdd = np.zeros(len(x))
+    sx = np.zeros(len(x)); sdx = np.zeros(len(x))
+    base = _first(x, seg_start)
+    for lag in range(k):
+        xl = _lag_within(x, lag, seg_start, np.nan)
+        dl = _lag_within(hour, lag, seg_start, np.nan) - hour
+        ok = np.isfinite(xl) & np.isfinite(dl)
+        xv = np.where(ok, xl - base, 0.0)
+        dv = np.where(ok, dl, 0.0)
+        n += ok
+        sd += dv
+        sdd += dv * dv
+        sx += xv
+        sdx += dv * xv
+    den = n * sdd - sd * sd
+    with np.errstate(invalid="ignore", divide="ignore"):
+        slope = (n * sdx - sd * sx) / den
+    return np.where((n >= 2) & (den > 0), slope, np.nan)
 
 
 def _band(x: np.ndarray, cuts, higher_is_worse: bool) -> np.ndarray:
@@ -200,7 +259,7 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
     for v in STATIC:
         add(f"static_{v}", st[v].to_numpy(dtype=float))
 
-    if feature_set == "rich":
+    if feature_set in ("rich", "trend"):
         for v in DYNAMIC:
             x = d[v].to_numpy(dtype=float)
             ff = last[v]
@@ -235,6 +294,12 @@ def build(cohort: Cohort, out: Optional[str] = None, feature_set: str = "base") 
             add("urine6", cu - _lag_within(cu, 6, s0, 0.0))
             add("urine24", cu - _lag_within(cu, 24, s0, 0.0))
             add("bun_crea", last["bun"] / last["crea"])
+    if feature_set == "trend":
+        for v in TREND_VARIABLES:
+            x = d[v].to_numpy(dtype=float)
+            add(f"{v}__std6", _window_std(x, 6, s0))
+            add(f"{v}__std24", _window_std(x, 24, s0))
+            add(f"{v}__slope12", _window_slope(x, hour, 12, s0))
     if names != expected:
         raise AssertionError("built fewer features than declared")
     if out:
