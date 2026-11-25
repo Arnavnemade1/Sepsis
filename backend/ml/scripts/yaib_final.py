@@ -32,6 +32,12 @@ def build(selection: Dict[str, Any], cohort: str, work: str, store: str, predict
                           plan["stage2_runs"].split(","), float(plan["min_gain"]))
     if recomputed["chosen"] != selection["chosen"]:
         raise ValueError("the recorded choice is not what the registered rule gives on the recorded scores")
+    ref = plan["reference"]
+    if selection["chosen"] == ref["name"] and ref.get("feature_set", plan["feature_set"]) != plan["feature_set"]:
+        # the reference is a model already scored on another feature set: it keeps its place
+        # and its 25 runs stand; running its settings on this plan's features would be neither
+        raise ValueError(f"the reference ({ref['name']}, {ref['feature_set']} features) keeps its place; "
+                         "there is no new configuration to run")
     return S.command(cohort, plan, selection["chosen"], None, work, store, out, threads, predictions=predictions)
 
 
