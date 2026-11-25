@@ -1,0 +1,88 @@
+{
+ "question": "On YAIB's eICU sepsis cohort, does the trend feature set, with Alloy's learner or one of three changes to it, beat Alloy (rich features, deep_unbalanced) on validation AUROC?",
+ "feature_set": "trend",
+ "feature_set_note": "trend = rich (695 columns) + SD over 6 and 24 hours and 12-hour least-squares slope of hr, sbp, dbp, map, resp, temp, o2sat, urine, glu and lact: 725 columns (backend/ml/yaib/features.py). The ten variables are the ones charted often enough to have a spread and a slope within hours; they were fixed from that reason and the worker's memory plan, not from any result.",
+ "seed": 1234,
+ "stage1_runs": "0:0",
+ "stage2_runs": "0:0,0:1",
+ "stage2_top": 2,
+ "min_gain": 0.001,
+ "reference": {
+  "name": "alloy",
+  "feature_set": "rich",
+  "settings": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true
+  },
+  "val_auroc": {
+   "0:0": 0.8008565840438016,
+   "0:1": 0.8111362863314198
+  },
+  "source": "artifacts/yaib/eicu_sweep_selection.json, stage2 deep_unbalanced: the configuration whose 25 runs are Alloy's eICU result. Not re-fitted."
+ },
+ "configs": {
+  "trend_deep": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true
+  },
+  "trend_deep_slow": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.015,
+   "min_child_samples": 400,
+   "num_leaves": 255,
+   "unbalanced": true
+  },
+  "trend_extra_trees": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true,
+   "extra_trees": true
+  },
+  "trend_path_smooth": {
+   "bagging_fraction": 0.7,
+   "early_stopping": 150,
+   "feature_fraction": 0.3,
+   "lambda_l2": 10.0,
+   "learning_rate": 0.03,
+   "min_child_samples": 400,
+   "num_leaves": 127,
+   "unbalanced": true,
+   "path_smooth": 10.0
+  }
+ },
+ "why_these": {
+  "trend_deep": "Alloy's learner on the new columns: isolates what the trend features add.",
+  "trend_deep_slow": "Half the learning rate and twice the leaves: more, finer interactions among 725 columns, each step smaller.",
+  "trend_extra_trees": "Random split thresholds reduce variance when many columns are noisy or redundant, as windowed SDs and slopes are.",
+  "trend_path_smooth": "Shrinks small leaves toward their parents: a regulariser that does not change which splits are made."
+ },
+ "rule": "Stage 1 fits every candidate on run 0:0. Stage 2 fits the best two by that run's validation AUROC on run 0:1 as well. The choice is the highest mean validation AUROC over both runs; Alloy keeps its place unless a candidate leads it by more than min_gain. Every candidate runs with --validation-only, so no candidate's test metric is computed into a result file.",
+ "disclosures": [
+  "Alloy's 25-run eICU test result (0.8032 mean AUROC) and its paired result against YAIB's GRU (+0.036) have been read. They choose nothing here: the rule reads validation AUROC of runs 0:0 and 0:1 only.",
+  "Runs 0:0 and 0:1 are two of the 25 scored runs. Their validation stays are never their own test stays, but they are training or test stays of other runs: YAIB's own arrangement for tuning, as in the first sweep.",
+  "Registered before any MIMIC-IV result exists. A chosen candidate runs the 25 eICU runs, then MIMIC-IV with these settings unchanged.",
+  "Four candidates on two folds separate differences of about 0.003 at best. A lead inside min_gain is treated as no lead.",
+  "Seed bagging was considered and left out: averaging five seeds costs five times the 25-run protocol on the two-vCPU worker."
+ ],
+ "after": "If a candidate is chosen, it runs all 25 eICU runs (resuming its development fits), and is compared with Alloy (paired, same 25 runs and splits) and with YAIB's GRU, by the bar in docs/YAIB_BENCHMARK.md. If Alloy keeps its place, nothing new runs. Nothing is re-chosen after the 25 runs are scored."
+}
