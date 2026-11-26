@@ -23,6 +23,9 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import roc_auc_score
 
+from backend.ml.scripts import yaib_ensemble as E
+from backend.ml.scripts import yaib_final as F
+from backend.ml.scripts import yaib_sweep as S
 from backend.ml.scripts.verify_yaib import synthetic, write
 from backend.ml.yaib import bench as B
 from backend.ml.yaib import checkpoint as K
@@ -256,6 +259,149 @@ class BenchFamilyChecks(unittest.TestCase):
               feature_set="rich", validation_dir=str(vdir))
         frame = pd.read_parquet(vdir / "val_r0_f0.parquet")
         self.assertTrue(((frame.p >= 0) & (frame.p <= 1)).all())
+
+
+
+def _val_dir(root, name, runs, y, scores):
+    d = Path(root) / name
+    d.mkdir(parents=True, exist_ok=True)
+    for r, sc in zip(runs, scores):
+        rep, fold = r.split(":")
+        n = len(y)
+        pd.DataFrame({"stay_id": np.arange(n) // 5, "hour": np.arange(n) % 5, "label": y, "p": sc}).to_parquet(
+            d / f"val_r{rep}_f{fold}.parquet", index=False)
+    return str(d)
+
+
+class EnsembleChecks(unittest.TestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name)
+        rng = np.random.default_rng(5)
+        n = 4000
+        self.y = (rng.random(n) < 0.2).astype(float)
+        # two complementary noisy members and a useless one
+        self.a = [E.sigmoid(self.y * 1.0 + rng.normal(0, 1, n)) for _ in range(2)]
+        self.b = [E.sigmoid(self.y * 1.0 + rng.normal(0, 1, n)) for _ in range(2)]
+        self.c = [E.sigmoid(rng.normal(0, 1, n)) for _ in range(2)]
+        self.runs = ["0:0", "0:1"]
+        self.members = {n_: _val_dir(self.root, n_, self.runs, self.y, s_)
+                        for n_, s_ in (("a", self.a), ("b", self.b), ("c", self.c))}
+
+    def test_caruana_matches_a_by_hand_greedy_and_caps_members(self):
+        L = np.column_stack([E.logit(self.a[0]), E.logit(self.b[0]), E.logit(self.c[0])])
+        w = E.caruana(L, self.y, max_members=3, steps=6)
+        self.assertAlmostEqual(w.sum(), 1.0)
+        self.assertEqual(w[2], 0.0)                                     # the useless member is left out
+        self.assertGreater(roc_auc_score(self.y, L @ w), max(roc_auc_score(self.y, L[:, j]) for j in range(3)))
+        # by hand: two steps = the best single, then the best pair
+        single = [roc_auc_score(self.y, L[:, j]) for j in range(3)]
+        first = int(np.argmax(single))
+        pair = max(range(3), key=lambda j: roc_auc_score(self.y, (L[:, first] + L[:, j]) / 2))
+        expect = np.zeros(3)
+        expect[first] += 0.5
+        expect[pair] += 0.5
+        if roc_auc_score(self.y, (L[:, first] + L[:, pair]) / 2) <= single[first]:
+            expect = np.eye(3)[first]
+        np.testing.assert_allclose(E.caruana(L, self.y, steps=2), expect)
+        self.assertEqual((E.caruana(L, self.y, max_members=1, steps=6) > 0).sum(), 1)
+
+    def test_select_cross_fits_each_runs_weights_on_the_other_run(self):
+        sel = E.select(self.members, self.runs)
+        self.assertEqual(set(sel["cross_fitted"]), set(self.runs))
+        self.assertNotIn("c", sel["weights"])
+        best_single = {r: max(sel["singles"][r].values()) for r in self.runs}
+        self.assertTrue(all(sel["cross_fitted"][r] > best_single[r] for r in self.runs))
+        # spoiling run 0:1 changes the weights run 0:0 is scored with, never run 0:1's own
+        _val_dir(self.root, "a", self.runs, self.y, [self.a[0], E.sigmoid(np.zeros(len(self.y)))])
+        spoiled = E.select(self.members, self.runs)
+        self.assertEqual(spoiled["weights_by_run"]["0:1"], sel["weights_by_run"]["0:1"])
+        self.assertNotEqual(spoiled["weights_by_run"]["0:0"], sel["weights_by_run"]["0:0"])
+        with self.assertRaisesRegex(ValueError, "two development runs"):
+            E.select(self.members, ["0:0"])
+
+    def test_misaligned_members_are_refused(self):
+        bad = _val_dir(self.root, "shuffled", self.runs, self.y[::-1].copy(), self.a)
+        with self.assertRaisesRegex(ValueError, "same rows"):
+            E.select({"a": self.members["a"], "s": bad}, self.runs)
+
+    def test_combine_is_the_weighted_mean_logit_and_checks_runs(self):
+        out = self.root / "combined"
+        for n_, s_ in (("a", self.a), ("b", self.b)):
+            d = self.root / f"t-{n_}"
+            d.mkdir()
+            for r, sc in zip(self.runs, s_):
+                rep, fold = r.split(":")
+                pd.DataFrame({"stay_id": np.arange(len(sc)), "hour": 0.0, "label": self.y, "p": sc}).to_parquet(
+                    d / f"ours_r{rep}_f{fold}.parquet", index=False)
+        members = {"a": str(self.root / "t-a"), "b": str(self.root / "t-b")}
+        files = E.combine(members, {"a": 0.75, "b": 0.25}, str(out))
+        self.assertEqual(len(files), 2)
+        got = pd.read_parquet(out / "ours_r0_f1.parquet").p.to_numpy()
+        np.testing.assert_allclose(got, E.sigmoid(0.75 * E.logit(self.a[1]) + 0.25 * E.logit(self.b[1])))
+        (self.root / "t-b" / "ours_r0_f1.parquet").unlink()
+        with self.assertRaisesRegex(ValueError, "different runs"):
+            E.combine(members, {"a": 0.75, "b": 0.25}, str(out))
+        for bad in ({"a": 0.5}, {"a": 0.5, "z": 0.5}, {"a": 1.2, "b": -0.2}):
+            with self.assertRaises(ValueError):
+                E.combine(members, bad, str(out))
+
+    def test_profile_gives_band_aurocs_and_correlations_only(self):
+        prof = E.profile(self.members, self.runs)
+        self.assertEqual(set(prof["by_hour"]), {"a", "b", "c"})
+        self.assertIn("a|b", prof["correlation"])
+        self.assertNotIn("p", json.dumps(prof["by_hour"]))
+
+
+class SweepAndFinalChecks(unittest.TestCase):
+    def plan(self, name, settings, feature_set="rich", **extra):
+        return {"feature_set": feature_set, "seed": 1234, "reference": {"name": "-"},
+                "configs": {name: settings}, **extra}
+
+    def test_new_settings_reach_the_bench_call(self):
+        cmd = S.command("/c", self.plan("x", {"families": ["baseline", "ratios"], "target": "early6",
+                                             "train_fraction": 0.3}), "x", "0:0", "/w", "/s", "/o", 2,
+                        validation="/v")
+        self.assertEqual(cmd[cmd.index("--families") + 1], "baseline,ratios")
+        self.assertEqual(cmd[cmd.index("--target") + 1], "early6")
+        self.assertEqual(cmd[cmd.index("--train-fraction") + 1], "0.3")
+        self.assertEqual(cmd[cmd.index("--save-validation") + 1], "/v")
+        empty = S.command("/c", self.plan("x", {"families": []}), "x", "0:0", "/w", "/s", "/o", 2)
+        self.assertNotIn("--families", empty)
+
+    def test_an_ensemble_final_scores_combined_predictions_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            cohort = write(str(tmp / "cohort"), *synthetic(n=120))
+            small = {"max_rounds": 20, "early_stopping": 5, "num_leaves": 7, "min_child_samples": 20,
+                     "learning_rate": 0.1}
+            plans = {"m_rich": self.plan("m_rich", small),
+                     "m_trend": self.plan("m_trend", {**small, "families": ["ratios"]}, feature_set="trend")}
+            selection = {"chosen": "ensemble", "note": "chosen on validation AUROC only",
+                         "plan": {"stage2_runs": "0:0,0:1", "min_gain": 0.001,
+                                  "reference": {"name": "alloy", "val_auroc": {"0:0": 0.5, "0:1": 0.5}}},
+                         "ensemble": {"weights": {"m_rich": 0.5, "m_trend": 0.5}, "plans": plans,
+                                      "cross_fitted": {"0:0": 0.9, "0:1": 0.9}}}
+            work, store, pred = tmp / "work", tmp / "store", tmp / "pred"
+            store.mkdir(mode=0o700)
+            jobs = F.build_ensemble(selection, cohort, str(work), str(store), str(pred), str(tmp / "final.json"))
+            self.assertEqual([j["name"] for j in jobs], ["m_rich", "m_trend"])
+            self.assertIn("--families", jobs[1]["cmd"])
+            self.assertNotIn("--runs", jobs[0]["cmd"])
+            res = F.run_ensemble(selection, jobs, str(pred), str(tmp / "final.json"))
+            self.assertEqual(res["yaib_metric"]["n_runs"], 25)
+            self.assertEqual(len(list(pred.glob("ours_r*_f*.parquet"))), 25)
+            frame = pd.read_parquet(pred / "ours_r2_f3.parquet")
+            ra = pd.read_parquet(pred / "members" / "m_rich" / "ours_r2_f3.parquet")
+            tb = pd.read_parquet(pred / "members" / "m_trend" / "ours_r2_f3.parquet")
+            np.testing.assert_allclose(frame.p, E.sigmoid(0.5 * E.logit(ra.p) + 0.5 * E.logit(tb.p)))
+            self.assertAlmostEqual(res["runs"][0]["auroc"], roc_auc_score(
+                pd.read_parquet(pred / "ours_r0_f0.parquet").label, pd.read_parquet(pred / "ours_r0_f0.parquet").p))
+        for broken in ({"note": "chosen on test"}, {"ensemble": {**selection["ensemble"], "weights": {"zz": 1.0}}},
+                       {"ensemble": {**selection["ensemble"], "cross_fitted": {"0:0": 0.5, "0:1": 0.5}}}):
+            with self.assertRaises(ValueError):
+                F.build_ensemble({**selection, **broken}, "/c", "/w", "/s", "/p", "/o.json")
 
 
 if __name__ == "__main__":
