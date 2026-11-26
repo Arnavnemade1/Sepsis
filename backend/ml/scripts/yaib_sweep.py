@@ -35,8 +35,10 @@ FLAGS = {"learning_rate": "--learning-rate", "num_leaves": "--num-leaves",
          "min_child_samples": "--min-child-samples", "feature_fraction": "--feature-fraction",
          "bagging_fraction": "--bagging-fraction", "lambda_l2": "--lambda-l2",
          "max_rounds": "--max-rounds", "early_stopping": "--early-stopping", "path_smooth": "--path-smooth",
-         "seeds": "--seeds", "model_seed": "--model-seed"}
+         "seeds": "--seeds", "model_seed": "--model-seed", "train_fraction": "--train-fraction",
+         "target": "--target"}
 SWITCHES = {"unbalanced": "--unbalanced", "extra_trees": "--extra-trees"}
+LISTS = {"families": "--families"}
 
 
 def settings_of(plan: Dict[str, Any], name: str) -> Dict[str, Any]:
@@ -49,13 +51,15 @@ def settings_of(plan: Dict[str, Any], name: str) -> Dict[str, Any]:
 
 
 def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], work: str, store: str,
-            out: str, threads: int, predictions: Optional[str] = None) -> List[str]:
+            out: str, threads: int, predictions: Optional[str] = None,
+            validation: Optional[str] = None) -> List[str]:
     """The exact ``bench run`` call of one configuration. With ``runs`` it is a
     development call (those runs, validation only). Without, it is the scored call: every
     run of the protocol, in the same checkpoint directory, so the development fits are
-    resumed and not repeated."""
+    resumed and not repeated. ``validation`` saves each run's validation predictions there
+    (rows: inside the lake), for ensembles chosen on validation."""
     cfg = settings_of(plan, name)
-    unknown = set(cfg) - set(FLAGS) - set(SWITCHES)
+    unknown = set(cfg) - set(FLAGS) - set(SWITCHES) - set(LISTS)
     if unknown:
         raise ValueError(f"{name}: unknown settings {sorted(unknown)}")
     cmd = [sys.executable, "-m", "backend.ml.yaib.bench", "run", cohort,
@@ -68,8 +72,13 @@ def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], w
         cmd += ["--runs", runs, "--validation-only"]
     if predictions is not None:
         cmd += ["--predictions", predictions]
+    if validation is not None:
+        cmd += ["--save-validation", validation]
     for key in sorted(cfg):
-        if key in SWITCHES:
+        if key in LISTS:
+            if cfg[key]:
+                cmd += [LISTS[key], ",".join(cfg[key])]
+        elif key in SWITCHES:
             if cfg[key]:
                 cmd.append(SWITCHES[key])
         else:
