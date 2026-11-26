@@ -59,6 +59,7 @@ class TrainConfig:
     force_col_wise: bool = True
     extra_trees: bool = False      # random split thresholds: less variance on wide, noisy columns
     path_smooth: float = 0.0       # shrink small leaves' outputs toward their parents'
+    seeds: int = 1                 # average this many boosters, LightGBM seeds seed, seed + 1, ...
 
 
 class _Rows:
@@ -107,7 +108,33 @@ def _predict(booster, X: np.ndarray, rows: np.ndarray, stream: bool) -> np.ndarr
 def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
                  cfg: TrainConfig, stream: bool = False, stage=None) -> Dict[str, Any]:
     """Fit on ``tr``, stop early on ``va``, score ``te``. ``stream`` feeds LightGBM from the
-    matrix in batches (for a memmap bigger than RAM) instead of copying the rows."""
+    matrix in batches (for a memmap bigger than RAM) instead of copying the rows.
+
+    With ``cfg.seeds`` > 1 it fits that many boosters, LightGBM seeds ``seed``, ``seed + 1``,
+    ..., one after another (so memory is one booster's), each stopped early on ``va``, and
+    averages their probabilities. The validation AUROC is then the averaged validation
+    predictions' (sklearn), the number a selection compares. One seed is the single booster
+    exactly as before, its validation AUROC LightGBM's own at the best iteration."""
+    if cfg.seeds < 1:
+        raise ValueError("seeds must be at least 1")
+    if cfg.seeds == 1:
+        return _fit_one(X, y, tr, va, te, cfg, stream, stage)
+    from dataclasses import replace
+    p, pv, rounds, member_val = 0.0, 0.0, [], []
+    for i in range(cfg.seeds):
+        fit = _fit_one(X, y, tr, va, te, replace(cfg, seed=cfg.seed + i, seeds=1), stream, stage,
+                       validation_predictions=True)
+        p, pv = p + fit["p"] / cfg.seeds, pv + fit["pv"] / cfg.seeds
+        rounds.append(fit["rounds"])
+        member_val.append(fit["val_auroc"])
+    return {"p": np.clip(p, 0.0, 1.0), "rounds": int(round(sum(rounds) / len(rounds))),
+            "val_auroc": float(roc_auc_score(y[va], pv)),
+            "members": {"rounds": rounds, "val_auroc": member_val}}
+
+
+def _fit_one(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
+             cfg: TrainConfig, stream: bool = False, stage=None,
+             validation_predictions: bool = False) -> Dict[str, Any]:
     import lightgbm as lgb
     pos = max(float(y[tr].sum()), 1.0)
     neg = max(float(len(tr) - y[tr].sum()), 1.0)
@@ -167,8 +194,11 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
     try:
         if stage is not None:
             stage("booster_fit_completed")
-        return {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
-                "val_auroc": float(booster.best_score["valid_0"]["auc"])}
+        fit = {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
+               "val_auroc": float(booster.best_score["valid_0"]["auc"])}
+        if validation_predictions:
+            fit["pv"] = _predict(booster, X, va, stream)
+        return fit
     finally:
         booster.free_dataset()
 
@@ -200,7 +230,7 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
         memory_check: bool = True, feature_set: str = "base",
         resume_dir: Optional[str] = None, feature_store: Optional[str] = None,
-        validation_only: bool = False) -> Dict[str, Any]:
+        validation_only: bool = False, matrix_from: Optional[str] = None) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
     ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
@@ -212,37 +242,51 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
     it once. ``validation_only`` leaves every test metric out of the result: a
     development run then cannot show the number it must not be selected on.
     A run whose planned peak exceeds this host's available memory is refused up front,
-    instead of swapping for hours or being killed mid-protocol."""
+    instead of swapping for hours or being killed mid-protocol.
+    ``matrix_from`` reads ``feature_set`` as the leading columns of a wider set's matrix
+    (``rich`` is the first 695 columns of ``trend``, unchanged and in order), so a sweep
+    holding the wider matrix never builds the narrower one. The columns are a view of the
+    memmap; LightGBM still reads it in batches, so nothing is copied whole."""
     if resume_dir is not None and features_path is not None:
         raise ValueError("Use --resume-dir or --features, not both")
     if feature_store is not None and resume_dir is None:
         raise ValueError("--feature-store needs --resume-dir")
+    source = matrix_from or feature_set
+    width = len(FE.feature_names(feature_set))
+    if matrix_from is not None and (matrix_from == feature_set
+                                    or FE.feature_names(matrix_from)[:width] != FE.feature_names(feature_set)):
+        raise ValueError(f"{feature_set} is not the leading columns of {matrix_from}")
     shared = None
     if resume_dir is not None:
         from backend.ml.yaib.checkpoint import Checkpoints, FeatureStore, experiment_spec
-        spec = experiment_spec(cohort, asdict(cfg),
-                               {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}, feature_set)
+        protocol = {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed}
+        spec = experiment_spec(cohort, asdict(cfg), protocol, feature_set)
+        if matrix_from is not None:
+            spec["matrix_from"] = matrix_from
         store = Checkpoints(resume_dir, spec)
         if feature_store is not None:
-            shared = FeatureStore(feature_store, spec)
+            # the store is the wider set's: the same matrix a run of that set shares
+            shared = FeatureStore(feature_store, experiment_spec(cohort, asdict(cfg), protocol, source))
         context = store.locked()
     else:
         context = contextlib.nullcontext(None)
     with context as checkpoints:
         t0 = time.time()
         if memory_check:
-            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=feature_set, cohort_loaded=True)
+            plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=source, cohort_loaded=True)
             if plan["fits"] is False:
                 raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB, additional "
                                   f"{plan['additional_heap_gb']:.1f} GB, free {plan['available_gb']:.1f} GB, "
                                   f"cgroup cap {plan['cgroup_limit_gb']}; memory safety margin exceeded")
         if checkpoints:
-            names = FE.feature_names(feature_set)
-            X = checkpoints.features((len(cohort.dyn), len(names)),
-                                     lambda path: FE.build(cohort, out=path, feature_set=feature_set)[0],
+            X = checkpoints.features((len(cohort.dyn), len(FE.feature_names(source))),
+                                     lambda path: FE.build(cohort, out=path, feature_set=source)[0],
                                      store=shared)
         else:
-            X, names = FE.build(cohort, out=features_path, feature_set=feature_set)
+            X, _ = FE.build(cohort, out=features_path, feature_set=source)
+        names = FE.feature_names(feature_set)
+        if X.shape[1] != width:
+            X = X[:, :width]          # a view: the memmap is not read here
         stream = features_path is not None or checkpoints is not None
         y_all = cohort.label
         stay = cohort.dyn[GROUP].to_numpy().copy()
@@ -271,7 +315,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
             m = {} if validation_only else _metric(y[te], fit["p"])
             per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
                             "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
-                            "test_stays": int(len(sp.test)), **m})
+                            "test_stays": int(len(sp.test)), **m,
+                            **({"members": fit["members"]} if "members" in fit else {})})
             if predictions_dir:
                 os.makedirs(predictions_dir, exist_ok=True)
                 pd.DataFrame({"stay_id": stay[te], "hour": hour[te], "label": y[te], "p": fit["p"]}).to_parquet(
@@ -290,7 +335,7 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
             "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
                          "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
             "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
-                      "streamed_from_memmap": stream},
+                      "streamed_from_memmap": stream, **({"matrix_from": matrix_from} if matrix_from else {})},
             "validation_only": validation_only,
             "runs": per_run,
             **tested,
@@ -437,6 +482,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--path-smooth", type=float, default=TrainConfig.path_smooth, help="LightGBM path_smooth")
     r.add_argument("--validation-only", action="store_true",
                    help="development: report validation AUROC only, no test metric")
+    r.add_argument("--seeds", type=int, default=TrainConfig.seeds, help="average this many LightGBM seeds")
+    r.add_argument("--model-seed", type=int, default=TrainConfig.seed, help="LightGBM's (first) seed")
+    r.add_argument("--matrix-from", choices=FE.FEATURE_SETS,
+                   help="read the feature set as the leading columns of this wider set's matrix")
     f = sub.add_parser("adopt-features", help="share a checkpoint's committed matrix through a feature store")
     f.add_argument("cohort")
     f.add_argument("--from", dest="source", required=True, help="an experiment checkpoint directory")
@@ -471,12 +520,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           bagging_fraction=a.bagging_fraction, lambda_l2=a.lambda_l2,
                           max_rounds=a.max_rounds, early_stopping=a.early_stopping,
                           threads=a.threads, balanced=not a.unbalanced,
-                          extra_trees=a.extra_trees, path_smooth=a.path_smooth)
+                          extra_trees=a.extra_trees, path_smooth=a.path_smooth,
+                          seeds=a.seeds, seed=a.model_seed)
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
                   predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set,
-                  resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only)
+                  resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only,
+                  matrix_from=a.matrix_from)
         m, v = res.get("yaib_metric"), res["validation_metric"]
         print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
         if runs is None and m is not None:
