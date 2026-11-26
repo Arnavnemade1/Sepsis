@@ -349,6 +349,10 @@ class Checkpoints:
             "rounds": saved["rounds"],
             "val_auroc": saved["val_auroc"],
         }
+        if "gain" in saved:
+            # each column's split gain (the model's, no row): a resumed run reports the
+            # same gain shares as the fit that wrote it
+            fit["gain"] = np.asarray(saved["gain"], dtype=float)
         self.validate_fit(fit, size)
         return fit
 
@@ -370,6 +374,8 @@ class Checkpoints:
                 "rounds": fit["rounds"],
                 "val_auroc": fit["val_auroc"],
             }
+            if "gain" in fit:
+                saved["gain"] = [float(g) for g in np.asarray(fit["gain"], dtype=float)]
             saved["receipt_sha256"] = hashlib.sha256(
                 json.dumps(saved, sort_keys=True).encode()
             ).hexdigest()
