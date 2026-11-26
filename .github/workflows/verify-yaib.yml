@@ -9,6 +9,8 @@ on:
     paths:
       - 'backend/ml/yaib/**'
       - 'backend/ml/scripts/verify_yaib.py'
+      - 'backend/ml/scripts/verify_yaib_seeds.py'
+      - 'backend/ml/scripts/yaib_sweep.py'
       - '.github/workflows/verify-yaib.yml'
   pull_request:
     branches: [main]
@@ -29,3 +31,5 @@ jobs:
         run: pip install --disable-pip-version-check numpy==2.0.2 scipy==1.13.1 pandas==2.3.3 scikit-learn==1.6.1 lightgbm==4.6.0 pyarrow==21.0.0
       - name: Verify
         run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib
+      - name: Verify seeds and shared matrices
+        run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib_seeds
