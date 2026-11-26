@@ -56,7 +56,7 @@ can be believed.
 | **The CinC 2019 ceiling** | With all 40 variables: **0.862** on a locked test set, scored once (**0.816** once the ICU clock is removed). The learning curve's asymptote is **0.887** |
 | **MIMIC-IV** | Built end to end and verified on the open demo by **103 checks**, with every harness mechanism mutation-tested. The acquisition platform ([PHYSIONET](docs/PHYSIONET.md)) is ready for credentialed data; no credentialed data has been run and no full-MIMIC result exists |
 | **System replay** | A hospital runs a paging system, not a model, so held-out stays are replayed hour by hour through the paging OS's own detector rule (imported, never copied) against a bare threshold on the same scores. It reports pages per 100 patient-days, sensitivity and **false pages per caught case**. The bar was fixed before any held-out run: the system must cut false pages per case and stay non-inferior on sensitivity. No MIMIC result is claimed yet ([SYSTEM_REPLAY](docs/SYSTEM_REPLAY.md)) |
-| **YAIB benchmark** | Our model runs under the [YAIB](https://github.com/rvandewater/YAIB) protocol (its cohort, its splits, its metric over 5×5 runs) and is compared paired against YAIB's own baselines. The split is identical to YAIB's own function in 25 of 25 repetition-fold pairs. On the open eICU demo the difference is +0.011 AUROC [−0.028, +0.050], so there is nothing to report. That demo checks the pipeline and is not a claim. Credentialed runs are queued ([YAIB_BENCHMARK](docs/YAIB_BENCHMARK.md)) |
+| **YAIB benchmark** | Our model runs under the [YAIB](https://github.com/rvandewater/YAIB) protocol (its cohort, its splits, its metric over 5×5 runs) and is compared paired against YAIB's own baselines. The split is identical to YAIB's own function in 25 of 25 repetition-fold pairs. On the open eICU demo the difference is +0.011 AUROC [−0.028, +0.050], so there is nothing to report. That demo checks the pipeline and is not a claim. On full eICU our model beats YAIB's LightGBM by +0.042 AUROC [0.040, 0.045] and its logistic regression by +0.091 [0.087, 0.096], paired over 25 runs. Both baselines used a low-memory driver, checked identical to stock on the demo only. YAIB's GRU, its best published model, has not been run ([YAIB_BENCHMARK](docs/YAIB_BENCHMARK.md)) |
 | **Clinical text** | A local text model over MIMIC-IV-Note, tried from a 135M to a 1.7B encoder, adds nothing to the tier-S GBM (stacked difference within ±0.005 AUROC on all five outer folds). A selection fault that rewarded memorising patients was found and fixed, and the result stayed null. Reported as a null ([DURABLE_RESEARCH](docs/DURABLE_RESEARCH.md)) |
 | **Scale** | **1,000 beds** inside a 600 ms tick at p99 (p99 267 ms), on one laptop core, on real patients. Every scheduling decision is Z3-proven |
 | **Verification** | **94 suites**. The paging OS has 73 checks, the room monitor 73 and the integration plane 208, and each guard was first seen failing on the code it fixes; every record-aware detector claim is checked as a pair, with and without the piece of the record that changes it. The suites behind published claims plant known failures and require the guard to fire |
@@ -744,9 +744,10 @@ Each subsystem also has its own README:
   FHIR server. MLLP is off on the hosted deployment (Render exposes only HTTP). Evidence verifies
   scale and gross identity, not meaning: 28 concept pairs are indistinguishable by distribution,
   and identities are checked within one interface, not across them.
-- **No YAIB or system-replay result on credentialed data exists yet.** The eICU demo numbers
-  (63 septic stays) show the pipeline works, not that one model beats another. YAIB's neural
-  baselines were tuned on GPUs, and their cost on the CPU worker is unmeasured.
+- **No system-replay result on credentialed data exists yet.** The YAIB results cover eICU and
+  two baselines (LightGBM, logistic regression), so they are not a ranking against all models.
+  The eICU demo numbers only show the pipeline works. YAIB's neural baselines have not been
+  run: they were tuned on GPUs, and their cost on the CPU worker is unmeasured.
 - **Clinical text adds nothing so far.** A 1.7B frozen encoder is no better than a 135M one, and
   fine-tuning it is not affordable on the worker.
 - **The room monitor runs published rules, not a trained model.** Its detectors are checked

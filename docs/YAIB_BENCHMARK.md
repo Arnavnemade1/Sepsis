@@ -7,7 +7,7 @@ own finding is that the cohort and preprocessing move results more than the choi
 model does. A number is therefore comparable only if it was made on YAIB's cohort, YAIB's
 splits and YAIB's metric. `backend/ml/yaib/` makes that true for our model.
 
-## Where the full eICU run stands (2026-11-12)
+## Where the full eICU run stands (2026-11-22)
 
 The final 25-run result is **0.8031774 mean AUROC** and **0.0661157 mean AUPRC** on
 the regenerated YAIB eICU sepsis cohort (123,412 stays, 5,639 septic, 6,416,789
@@ -50,14 +50,90 @@ cheaper of the two (about 300 rounds against about 900). Dropping the class weig
 regularising harder each helped on their own (fold 0: +0.011 and +0.012), and together
 they gave +0.020. No test metric of any candidate was computed.
 
-The paired comparison is still pending. YAIB's own LightGBM baseline first failed its
+The paired comparisons finished on 2026-11-22 (below), after two failures. YAIB's own LightGBM baseline first failed its
 one-fold resource probe (exit 137, zero predictions) near the 7 GiB container memory
-limit with heavy swap use. A second, bounded one-fold probe with an extra 8 GiB of swap
-is running on the same encrypted worker. The follow-up service starts the 25-run
-LightGBM baseline only if that probe produces a prediction; it then runs the paired
-patient bootstrap on the same rows. The AWS Free plan blocked changing this worker to
-a 64 GiB instance. A paired result against LightGBM would establish a comparison with
-that baseline, not a world ranking against all published models.
+limit with heavy swap use. A second one-fold probe with an extra 8 GiB of swap failed
+the same way on 2026-11-13: exit 137 after 3,528 s, zero predictions, 7,168 MB peak
+container memory and 31,080 MB peak host swap. The follow-up service refused to start the
+25-run baseline, as designed, so there was no paired result then. YAIB's LightGBM baseline does
+not fit on this 7.6 GB worker as shipped, and the AWS Free plan blocked changing the worker
+to a 64 GiB instance.
+
+Both probes finished preprocessing (about 25 minutes) and were killed while YAIB built the
+train dataset. That step holds copies only YAIB's deep-learning models read: the padded
+item cache (`train_common.ram_cache = True` in `BinaryClassification.gin`), a per-stay
+float32 copy of every split, and three copies of the features on their way to the float32
+array the model is given. `backend/ml/scripts/yaib_lean_baseline.py` runs the same YAIB
+code, data, splits and published hyperparameters without those copies. It binds
+`ram_cache=False` through YAIB's own `-hp`, uses a dataset subclass that builds a stay's
+arrays only when asked, and casts the features to float32 once, after preprocessing.
+YAIB's checkout is not modified.
+
+That the model sees the same inputs is checked, not assumed.
+`deploy/physionet/yaib_lean_check.sh` runs stock YAIB and the lean driver on YAIB's open
+eICU demo cohort. On 2026-11-19 (revision bc41a78) it passed for LightGBM and for logistic
+regression: in all 5 runs of each, the label and probability columns were byte-identical
+row by row and the (stay, hour) id sets were identical. The id columns' *order* is not
+compared. YAIB writes them from its unsorted frame, and two stock runs reproduced their own
+files byte for byte in 0 of 5 runs. `bench compare` pairs rows by sorted position for that
+reason.
+
+The first 25-run attempts (2026-11-19) scored fold 0 for each model and were killed
+starting fold 1 with swap full: YAIB's `execute_repeated_cv` still holds the previous
+fold's data while it preprocesses the next. The driver now empties that data first
+(revision a76fe61; the folds stay in one process, so each starts from stock YAIB's random
+state). The gate passed again on that revision, 5 of 5 runs identical for each model. The
+rerun started 2026-11-19 23:40 UTC and was past fold 1 at 01:27 UTC (19.2 GB peak swap,
+about 53 minutes a fold). It runs LightGBM's 25 runs and their paired patient bootstrap,
+then the same for logistic regression (`deploy/physionet/yaib_lean_followup.sh`).
+
+**LightGBM, paired (2026-11-21).** All 25 runs finished (2026-11-20 23:13 UTC, 19.8 GB peak
+swap). YAIB's own LightGBM scored a mean test AUROC of 0.761 (range 0.745 to 0.771; AUPRC
+0.049), against our 0.803 (AUPRC 0.066). Its published figure is 0.691. The run here used the
+lean driver on our regenerated cohort. Stock YAIB has never completed on the full cohort on
+this worker, and the driver was checked identical to it on the demo only, so this does not
+show what stock YAIB would score, or why the two figures differ. The paired patient bootstrap (1,000
+resamples, same test rows, 25 runs) gives our model **+0.042 AUROC, 95% CI 0.040 to 0.045**.
+The interval excludes zero, so on this protocol our model is better than YAIB's LightGBM.
+
+**Logistic regression, paired (2026-11-22).** All 25 runs finished (2026-11-22 09:06 UTC,
+18.0 GB peak swap). With the same lean driver it scored a mean test AUROC of 0.712 (range
+0.693 to 0.721; AUPRC 0.028), against our 0.803 (AUPRC 0.066). Its published figure is
+0.718. The same paired bootstrap gives our model **+0.091 AUROC, 95% CI 0.087 to 0.096**.
+
+| YAIB baseline (lean driver) | Its AUROC | Its AUPRC | Ours minus it, AUROC (95% CI) | Runs where ours is higher (AUROC) | Smallest gap in a run |
+|---|---|---|---|---|---|
+| LightGBM | 0.7609 | 0.0490 | +0.042 (0.040 to 0.045) | 25 of 25 | +0.036 |
+| Logistic regression | 0.7120 | 0.0283 | +0.091 (0.087 to 0.096) | 25 of 25 | +0.086 |
+
+These are the only two baselines run so far. The GRU, YAIB's best published eICU model
+(0.774), has not been run, so there is no paired claim against it or the other deep models.
+
+During that run, `deploy/physionet/yaib_compress_preds.sh` gzips LightGBM's prediction files
+once its paired aggregate exists, to make disk room for logistic regression. Re-running the
+LightGBM comparison needs them unzipped first. `deploy/physionet/yaib_guardian.sh` (a 5-minute
+systemd timer on the worker, needing no laptop login) records status and alerts in
+`/srv/aegis/guardian/`. Its only automatic actions are journal, package-cache and build-cache
+cleanup, and the same LightGBM compression.
+
+That bootstrap took 2 h 41 min on the worker, single-threaded and silent: sklearn's weighted
+AUROC re-sorts about 1.28M rows 50,000 times. `backend/ml/scripts/yaib_paired_fast.py`
+computes the same statistic: the same `_join` pairing, the same random stream, and the same
+ties-count-half weighted AUROC. It sorts each run once, so a draw needs only a gather and
+grouped sums (15 ms against sklearn's 125 ms at eICU scale, the same value to 0.0). It
+prints per-repetition progress and reads `pred_indicators.csv.gz`.
+`verify_yaib_paired_fast` (in `make verify-yaib`) checks it against `bench.compare` to
+1e-12, with and without ties, and on draws that skip single-class runs. It also checks
+that a tie-blind variant is caught. It lives in `scripts/` because editing
+`backend/ml/yaib/*.py` changes every fit identity. The logistic regression chain
+(a76fe61) was already running and used `bench compare`. Later chains default to the fast one
+(`COMPARE`, `COMPARE_SRC` in `yaib_lean_followup.sh`), compress each model's predictions
+after its paired aggregate, and refuse to start a model with less than `MIN_FREE_MB` (5,000)
+free. `deploy/physionet/box_run.sh` runs a script on the worker over SSM. It exits 3 on an
+expired `aws login` instead of polling forever.
+
+These paired results are comparisons with YAIB's baselines, not a world ranking against all
+published models.
 
 The eICU demo numbers further down only show that the pipeline works.
 
@@ -68,7 +144,7 @@ The eICU demo numbers further down only show that the pipeline works.
 | Cohort (`dyn` / `sta` / `outc` parquet) | YAIB's cohort generation. It is read as is: nothing is added, dropped or relabelled. |
 | Splits | YAIB's `make_single_split_polars`, reproduced in `splits.py` |
 | Metric | YAIB's: AUROC and AUPRC over every labelled test hour, per run; then the mean, the field YAIB labels "std", and a t interval over the 25 runs |
-| Baselines | YAIB itself, run by `run_baseline.py`. The driver only turns on saving per-hour predictions. |
+| Baselines | YAIB's code and published hyperparameters. `run_baseline.py` only turns on saving per-hour predictions. The full eICU runs needed `yaib_lean_baseline.py`, which also changes memory handling and was checked identical to stock on the demo only. |
 | Features and learner | Ours: causal hourly features from the same 48 dynamic and 4 static variables, then LightGBM |
 
 ## Evidence that the protocol is YAIB's
