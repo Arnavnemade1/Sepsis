@@ -38,6 +38,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, roc_auc_score
 
+from backend.ml.yaib import families as FAM
 from backend.ml.yaib import features as FE
 from backend.ml.yaib import splits as SP
 from backend.ml.yaib.cohort import GROUP, Cohort
@@ -60,6 +61,11 @@ class TrainConfig:
     extra_trees: bool = False      # random split thresholds: less variance on wide, noisy columns
     path_smooth: float = 0.0       # shrink small leaves' outputs toward their parents'
     seeds: int = 1                 # average this many boosters, LightGBM seeds seed, seed + 1, ...
+    train_fraction: float = 1.0    # screening: fit on this share of the run's training stays only
+    target: str = "yaib"           # the label trees are TRAINED on; validation and test are always YAIB's
+
+
+TARGETS = ("yaib", "early6", "stay")
 
 
 class _Rows:
@@ -106,7 +112,8 @@ def _predict(booster, X: np.ndarray, rows: np.ndarray, stream: bool) -> np.ndarr
 
 
 def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
-                 cfg: TrainConfig, stream: bool = False, stage=None) -> Dict[str, Any]:
+                 cfg: TrainConfig, stream: bool = False, stage=None, validation_predictions: bool = False,
+                 y_train: Optional[np.ndarray] = None) -> Dict[str, Any]:
     """Fit on ``tr``, stop early on ``va``, score ``te``. ``stream`` feeds LightGBM from the
     matrix in batches (for a memmap bigger than RAM) instead of copying the rows.
 
@@ -118,26 +125,34 @@ def _fit_predict(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, t
     if cfg.seeds < 1:
         raise ValueError("seeds must be at least 1")
     if cfg.seeds == 1:
-        return _fit_one(X, y, tr, va, te, cfg, stream, stage)
+        return _fit_one(X, y, tr, va, te, cfg, stream, stage, validation_predictions, y_train)
     from dataclasses import replace
-    p, pv, rounds, member_val = 0.0, 0.0, [], []
+    p, pv, gain, rounds, member_val = 0.0, 0.0, 0.0, [], []
     for i in range(cfg.seeds):
         fit = _fit_one(X, y, tr, va, te, replace(cfg, seed=cfg.seed + i, seeds=1), stream, stage,
-                       validation_predictions=True)
+                       validation_predictions=True, y_train=y_train)
         p, pv = p + fit["p"] / cfg.seeds, pv + fit["pv"] / cfg.seeds
+        gain = gain + fit["gain"] / cfg.seeds
         rounds.append(fit["rounds"])
         member_val.append(fit["val_auroc"])
-    return {"p": np.clip(p, 0.0, 1.0), "rounds": int(round(sum(rounds) / len(rounds))),
-            "val_auroc": float(roc_auc_score(y[va], pv)),
-            "members": {"rounds": rounds, "val_auroc": member_val}}
+    bag = {"p": np.clip(p, 0.0, 1.0), "rounds": int(round(sum(rounds) / len(rounds))),
+           "val_auroc": float(roc_auc_score(y[va], pv)),
+           "members": {"rounds": rounds, "val_auroc": member_val}, "gain": gain}
+    if validation_predictions:
+        bag["pv"] = np.clip(pv, 0.0, 1.0)
+    return bag
 
 
 def _fit_one(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: np.ndarray,
              cfg: TrainConfig, stream: bool = False, stage=None,
-             validation_predictions: bool = False) -> Dict[str, Any]:
+             validation_predictions: bool = False, y_train: Optional[np.ndarray] = None) -> Dict[str, Any]:
+    """One booster. ``y_train`` (default ``y``) is the label it is trained on; it stops early
+    on, and is scored with, ``y`` on the validation rows, so a target variant is still
+    chosen and judged by YAIB's own label."""
     import lightgbm as lgb
-    pos = max(float(y[tr].sum()), 1.0)
-    neg = max(float(len(tr) - y[tr].sum()), 1.0)
+    yt = y if y_train is None else y_train
+    pos = max(float(yt[tr].sum()), 1.0)
+    neg = max(float(len(tr) - yt[tr].sum()), 1.0)
     params = {
         "objective": "binary", "metric": "auc", "learning_rate": cfg.learning_rate,
         "num_leaves": cfg.num_leaves,
@@ -184,10 +199,10 @@ def _fit_one(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: n
                 # unlike dense/CSR construction. Preserve the exact supplied settings.
                 return dict(self.params or {})
 
-        dtr = SequenceDataset(_row_sequence(X, tr), label=y[tr], params=params, free_raw_data=True)
+        dtr = SequenceDataset(_row_sequence(X, tr), label=yt[tr], params=params, free_raw_data=True)
         dva = SequenceDataset(_row_sequence(X, va), label=y[va], params=params, reference=dtr, free_raw_data=True)
     else:
-        dtr = lgb.Dataset(X[tr], y[tr], free_raw_data=True)
+        dtr = lgb.Dataset(X[tr], yt[tr], free_raw_data=True)
         dva = lgb.Dataset(X[va], y[va], reference=dtr, free_raw_data=True)
     booster = lgb.train(params, dtr, cfg.max_rounds, valid_sets=[dva],
                         callbacks=[lgb.early_stopping(cfg.early_stopping, verbose=False)])
@@ -195,12 +210,58 @@ def _fit_one(X: np.ndarray, y: np.ndarray, tr: np.ndarray, va: np.ndarray, te: n
         if stage is not None:
             stage("booster_fit_completed")
         fit = {"p": _predict(booster, X, te, stream), "rounds": int(booster.best_iteration),
-               "val_auroc": float(booster.best_score["valid_0"]["auc"])}
+               "val_auroc": float(booster.best_score["valid_0"]["auc"]),
+               "gain": booster.feature_importance("gain", iteration=booster.best_iteration)}
         if validation_predictions:
             fit["pv"] = _predict(booster, X, va, stream)
         return fit
     finally:
         booster.free_dataset()
+
+
+def training_target(label: np.ndarray, stay: np.ndarray, hour: np.ndarray, target: str) -> np.ndarray:
+    """The label a member is trained on, from YAIB's hourly label (NaN = unlabelled, kept NaN).
+
+    yaib    YAIB's label as it is
+    early6  also positive in the 6 hours before the stay's first positive hour: a member that
+            learns earlier signs, which a blend can use (the CinC lane's early targets)
+    stay    every labelled hour of a stay that is ever positive (who will become septic)
+
+    It reads future labels of the same stay, which a TRAINING target may: no feature does,
+    and validation and test are scored on YAIB's label only."""
+    if target not in TARGETS:
+        raise ValueError(f"target must be one of {TARGETS}")
+    y = np.asarray(label, float)
+    if target == "yaib":
+        return y.copy()
+    s = pd.Series(np.nan_to_num(y, nan=0.0) > 0)
+    if target == "stay":
+        ever = s.groupby(stay, sort=False).transform("max").to_numpy()
+        return np.where(np.isfinite(y), ever.astype(float), np.nan)
+    first = pd.Series(np.where(s, hour, np.inf)).groupby(stay, sort=False).transform("min").to_numpy()
+    early = np.isfinite(first) & (hour >= first - 6)
+    return np.where(np.isfinite(y), np.maximum(np.nan_to_num(y, nan=0.0), early.astype(float)), np.nan)
+
+
+def train_stays(train: np.ndarray, stay_labels: pd.Series, fraction: float, split: str) -> np.ndarray:
+    """A deterministic share of a run's training stays, stratified by stay label, for cheap
+    screening fits. ``fraction`` 1 is every training stay. The draw depends only on the
+    split's fingerprint and the fraction, so a candidate and the reference screened on the
+    same run see the same stays; validation and test stays are never touched."""
+    train = np.sort(np.asarray(train))
+    if not 0 < fraction <= 1:
+        raise ValueError("train_fraction must be in (0, 1]")
+    if fraction == 1:
+        return train
+    import hashlib
+    seed = int(hashlib.sha256(f"{split}:{fraction!r}".encode()).hexdigest()[:16], 16)
+    rng = np.random.default_rng(seed)
+    septic = stay_labels.reindex(train).to_numpy() > 0
+    keep = []
+    for group in (train[septic], train[~septic]):
+        k = max(1, int(round(fraction * len(group)))) if len(group) else 0
+        keep.append(rng.choice(group, size=k, replace=False) if k else group[:0])
+    return np.sort(np.concatenate(keep))
 
 
 def yaib_summary(name: str, v: np.ndarray) -> Dict[str, Any]:
@@ -225,12 +286,46 @@ def _metric(y: np.ndarray, p: np.ndarray) -> Dict[str, float]:
     return {"auroc": float(roc_auc_score(y, p)), "auprc": float(average_precision_score(y, p))}
 
 
+def column_groups(feature_set: str, width: int, families: Sequence[str]) -> List[tuple]:
+    """(group, first column, end) for the gain shares: the feature set's own layers (base,
+    then what rich and trend append), then each family's block."""
+    groups, start = [], 0
+    for layer in ("base", "rich", "trend"):
+        end = min(len(FE.feature_names(layer)), width)
+        if end > start:
+            groups.append((layer, start, end))
+            start = end
+        if layer == feature_set:
+            break
+    for f in families:
+        end = start + len(FAM.family_names(f))
+        groups.append((f, start, end))
+        start = end
+    return groups
+
+
+def gain_shares(gain: np.ndarray, groups: List[tuple]) -> Dict[str, float]:
+    """Each column group's share of the booster's total split gain (an aggregate, no rows)."""
+    total = float(np.sum(gain))
+    if not total > 0:
+        return {}
+    return {g: round(float(np.sum(gain[a:b])) / total, 4) for g, a, b in groups}
+
+
+def _write_validation(path: str, stay, hour, y, pv) -> None:
+    """One run's validation predictions, beside the checkpoints (rows: inside the lake)."""
+    tmp = path + ".tmp"
+    pd.DataFrame({"stay_id": stay, "hour": hour, "label": y, "p": pv}).to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+
+
 def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 5, cv_folds: int = 5,
         seed: int = SP.YAIB_CLI_SEED, runs: Optional[Sequence[tuple]] = None,
         predictions_dir: Optional[str] = None, features_path: Optional[str] = None,
         memory_check: bool = True, feature_set: str = "base",
         resume_dir: Optional[str] = None, feature_store: Optional[str] = None,
-        validation_only: bool = False, matrix_from: Optional[str] = None) -> Dict[str, Any]:
+        validation_only: bool = False, matrix_from: Optional[str] = None,
+        families: Optional[Sequence[str]] = None, validation_dir: Optional[str] = None) -> Dict[str, Any]:
     """Every (repetition, fold) of YAIB's protocol. ``runs`` limits it to some pairs.
     ``predictions_dir`` writes each run's test predictions (rows: keep them in the lake).
     ``features_path`` keeps the feature matrix in a disk-backed memmap (also in the lake)
@@ -246,11 +341,16 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
     ``matrix_from`` reads ``feature_set`` as the leading columns of a wider set's matrix
     (``rich`` is the first 695 columns of ``trend``, unchanged and in order), so a sweep
     holding the wider matrix never builds the narrower one. The columns are a view of the
-    memmap; LightGBM still reads it in batches, so nothing is copied whole."""
+    memmap; LightGBM still reads it in batches, so nothing is copied whole.
+    ``families`` appends feature-family blocks (``families.py``), each built once into the
+    feature store and read beside the matrix, never merged into a new one.
+    ``validation_dir`` writes each run's validation predictions there (rows: inside the
+    lake), for ensembles and evidence chosen on validation without refitting."""
     if resume_dir is not None and features_path is not None:
         raise ValueError("Use --resume-dir or --features, not both")
     if feature_store is not None and resume_dir is None:
         raise ValueError("--feature-store needs --resume-dir")
+    families = FAM.canonical(families)
     source = matrix_from or feature_set
     width = len(FE.feature_names(feature_set))
     if matrix_from is not None and (matrix_from == feature_set
@@ -263,6 +363,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         spec = experiment_spec(cohort, asdict(cfg), protocol, feature_set)
         if matrix_from is not None:
             spec["matrix_from"] = matrix_from
+        if families:
+            spec["families"] = families
         store = Checkpoints(resume_dir, spec)
         if feature_store is not None:
             # the store is the wider set's: the same matrix a run of that set shares
@@ -274,6 +376,14 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         t0 = time.time()
         if memory_check:
             plan = FE.memory_plan(len(cohort.dyn), on_disk=features_path is not None or resume_dir is not None, feature_set=source, cohort_loaded=True)
+            extra = sum(len(FAM.family_names(f)) for f in families)
+            if extra and plan["available_gb"] is not None:
+                # family blocks are binned and sampled like the matrix's own columns
+                rows = len(cohort.dyn)
+                per_col = int(rows * 0.64 * 1.25) + min(int(rows * 0.64), 200000) * 20
+                plan["additional_heap_gb"] += extra * per_col / 1e9
+                if plan["additional_heap_gb"] >= 0.85 * plan["available_gb"]:
+                    plan["fits"] = False
             if plan["fits"] is False:
                 raise MemoryError(f"planned peak {plan['peak_heap_gb']:.1f} GB, additional "
                                   f"{plan['additional_heap_gb']:.1f} GB, free {plan['available_gb']:.1f} GB, "
@@ -287,6 +397,20 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
         names = FE.feature_names(feature_set)
         if X.shape[1] != width:
             X = X[:, :width]          # a view: the memmap is not read here
+        if families:
+            blocks = [X]
+            for f in families:
+                fnames = FAM.family_names(f)
+                if checkpoints and feature_store is not None:
+                    from backend.ml.yaib.checkpoint import FamilyStore
+                    blocks.append(FamilyStore(feature_store, spec, f).matrix(
+                        (len(cohort.dyn), len(fnames)), lambda path, f=f: FAM.build_family(cohort, f, out=path)[0]))
+                else:
+                    out = f"{features_path}.{f}.npy" if features_path else None
+                    blocks.append(FAM.build_family(cohort, f, out=out)[0])
+                names = names + fnames
+            X = FAM.Columns(blocks)
+        groups = column_groups(feature_set, width, families)
         stream = features_path is not None or checkpoints is not None
         y_all = cohort.label
         stay = cohort.dyn[GROUP].to_numpy().copy()
@@ -298,25 +422,44 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
             cohort.dyn = cohort.dyn[[GROUP, "hour"]]
             import gc
             gc.collect()
+        y_train = None
+        if cfg.target != "yaib":
+            y_train = np.nan_to_num(training_target(y_all, stay, hour, cfg.target), nan=0.0)
         per_run: List[Dict[str, Any]] = []
         for sp in SP.all_splits(labels, cv_repetitions, cv_folds, seed):
             if runs is not None and (sp.repetition, sp.fold) not in runs:
                 continue
             lab = np.isfinite(y_all)
-            tr = np.flatnonzero(np.isin(stay, sp.train) & lab)
+            fitted = train_stays(sp.train, labels, cfg.train_fraction, sp.fingerprint())
+            tr = np.flatnonzero(np.isin(stay, fitted) & lab)
             va = np.flatnonzero(np.isin(stay, sp.val) & lab)
             te = np.flatnonzero(np.isin(stay, sp.test) & lab)
             y = np.nan_to_num(y_all, nan=0.0)
+            vpath = (os.path.join(validation_dir, f"val_r{sp.repetition}_f{sp.fold}.parquet")
+                     if validation_dir else None)
             fit = checkpoints.load_fit(sp.repetition, sp.fold, sp.fingerprint(), len(te)) if checkpoints else None
-            if fit is None:
-                fit = _fit_predict(X, y, tr, va, te, cfg, stream=stream)
-                if checkpoints:
-                    checkpoints.save_fit(sp.repetition, sp.fold, sp.fingerprint(), fit, len(te))
+            if fit is None or (vpath and not os.path.exists(vpath)):
+                fresh = _fit_predict(X, y, tr, va, te, cfg, stream=stream, y_train=y_train,
+                                     validation_predictions=vpath is not None)
+                if fit is None:
+                    fit = fresh
+                    if checkpoints:
+                        checkpoints.save_fit(sp.repetition, sp.fold, sp.fingerprint(), fit, len(te))
+                elif not np.array_equal(fresh["p"], fit["p"]):
+                    # a resumed run asked for its validation predictions: the deterministic
+                    # refit must be the checkpointed model, or the two would not be one model
+                    raise ValueError("the refit for validation predictions differs from its checkpoint")
+                else:
+                    fit = {**fit, "pv": fresh["pv"], "gain": fresh["gain"]}
+            if vpath:
+                os.makedirs(validation_dir, mode=0o700, exist_ok=True)
+                _write_validation(vpath, stay[va], hour[va], y[va], fit["pv"])
             m = {} if validation_only else _metric(y[te], fit["p"])
             per_run.append({"repetition": sp.repetition, "fold": sp.fold, "split": sp.fingerprint(),
                             "rounds": fit["rounds"], "val_auroc": fit["val_auroc"], "test_rows": int(len(te)),
-                            "test_stays": int(len(sp.test)), **m,
-                            **({"members": fit["members"]} if "members" in fit else {})})
+                            "test_stays": int(len(sp.test)), "train_stays": int(len(fitted)), **m,
+                            **({"members": fit["members"]} if "members" in fit else {}),
+                            **({"gain_share": gain_shares(fit["gain"], groups)} if "gain" in fit else {})})
             if predictions_dir:
                 os.makedirs(predictions_dir, exist_ok=True)
                 pd.DataFrame({"stay_id": stay[te], "hour": hour[te], "label": y[te], "p": fit["p"]}).to_parquet(
@@ -335,7 +478,8 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
             "protocol": {"cv_repetitions": cv_repetitions, "cv_folds": cv_folds, "seed": seed,
                          "split_source": "YAIB make_single_split_polars, reproduced (backend/ml/yaib/splits.py)"},
             "model": {"learner": "LightGBM", **asdict(cfg), "feature_set": feature_set, "n_features": len(names),
-                      "streamed_from_memmap": stream, **({"matrix_from": matrix_from} if matrix_from else {})},
+                      "streamed_from_memmap": stream, **({"matrix_from": matrix_from} if matrix_from else {}),
+                      **({"families": families} if families else {})},
             "validation_only": validation_only,
             "runs": per_run,
             **tested,
@@ -486,6 +630,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     r.add_argument("--model-seed", type=int, default=TrainConfig.seed, help="LightGBM's (first) seed")
     r.add_argument("--matrix-from", choices=FE.FEATURE_SETS,
                    help="read the feature set as the leading columns of this wider set's matrix")
+    r.add_argument("--families", help="comma-separated feature families appended as blocks: "
+                   + ",".join(FAM.FAMILIES))
+    r.add_argument("--save-validation", help="directory for per-run validation predictions (inside the lake)")
+    r.add_argument("--target", choices=TARGETS, default=TrainConfig.target,
+                   help="the label trees are trained on (validation and test stay YAIB's)")
+    r.add_argument("--train-fraction", type=float, default=TrainConfig.train_fraction,
+                   help="screening: fit on this share of each run's training stays (stratified)")
     f = sub.add_parser("adopt-features", help="share a checkpoint's committed matrix through a feature store")
     f.add_argument("cohort")
     f.add_argument("--from", dest="source", required=True, help="an experiment checkpoint directory")
@@ -521,13 +672,15 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                           max_rounds=a.max_rounds, early_stopping=a.early_stopping,
                           threads=a.threads, balanced=not a.unbalanced,
                           extra_trees=a.extra_trees, path_smooth=a.path_smooth,
-                          seeds=a.seeds, seed=a.model_seed)
+                          seeds=a.seeds, seed=a.model_seed, train_fraction=a.train_fraction,
+                          target=a.target)
         runs = None if not a.runs else [tuple(int(x) for x in r.split(":")) for r in a.runs.split(",")]
         cohort = load(a.cohort)
         res = run(cohort, cfg, a.repetitions, a.folds, a.seed, runs=runs,
                   predictions_dir=a.predictions, features_path=a.features, feature_set=a.feature_set,
                   resume_dir=a.resume_dir, feature_store=a.feature_store, validation_only=a.validation_only,
-                  matrix_from=a.matrix_from)
+                  matrix_from=a.matrix_from, families=a.families.split(",") if a.families else None,
+                  validation_dir=a.save_validation)
         m, v = res.get("yaib_metric"), res["validation_metric"]
         print(f"validation AUROC {v.get('val_auroc_mean', float('nan')):.4f} over {len(res['runs'])} runs")
         if runs is None and m is not None:
