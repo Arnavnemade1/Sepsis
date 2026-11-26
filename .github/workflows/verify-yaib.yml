@@ -33,3 +33,5 @@ jobs:
         run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib
       - name: Verify seeds and shared matrices
         run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib_seeds
+      - name: Verify the Forge lane's bench (screening, targets, families, ensembles)
+        run: PYTHONPATH=. python -W ignore -m backend.ml.scripts.verify_yaib_v4
