@@ -34,7 +34,8 @@ from typing import Any, Dict, List, Optional
 FLAGS = {"learning_rate": "--learning-rate", "num_leaves": "--num-leaves",
          "min_child_samples": "--min-child-samples", "feature_fraction": "--feature-fraction",
          "bagging_fraction": "--bagging-fraction", "lambda_l2": "--lambda-l2",
-         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping", "path_smooth": "--path-smooth"}
+         "max_rounds": "--max-rounds", "early_stopping": "--early-stopping", "path_smooth": "--path-smooth",
+         "seeds": "--seeds", "model_seed": "--model-seed"}
 SWITCHES = {"unbalanced": "--unbalanced", "extra_trees": "--extra-trees"}
 
 
@@ -60,6 +61,9 @@ def command(cohort: str, plan: Dict[str, Any], name: str, runs: Optional[str], w
     cmd = [sys.executable, "-m", "backend.ml.yaib.bench", "run", cohort,
            "--feature-set", plan["feature_set"], "--seed", str(plan["seed"]), "--threads", str(threads),
            "--resume-dir", os.path.join(work, name), "--feature-store", store, "--out", out]
+    if plan.get("matrix_from"):
+        # the feature set read as the leading columns of a wider set's matrix, never rebuilt
+        cmd += ["--matrix-from", plan["matrix_from"]]
     if runs is not None:
         cmd += ["--runs", runs, "--validation-only"]
     if predictions is not None:
