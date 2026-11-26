@@ -185,7 +185,10 @@ class FeatureStore:
     validated by content hash on every open, exactly as an experiment's own is."""
 
     def __init__(self, root, spec):
-        self.spec = feature_spec(spec)
+        self._open(root, feature_spec(spec))
+
+    def _open(self, root, own_spec):
+        self.spec = own_spec
         self.identity = identity_of(self.spec)
         base = Path(root).resolve()
         base.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -249,6 +252,20 @@ class FeatureStore:
                      "adopted_from": receipt["identity"]}
             atomic_json(mine, saved)
             return saved
+
+
+class FamilyStore(FeatureStore):
+    """One committed block per feature family and feature identity, in the same private
+    store. Its identity is the feature set's inputs and environment, the family's name and
+    the code that builds it (``families.py`` and the ``features.py`` helpers it reuses), so
+    a block is shared by every configuration that asks for it, and changing a family's code
+    builds a new block without touching the feature set's matrix."""
+
+    def __init__(self, root, spec, family):
+        own = feature_spec(spec)
+        implementation = dict(own["implementation"])
+        implementation["families.py"] = spec["implementation"]["families.py"]
+        self._open(root, {**own, "feature_set": f"family:{family}", "implementation": implementation})
 
 
 class Checkpoints:
