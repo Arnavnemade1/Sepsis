@@ -439,8 +439,12 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                      if validation_dir else None)
             fit = checkpoints.load_fit(sp.repetition, sp.fold, sp.fingerprint(), len(te)) if checkpoints else None
             if fit is None or (vpath and not os.path.exists(vpath)):
-                fresh = _fit_predict(X, y, tr, va, te, cfg, stream=stream, y_train=y_train,
-                                     validation_predictions=vpath is not None)
+                extra = {}
+                if y_train is not None:
+                    extra["y_train"] = y_train
+                if vpath is not None:
+                    extra["validation_predictions"] = True
+                fresh = _fit_predict(X, y, tr, va, te, cfg, stream=stream, **extra)
                 if fit is None:
                     fit = fresh
                     if checkpoints:
@@ -450,7 +454,7 @@ def run(cohort: Cohort, cfg: TrainConfig = TrainConfig(), cv_repetitions: int = 
                     # refit must be the checkpointed model, or the two would not be one model
                     raise ValueError("the refit for validation predictions differs from its checkpoint")
                 else:
-                    fit = {**fit, "pv": fresh["pv"], "gain": fresh["gain"]}
+                    fit = {**fit, "pv": fresh["pv"], **({"gain": fresh["gain"]} if "gain" in fresh else {})}
             if vpath:
                 os.makedirs(validation_dir, mode=0o700, exist_ok=True)
                 _write_validation(vpath, stay[va], hour[va], y[va], fit["pv"])
